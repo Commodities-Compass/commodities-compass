@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth0 } from '@auth0/auth0-react';
 import { Button } from '@/components/ui/button';
@@ -13,19 +13,81 @@ import {
 import { ShieldCheckIcon } from 'lucide-react';
 import fullLogo from '@/assets/COMPASS-logo.svg';
 
+const REDIRECT_LOOP_KEY = 'auth_redirect_count';
+const REDIRECT_LOOP_TIMESTAMP_KEY = 'auth_redirect_timestamp';
+const MAX_REDIRECTS = 3;
+const REDIRECT_WINDOW_MS = 5000; // 5 seconds
+
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { loginWithRedirect, isAuthenticated, isLoading, error } = useAuth0();
+  const { loginWithRedirect, isAuthenticated, isLoading, error, logout } = useAuth0();
+  const logoutTriggeredRef = useRef(false);
 
   useEffect(() => {
-    // Only redirect if authenticated AND we have a valid token
-    if (isAuthenticated && !error) {
+    // Detect and break redirect loops
+    const detectRedirectLoop = () => {
+      const now = Date.now();
+      const lastTimestamp = sessionStorage.getItem(REDIRECT_LOOP_TIMESTAMP_KEY);
+      const redirectCount = parseInt(sessionStorage.getItem(REDIRECT_LOOP_KEY) || '0', 10);
+
+      // Reset counter if outside time window
+      if (lastTimestamp && (now - parseInt(lastTimestamp, 10)) > REDIRECT_WINDOW_MS) {
+        sessionStorage.setItem(REDIRECT_LOOP_KEY, '1');
+        sessionStorage.setItem(REDIRECT_LOOP_TIMESTAMP_KEY, now.toString());
+        return false;
+      }
+
+      // Increment counter
+      const newCount = redirectCount + 1;
+      sessionStorage.setItem(REDIRECT_LOOP_KEY, newCount.toString());
+      sessionStorage.setItem(REDIRECT_LOOP_TIMESTAMP_KEY, now.toString());
+
+      // Loop detected if too many redirects in short time
+      return newCount >= MAX_REDIRECTS;
+    };
+
+    // Check for redirect loop and force logout if detected
+    if (isAuthenticated && !error && !logoutTriggeredRef.current) {
+      const isLooping = detectRedirectLoop();
+
+      if (isLooping) {
+        console.warn('Redirect loop detected - forcing logout to break cycle');
+        logoutTriggeredRef.current = true;
+
+        // Clear all auth state
+        localStorage.removeItem('auth0_token');
+        sessionStorage.removeItem(REDIRECT_LOOP_KEY);
+        sessionStorage.removeItem(REDIRECT_LOOP_TIMESTAMP_KEY);
+        sessionStorage.removeItem('auth_401_error');
+
+        // Force Auth0 logout to clear session
+        logout({
+          logoutParams: {
+            returnTo: window.location.origin + '/login'
+          }
+        });
+        return;
+      }
+
+      // Only redirect if authenticated AND we have a valid token AND no loop detected
       const token = localStorage.getItem('auth0_token');
-      if (token) {
+      const has401Error = sessionStorage.getItem('auth_401_error');
+
+      if (token && !has401Error) {
+        // Clear redirect counter on successful navigation
+        sessionStorage.removeItem(REDIRECT_LOOP_KEY);
+        sessionStorage.removeItem(REDIRECT_LOOP_TIMESTAMP_KEY);
         navigate('/dashboard');
       }
     }
-  }, [isAuthenticated, error, navigate]);
+
+    // Clear redirect counter if not authenticated
+    if (!isAuthenticated && !isLoading) {
+      sessionStorage.removeItem(REDIRECT_LOOP_KEY);
+      sessionStorage.removeItem(REDIRECT_LOOP_TIMESTAMP_KEY);
+      sessionStorage.removeItem('auth_401_error');
+    }
+  }, [isAuthenticated, error, navigate, logout, isLoading]);
 
   const handleLogin = () => {
     loginWithRedirect({

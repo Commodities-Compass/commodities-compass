@@ -28,10 +28,14 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Token expired or invalid - clear auth state and redirect to login
+      // Token expired or invalid - set a flag and clear token
+      // This flag will be checked by the login page to prevent redirect loops
+      sessionStorage.setItem('auth_401_error', 'true');
       localStorage.removeItem('auth0_token');
-      // Force a hard reload to clear Auth0's cached state
-      window.location.href = '/login';
+
+      // Trigger a custom event that App.tsx can listen to for coordinated logout
+      // This prevents multiple logout attempts and ensures proper cleanup
+      window.dispatchEvent(new CustomEvent('auth:token-expired'));
     }
     return Promise.reject(error);
   }

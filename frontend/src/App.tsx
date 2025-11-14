@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import {
   BrowserRouter as Router,
   Routes,
@@ -27,25 +27,70 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  const { isAuthenticated, getAccessTokenSilently } = useAuth0();
+  const { isAuthenticated, getAccessTokenSilently, logout } = useAuth0();
+  const tokenRefreshAttemptedRef = useRef(false);
+  const logoutInProgressRef = useRef(false);
+
+  // Listen for 401 errors from API calls and trigger logout
+  useEffect(() => {
+    const handleTokenExpired = () => {
+      if (isAuthenticated && !logoutInProgressRef.current) {
+        console.warn('Token expired detected - logging out');
+        logoutInProgressRef.current = true;
+
+        logout({
+          logoutParams: {
+            returnTo: window.location.origin + '/login'
+          }
+        });
+      }
+    };
+
+    window.addEventListener('auth:token-expired', handleTokenExpired);
+    return () => {
+      window.removeEventListener('auth:token-expired', handleTokenExpired);
+    };
+  }, [isAuthenticated, logout]);
 
   useEffect(() => {
     const getToken = async () => {
-      if (isAuthenticated) {
+      // Only try to refresh token once to prevent infinite loops
+      if (isAuthenticated && !tokenRefreshAttemptedRef.current) {
+        tokenRefreshAttemptedRef.current = true;
+
         try {
           const token = await getAccessTokenSilently();
           localStorage.setItem('auth0_token', token);
+          // Clear any previous 401 error flags on successful token refresh
+          sessionStorage.removeItem('auth_401_error');
         } catch (error) {
           console.error('Error getting access token:', error);
-          // If we can't get a token, clear the stored one and redirect to login
+
+          // Clear stored token
           localStorage.removeItem('auth0_token');
-          window.location.href = '/login';
+
+          // Properly logout from Auth0 to clear session state
+          // This breaks the redirect loop by setting isAuthenticated to false
+          if (!logoutInProgressRef.current) {
+            logoutInProgressRef.current = true;
+            logout({
+              logoutParams: {
+                returnTo: window.location.origin + '/login'
+              }
+            });
+          }
         }
       }
     };
 
     getToken();
-  }, [isAuthenticated, getAccessTokenSilently]);
+
+    // Reset the flags when authentication state changes
+    if (!isAuthenticated) {
+      tokenRefreshAttemptedRef.current = false;
+      logoutInProgressRef.current = false;
+    }
+  }, [isAuthenticated, getAccessTokenSilently, logout]);
 
   return (
     <Router>

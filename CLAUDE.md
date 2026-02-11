@@ -10,17 +10,17 @@ Commodities Compass is a Business Intelligence application for commodities tradi
 
 ### Monorepo Commands (from root)
 
-- `npm run install:all` - Install all dependencies (root, backend, frontend)
-- `npm run dev` - Start both backend and frontend in development mode (concurrently)
-- `npm run dev:backend` - Start only backend (<http://localhost:8000>)
-- `npm run dev:frontend` - Start only frontend (<http://localhost:5173>)
-- `npm run db:up` - Start PostgreSQL (port 5433) and Redis (port 6380) containers
-- `npm run db:down` - Stop database containers
-- `npm run db:logs` - View database container logs
-- `npm run lint` - Run linting for both projects
-- `npm run format` - Format code for both projects
-- `npm run test` - Run tests for both projects
-- `npm run build` - Build frontend for production
+- `pnpm install:all` - Install all dependencies (root, backend, frontend)
+- `pnpm dev` - Start both backend and frontend in development mode (concurrently)
+- `pnpm dev:backend` - Start only backend (<http://localhost:8000>)
+- `pnpm dev:frontend` - Start only frontend (<http://localhost:5173>)
+- `pnpm db:up` - Start PostgreSQL (port 5433) and Redis (port 6380) containers
+- `pnpm db:down` - Stop database containers
+- `pnpm db:logs` - View database container logs
+- `pnpm lint` - Run linting for both projects
+- `pnpm format` - Format code for both projects
+- `pnpm test` - Run tests for both projects
+- `pnpm build` - Build frontend for production
 
 ### Backend Commands (from backend/)
 
@@ -33,13 +33,13 @@ Commodities Compass is a Business Intelligence application for commodities tradi
 
 ### Frontend Commands (from frontend/)
 
-- `npm run dev` - Start Vite development server
-- `npm run build` - Build for production
-- `npm run lint` - Run ESLint
-- `npm run lint:fix` - Run ESLint with auto-fix
-- `npm run format` - Run Prettier
-- `npm run format:check` - Check formatting without writing
-- `npm run type-check` - Run TypeScript type checking (noEmit)
+- `pnpm dev` - Start Vite development server
+- `pnpm build` - Build for production
+- `pnpm lint` - Run ESLint
+- `pnpm lint:fix` - Run ESLint with auto-fix
+- `pnpm format` - Run Prettier
+- `pnpm format:check` - Check formatting without writing
+- `pnpm type-check` - Run TypeScript type checking (noEmit)
 
 ## Architecture
 
@@ -254,4 +254,5 @@ The `PositionStatus` component automatically fetches and plays the audio file:
 - Development setup script available at `scripts/setup-dev.sh`
 - No test files exist yet - test infrastructure needs to be created
 - `commodities` and `historical` API endpoints return mock data (TODO: implement database queries)
-- Node.js 18+ and npm 9+ required (see root `package.json` engines)
+- Node.js 18+ and pnpm required (see root `package.json` engines)
+- **Always use pnpm** instead of npm for all JavaScript/TypeScript dependency management and script execution

@@ -17,12 +17,15 @@ jobs:
       uses: actions/setup-node@v3
       with:
         node-version: '18'
-        
+
+    - name: Install pnpm
+      uses: pnpm/action-setup@v4
+
     - name: Install dependencies
       run: |
         cd frontend
-        npm ci
-        
+        pnpm install --frozen-lockfile
+
     - name: Build with environment variables
       env:
         # These would come from GitHub Secrets
@@ -33,7 +36,7 @@ jobs:
         API_BASE_URL: ${{ secrets.API_BASE_URL }}
       run: |
         cd frontend
-        npm run build
+        pnpm run build
         
     - name: Upload build artifacts
       uses: actions/upload-artifact@v3

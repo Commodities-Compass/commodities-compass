@@ -7,21 +7,21 @@
     "frontend"
   ],
   "scripts": {
-    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev": "concurrently \"pnpm run dev:backend\" \"pnpm run dev:frontend\"",
     "dev:backend": "cd backend && poetry run dev",
-    "dev:frontend": "cd frontend && npm run dev",
-    "install:all": "npm install && cd backend && poetry install && cd ../frontend && npm install",
-    "lint": "npm run lint:backend && npm run lint:frontend",
+    "dev:frontend": "cd frontend && pnpm run dev",
+    "install:all": "pnpm install && cd backend && poetry install && cd ../frontend && pnpm install",
+    "lint": "pnpm run lint:backend && pnpm run lint:frontend",
     "lint:backend": "cd backend && poetry run lint",
-    "lint:frontend": "cd frontend && npm run lint",
-    "format": "npm run format:backend && npm run format:frontend",
+    "lint:frontend": "cd frontend && pnpm run lint",
+    "format": "pnpm run format:backend && pnpm run format:frontend",
     "format:backend": "cd backend && poetry run black . && poetry run isort .",
-    "format:frontend": "cd frontend && npm run format",
-    "test": "npm run test:backend && npm run test:frontend",
+    "format:frontend": "cd frontend && pnpm run format",
+    "test": "pnpm run test:backend && pnpm run test:frontend",
     "test:backend": "cd backend && poetry run pytest",
-    "test:frontend": "cd frontend && npm run test",
-    "build": "npm run build:frontend",
-    "build:frontend": "cd frontend && npm run build",
+    "test:frontend": "cd frontend && pnpm run test",
+    "build": "pnpm run build:frontend",
+    "build:frontend": "cd frontend && pnpm run build",
     "db:up": "docker-compose up -d postgres redis",
     "db:down": "docker-compose down",
     "db:logs": "docker-compose logs -f postgres redis",
@@ -33,7 +33,7 @@
     "lint-staged": "^15.2.2"
   },
   "engines": {
-    "node": ">=18.0.0",
-    "npm": ">=9.0.0"
-  }
+    "node": ">=18.0.0"
+  },
+  "packageManager": "pnpm@9.15.0"
 }

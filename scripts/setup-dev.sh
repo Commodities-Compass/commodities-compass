@@ -29,7 +29,7 @@ echo "✅ Prerequisites check passed!"
 
 # Install dependencies
 echo "📦 Installing dependencies..."
-npm install
+pnpm install
 
 # Backend setup
 echo "🐍 Setting up backend..."
@@ -40,7 +40,7 @@ cd ..
 # Frontend setup
 echo "⚛️  Setting up frontend..."
 cd frontend
-npm install
+pnpm install
 cd ..
 
 # Environment files
@@ -67,7 +67,7 @@ echo "🪝 Setting up git hooks..."
 git config --unset-all core.hooksPath 2>/dev/null || true
 
 # Initialize husky
-npx husky init
+pnpm exec husky init
 
 # Update pre-commit hook with our custom commands
 cat > .husky/pre-commit << 'EOF'
@@ -76,7 +76,7 @@ cat > .husky/pre-commit << 'EOF'
 cd backend && poetry run pre-commit run --all-files
 
 # Run frontend linting
-cd ../frontend && npm run lint
+cd ../frontend && pnpm run lint
 EOF
 
 chmod +x .husky/pre-commit
@@ -93,4 +93,4 @@ echo "🔧 Next steps:"
 echo "1. Edit .env, backend/.env, and frontend/.env with your configuration"
 echo "2. Start PostgreSQL and Redis: docker-compose up -d"
 echo "3. Configure your Auth0 application"
-echo "4. Run 'npm run dev' to start the development servers"
+echo "4. Run 'pnpm dev' to start the development servers"

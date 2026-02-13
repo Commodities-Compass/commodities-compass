@@ -168,6 +168,8 @@ async def get_indicators_grid(
             response_date=response_date,
         )
 
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -224,6 +226,8 @@ async def get_recommendations(
             response_date=response_date,
         )
 
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -309,6 +313,8 @@ async def get_news(
 
         return transform_market_research_to_news(market_research)
 
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

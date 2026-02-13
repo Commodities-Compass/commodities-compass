@@ -236,14 +236,10 @@ The `PositionStatus` component automatically fetches and plays the audio file:
 ## Deployment
 
 - **Platform**: Railway (primary deployment target)
-- **Backend**: Dockerfile-based deployment with `backend/Dockerfile` (Python 3.11-slim)
-  - `start.sh` runs Alembic migrations then starts uvicorn
-  - Health check endpoint: `/health` with 300s timeout
-  - Alternative: Nixpacks configuration in `backend/nixpacks.toml`
-- **Frontend**: GitHub Actions CI/CD (`.github/workflows/frontend-build.yml`)
-  - Triggers on push/PR to main branch
-  - Builds with Node.js 18 and Auth0 secrets
-  - Uploads build artifacts from `frontend/dist`
+- **Backend**: Dockerfile-based (`backend/Dockerfile`, Python 3.11-slim), `start.sh` runs Alembic migrations then uvicorn. Health check: `/health` (300s timeout).
+- **Frontend**: Dockerfile-based (`frontend/Dockerfile`, Node 18-alpine), pnpm build + serve static. Health check: `/` (300s timeout).
+- **Daily Import**: Railway cron job, runs `poetry run import` at 10:15 PM UTC nightly. Full-refresh ETL (Sheets → PostgreSQL).
+- **Auto-deploy**: Push to `main` triggers rebuild of all services.
 
 ## Development Notes
 

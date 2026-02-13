@@ -42,7 +42,7 @@ cp .env.example .env
 
 ```bash
 # From project root
-npm run db:up
+pnpm run db:up
 ```
 
 6. Run database migrations (once we create them):
@@ -130,12 +130,7 @@ Run linting and pre-commit hooks:
 poetry run lint
 ```
 
-Format code manually:
-
-```bash
-poetry run black .
-poetry run isort .
-```
+Formatting is handled automatically by Ruff via pre-commit hooks (`poetry run lint`).
 
 ## Architecture
 

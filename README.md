@@ -15,7 +15,7 @@ This is a monorepo containing:
 
 ### Prerequisites
 
-- Node.js 18+ and npm 9+
+- Node.js 18+ and pnpm 9+
 - Python 3.11+
 - Poetry (for Python dependency management)
 - PostgreSQL 14+
@@ -26,7 +26,7 @@ This is a monorepo containing:
 1. Install all dependencies:
 
 ```bash
-npm run install:all
+pnpm run install:all
 ```
 
 2. Set up environment files:
@@ -44,7 +44,7 @@ cp frontend/.env.example frontend/.env
 3. Start PostgreSQL and Redis:
 
 ```bash
-npm run db:up
+pnpm run db:up
 ```
 
 4. Run database migrations (once available):
@@ -58,29 +58,32 @@ cd backend && poetry run alembic upgrade head
 Start both frontend and backend in development mode:
 
 ```bash
-npm run dev
+pnpm run dev
 ```
 
 Or run them separately:
 
 ```bash
 # Backend only (http://localhost:8000)
-npm run dev:backend
+pnpm run dev:backend
 
 # Frontend only (http://localhost:5173)
-npm run dev:frontend
+pnpm run dev:frontend
 ```
 
 ### Available Scripts
 
-- `npm run dev` - Start both frontend and backend in development mode
-- `npm run db:up` - Start PostgreSQL and Redis containers
-- `npm run db:down` - Stop database containers
-- `npm run db:logs` - View database container logs
-- `npm run lint` - Run linting for both frontend and backend
-- `npm run format` - Format code for both frontend and backend
-- `npm run test` - Run tests for both frontend and backend
-- `npm run build` - Build the frontend for production
+- `pnpm run dev` - Start both frontend and backend in development mode
+- `pnpm run db:up` - Start PostgreSQL and Redis containers
+- `pnpm run db:down` - Stop database containers
+- `pnpm run db:logs` - View database container logs
+- `pnpm run lint` - Run linting for both frontend and backend
+- `pnpm run format` - Format code for both frontend and backend
+- `pnpm run test` - Run tests for both frontend and backend
+- `pnpm run build` - Build the frontend for production
+- `pnpm run clean` - Remove frontend + backend build artifacts
+- `pnpm run clean:all` - Full clean including node_modules
+- `pnpm run reinstall` - Clean all + reinstall all dependencies
 
 ## Project Structure
 
@@ -186,9 +189,9 @@ The backend follows a clean architecture pattern for maintainability:
 ## Contributing
 
 1. Install pre-commit hooks: `cd backend && poetry run pre-commit install`
-2. Make sure all tests pass: `npm run test`
-3. Ensure code is properly formatted: `npm run format`
-4. Run linting: `npm run lint`
+2. Make sure all tests pass: `pnpm run test`
+3. Ensure code is properly formatted: `pnpm run format`
+4. Run linting: `pnpm run lint`
 5. Follow clean architecture principles when adding new features
 
 ## License

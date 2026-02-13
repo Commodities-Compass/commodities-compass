@@ -48,7 +48,7 @@ frontend/
 ### Prerequisites
 
 - Node.js 18+
-- npm 9+
+- pnpm 9+
 - Auth0 account configured
 
 ### Installation
@@ -56,7 +56,7 @@ frontend/
 1. Install dependencies:
 
 ```bash
-npm install
+pnpm install
 ```
 
 2. Set up environment variables:
@@ -74,26 +74,26 @@ cp .env.example .env
 
 ```bash
 # Start development server (http://localhost:5173)
-npm run dev
+pnpm run dev
 
 # Run type checking
-npm run type-check
+pnpm run type-check
 
 # Run linting
-npm run lint
+pnpm run lint
 
 # Format code
-npm run format
+pnpm run format
 ```
 
 ### Building
 
 ```bash
 # Build for production
-npm run build
+pnpm run build
 
 # Preview production build
-npm run preview
+pnpm run preview
 ```
 
 ## Key Components
@@ -137,15 +137,15 @@ Frontend-specific variables:
 
 ## Available Scripts
 
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm run preview` - Preview production build
-- `npm run lint` - Run ESLint
-- `npm run lint:fix` - Fix ESLint issues
-- `npm run format` - Format code with Prettier
-- `npm run format:check` - Check code formatting
-- `npm run type-check` - Run TypeScript type checking
-- `npm run test` - Run tests (to be implemented)
+- `pnpm run dev` - Start development server
+- `pnpm run build` - Build for production
+- `pnpm run preview` - Preview production build
+- `pnpm run lint` - Run ESLint
+- `pnpm run lint:fix` - Fix ESLint issues
+- `pnpm run format` - Format code with Prettier
+- `pnpm run format:check` - Check code formatting
+- `pnpm run type-check` - Run TypeScript type checking
+- `pnpm run test` - Run tests (to be implemented)
 
 ## Migration Status
 

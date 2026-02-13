@@ -39,9 +39,8 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Install pnpm and serve globally
-RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
-RUN pnpm install -g serve
+# Install serve globally
+RUN npm install -g serve
 
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist

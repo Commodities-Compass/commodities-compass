@@ -203,99 +203,114 @@ class GoogleSheetsDataImporter:
         # Clear existing data (for full refresh) - FIXED: Use proper SQLAlchemy delete
         await session.execute(delete(table_model))
 
-        # Process each row
+        # Process each row using savepoints to isolate per-row failures
         for index, row in df.iterrows():
             try:
-                # Transform row data according to mapping
-                model_data = {}
+                async with session.begin_nested():
+                    # Transform row data according to mapping
+                    model_data = {}
 
-                for excel_col, db_col in column_mapping.items():
-                    if excel_col in df.columns:
-                        raw_value = (
-                            row[excel_col] if not pd.isna(row[excel_col]) else None
-                        )
-
-                        # Convert empty strings to None
-                        if raw_value == "" or raw_value == "nan":
-                            raw_value = None
-
-                        # Apply transformation if specified
-                        if db_col in transforms:
-                            transform_func = getattr(
-                                self.transforms, transforms[db_col]
+                    for excel_col, db_col in column_mapping.items():
+                        if excel_col in df.columns:
+                            raw_value = (
+                                row[excel_col] if not pd.isna(row[excel_col]) else None
                             )
-                            transformed_value = transform_func(raw_value)
-                        else:
-                            transformed_value = raw_value
 
-                        # Final check: ensure empty strings become None for optional fields
-                        if transformed_value == "":
-                            transformed_value = None
+                            # Convert empty strings to None
+                            if raw_value == "" or raw_value == "nan":
+                                raw_value = None
 
-                        # Additional cleanup for percentage values that might not be in transforms
-                        if isinstance(
-                            transformed_value, str
-                        ) and transformed_value.endswith("%"):
-                            try:
-                                transformed_value = (
-                                    Decimal(transformed_value.rstrip("%")) / 100
+                            # Apply transformation if specified
+                            if db_col in transforms:
+                                transform_func = getattr(
+                                    self.transforms, transforms[db_col]
                                 )
-                            except Exception:
+                                transformed_value = transform_func(raw_value)
+                            else:
+                                transformed_value = raw_value
+
+                            # Final check: ensure empty strings become None for optional fields
+                            if transformed_value == "":
                                 transformed_value = None
 
-                        # No longer need to validate score fields since they now use DECIMAL(8,2)
+                            # Additional cleanup for percentage values that might not be in transforms
+                            if isinstance(
+                                transformed_value, str
+                            ) and transformed_value.endswith("%"):
+                                try:
+                                    transformed_value = (
+                                        Decimal(transformed_value.rstrip("%")) / 100
+                                    )
+                                except Exception:
+                                    transformed_value = None
 
-                        model_data[db_col] = transformed_value
+                            # No longer need to validate score fields since they now use DECIMAL(8,2)
 
-                # Add default values for required fields if not present
-                if (
-                    hasattr(table_model, "commodity_symbol")
-                    and "commodity_symbol" not in model_data
-                ):
-                    model_data["commodity_symbol"] = "CC"
+                            model_data[db_col] = transformed_value
 
-                # Handle required fields that might be missing from Google Sheets
-                if table_model.__name__ == "Indicator":
-                    # close_pivot is required but might be missing
+                    # Add default values for required fields if not present
                     if (
-                        "close_pivot" not in model_data
-                        or model_data["close_pivot"] is None
+                        hasattr(table_model, "commodity_symbol")
+                        and "commodity_symbol" not in model_data
                     ):
-                        model_data["close_pivot"] = Decimal("0.0")  # Default value
+                        model_data["commodity_symbol"] = "CC"
 
-                    # close_pivot_norm is required but might be missing
-                    if (
-                        "close_pivot_norm" not in model_data
-                        or model_data["close_pivot_norm"] is None
-                    ):
-                        model_data["close_pivot_norm"] = Decimal("0.0")  # Default value
+                    # Handle required fields that might be missing from Google Sheets
+                    if table_model.__name__ == "Indicator":
+                        if (
+                            "close_pivot" not in model_data
+                            or model_data["close_pivot"] is None
+                        ):
+                            model_data["close_pivot"] = Decimal("0.0")
 
-                    # macroeco_bonus is required but might be missing
-                    if (
-                        "macroeco_bonus" not in model_data
-                        or model_data["macroeco_bonus"] is None
-                    ):
-                        model_data["macroeco_bonus"] = Decimal("0.0")  # Default value
+                        if (
+                            "close_pivot_norm" not in model_data
+                            or model_data["close_pivot_norm"] is None
+                        ):
+                            model_data["close_pivot_norm"] = Decimal("0.0")
 
-                    # eco is required but might be missing
-                    if "eco" not in model_data or model_data["eco"] is None:
-                        model_data["eco"] = ""  # Default empty string
+                        if (
+                            "macroeco_bonus" not in model_data
+                            or model_data["macroeco_bonus"] is None
+                        ):
+                            model_data["macroeco_bonus"] = Decimal("0.0")
 
-                # Handle performance_tracking required fields
-                if table_model.__name__ == "PerformanceTracking":
-                    if "limit" not in model_data or model_data["limit"] is None:
-                        model_data["limit"] = ""  # Default empty string
+                        if "eco" not in model_data or model_data["eco"] is None:
+                            model_data["eco"] = ""
 
-                # Create model instance
-                model_instance = table_model(**model_data)
-                session.add(model_instance)
+                    # Handle weather_data required fields
+                    if table_model.__name__ == "WeatherData":
+                        for field in [
+                            "text",
+                            "summary",
+                            "keywords",
+                            "impact_synthesis",
+                        ]:
+                            if field not in model_data or model_data[field] is None:
+                                model_data[field] = ""
+
+                    # Handle market_research required fields
+                    if table_model.__name__ == "MarketResearch":
+                        for field in [
+                            "author",
+                            "summary",
+                            "impact_synthesis",
+                            "date_text",
+                        ]:
+                            if field not in model_data or model_data[field] is None:
+                                model_data[field] = ""
+
+                    # Create model instance
+                    model_instance = table_model(**model_data)
+                    session.add(model_instance)
+
+                # Savepoint succeeded — count the row
                 stats["imported_rows"] += 1
 
             except Exception as e:
+                # Savepoint rolled back — row skipped, outer transaction intact
                 stats["skipped_rows"] += 1
-                stats["errors"].append(
-                    f"Row {index + 2}: {str(e)}"
-                )  # +2 for header and 0-based index
+                stats["errors"].append(f"Row {index + 2}: {str(e)}")
 
         # Commit changes
         await session.commit()

@@ -1,5 +1,0 @@
-[phases.build]
-cmds = ['npm ci', 'npm run build']
-
-[start]
-cmd = 'npm run preview -- --port $PORT --host 0.0.0.0'

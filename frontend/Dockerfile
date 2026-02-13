@@ -3,11 +3,14 @@ FROM node:18-alpine as builder
 # Set working directory
 WORKDIR /app
 
-# Copy package files
-COPY package.json ./
+# Install pnpm via corepack
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
-# Install dependencies (without lock file for now)
-RUN npm install
+# Copy package files and lock file
+COPY package.json pnpm-lock.yaml ./
+
+# Install dependencies
+RUN pnpm install --frozen-lockfile
 
 # Copy source code
 COPY . .
@@ -20,7 +23,6 @@ ARG AUTH0_REDIRECT_URI
 ARG API_BASE_URL
 ARG AUTH0_ISSUER
 
-
 # Set environment variables for the build
 ENV AUTH0_DOMAIN=$AUTH0_DOMAIN
 ENV AUTH0_CLIENT_ID=$AUTH0_CLIENT_ID
@@ -30,15 +32,16 @@ ENV API_BASE_URL=$API_BASE_URL
 ENV AUTH0_ISSUER=$AUTH0_ISSUER
 
 # Build the application
-RUN npm run build
+RUN pnpm run build
 
 # Production stage
 FROM node:18-alpine
 
 WORKDIR /app
 
-# Install serve globally
-RUN npm install -g serve
+# Install pnpm and serve globally
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+RUN pnpm install -g serve
 
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist

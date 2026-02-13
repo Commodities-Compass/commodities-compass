@@ -3,4 +3,4 @@
 cd backend && poetry run pre-commit run --all-files
 
 # Run frontend linting with autofix
-cd ../frontend && npm run lint:fix
+cd ../frontend && pnpm run lint:fix

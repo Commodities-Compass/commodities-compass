@@ -8,6 +8,7 @@
   ],
   "scripts": {
     "dev": "concurrently \"pnpm run dev:backend\" \"pnpm run dev:frontend\"",
+    "import" : "cd backend && poetry run import",
     "dev:backend": "cd backend && poetry run dev",
     "dev:frontend": "cd frontend && pnpm run dev",
     "install:all": "pnpm install && cd backend && poetry install && cd ../frontend && pnpm install",
@@ -25,6 +26,7 @@
     "db:up": "docker-compose up -d postgres redis",
     "db:down": "docker-compose down",
     "db:logs": "docker-compose logs -f postgres redis",
+    "db:migup": "cd backend && poetry run alembic upgrade head",
     "prepare": "husky"
   },
   "devDependencies": {

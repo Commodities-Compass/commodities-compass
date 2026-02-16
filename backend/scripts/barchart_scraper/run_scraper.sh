@@ -10,7 +10,7 @@ echo "Poetry version: $(poetry --version)"
 
 # Install Playwright browsers if not already installed
 echo "Installing Playwright browsers..."
-poetry run playwright install chromium --with-deps
+poetry run python -m playwright install chromium --with-deps
 
 # Run scraper in production mode
 echo "Running scraper..."

@@ -107,6 +107,8 @@ commodities-compass/
 │   │       └── date_utils.py # Date utilities (99 lines)
 │   ├── tests/             # Backend tests
 │   ├── scripts/           # Data import and utility scripts
+│   │   ├── barchart_scraper/  # Daily Barchart scraper (Playwright)
+│   │   └── cftc_scraper/      # Daily CFTC scraper (httpx)
 │   ├── alembic/           # Database migrations
 │   └── pyproject.toml     # Python dependencies and config
 ├── frontend/              # React frontend
@@ -185,6 +187,33 @@ The backend follows a clean architecture pattern for maintainability:
 - Data transformations isolated in **192-line transformer module**
 - Date utilities centralized in **99-line utility module**
 - Improved testability and code reusability
+
+## Automated Data Scrapers
+
+Two independent scrapers run on Railway cron jobs to keep market data updated:
+
+### Barchart Scraper
+- **Schedule**: Daily at 19:00 UTC (8:00 PM CET)
+- **Source**: Barchart.com (London cocoa front-month)
+- **Method**: Playwright (browser automation)
+- **Data**: Close, High, Low, Volume, Open Interest, Implied Volatility
+- **Update**: Appends new row to TECHNICALS sheet
+- **Location**: `backend/scripts/barchart_scraper/`
+
+### CFTC Scraper
+- **Schedule**: Daily at 19:00 UTC (8:00 PM CET)
+- **Source**: CFTC.gov (Agriculture Disaggregated Futures)
+- **Method**: httpx (HTTP requests + regex parsing)
+- **Data**: COM NET US (Producer/Merchant Long - Short positions)
+- **Update**: Updates column I of last row in TECHNICALS sheet
+- **Location**: `backend/scripts/cftc_scraper/`
+
+Both scrapers:
+- Use centralized `config.py` for configuration
+- Support `--dry-run` for testing
+- Support `--sheet=staging|production` for environment selection
+- Log to console and file
+- Deploy independently on Railway
 
 ## Contributing
 

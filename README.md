@@ -193,7 +193,7 @@ The backend follows a clean architecture pattern for maintainability:
 Two independent scrapers run on Railway cron jobs to keep market data updated:
 
 ### Barchart Scraper
-- **Schedule**: Daily at 19:00 UTC (8:00 PM CET)
+- **Schedule**: Daily at 21:00 UTC 
 - **Source**: Barchart.com (London cocoa front-month)
 - **Method**: Playwright (browser automation)
 - **Data**: Close, High, Low, Volume, Open Interest, Implied Volatility
@@ -201,7 +201,7 @@ Two independent scrapers run on Railway cron jobs to keep market data updated:
 - **Location**: `backend/scripts/barchart_scraper/`
 
 ### CFTC Scraper
-- **Schedule**: Daily at 19:00 UTC (8:00 PM CET)
+- **Schedule**: Daily at 21:30 UTC 
 - **Source**: CFTC.gov (Agriculture Disaggregated Futures)
 - **Method**: httpx (HTTP requests + regex parsing)
 - **Data**: COM NET US (Producer/Merchant Long - Short positions)

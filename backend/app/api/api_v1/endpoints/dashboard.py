@@ -116,6 +116,8 @@ async def get_position_status(
             response_date=response_date,
         )
 
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -269,6 +271,8 @@ async def get_chart_data_endpoint(
 
         return transform_to_chart_data_response(chart_data)
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting chart data: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -361,6 +365,8 @@ async def get_weather(
 
         return transform_weather_data_to_response(weather_data)
 
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

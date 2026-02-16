@@ -12,9 +12,9 @@ echo "Poetry version: $(poetry --version)"
 echo "Installing Playwright browsers..."
 poetry run python -m playwright install chromium --with-deps
 
-# Run scraper in production mode
+# Run scraper in STAGING mode (for 3-day validation before production)
 echo "Running scraper..."
-poetry run python -m scripts.barchart_scraper.main --sheet=production
+poetry run python -m scripts.barchart_scraper.main --sheet=staging
 
 echo "Completed at: $(date)"
 echo "================================="

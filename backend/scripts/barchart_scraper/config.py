@@ -4,7 +4,9 @@ from datetime import datetime
 
 # Barchart URLs
 BARCHART_BASE_URL = "https://www.barchart.com/futures/quotes"
-FRONT_MONTH_SYMBOL = "CC*0"  # London cocoa front-month continuous contract
+FRONT_MONTH_SYMBOL = (
+    "CA*0"  # London cocoa #7 front-month continuous contract (ICE Europe, GBP/tonne)
+)
 
 # London cocoa front-month contract mapping (ICE expiries: March/May/Jul/Sep/Dec)
 # Map: month → nearest expiry contract code prefix

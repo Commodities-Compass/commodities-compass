@@ -90,7 +90,7 @@ def main() -> int:
         logging.getLogger().setLevel(logging.DEBUG)
 
     logger.info("=" * 60)
-    logger.info("Barchart Scraper - London Cocoa (CC*0)")
+    logger.info("Barchart Scraper - London Cocoa #7 (CA*0)")
     logger.info(f"Mode: {'DRY RUN' if args.dry_run else 'LIVE'}")
     logger.info(f"Target: {args.sheet.upper()}")
     logger.info(f"Browser: {'HEADFUL (visible)' if args.headful else 'HEADLESS'}")

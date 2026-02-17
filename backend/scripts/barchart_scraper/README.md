@@ -4,7 +4,7 @@ Automates daily data collection for Commodities Compass.
 
 ## What It Does
 
-Scrapes 6 fields from Barchart.com for London cocoa front-month futures (CC*0):
+Scrapes 6 fields from Barchart.com for London cocoa #7 front-month futures (CA*0, ICE Europe, GBP/tonne):
 - **Close**, **High**, **Low**: Price data (GBP/tonne)
 - **Volume**: Trading volume (contracts × 10 = tonnes)
 - **Open Interest**: Open interest (contracts)
@@ -96,12 +96,12 @@ python -m backend.scripts.barchart_scraper.main --headful --dry-run
 
 2. Expected output:
    ```
-   INFO - Fetching https://www.barchart.com/futures/quotes/CC*0/overview
-   INFO - Extracted from raw block: H=2750.0 L=2720.0 C=2736.0 V=50480.0 OI=42150.0
+   INFO - Fetching https://www.barchart.com/futures/quotes/CA*0/overview
+   INFO - Extracted from raw block: H=2568.0 L=2446.0 C=2491.0 V=104240.0 OI=52754.0
    INFO - Fetching https://www.barchart.com/futures/quotes/CAK26/volatility-greeks?futuresOptionsView=merged
    INFO - Extracted IV: 51.15
    INFO - Validation passed
-   INFO - [DRY RUN] Would append to 'TECHNICALS_STAGING': ['02/16/2026', 2736.0, 2750.0, 2720.0, 50480.0, 42150.0, 51.15]
+   INFO - [DRY RUN] Would append to 'TECHNICALS_STAGING': ['02/17/2026', 2491.0, 2568.0, 2446.0, 104240.0, 52754.0, 0.5336]
    INFO - SUCCESS
    ```
 

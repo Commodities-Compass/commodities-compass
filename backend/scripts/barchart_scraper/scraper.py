@@ -254,7 +254,7 @@ class BarchartScraper:
         Returns:
             Dict with all data fields + timestamp
         """
-        logger.info("Starting Barchart scrape for London cocoa (CC*0)")
+        logger.info("Starting Barchart scrape for London cocoa #7 (CA*0)")
 
         # Scrape prices page
         data = self.scrape_prices()

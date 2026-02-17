@@ -37,7 +37,7 @@ poetry run python -m backend.scripts.barchart_scraper.main --dry-run --verbose
 
 **Expected output:**
 ```
-INFO - Fetching https://www.barchart.com/futures/quotes/CC*0/overview
+INFO - Fetching https://www.barchart.com/futures/quotes/CA*0/overview
 INFO - Extracted from raw block: H=... L=... C=... V=... OI=...
 INFO - Fetching https://www.barchart.com/futures/quotes/CAK26/volatility-greeks...
 INFO - Extracted IV: 48.99
@@ -67,7 +67,7 @@ Verify in Google Sheets:
 ### 5. Compare with Barchart.com (2 min)
 
 Open Barchart manually:
-- Prices: https://www.barchart.com/futures/quotes/CC*0/overview
+- Prices: https://www.barchart.com/futures/quotes/CA*0/overview
 - IV: https://www.barchart.com/futures/quotes/CAK26/volatility-greeks
 
 Compare scraped values with browser display.

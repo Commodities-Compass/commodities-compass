@@ -13,8 +13,11 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import sentry_sdk
 from dotenv import load_dotenv
+from sentry_sdk.crons import monitor
 
+from app.core.sentry import init_sentry
 from scripts.ice_stocks_scraper.config import LOG_FORMAT
 from scripts.ice_stocks_scraper.scraper import ICEScraperError, scrape
 from scripts.ice_stocks_scraper.sheets_manager import SheetsManager, SheetsManagerError
@@ -22,17 +25,17 @@ from scripts.ice_stocks_scraper.sheets_manager import SheetsManager, SheetsManag
 logging.basicConfig(
     level=logging.INFO,
     format=LOG_FORMAT,
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler("ice_stocks_scraper.log"),
-    ],
+    handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger(__name__)
 
+# Load env + init Sentry BEFORE @monitor-decorated function
+load_dotenv(Path(__file__).parent.parent.parent / ".env")
+init_sentry("ice-stocks-scraper")
 
+
+@monitor(monitor_slug="ice-stocks-scraper")
 def main() -> int:
-    load_dotenv(Path(__file__).parent.parent.parent / ".env")
-
     parser = argparse.ArgumentParser(
         description="ICE Certified Cocoa Stocks scraper (Report 41)"
     )
@@ -101,6 +104,21 @@ def main() -> int:
         sheets_mgr = SheetsManager(creds, sheet_name=args.sheet)
         cell_range = sheets_mgr.update_latest_row(stock_us_tonnes, dry_run=args.dry_run)
 
+        sentry_sdk.set_context(
+            "scrape_result",
+            {
+                "report_date": str(report_date),
+                "stock_us_tonnes": stock_us_tonnes,
+                "grand_total_bags": grand_total_bags,
+                "certified_bags": certified_bags,
+                "sheet": args.sheet,
+                "dry_run": args.dry_run,
+            },
+        )
+        sentry_sdk.capture_message(
+            f"ICE stocks scraper OK — {stock_us_tonnes:,}t", level="info"
+        )
+
         logger.info("=" * 60)
         logger.info(
             f"SUCCESS: STOCK US = {stock_us_tonnes:,} t ({grand_total_bags:,} bags) -> {cell_range}"
@@ -110,14 +128,17 @@ def main() -> int:
 
     except ICEScraperError as e:
         logger.error(f"Scraper error: {e}")
+        sentry_sdk.capture_exception(e)
         return 1
 
     except SheetsManagerError as e:
         logger.error(f"Sheets error: {e}")
+        sentry_sdk.capture_exception(e)
         return 1
 
     except Exception as e:
         logger.exception(f"Unexpected error: {e}")
+        sentry_sdk.capture_exception(e)
         return 1
 
 

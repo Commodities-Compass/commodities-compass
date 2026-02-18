@@ -1,4 +1,5 @@
 import axios from 'axios';
+import * as Sentry from '@sentry/react';
 
 const API_BASE_URL = import.meta.env.API_BASE_URL || 'http://localhost:8000/api/v1';
 
@@ -36,6 +37,13 @@ apiClient.interceptors.response.use(
       // Trigger a custom event that App.tsx can listen to for coordinated logout
       // This prevents multiple logout attempts and ensures proper cleanup
       window.dispatchEvent(new CustomEvent('auth:token-expired'));
+    } else {
+      Sentry.captureException(error, {
+        tags: {
+          api_url: error.config?.url,
+          api_status: String(error.response?.status ?? 'network'),
+        },
+      });
     }
     return Promise.reject(error);
   }

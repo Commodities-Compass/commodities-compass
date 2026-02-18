@@ -5,19 +5,26 @@ This service handles the ETL pipeline for importing data from Google Sheets
 into the PostgreSQL database using the defined SQLAlchemy models.
 """
 
-import pandas as pd
+import logging
 import json
 from datetime import datetime
 from decimal import Decimal
 from typing import Dict, Optional, Any
+
+import pandas as pd
+import sentry_sdk
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, func
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
+from sentry_sdk.crons import monitor
 
 from app.core.database import AsyncSessionLocal
 from app.core.excel_mappings import EXCEL_MAPPINGS
 from app.core.config import settings
+from app.core.sentry import init_sentry
+
+logger = logging.getLogger(__name__)
 
 
 class DataTransforms:
@@ -152,11 +159,13 @@ class GoogleSheetsDataImporter:
                 results[mapping_key] = {"error": f"Sheet {sheet_name} not found"}
                 continue
 
-            try:
-                result = await self.import_sheet(session, mapping_key, config)
-                results[mapping_key] = result
-            except Exception as e:
-                results[mapping_key] = {"error": str(e)}
+            with sentry_sdk.start_span(op="sheet", description=mapping_key):
+                try:
+                    result = await self.import_sheet(session, mapping_key, config)
+                    results[mapping_key] = result
+                except Exception as e:
+                    results[mapping_key] = {"error": str(e)}
+                    sentry_sdk.capture_exception(e)
 
         return results
 
@@ -344,7 +353,7 @@ async def run_google_sheets_import(
     credentials_json: str = None,
 ):
     """Run the Google Sheets import process."""
-    print("Starting Google Sheets to PostgreSQL import...")
+    logger.info("Starting Google Sheets to PostgreSQL import...")
 
     # Get configuration from settings if not provided
     if spreadsheet_id is None:
@@ -362,30 +371,68 @@ async def run_google_sheets_import(
         results = await importer.import_all_sheets(session)
 
         # Print results
-        print(f"\nImport Results for Spreadsheet: {spreadsheet_id}")
-        print("=" * 60)
+        logger.info(f"Import Results for Spreadsheet: {spreadsheet_id}")
 
+        import_summary = {}
         for mapping_key, result in results.items():
             if "error" in result:
-                print(f"❌ {mapping_key}: {result['error']}")
+                logger.error(f"{mapping_key}: {result['error']}")
+                import_summary[mapping_key] = {
+                    "status": "error",
+                    "error": result["error"],
+                }
             else:
-                print(
-                    f"✅ {mapping_key}: {result['imported_rows']}/{result['total_rows']} rows imported"
+                logger.info(
+                    f"{mapping_key}: {result['imported_rows']}/{result['total_rows']} rows imported"
                 )
+                import_summary[mapping_key] = {
+                    "status": "ok",
+                    "imported": result["imported_rows"],
+                    "total": result["total_rows"],
+                    "skipped": result["skipped_rows"],
+                }
                 if result["skipped_rows"] > 0:
-                    print(f"   ⚠️  {result['skipped_rows']} rows skipped")
+                    logger.warning(f"  {result['skipped_rows']} rows skipped")
                 if result.get("errors"):
-                    print(f"   📝 First few errors: {result['errors'][:3]}")
+                    logger.warning(f"  First errors: {result['errors'][:3]}")
 
         # Validate
         validation = await importer.validate_import(session)
-        print("\nValidation Results:")
-        print("=" * 30)
-
+        logger.info("Validation Results:")
         for mapping_key, stats in validation.items():
-            print(f"{stats['table_name']}: {stats['record_count']} records")
+            logger.info(f"{stats['table_name']}: {stats['record_count']} records")
+
+        # Sentry context + summary message
+        sentry_sdk.set_context("import_results", import_summary)
+
+        failed = [k for k, v in import_summary.items() if v["status"] == "error"]
+        if not failed:
+            total_rows = sum(
+                v.get("imported", 0)
+                for v in import_summary.values()
+                if v["status"] == "ok"
+            )
+            total_skipped = sum(
+                v.get("skipped", 0)
+                for v in import_summary.values()
+                if v["status"] == "ok"
+            )
+            sentry_sdk.capture_message(
+                f"Daily import OK — {total_rows} rows, {total_skipped} skipped",
+                level="info",
+            )
+        else:
+            sentry_sdk.capture_message(
+                f"Daily import PARTIAL FAILURE — failed: {failed}",
+                level="error",
+            )
 
 
+# Init Sentry at module level so @monitor works
+init_sentry("daily-import")
+
+
+@monitor(monitor_slug="daily-import")
 def main():
     """Entry point for Poetry script."""
     import asyncio

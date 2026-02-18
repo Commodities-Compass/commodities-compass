@@ -6,38 +6,39 @@ import os
 import sys
 from pathlib import Path
 
+import sentry_sdk
 from dotenv import load_dotenv
+from sentry_sdk.crons import monitor
 
+from app.core.sentry import init_sentry
 from scripts.cftc_scraper.config import LOG_FORMAT
 from scripts.cftc_scraper.scraper import CFTCScraper, CFTCScraperError
 from scripts.cftc_scraper.sheets_manager import SheetsManager, SheetsManagerError
 
-# Setup logging
 logging.basicConfig(
     level=logging.INFO,
     format=LOG_FORMAT,
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler("cftc_scraper.log"),
-    ],
+    handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger(__name__)
 
+# Load env + init Sentry BEFORE @monitor-decorated function
+load_dotenv(Path(__file__).parent.parent.parent / ".env")
+init_sentry("cftc-scraper")
 
+
+@monitor(monitor_slug="cftc-scraper")
 def main() -> int:
     """
     Main entry point for CFTC scraper.
 
     Simple logic:
-    1. Scrape CFTC report → get COM NET US value
+    1. Scrape CFTC report -> get COM NET US value
     2. Update last row in Google Sheets column I
 
     Returns:
         Exit code (0 = success, 1 = failure)
     """
-    # Load environment variables
-    load_dotenv(Path(__file__).parent.parent.parent / ".env")
-
     parser = argparse.ArgumentParser(description="CFTC scraper for COM NET US data")
     parser.add_argument(
         "--sheet",
@@ -65,7 +66,7 @@ def main() -> int:
         scraper = CFTCScraper()
         commercial_net = scraper.scrape()
 
-        logger.info(f"✓ COM NET US: {commercial_net:,.0f}")
+        logger.info(f"COM NET US: {commercial_net:,.0f}")
 
         # Step 2: Update Google Sheets
         logger.info("Step 2: Updating Google Sheets...")
@@ -81,24 +82,38 @@ def main() -> int:
         else:
             sheets_mgr = SheetsManager(creds, sheet_name=args.sheet)
             cell_range = sheets_mgr.update_latest_row(commercial_net)
+            logger.info(f"Updated {cell_range}")
 
-            logger.info(f"✓ Updated {cell_range}")
+        sentry_sdk.set_context(
+            "scrape_result",
+            {
+                "commercial_net": commercial_net,
+                "sheet": args.sheet,
+                "dry_run": args.dry_run,
+            },
+        )
+        sentry_sdk.capture_message(
+            f"CFTC scraper OK — COM NET US: {commercial_net:,.0f}", level="info"
+        )
 
         logger.info("=" * 60)
-        logger.info("✅ SUCCESS: CFTC scraper completed")
+        logger.info("SUCCESS: CFTC scraper completed")
         logger.info("=" * 60)
         return 0
 
     except CFTCScraperError as e:
-        logger.error(f"❌ CFTC scraper error: {e}")
+        logger.error(f"CFTC scraper error: {e}")
+        sentry_sdk.capture_exception(e)
         return 1
 
     except SheetsManagerError as e:
-        logger.error(f"❌ Sheets manager error: {e}")
+        logger.error(f"Sheets manager error: {e}")
+        sentry_sdk.capture_exception(e)
         return 1
 
     except Exception as e:
-        logger.exception(f"❌ Unexpected error: {e}")
+        logger.exception(f"Unexpected error: {e}")
+        sentry_sdk.capture_exception(e)
         return 1
 
 

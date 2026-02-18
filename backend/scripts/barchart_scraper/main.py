@@ -6,8 +6,11 @@ import os
 import sys
 from pathlib import Path
 
+import sentry_sdk
 from dotenv import load_dotenv
+from sentry_sdk.crons import monitor
 
+from app.core.sentry import init_sentry
 from scripts.barchart_scraper.config import (
     LOG_FORMAT,
     SHEET_NAME_PRODUCTION,
@@ -17,14 +20,10 @@ from scripts.barchart_scraper.scraper import BarchartScraper, BarchartScraperErr
 from scripts.barchart_scraper.sheets_writer import SheetsWriter, SheetsWriterError
 from scripts.barchart_scraper.validator import DataValidator
 
-# Setup logging
 logging.basicConfig(
     level=logging.INFO,
     format=LOG_FORMAT,
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler("barchart_scraper.log"),
-    ],
+    handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger(__name__)
 
@@ -49,6 +48,12 @@ def load_credentials() -> str:
     return creds
 
 
+# Load env + init Sentry BEFORE @monitor-decorated function
+load_dotenv(Path(__file__).parent.parent.parent / ".env")
+init_sentry("barchart-scraper")
+
+
+@monitor(monitor_slug="barchart-scraper")
 def main() -> int:
     """
     Main entry point.
@@ -56,9 +61,6 @@ def main() -> int:
     Returns:
         Exit code (0 = success, 1 = failure)
     """
-    # Load environment variables from backend/.env
-    load_dotenv(Path(__file__).parent.parent.parent / ".env")
-
     parser = argparse.ArgumentParser(
         description="Barchart scraper for London cocoa futures"
     )
@@ -109,6 +111,9 @@ def main() -> int:
             logger.error("Validation failed:")
             for error in errors:
                 logger.error(f"  - {error}")
+            sentry_sdk.capture_message(
+                f"Barchart validation failed: {errors}", level="error"
+            )
             return 1
 
         # Step 3: Write to Sheets
@@ -121,6 +126,21 @@ def main() -> int:
         writer = SheetsWriter(creds)
         writer.append_row(data, sheet_name=sheet_name, dry_run=args.dry_run)
 
+        sentry_sdk.set_context(
+            "scrape_result",
+            {
+                "date": str(data.get("date")),
+                "contract": str(data.get("contract_code")),
+                "close": str(data.get("close")),
+                "volume": str(data.get("volume")),
+                "oi": str(data.get("open_interest")),
+                "iv": str(data.get("iv")),
+                "sheet": sheet_name,
+                "dry_run": args.dry_run,
+            },
+        )
+        sentry_sdk.capture_message("Barchart scraper OK", level="info")
+
         logger.info("=" * 60)
         logger.info("SUCCESS: Scraper completed successfully")
         logger.info("=" * 60)
@@ -128,12 +148,15 @@ def main() -> int:
 
     except BarchartScraperError as e:
         logger.error(f"Scraper error: {e}")
+        sentry_sdk.capture_exception(e)
         return 1
     except SheetsWriterError as e:
         logger.error(f"Sheets writer error: {e}")
+        sentry_sdk.capture_exception(e)
         return 1
     except Exception as e:
         logger.exception(f"Unexpected error: {e}")
+        sentry_sdk.capture_exception(e)
         return 1
 
 

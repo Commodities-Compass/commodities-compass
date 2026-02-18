@@ -3,6 +3,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 from jose.exceptions import JOSEError
 import httpx
+import sentry_sdk
 from cachetools import TTLCache
 from typing import Any
 
@@ -119,5 +120,7 @@ async def get_current_user(
         "name": payload.get("name"),
         "permissions": payload.get("permissions", []),
     }
+
+    sentry_sdk.set_user({"id": user["sub"], "email": user["email"]})
 
     return user

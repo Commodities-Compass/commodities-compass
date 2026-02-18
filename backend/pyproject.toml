@@ -43,6 +43,9 @@ google-auth-oauthlib = "^1.2.0"
 celery = "^5.3.4"
 redis = "^5.0.1"
 
+# Observability
+sentry-sdk = {extras = ["fastapi", "sqlalchemy", "httpx"], version = "^2.0.0"}
+
 # Utilities
 httpx = "^0.26.0"
 python-dateutil = "^2.8.2"

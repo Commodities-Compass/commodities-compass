@@ -108,7 +108,8 @@ commodities-compass/
 │   ├── tests/             # Backend tests
 │   ├── scripts/           # Data import and utility scripts
 │   │   ├── barchart_scraper/  # Daily Barchart scraper (Playwright)
-│   │   └── cftc_scraper/      # Daily CFTC scraper (httpx)
+│   │   ├── ice_stocks_scraper/ # ICE certified stocks scraper (httpx)
+│   │   └── cftc_scraper/      # Weekly CFTC COT scraper (httpx)
 │   ├── alembic/           # Database migrations
 │   └── pyproject.toml     # Python dependencies and config
 ├── frontend/              # React frontend
@@ -147,6 +148,11 @@ commodities-compass/
 - **React Query** - API state management
 - **Auth0 React** - Authentication
 - **Recharts** - Data visualization
+
+### Observability
+
+- **Sentry** - Error tracking, performance monitoring, cron monitoring (Python + React)
+- **Slack** - `#dev-monitoring` channel receives all Sentry alerts
 
 ### Development
 
@@ -190,30 +196,86 @@ The backend follows a clean architecture pattern for maintainability:
 
 ## Automated Data Scrapers
 
-Two independent scrapers run on Railway cron jobs to keep market data updated:
+Three independent scrapers run on Railway cron jobs to keep market data updated:
 
 ### Barchart Scraper
-- **Schedule**: Daily at 21:00 UTC 
+- **Schedule**: Daily at 21:00 UTC
 - **Source**: Barchart.com (London cocoa front-month)
 - **Method**: Playwright (browser automation)
 - **Data**: Close, High, Low, Volume, Open Interest, Implied Volatility
-- **Update**: Appends new row to TECHNICALS sheet
+- **Update**: Appends new row to TECHNICALS sheet (columns A-G)
 - **Location**: `backend/scripts/barchart_scraper/`
 
+### ICE Stocks Scraper
+- **Schedule**: Daily at 21:30 UTC
+- **Source**: ICE public cocoa certified stock reports (XLS)
+- **Method**: httpx + pandas (no browser)
+- **Data**: STOCK US — certified cocoa stocks in ICE US warehouses (bags to tonnes)
+- **Update**: Updates column H of last row in TECHNICALS sheet
+- **Location**: `backend/scripts/ice_stocks_scraper/`
+
 ### CFTC Scraper
-- **Schedule**: Daily at 21:30 UTC 
+- **Schedule**: Daily at 21:30 UTC
 - **Source**: CFTC.gov (Agriculture Disaggregated Futures)
-- **Method**: httpx (HTTP requests + regex parsing)
+- **Method**: httpx + regex (no browser)
 - **Data**: COM NET US (Producer/Merchant Long - Short positions)
 - **Update**: Updates column I of last row in TECHNICALS sheet
 - **Location**: `backend/scripts/cftc_scraper/`
 
-Both scrapers:
+All scrapers:
 - Use centralized `config.py` for configuration
 - Support `--dry-run` for testing
 - Support `--sheet=staging|production` for environment selection
-- Log to console and file
+- Log to stdout (Railway captures automatically)
+- Monitored by Sentry Crons (missed run detection)
 - Deploy independently on Railway
+
+## Monitoring & Observability
+
+All services are monitored via [Sentry](https://commodities-compass.sentry.io/) with alerts routed to `#dev-monitoring` on Slack.
+
+### What's Tracked
+
+| Service | What Sentry captures |
+|---------|---------------------|
+| **FastAPI backend** | Unhandled exceptions, 500 errors, slow queries, request traces, user context |
+| **React frontend** | JS errors, render crashes (ErrorBoundary), API errors, page load performance, session replay on error |
+| **Daily ETL import** | Per-sheet import success/failure, row counts, cron check-ins |
+| **Barchart scraper** | Scrape results (contract, price, volume, OI, IV), cron check-ins |
+| **ICE Stocks scraper** | Stock data (tonnes, bags), cron check-ins |
+| **CFTC scraper** | Commercial net position, cron check-ins |
+
+### Service Tags
+
+Every event is tagged with `service` for filtering in the Sentry dashboard:
+
+```
+frontend | fastapi | daily-import | barchart-scraper | ice-stocks-scraper | cftc-scraper
+```
+
+### Environment Variables (Production)
+
+**Backend + scrapers + daily import (5 Railway services):**
+
+| Variable | Required | Notes |
+|----------|----------|-------|
+| `SENTRY_DSN` | Yes | Single DSN shared across all Python services |
+| `ENVIRONMENT` | No | Defaults to `production` |
+
+**Frontend (1 Railway service):**
+
+| Variable | Required | Notes |
+|----------|----------|-------|
+| `SENTRY_DSN` | Yes | Same DSN as backend (platform auto-detected by SDK) |
+| `SENTRY_AUTH_TOKEN` | Yes | Org token with `org:ci` scope — enables sourcemap upload at build time |
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `backend/app/core/sentry.py` | Shared `init_sentry()` used by all Python services |
+| `frontend/src/sentry.ts` | Frontend Sentry init (production-only) |
+| `frontend/src/components/ErrorFallback.tsx` | Crash fallback UI for Sentry ErrorBoundary |
 
 ## Contributing
 

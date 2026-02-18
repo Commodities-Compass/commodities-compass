@@ -1,217 +1,136 @@
 # Barchart Scraper — London Cocoa Futures
 
-Automates daily data collection for Commodities Compass.
+Automates daily data collection for Commodities Compass (columns A–G of TECHNICALS sheet).
 
 ## What It Does
 
-Scrapes 6 fields from Barchart.com for London cocoa #7 front-month futures (CA*0, ICE Europe, GBP/tonne):
+Scrapes 6 fields from Barchart.com for the active London cocoa #7 contract (ICE Europe, GBP/tonne):
 - **Close**, **High**, **Low**: Price data (GBP/tonne)
-- **Volume**: Trading volume (contracts × 10 = tonnes)
+- **Volume**: Trading volume (raw contracts)
 - **Open Interest**: Open interest (contracts)
 - **Implied Volatility**: Percentage (from volatility-greeks page)
 
 Writes to Google Sheets **TECHNICALS** tab (replaces manual Google Form entry).
 
+## Contract Selection & Roll Logic
+
+The scraper targets a **specific contract code** (e.g., `CAH26`), never Barchart's `CA*0` continuous alias. We control the roll, not Barchart.
+
+**Roll rule:** Switch to the next contract **15 calendar days before expiry** (last business day of the delivery month). This avoids near-expiry bias on both prices and IV.
+
+**Delivery months:** H(Mar), K(May), N(Jul), U(Sep), Z(Dec)
+
+**Example (2026):**
+- CAH26 expires ~March 31 → roll date March 16
+- Before March 16: scrape `CAH26/overview` + `CAH26/volatility-greeks`
+- From March 16: scrape `CAK26/overview` + `CAK26/volatility-greeks`
+
+**Why not CA\*0?** Barchart's continuous symbol rolls based on their own volume-shift heuristic, which doesn't match our 15-day rule. In Feb 2026, Barchart had already rolled CA\*0 to CAK26 (May) while we should still track CAH26 (March). Using CA\*0 means scraping the wrong contract → wrong OI and volume data.
+
 ## Architecture
 
-- **Browser**: Playwright (WebKit on macOS, Chromium on Linux) — proven working patterns from `backend/scraper.py`
-- **Extraction**: Regex patterns matching Barchart's embedded JSON data blocks
+- **Browser**: Playwright (WebKit on macOS, Chromium on Linux/Railway)
+- **Extraction**: Two strategies with fallback:
+  1. **Primary — HTML inline JSON** (has all 6 fields including OI): Finds ALL `"raw"` JSON blocks in server-rendered HTML, picks the one with highest volume (max-volume heuristic). The main contract always has the highest volume among the 4+ blocks on the page.
+  2. **Backup — XHR interception** (C/H/L/V only, no OI): Intercepts Barchart's internal API responses via `page.on("response")`. API omits `openInterest`.
+- **IV**: Separate page (`/volatility-greeks`). XHR interception primary, HTML regex fallback.
 - **Validation**: Range checks, logical checks (HIGH ≥ CLOSE ≥ LOW), non-null checks
 - **Output**: Google Sheets API (append row to TECHNICALS or TECHNICALS_STAGING)
+
+### Barchart Page Structure
+
+Barchart is an Angular SPA. Key observations (2026-02-18 investigation):
+
+- **4+ raw blocks** in server-rendered HTML: main quote, next-month contract, related instruments. Only 1 block has complete OHLCV+OI data (the main quote with highest volume).
+- **XHR API** (`/proxies/core-api/v1/quotes/get`): Returns C/H/L/V for all contract months as formatted strings, but **omits OI entirely**.
+- **`networkidle` never fires** due to persistent analytics/ad polling. Use `wait_until="load"` + fixed 5s wait.
+- **`x-xsrf-token`** required for direct API calls — not viable for scraping.
+
+### IV Conversion
+
+- **Volume**: Raw contract count from Barchart (no conversion)
+- **IV**: Sheets stores as decimal (e.g., Barchart shows `55.38%` → scraper sends `0.5538`)
 
 ## Setup
 
 ### 1. Install Playwright browsers
 
 ```bash
-cd backend/scripts/barchart_scraper
+cd backend
 playwright install webkit chromium
 ```
 
 ### 2. Install Python dependencies
 
 ```bash
-pip install -r requirements.txt
+poetry install
 ```
 
 ### 3. Configure credentials
 
 ```bash
 cp .env.example .env
-# Edit .env and add GOOGLE_SHEETS_CREDENTIALS_JSON
+# Edit .env and add GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON
 ```
-
-To get Google Sheets credentials:
-1. Go to GCP Console → IAM & Admin → Service Accounts
-2. Find `commodities-compass-sheets@cacaooo.iam.gserviceaccount.com`
-3. Keys → Add Key → Create new key → JSON
-4. Copy the entire JSON content into `.env` as `GOOGLE_SHEETS_CREDENTIALS_JSON='...'`
-
-### 4. Verify service account scope
-
-The service account must have **write** access to Google Sheets:
-- Required scope: `https://www.googleapis.com/auth/spreadsheets` (read-write)
-- Check: The code uses this scope by default in `sheets_writer.py`
 
 ## Usage
 
-### Dry run (test without writing)
-
 ```bash
-python -m backend.scripts.barchart_scraper.main --dry-run
+# Dry run (scrape + validate, no Sheets write)
+poetry run python -m scripts.barchart_scraper.main --dry-run --verbose
+
+# Write to staging sheet
+poetry run python -m scripts.barchart_scraper.main --sheet staging
+
+# Write to production
+poetry run python -m scripts.barchart_scraper.main --sheet production
+
+# Headful mode (visible browser, for debugging)
+poetry run python -m scripts.barchart_scraper.main --headful --dry-run
 ```
-
-### Write to staging sheet
-
-```bash
-python -m backend.scripts.barchart_scraper.main --sheet=staging
-```
-
-### Write to production
-
-```bash
-python -m backend.scripts.barchart_scraper.main --sheet=production
-```
-
-### Debug mode (verbose logs)
-
-```bash
-python -m backend.scripts.barchart_scraper.main --verbose --dry-run
-```
-
-### Headful mode (visible browser, for debugging)
-
-```bash
-python -m backend.scripts.barchart_scraper.main --headful --dry-run
-```
-
-## Testing Workflow
-
-### Phase 1: Dry Run (Day 1)
-
-1. Run dry-run to test scraping + validation without writing:
-   ```bash
-   python -m backend.scripts.barchart_scraper.main --dry-run --verbose
-   ```
-
-2. Expected output:
-   ```
-   INFO - Fetching https://www.barchart.com/futures/quotes/CA*0/overview
-   INFO - Extracted from raw block: H=2568.0 L=2446.0 C=2491.0 V=104240.0 OI=52754.0
-   INFO - Fetching https://www.barchart.com/futures/quotes/CAK26/volatility-greeks?futuresOptionsView=merged
-   INFO - Extracted IV: 51.15
-   INFO - Validation passed
-   INFO - [DRY RUN] Would append to 'TECHNICALS_STAGING': ['02/17/2026', 2491.0, 2568.0, 2446.0, 104240.0, 52754.0, 0.5336]
-   INFO - SUCCESS
-   ```
-
-3. Manually verify values against Barchart.com in browser
-
-### Phase 2: Staging Write (Day 2)
-
-1. Create staging sheet (if not exists):
-   - Open Google Sheets
-   - Duplicate TECHNICALS tab → rename to TECHNICALS_STAGING
-   - Clear data rows (keep header)
-
-2. Run staging write:
-   ```bash
-   python -m backend.scripts.barchart_scraper.main --sheet=staging
-   ```
-
-3. Verify in Google Sheets:
-   - Row appended to TECHNICALS_STAGING
-   - Columns A-G filled
-   - Formulas in columns J-AT auto-calculate
-
-### Phase 3: Parallel Testing (Days 3-5)
-
-Run scraper → staging each day alongside Julien's manual → production entry:
-
-```bash
-# Daily at 7:00 PM
-python -m backend.scripts.barchart_scraper.main --sheet=staging
-
-# Then Julien fills manual form → production at 8:00 PM
-# Compare outputs at 9:00 PM
-```
-
-Compare 6 fields side-by-side:
-- Price fields (CLOSE/HIGH/LOW): Delta ≤ 0.5 GBP
-- Volume/OI: Delta ≤ 100 contracts
-- IV: Delta ≤ 0.5%
-
-### Phase 4: Production Cutover (Day 6-7)
-
-After 3 successful parallel tests:
-
-```bash
-python -m backend.scripts.barchart_scraper.main --sheet=production
-```
-
-Monitor downstream pipeline:
-- Make.com DAILY BOT AI (~11:00 PM)
-- Railway Daily Import (~11:15 PM)
-- Dashboard displays correctly
-
-## Rollback Procedure
-
-If scraper fails or produces bad data:
-
-1. **Stop using scraper** — revert to manual Google Form entry
-2. **Delete bad rows** from TECHNICALS sheet (if any written)
-3. **Delete scraper directory** (isolated in `backend/scripts/`, safe to remove):
-   ```bash
-   rm -rf backend/scripts/barchart_scraper
-   ```
-4. No production code affected — API/ETL/Dashboard unchanged
-
-## Troubleshooting
-
-### Issue: "Pattern not found in HTML"
-
-**Cause**: Barchart changed HTML structure
-**Fix**: Inspect page source, update regex patterns in `scraper.py`
-
-### Issue: "Validation failed: Field 'X' outside valid range"
-
-**Cause**: Scraped value is legitimate but outside expected range
-**Fix**: Adjust `VALIDATION_RANGES` in `config.py`
-
-### Issue: "Failed to extract Implied Volatility"
-
-**Cause**: volatility-greeks page structure different than expected
-**Fix**: Run with `--headful --verbose`, inspect IV page, update `extract_implied_volatility()` patterns
-
-### Issue: "Google Sheets API error: 403 Forbidden"
-
-**Cause**: Service account lacks write permission
-**Fix**: Verify scope in code (`SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]`), re-download service account key if needed
-
-### Issue: Playwright browser not found
-
-**Cause**: Playwright browsers not installed
-**Fix**: Run `playwright install webkit chromium`
 
 ## Deployment
 
-**Week 1 (Manual)**: Run locally as replacement for browser workflow
+| Setting | Value |
+|---------|-------|
+| **Root directory** | `backend` |
+| **Start command** | Dockerfile-based |
+| **Cron schedule** | `0 19 * * *` (7 PM UTC daily) |
+| **Restart policy** | Never (cron job) |
 
-**Week 2+ (Automated)**: Schedule via GCP Cloud Scheduler + Cloud Run Job (daily 7:00 PM CET)
+## Troubleshooting
+
+### "Failed to extract data from both HTML and XHR"
+Barchart changed their HTML structure or Angular app. Run `--headful --verbose`, inspect page source, check if `"raw"` blocks still exist with `lastPrice`/`highPrice`/`lowPrice`/`volume`/`openInterest` fields.
+
+### "Close price is None after extraction"
+HTML raw block exists but doesn't contain `lastPrice`. Check if Barchart renamed the field in their inline JSON.
+
+### Wrong OI or Volume values
+The max-volume heuristic should pick the correct block. If values look wrong, run the diagnostic script to dump all raw blocks and identify which block was selected. Check that the contract code in the URL matches the expected active contract.
+
+### "Page timeout but XHR data captured — continuing"
+Normal. Barchart never reaches `networkidle`. If XHR data was captured, the scraper continues. OI will be missing (XHR doesn't include it) — falls back to HTML extraction.
 
 ## Files
 
-- `config.py` — URLs, mappings, validation ranges
-- `scraper.py` — Playwright scraper with proven regex patterns
+- `config.py` — URLs (via roll logic), column mappings, validation ranges, browser settings
+- `scraper.py` — Playwright scraper with HTML + XHR extraction
 - `validator.py` — Data validation logic
 - `sheets_writer.py` — Google Sheets API writer
 - `main.py` — CLI orchestrator
-- `requirements.txt` — Python dependencies
-- `.env.example` — Credentials template
-- `README.md` — This file
 
-## References
+## Known Issues & Forensics (2026-02-18)
 
-- Original scraper: `backend/scraper.py` (proven working Playwright + regex patterns)
-- Plan document: `experiments/Quick_Win_Daily_Bot/quickwin-1-barchart-scraper-implementation-plan.md`
-- Daily process: `experiments/Quick_Win_Daily_Bot/daily-process-documentation.md`
+### Wrong raw block selection (old scraper)
+The original scraper used `re.search` (finds FIRST match) on Barchart HTML that contains 4+ `"raw"` JSON blocks. It non-deterministically picked the wrong block → garbage V and OI.
+
+**Forensic proof (CAH26 page, Feb 18):**
+- Block 0: CAK26 partial (Close only, no V/OI)
+- Block 2: Main quote (Close=2311, V=1383, **OI=36,333**)
+- Only Block 2 has complete data
+
+The prod manual entry of OI=36,333 came from looking at the **CAH26 page** (March, expiring). The correct front-month (CAK26, May) has OI=52,754. The `previousPrice=2438` on CAH26 matched the prod Close exactly — confirming the human was reading the wrong contract.
+
+### CA*0 vs specific contract
+Barchart's `CA*0` continuous symbol had already rolled to CAK26 in February, before our 15-day window. Using CA*0 meant scraping CAK26 data when we should track CAH26. Fixed by using explicit contract codes for both prices and IV URLs.

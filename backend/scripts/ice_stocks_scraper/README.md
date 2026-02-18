@@ -74,11 +74,12 @@ Some dates have an `a` suffix variant (e.g., `cocoa_cert_stock_20260205a.xls`). 
 
 ### Fallback Strategy
 
-If today's XLS is not yet published (typically available after market close):
-1. Try today's date
-2. Try today's date with `a` suffix
-3. Fall back to previous days (up to 5 attempts)
-4. Weekend dates converted to previous Friday
+Walks backwards through business days until a report is found:
+1. Start from today (weekends → previous Friday)
+2. Try date with no suffix, then `a` suffix (e.g., `20260205a.xls`)
+3. If not found, move to previous business day and repeat
+4. Walks back up to **60 business days** (~3 months) to handle holidays and outages
+5. Uses a single `httpx.Client` session for connection reuse
 
 ## Usage
 

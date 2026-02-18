@@ -47,51 +47,45 @@ def _build_url(d: date, suffix: str = "") -> str:
     return f"{ICE_XLS_BASE_URL}/cocoa_cert_stock_{date_str}{suffix}.xls"
 
 
-def download_xls(target_date: date | None = None) -> tuple[bytes, date]:
-    """Download ICE certified stock XLS for the given date.
+def _prev_business_day(d: date) -> date:
+    """Move to previous business day (skip weekends)."""
+    d -= timedelta(days=1)
+    while d.weekday() >= 5:
+        d -= timedelta(days=1)
+    return d
 
-    Tries the target date, then falls back to previous business days.
+
+def download_xls(target_date: date | None = None) -> tuple[bytes, date]:
+    """Download the most recent ICE certified stock XLS.
+
+    Starts from target_date (default: today) and walks backwards through
+    business days until a report is found. Goes back up to 60 business days
+    to handle holidays, outages, etc.
 
     Returns:
         Tuple of (xls_bytes, actual_date)
     """
-    if target_date is None:
-        target_date = _business_date(date.today())
-
+    d = _business_date(target_date or date.today())
     headers = {"User-Agent": USER_AGENT}
     suffixes = ["", "a"]  # Some files have an 'a' suffix (e.g., 20260205a.xls)
-    max_retries = 5  # Try up to 5 previous business days
+    max_business_days = 60
 
-    for attempt in range(max_retries):
-        d = target_date - timedelta(days=attempt)
-        d = _business_date(d)
-
-        for suffix in suffixes:
-            url = _build_url(d, suffix)
-            logger.debug(f"Trying {url}")
-
-            try:
-                with httpx.Client(timeout=30) as client:
+    with httpx.Client(timeout=30) as client:
+        for _ in range(max_business_days):
+            for suffix in suffixes:
+                url = _build_url(d, suffix)
+                logger.debug(f"Trying {url}")
+                try:
                     resp = client.get(url, headers=headers)
-
-                if resp.status_code == 200:
-                    content_type = resp.headers.get("content-type", "")
-                    if (
-                        "excel" in content_type
-                        or "xls" in content_type
-                        or len(resp.content) > 1000
-                    ):
+                    if resp.status_code == 200 and len(resp.content) > 1000:
                         logger.info(f"Downloaded {url} ({len(resp.content):,} bytes)")
                         return resp.content, d
+                except httpx.HTTPError as e:
+                    logger.debug(f"{url} → error: {e}")
 
-                logger.debug(f"{url} → {resp.status_code}")
+            d = _prev_business_day(d)
 
-            except httpx.HTTPError as e:
-                logger.debug(f"{url} → error: {e}")
-
-    raise ICEScraperError(
-        f"No XLS found for {target_date} or {max_retries} previous business days"
-    )
+    raise ICEScraperError(f"No XLS found within {max_business_days} business days")
 
 
 def parse_xls(xls_bytes: bytes) -> dict:

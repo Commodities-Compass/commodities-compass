@@ -1,184 +1,199 @@
-"""Barchart.com scraper for London cocoa futures data."""
+"""Barchart.com scraper for London cocoa futures data.
+
+Uses Playwright XHR interception to capture API response data directly,
+eliminating the fragile regex-based HTML parsing that caused incorrect
+data extraction (wrong raw block matched → garbage V/OI values).
+
+Fallback: if no XHR captured, parses rendered HTML picking the data block
+with highest volume (main contract always has the most volume).
+"""
 
 import html
 import logging
+import platform
 import re
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Any
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import Response, sync_playwright
 
 from scripts.barchart_scraper.config import (
-    PRICES_URL,
-    get_volatility_url,
     BROWSER_TIMEOUT,
-    BROWSER_WAIT,
     USER_AGENT,
+    get_current_contract_code,
+    get_prices_url,
+    get_volatility_url,
 )
 
 logger = logging.getLogger(__name__)
 
 
 class BarchartScraperError(Exception):
-    """Base exception for scraper errors."""
-
     pass
 
 
-def extract_ohlc_data(html_content: str) -> Optional[Dict]:
-    """
-    Extract OHLC data from Barchart HTML content.
-    Adapted from backend/scraper.py (proven working patterns).
+# ---------------------------------------------------------------------------
+# JSON helpers for XHR interception
+# ---------------------------------------------------------------------------
 
-    Args:
-        html_content: HTML content from Barchart page
 
-    Returns:
-        Dict with OHLC data or None if extraction failed
-    """
-    # Decode HTML entities (Barchart uses &quot; instead of ")
-    decoded_content = html.unescape(html_content)
+def _find_quote_in_json(data: Any) -> dict | None:
+    """Recursively search a parsed JSON structure for a dict with OHLCV fields."""
+    if isinstance(data, dict):
+        if all(k in data for k in ("lastPrice", "highPrice", "lowPrice")):
+            return data
+        for value in data.values():
+            result = _find_quote_in_json(value)
+            if result:
+                return result
+    elif isinstance(data, list):
+        for item in data:
+            result = _find_quote_in_json(item)
+            if result:
+                return result
+    return None
 
-    ohlc = {}
 
-    # First, try to find the "raw" data block which contains OHLC data
-    # The raw block with OHLC data contains fields like lowPrice, openPrice, highPrice, volume, openInterest
-    raw_block_pattern = r'"raw"\s*:\s*\{([^}]*"lowPrice"\s*:\s*\d+[^}]*)\}'
-    raw_match = re.search(raw_block_pattern, decoded_content)
-
-    if raw_match:
-        raw_block = raw_match.group(1)
-
-        # Extract individual fields from the raw block
-        field_patterns = {
-            "high": r'"highPrice"\s*:\s*(\d+(?:\.\d+)?)',
-            "low": r'"lowPrice"\s*:\s*(\d+(?:\.\d+)?)',
-            "close": r'"lastPrice"\s*:\s*(\d+(?:\.\d+)?)',
-            "volume": r'"volume"\s*:\s*(\d+(?:\.\d+)?)',
-            "open_interest": r'"openInterest"\s*:\s*(\d+(?:\.\d+)?)',
-        }
-
-        for field, pattern in field_patterns.items():
-            match = re.search(pattern, raw_block)
-            if match:
-                try:
-                    ohlc[field] = float(match.group(1))
-                except (ValueError, IndexError):
-                    ohlc[field] = None
-
-        if ohlc.get("close"):
-            logger.debug(
-                f"Extracted from raw block: H={ohlc.get('high')} L={ohlc.get('low')} "
-                f"C={ohlc.get('close')} V={ohlc.get('volume')} OI={ohlc.get('open_interest')}"
-            )
-            return ohlc
-
-    # Fallback: try to find OHLC patterns directly in the decoded content
-    logger.debug("Raw block not found, trying direct patterns...")
-
-    direct_patterns = {
-        "high": r'"highPrice"\s*:\s*(\d+(?:\.\d+)?)',
-        "low": r'"lowPrice"\s*:\s*(\d+(?:\.\d+)?)',
-        "close": r'"lastPrice"\s*:\s*(\d+(?:\.\d+)?)',
-        "volume": r'"volume"\s*:\s*(\d+(?:\.\d+)?)',
-        "open_interest": r'"openInterest"\s*:\s*(\d+(?:\.\d+)?)',
-    }
-
-    for field, pattern in direct_patterns.items():
-        matches = re.findall(pattern, decoded_content)
-        if matches:
+def _find_iv_in_json(data: Any) -> float | None:
+    """Recursively search for impliedVolatility in parsed JSON."""
+    if isinstance(data, dict):
+        if "impliedVolatility" in data:
             try:
-                ohlc[field] = float(matches[0])
-            except (ValueError, IndexError):
-                ohlc[field] = None
+                return float(data["impliedVolatility"])
+            except (ValueError, TypeError):
+                pass
+        for value in data.values():
+            result = _find_iv_in_json(value)
+            if result is not None:
+                return result
+    elif isinstance(data, list):
+        for item in data:
+            result = _find_iv_in_json(item)
+            if result is not None:
+                return result
+    return None
 
-    # Check if we have at least the close price
-    if ohlc.get("close") is None:
+
+def _safe_float(val: Any) -> float | None:
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (ValueError, TypeError):
         return None
 
-    logger.debug(
-        f"Extracted via fallback: H={ohlc.get('high')} L={ohlc.get('low')} "
-        f"C={ohlc.get('close')} V={ohlc.get('volume')} OI={ohlc.get('open_interest')}"
-    )
-    return ohlc
+
+# ---------------------------------------------------------------------------
+# HTML fallback extractors (used only when XHR interception captures nothing)
+# ---------------------------------------------------------------------------
+
+_FIELD_PATTERNS = {
+    "close": r'"lastPrice"\s*:\s*(\d+(?:\.\d+)?)',
+    "high": r'"highPrice"\s*:\s*(\d+(?:\.\d+)?)',
+    "low": r'"lowPrice"\s*:\s*(\d+(?:\.\d+)?)',
+    "volume": r'"volume"\s*:\s*(\d+(?:\.\d+)?)',
+    "open_interest": r'"openInterest"\s*:\s*(\d+(?:\.\d+)?)',
+}
 
 
-def extract_implied_volatility(html_content: str) -> Optional[float]:
+def _extract_ohlc_from_html(html_content: str) -> dict[str, float | None]:
+    """Fallback: find ALL raw blocks in HTML and pick the one with highest volume.
+
+    The old approach took the FIRST raw block, which often matched option chains
+    or related contracts instead of the main quote → garbage data.
     """
-    Extract Implied Volatility from volatility-greeks page.
+    decoded = html.unescape(html_content)
 
-    Args:
-        html_content: HTML content from Barchart volatility-greeks page
+    # Find all "raw" blocks containing at least lastPrice
+    raw_blocks = list(re.finditer(r'"raw"\s*:\s*\{([^}]{50,})\}', decoded))
 
-    Returns:
-        IV as float percentage, or None if extraction failed
-    """
-    decoded_content = html.unescape(html_content)
+    best: dict[str, float | None] | None = None
+    best_volume = -1.0
 
-    # Try multiple patterns for IV extraction
-    iv_patterns = [
+    for block_match in raw_blocks:
+        block = block_match.group(1)
+        close_m = re.search(_FIELD_PATTERNS["close"], block)
+        if not close_m:
+            continue
+
+        candidate: dict[str, float | None] = {}
+        for field, pattern in _FIELD_PATTERNS.items():
+            m = re.search(pattern, block)
+            candidate[field] = float(m.group(1)) if m else None
+
+        vol = candidate.get("volume") or 0.0
+        if vol > best_volume:
+            best_volume = vol
+            best = candidate
+
+    if best:
+        logger.info(
+            f"HTML fallback (best of {len(raw_blocks)} blocks): "
+            f"C={best.get('close')} V={best.get('volume')} OI={best.get('open_interest')}"
+        )
+        return best
+
+    logger.warning("HTML fallback: no raw blocks found, trying direct field search")
+    # Last resort: take the LAST occurrence of each field (more likely to be main quote)
+    result: dict[str, float | None] = {}
+    for field, pattern in _FIELD_PATTERNS.items():
+        matches = re.findall(pattern, decoded)
+        result[field] = float(matches[-1]) if matches else None
+
+    return result
+
+
+def _extract_iv_from_html(html_content: str) -> float | None:
+    """Fallback: extract IV from rendered HTML via regex."""
+    decoded = html.unescape(html_content)
+    patterns = [
         r'"impliedVolatility"\s*:\s*(\d+(?:\.\d+)?)',
         r'"iv"\s*:\s*(\d+(?:\.\d+)?)',
         r"Implied Volatility[^>]*>(\d+(?:\.\d+)?)%",
     ]
-
-    for pattern in iv_patterns:
-        match = re.search(pattern, decoded_content, re.IGNORECASE)
+    for pattern in patterns:
+        match = re.search(pattern, decoded, re.IGNORECASE)
         if match:
             try:
-                iv = float(match.group(1))
-                logger.debug(f"Extracted IV: {iv}")
-                return iv
+                return float(match.group(1))
             except (ValueError, IndexError):
                 continue
-
-    logger.warning("Could not extract Implied Volatility from page")
     return None
 
 
+# ---------------------------------------------------------------------------
+# Main scraper class
+# ---------------------------------------------------------------------------
+
+
 class BarchartScraper:
-    """Scraper for Barchart.com London cocoa futures data using Playwright."""
+    """Scraper using Playwright XHR interception for reliable data extraction."""
 
     def __init__(self, headless: bool = True):
-        """
-        Initialize scraper.
-
-        Args:
-            headless: Run browser in headless mode (invisible)
-        """
         self.headless = headless
         self.playwright = None
         self.browser = None
         self.page = None
 
     def __enter__(self):
-        """Context manager entry."""
         self._launch_browser()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager exit."""
         self._close_browser()
 
     def _launch_browser(self):
-        """Launch Playwright browser."""
         logger.info("Launching Playwright browser...")
         self.playwright = sync_playwright().start()
-
-        # Use WebKit (Safari engine) for macOS, Chromium for others
-        import platform
-
         if platform.system() == "Darwin":
             self.browser = self.playwright.webkit.launch(headless=self.headless)
         else:
             self.browser = self.playwright.chromium.launch(headless=self.headless)
-
         self.page = self.browser.new_page()
         self.page.set_extra_http_headers({"User-Agent": USER_AGENT})
         logger.info("Browser launched successfully")
 
     def _close_browser(self):
-        """Close Playwright browser."""
         if self.page:
             self.page.close()
         if self.browser:
@@ -187,83 +202,128 @@ class BarchartScraper:
             self.playwright.stop()
         logger.info("Browser closed")
 
-    def _fetch_page(self, url: str) -> str:
-        """
-        Fetch page HTML using Playwright.
+    # ------------------------------------------------------------------
+    # XHR interception
+    # ------------------------------------------------------------------
+
+    def _navigate_and_capture(self, url: str, extractor) -> list:
+        """Navigate to URL, intercept JSON responses, apply extractor to each.
 
         Args:
-            url: URL to fetch
+            url: Page URL to load.
+            extractor: Callable(json_body) → value | None.
 
         Returns:
-            HTML content as string
-
-        Raises:
-            BarchartScraperError: If fetch fails
+            List of non-None extracted values.
         """
+        captured: list = []
+
+        def on_response(response: Response):
+            if response.status != 200:
+                return
+            content_type = response.headers.get("content-type", "")
+            if "json" not in content_type:
+                return
+            try:
+                body = response.json()
+                result = extractor(body)
+                if result is not None:
+                    logger.debug(f"XHR match from {response.url}")
+                    captured.append(result)
+            except Exception:
+                pass
+
+        self.page.on("response", on_response)
         try:
             logger.info(f"Fetching {url}")
             self.page.goto(url, wait_until="load", timeout=BROWSER_TIMEOUT)
-            self.page.wait_for_timeout(BROWSER_WAIT)  # Wait for content to load
-            html_content = self.page.content()
-            logger.info(f"Successfully fetched {url} ({len(html_content)} bytes)")
-            return html_content
+            # Wait for XHR calls to complete (Barchart never reaches networkidle
+            # due to analytics/ad polling, so we use a fixed wait after load)
+            self.page.wait_for_timeout(5000)
         except Exception as e:
-            logger.error(f"Failed to fetch {url}: {e}")
-            raise BarchartScraperError(f"Failed to fetch {url}: {e}") from e
+            # If we already captured data before timeout, don't fail
+            if captured:
+                logger.warning("Page timeout but XHR data captured — continuing")
+            else:
+                raise BarchartScraperError(f"Failed to fetch {url}: {e}") from e
+        finally:
+            self.page.remove_listener("response", on_response)
 
-    def scrape_prices(self) -> Dict[str, Optional[float]]:
+        return captured
+
+    # ------------------------------------------------------------------
+    # Public scrape methods
+    # ------------------------------------------------------------------
+
+    def scrape_prices(self) -> dict[str, float | None]:
+        """Scrape OHLC + Volume + OI.
+
+        Strategy: Barchart's XHR API omits openInterest, but the server-rendered
+        HTML contains inline JSON raw blocks with ALL fields. So:
+          1. Primary: extract from rendered HTML (max-volume raw block → complete data)
+          2. Backup: XHR-captured data for C/H/L/V (no OI)
         """
-        Scrape OHLC + Volume + OI from prices page.
+        # Navigate + capture XHR (as backup)
+        prices_url = get_prices_url()
+        captured = self._navigate_and_capture(prices_url, _find_quote_in_json)
 
-        Returns:
-            Dict with price data fields
-        """
-        html = self._fetch_page(PRICES_URL)
-        data = extract_ohlc_data(html)
+        # Primary: extract from rendered HTML (has OI)
+        html_content = self.page.content()
+        data = _extract_ohlc_from_html(html_content)
 
-        if not data:
-            raise BarchartScraperError("Failed to extract OHLC data from prices page")
+        # If HTML extraction got a close price, use it
+        if data.get("close") is not None:
+            logger.info("Using HTML-extracted data (complete with OI)")
+        elif captured:
+            # Fallback: use XHR data (no OI)
+            quote = captured[0]
+            raw = quote.get("raw", quote)
+            logger.warning("HTML extraction failed — using XHR data (no OI)")
+            data = {
+                "close": _safe_float(raw.get("lastPrice")),
+                "high": _safe_float(raw.get("highPrice")),
+                "low": _safe_float(raw.get("lowPrice")),
+                "volume": _safe_float(raw.get("volume")),
+                "open_interest": None,
+            }
+        else:
+            raise BarchartScraperError("Failed to extract data from both HTML and XHR")
 
-        # Volume conversion: Barchart shows contracts, we need tonnage (1 contract = 10 tonnes)
-        if data.get("volume") is not None:
-            data["volume"] = data["volume"] * 10
-            logger.debug(f"Converted volume to tonnage: {data['volume']}")
+        if data.get("close") is None:
+            raise BarchartScraperError("Close price is None after extraction")
 
+        logger.info(
+            f"Prices: C={data['close']} H={data.get('high')} L={data.get('low')} "
+            f"V={data.get('volume')} OI={data.get('open_interest')}"
+        )
         return data
 
-    def scrape_implied_volatility(self) -> Optional[float]:
-        """
-        Scrape Implied Volatility from volatility-greeks page.
-
-        Returns:
-            IV as float percentage, or None if extraction failed
-        """
+    def scrape_implied_volatility(self) -> float | None:
+        """Scrape IV. XHR interception → HTML fallback."""
         url = get_volatility_url()
-        html = self._fetch_page(url)
-        iv = extract_implied_volatility(html)
+        logger.info(f"IV contract: {url.split('/quotes/')[1].split('/')[0]}")
 
-        if iv is None:
-            logger.warning("Failed to extract Implied Volatility")
+        captured = self._navigate_and_capture(url, _find_iv_in_json)
 
+        if captured:
+            logger.info(f"IV from XHR: {captured[0]}")
+            return captured[0]
+
+        logger.warning("No IV from XHR — falling back to HTML regex")
+        html_content = self.page.content()
+        iv = _extract_iv_from_html(html_content)
+        if iv is not None:
+            logger.info(f"IV from HTML fallback: {iv}")
+        else:
+            logger.warning("Failed to extract IV from both XHR and HTML")
         return iv
 
-    def scrape_all(self) -> Dict[str, Optional[float]]:
-        """
-        Scrape all 6 fields (OHLC + Volume + OI + IV).
-
-        Returns:
-            Dict with all data fields + timestamp
-        """
-        logger.info("Starting Barchart scrape for London cocoa #7 (CA*0)")
-
-        # Scrape prices page
+    def scrape_all(self) -> dict:
+        """Scrape all 6 fields (OHLC + Volume + OI + IV)."""
+        contract = get_current_contract_code()
+        logger.info(f"Starting Barchart scrape for London cocoa #7 ({contract})")
         data = self.scrape_prices()
-
-        # Scrape IV page
         data["implied_volatility"] = self.scrape_implied_volatility()
-
-        # Add timestamp
         data["timestamp"] = datetime.now()
-
         logger.info(f"Scrape complete: {data}")
         return data

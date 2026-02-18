@@ -152,6 +152,58 @@ Data flows from Google Sheets to PostgreSQL via ETL, updated daily by Make.com a
    - **TEST RANGE** → `test_range` table: Color zone thresholds (RED/ORANGE/GREEN) for gauge indicators
 4. **Data transformations**: `parse_datetime`, `parse_decimal`, `parse_decimal_from_string`, `parse_integer` for handling US number formats, percentages, and formulas
 
+## Scrapers
+
+Three automated scrapers feed columns A–I of the TECHNICALS Google Sheet. Each is a standalone Railway cron service sharing the same `backend/Dockerfile`.
+
+### Architecture
+
+```
+Google Sheets TECHNICALS row:
+  A: Date | B: Close | C: High | D: Low | E: Volume | F: OI | G: IV | H: Stock US | I: Com NET US
+  ──────── barchart-scraper (appends row A-G) ────────  ──ice──  ──cftc──
+                                                        (update H) (update I)
+```
+
+### Barchart Scraper (`backend/scripts/barchart_scraper/`)
+
+- **Data**: C, H, L, V, OI, IV for London cocoa #7 (ICE Europe, GBP/tonne)
+- **Contract selection**: Uses specific contract code (e.g., `CAH26`), never Barchart's `CA*0` alias. Both prices and IV URLs use our roll logic.
+- **Contract roll**: Rolls to next contract **15 days before expiry** (last business day of delivery month). Delivery months: H(Mar), K(May), N(Jul), U(Sep), Z(Dec). CA\*0 is NOT used because Barchart rolls it on their own schedule (volume-based), which doesn't match our 15-day rule.
+- **Source**: `https://www.barchart.com/futures/quotes/{contract}/overview` (OHLCV+OI) + `/{contract}/volatility-greeks` (IV)
+- **Method**: Playwright browser → extracts OHLCV+OI from server-rendered inline JSON raw blocks (max-volume heuristic to pick the correct block among 4+). XHR API response used as backup for C/H/L/V (API omits OI). IV via XHR interception or HTML regex fallback.
+- **Volume**: Raw contract count (no conversion)
+- **IV conversion**: percentage → decimal (e.g., `55.38` → `0.5538` in Sheets)
+- **Cron**: `0 19 * * *` (7 PM UTC daily)
+- **CLI**: `python -m scripts.barchart_scraper.main --sheet production [--dry-run] [--verbose] [--headful]`
+
+### ICE Stocks Scraper (`backend/scripts/ice_stocks_scraper/`)
+
+- **Data**: STOCK US (column H) — certified cocoa stocks in ICE US warehouses
+- **Source**: `https://www.ice.com/publicdocs/futures_us_reports/cocoa/cocoa_cert_stock_YYYYMMDD.xls`
+- **Method**: Pure httpx + pandas (no browser). Downloads public XLS, parses "GRAND TOTAL" row, converts bags → tonnes (`bags × 70 / 1000`).
+- **Fallback**: Walks back through business days (up to 60) until a report is found. Handles `a`-suffix variants.
+- **Cron**: `0 23 * * 1-5` (11 PM UTC weekdays)
+- **CLI**: `python -m scripts.ice_stocks_scraper.main --sheet production [--dry-run] [--date YYYY-MM-DD]`
+
+### CFTC Scraper (`backend/scripts/cftc_scraper/`)
+
+- **Data**: COM NET US (column I) — commercial net position from CFTC COT report
+- **Source**: `https://www.cftc.gov/dea/futures/ag_lf.htm`
+- **Method**: Pure httpx + regex (no browser). Parses "COCOA - ICE FUTURES U.S." section, extracts Producer/Merchant Long − Short.
+- **Cron**: `0 4 * * 6` (Saturday 4 AM UTC — CFTC publishes Fridays ~9:30 PM CET)
+- **CLI**: `python -m scripts.cftc_scraper.main --sheet production [--dry-run]`
+
+### Known Issues & Lessons (2026-02-18 debugging sessions)
+
+**Bug 1 — Wrong raw block (old scraper)**: Used `re.search` → picked FIRST of 4+ raw blocks. The first block was often a next-month contract or options data → wrong V and OI. Fix: max-volume heuristic picks the block with highest `volume` (always the main contract).
+
+**Bug 2 — CA\*0 roll mismatch**: Barchart's `CA*0` continuous symbol rolls based on volume shift, not calendar. In Feb 2026, Barchart already rolled CA\*0 to CAK26 (May) while we should track CAH26 (March) until March 16. Fix: both prices and IV URLs now use `get_current_contract_code()` which applies our 15-day-before-expiry roll rule. CA\*0 is never used in URLs.
+
+**Forensic proof of prod data errors**: Prod OI=36,333 and Close=2,438 matched CAH26's data exactly (`previousPrice=2438`, `openInterest=36333` on the CAH26 page). The human who filled prod was reading the wrong contract page (March instead of May). Prod V=3,625 was the correct raw contract count for CAH26.
+
+**Barchart page structure**: Angular SPA. XHR API (`/proxies/core-api/v1/quotes/get`) returns C/H/L/V as formatted strings (commas) but **omits OI**. Server-rendered inline JSON contains all 5 fields with raw numeric values. `networkidle` never fires (analytics polling) — use `wait_until="load"` + fixed 5s wait.
+
 ## Code Quality
 
 - **Backend**: Ruff for linting/formatting, Pyright for type checking

@@ -92,9 +92,6 @@ def main() -> int:
                 "dry_run": args.dry_run,
             },
         )
-        sentry_sdk.capture_message(
-            f"CFTC scraper OK — COM NET US: {commercial_net:,.0f}", level="info"
-        )
 
         logger.info("=" * 60)
         logger.info("SUCCESS: CFTC scraper completed")

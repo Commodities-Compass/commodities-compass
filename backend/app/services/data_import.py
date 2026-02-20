@@ -406,22 +406,7 @@ async def run_google_sheets_import(
         sentry_sdk.set_context("import_results", import_summary)
 
         failed = [k for k, v in import_summary.items() if v["status"] == "error"]
-        if not failed:
-            total_rows = sum(
-                v.get("imported", 0)
-                for v in import_summary.values()
-                if v["status"] == "ok"
-            )
-            total_skipped = sum(
-                v.get("skipped", 0)
-                for v in import_summary.values()
-                if v["status"] == "ok"
-            )
-            sentry_sdk.capture_message(
-                f"Daily import OK — {total_rows} rows, {total_skipped} skipped",
-                level="info",
-            )
-        else:
+        if failed:
             sentry_sdk.capture_message(
                 f"Daily import PARTIAL FAILURE — failed: {failed}",
                 level="error",

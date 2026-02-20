@@ -115,9 +115,6 @@ def main() -> int:
                 "dry_run": args.dry_run,
             },
         )
-        sentry_sdk.capture_message(
-            f"ICE stocks scraper OK — {stock_us_tonnes:,}t", level="info"
-        )
 
         logger.info("=" * 60)
         logger.info(

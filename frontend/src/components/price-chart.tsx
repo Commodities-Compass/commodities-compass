@@ -63,10 +63,9 @@ export default function PriceChart({
   }, [chartResponse?.data, zoomLevel]);
 
   // Tight Y-axis domain for CLOSE and STOCK US to make variations visible
-  const TIGHT_DOMAIN_METRICS = new Set(['close', 'stock_us']);
-
   const yAxisDomain = useMemo<[number | string, number | string]>(() => {
-    if (!TIGHT_DOMAIN_METRICS.has(selectedMetric) || visibleData.length === 0) {
+    const tightMetrics = ['close', 'stock_us'];
+    if (!tightMetrics.includes(selectedMetric) || visibleData.length === 0) {
       return [0, 'auto'];
     }
     const values = visibleData

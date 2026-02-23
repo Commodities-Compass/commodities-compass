@@ -174,7 +174,7 @@ Google Sheets TECHNICALS row:
 - **Method**: Playwright browser → extracts OHLCV+OI from server-rendered inline JSON raw blocks (max-volume heuristic to pick the correct block among 4+). XHR API response used as backup for C/H/L/V (API omits OI). IV via XHR interception or HTML regex fallback.
 - **Volume**: Raw contract count (no conversion)
 - **IV conversion**: percentage → decimal (e.g., `55.38` → `0.5538` in Sheets)
-- **Cron**: `0 19 * * *` (7 PM UTC daily)
+- **Cron**: `0 21 * * 1-5` (9 PM UTC weekdays only)
 - **CLI**: `python -m scripts.barchart_scraper.main --sheet production [--dry-run] [--verbose] [--headful]`
 
 ### ICE Stocks Scraper (`backend/scripts/ice_stocks_scraper/`)
@@ -183,7 +183,7 @@ Google Sheets TECHNICALS row:
 - **Source**: `https://www.ice.com/publicdocs/futures_us_reports/cocoa/cocoa_cert_stock_YYYYMMDD.xls`
 - **Method**: Pure httpx + pandas (no browser). Downloads public XLS, parses "GRAND TOTAL" row, converts bags → tonnes (`bags × 70 / 1000`).
 - **Fallback**: Walks back through business days (up to 60) until a report is found. Handles `a`-suffix variants.
-- **Cron**: `0 23 * * 1-5` (11 PM UTC weekdays)
+- **Cron**: `10 21 * * 1-5` (9:10 PM UTC weekdays)
 - **CLI**: `python -m scripts.ice_stocks_scraper.main --sheet production [--dry-run] [--date YYYY-MM-DD]`
 
 ### CFTC Scraper (`backend/scripts/cftc_scraper/`)
@@ -191,7 +191,7 @@ Google Sheets TECHNICALS row:
 - **Data**: COM NET US (column I) — commercial net position from CFTC COT report
 - **Source**: `https://www.cftc.gov/dea/futures/ag_lf.htm`
 - **Method**: Pure httpx + regex (no browser). Parses "COCOA - ICE FUTURES U.S." section, extracts Producer/Merchant Long − Short.
-- **Cron**: `0 4 * * 6` (Saturday 4 AM UTC — CFTC publishes Fridays ~9:30 PM CET)
+- **Cron**: `10 21 * * 1-5` (9:10 PM UTC weekdays — idempotent, new data only on Fridays after CFTC publishes ~9:30 PM CET)
 - **CLI**: `python -m scripts.cftc_scraper.main --sheet production [--dry-run]`
 
 ### Known Issues & Lessons (2026-02-18 debugging sessions)

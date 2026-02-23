@@ -41,15 +41,9 @@ Required:
    ```
 
 3. **Set cron schedule** (Railway settings):
-   - **Cron expression**: `0 19 * * *` (Every day at 19:00 UTC = 8:00 PM CET)
-   - **Command**: `poetry run python -m scripts.cftc_scraper.main --sheet=staging`
-   - ⚠️ **Start with staging** for initial testing
-
-### Why Daily?
-
-- Simple approach - runs every day regardless of CFTC publication schedule
-- CFTC publishes Fridays at 3:30 PM ET (9:30 PM CET)
-- Can optimize later to only run after new publication
+   - **Cron expression**: `10 21 * * 1-5` (9:10 PM UTC weekdays)
+   - **Command**: `bash scripts/cftc_scraper/run_scraper.sh`
+   - Idempotent: Mon-Thu rewrites same value, Friday picks up new report
 
 ## How It Works
 
@@ -104,8 +98,9 @@ poetry run python -m scripts.cftc_scraper.main --dry-run --sheet=staging
 
 ## Maintenance
 
-### Daily Schedule
-- **19:00 UTC (8:00 PM CET)**: Automated run via Railway cron
+### Daily Schedule (Weekdays)
+- **21:10 UTC (10:10 PM CET)**: Automated run via Railway cron
+- Idempotent — always reads the latest published CFTC report (updated Fridays ~9:30 PM CET)
 
 ### Manual Run
 If automation fails, run manually:

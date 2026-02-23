@@ -78,7 +78,6 @@ class SheetsWriter:
             data.get("volume"),  # Column E: VOLUME
             data.get("open_interest"),  # Column F: OPEN INTEREST
             iv_decimal,  # Column G: IMPLIED VOLATILITY (as decimal for % format)
-            # Columns H-I (STOCK US, COM NET US) remain empty — Julien fills manually
         ]
 
         logger.debug(f"Formatted row: {row}")

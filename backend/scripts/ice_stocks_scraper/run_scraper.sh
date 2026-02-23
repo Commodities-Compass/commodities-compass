@@ -5,7 +5,7 @@
 echo "=== ICE Stocks Scraper Cron Job ==="
 echo "Starting at: $(date)"
 
-poetry run python -m scripts.ice_stocks_scraper.main --sheet=staging
+poetry run python -m scripts.ice_stocks_scraper.main --sheet=production
 EXIT_CODE=$?
 
 echo "Exit code: $EXIT_CODE"

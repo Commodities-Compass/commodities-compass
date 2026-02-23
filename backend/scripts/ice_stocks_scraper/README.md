@@ -114,7 +114,7 @@ poetry run python -m scripts.ice_stocks_scraper.main --dry-run --verbose
 |---------|-------|
 | **Root directory** | `backend` |
 | **Start command** | `bash scripts/ice_stocks_scraper/run_scraper.sh` |
-| **Cron schedule** | `0 23 * * 1-5` (11 PM UTC / 7 PM ET, weekdays only) |
+| **Cron schedule** | `10 21 * * 1-5` (9:10 PM UTC weekdays only) |
 | **Restart policy** | Never (cron job, not long-running) |
 
 ### Environment Variables
@@ -127,7 +127,7 @@ No other env vars needed. No database, no Auth0, no AWS.
 
 ### Why This Schedule
 
-ICE Report 41 is published after US market close (~5-6 PM ET). Running at 7 PM ET / 11 PM UTC gives margin for late publications. The scraper auto-falls back to the previous business day if today's file isn't available yet.
+ICE Report 41 is published after US market close (~5-6 PM ET). Running at 9:10 PM UTC (10 minutes after barchart scraper) gives margin for late publications. The scraper auto-falls back to the previous business day if today's file isn't available yet.
 
 ### No Special Dependencies
 

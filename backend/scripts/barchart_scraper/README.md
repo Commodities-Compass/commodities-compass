@@ -95,7 +95,7 @@ poetry run python -m scripts.barchart_scraper.main --headful --dry-run
 |---------|-------|
 | **Root directory** | `backend` |
 | **Start command** | Dockerfile-based |
-| **Cron schedule** | `0 19 * * *` (7 PM UTC daily) |
+| **Cron schedule** | `0 21 * * 1-5` (9 PM UTC weekdays only) |
 | **Restart policy** | Never (cron job) |
 
 ## Troubleshooting

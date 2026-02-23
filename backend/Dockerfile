@@ -24,6 +24,9 @@ COPY pyproject.toml poetry.lock ./
 RUN poetry config virtualenvs.create false && \
     poetry install --only=main --no-root
 
+# Pre-install Playwright Chromium (used by barchart scraper cron)
+RUN python -m playwright install chromium --with-deps
+
 # Copy application code
 COPY . .
 

@@ -6,7 +6,7 @@ import {
   ChartTooltipContent,
 } from '@/components/ui/chart';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Area, AreaChart, CartesianGrid, XAxis } from 'recharts';
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 import { Button } from '@/components/ui/button';
 import { ZoomInIcon, ZoomOutIcon, Loader2 } from 'lucide-react';
 import { useState, useMemo } from 'react';
@@ -51,7 +51,7 @@ export default function PriceChart({
   // Adjust data points based on zoom level - must be called before any conditional returns
   const visibleData = useMemo(() => {
     if (!chartResponse?.data) return [];
-    
+
     const data = chartResponse.data;
     if (zoomLevel === 1) return data;
 
@@ -61,6 +61,23 @@ export default function PriceChart({
 
     return data.slice(startIndex);
   }, [chartResponse?.data, zoomLevel]);
+
+  // Tight Y-axis domain for CLOSE and STOCK US to make variations visible
+  const TIGHT_DOMAIN_METRICS = new Set(['close', 'stock_us']);
+
+  const yAxisDomain = useMemo<[number | string, number | string]>(() => {
+    if (!TIGHT_DOMAIN_METRICS.has(selectedMetric) || visibleData.length === 0) {
+      return [0, 'auto'];
+    }
+    const values = visibleData
+      .map((d) => d[metricConfig.dataKey as keyof typeof d] as number)
+      .filter((v) => v != null);
+    if (values.length === 0) return [0, 'auto'];
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const padding = (max - min) * 0.1 || max * 0.01;
+    return [Math.floor(min - padding), Math.ceil(max + padding)];
+  }, [selectedMetric, visibleData, metricConfig.dataKey]);
 
   // Show loading state
   if (isLoading) {
@@ -197,6 +214,11 @@ export default function PriceChart({
               axisLine={false}
               tick={{ fontSize: 12 }}
               minTickGap={30}
+            />
+
+            <YAxis
+              domain={yAxisDomain}
+              hide
             />
 
             <Area

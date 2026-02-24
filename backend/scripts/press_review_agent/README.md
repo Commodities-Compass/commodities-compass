@@ -94,19 +94,19 @@ Each run appends a new row at the bottom of the sheet (chronological order).
 | C | RESUME | 800-1200 word French market analysis |
 | D | MOTS-CLE | `Londres CAH26 2 261 GBP/t ; ...` |
 | E | IMPACT SYNTHETIQUES | 150-250 word synthesis paragraph |
-| F | DATE TEXT | `24 fevrier 2026` |
+| F | DATE TEXT | `=TEXT(A{row},"MM/DD/YYYY")` → `02/24/2026` |
 
 ## Pipeline Schedule (Railway Cron)
 
 ```
-7:00 PM UTC  — Barchart scraper writes CLOSE to TECHNICALS
-7:30 PM UTC  — Press review agent reads CLOSE + fetches news + writes BIBLIO_ALL  ← this
-8:30 PM UTC  — 1DAY METEO writes METEO_ALL
+9:00 PM UTC  — Barchart scraper writes CLOSE to TECHNICALS
+9:00 PM UTC  — Press review agent reads CLOSE + fetches news + writes BIBLIO_ALL  ← this
+9:10 PM UTC  — ICE stocks + CFTC scrapers
 10:15 PM UTC — Railway ETL imports all sheets to PostgreSQL
 11:00 PM UTC — DAILY BOT AI reads everything → INDICATOR
 ```
 
-Cron: `30 19 * * 1-5` (weekdays only)
+Cron: `0 21 * * 1-5` (weekdays only, runs in parallel with Barchart scraper)
 
 ## File Structure
 
@@ -164,9 +164,11 @@ load_dotenv(Path('.env'))
 - [x] Validator tested — catches short/missing fields
 - [x] JSON extractor hardened — handles markdown fences, literal newlines, truncation
 - [x] Live staging test — all 3 providers write successfully
+- [x] Pushed to main — Railway auto-deploy triggered
+- [ ] Create Railway cron service (`0 21 * * 1-5`, command: `poetry run press-review --sheet production`)
+- [ ] Add env vars to Railway: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`
 - [ ] Run 3-day A/B test, compare outputs in staging sheets
 - [ ] Pick winner, switch to single-provider production mode
-- [ ] Deploy Railway cron service (`30 19 * * 1-5`)
 - [ ] Monitor first week in production
 
 ## First Run Results (2026-02-24)

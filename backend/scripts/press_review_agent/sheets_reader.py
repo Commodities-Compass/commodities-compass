@@ -11,7 +11,6 @@ from scripts.press_review_agent.config import (
     CLOSE_COLUMN_INDEX,
     SPREADSHEET_ID,
     TECHNICALS_SHEET,
-    TECHNICALS_STAGING_SHEET,
 )
 
 logger = logging.getLogger(__name__)
@@ -40,15 +39,15 @@ class SheetsReader:
     def read_latest_close(self, sheet_mode: str = "staging") -> tuple[str, str]:
         """Read CLOSE price and date from the last row of TECHNICALS.
 
+        Always reads from production TECHNICALS sheet regardless of mode.
+
         Returns:
             Tuple of (close_price_str, date_str) from last row.
 
         Raises:
             SheetsReaderError: If no data found or CLOSE is empty.
         """
-        sheet_name = (
-            TECHNICALS_STAGING_SHEET if sheet_mode == "staging" else TECHNICALS_SHEET
-        )
+        sheet_name = TECHNICALS_SHEET
         try:
             result = (
                 self.service.spreadsheets()

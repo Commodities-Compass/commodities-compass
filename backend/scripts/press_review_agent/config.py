@@ -8,7 +8,6 @@ LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 # Google Sheets
 SPREADSHEET_ID = "16VXIrG9ybjjaorTeiR8sh5nrPIj9I7EFGr2iBSAjSSA"
 TECHNICALS_SHEET = "TECHNICALS"
-TECHNICALS_STAGING_SHEET = "TECHNICALS_STAGING"
 CLOSE_COLUMN_INDEX = 1  # Column B (0-based)
 
 

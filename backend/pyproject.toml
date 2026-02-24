@@ -54,6 +54,11 @@ playwright = "^1.58.0"
 beautifulsoup4 = "^4.14.3"
 xlrd = "^2.0.1"
 
+# LLM Providers (press review agent)
+anthropic = "^0.45.0"
+openai = "^1.60.0"
+google-genai = "^1.0.0"
+
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
 pytest-asyncio = "^0.23.4"
@@ -65,6 +70,7 @@ pre-commit = "^3.6.0"
 dev = "app.main:main"
 lint = "app.lint:main"
 import = "app.services.data_import:main"
+press-review = "scripts.press_review_agent.main:main"
 
 [build-system]
 requires = ["poetry-core"]

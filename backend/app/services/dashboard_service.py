@@ -191,6 +191,10 @@ async def parse_recommendations_text(text: str) -> List[str]:
     if not text:
         return []
 
+    # Strip HTML tags (e.g. <br>, <br/>, <p>, etc.) replacing them with newlines
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"</?[a-z][a-z0-9]*[^>]*>", "\n", text, flags=re.IGNORECASE)
+
     # Split by newlines and clean up
     lines = text.split("\n")
     recommendations = []

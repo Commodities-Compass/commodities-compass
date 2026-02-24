@@ -124,7 +124,9 @@ def transform_to_position_status_response(
     Returns:
         PositionStatusResponse
     """
-    # Default to MONITOR if no position found
+    # Normalize and default to MONITOR if no valid position found
+    if position:
+        position = position.strip().upper()
     if not position or position not in ["OPEN", "HEDGE", "MONITOR"]:
         position = "MONITOR"
 

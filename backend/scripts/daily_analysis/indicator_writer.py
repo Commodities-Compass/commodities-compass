@@ -165,13 +165,18 @@ class IndicatorWriter:
         *,
         dry_run: bool = False,
     ) -> None:
-        """Write MACROECO BONUS (col P) and ECO (col T) to an INDICATOR row."""
+        """Write MACROECO BONUS (P), MACROECO SCORE (S), and ECO (T) to an INDICATOR row."""
+        macroeco_score = 1 + macroeco_bonus
         logger.info(
-            "Write values row %d → P=%.2f | T=%s", row, macroeco_bonus, eco[:60]
+            "Write values row %d → P=%.2f | S=%.2f | T=%s",
+            row,
+            macroeco_bonus,
+            macroeco_score,
+            eco[:60],
         )
         if not dry_run:
-            # P(16), Q(17), R(18), S(19), T(20) — write P and T, skip Q/R/S
             self._update_values(f"{sheet_name}!P{row}", [[macroeco_bonus]])
+            self._update_values(f"{sheet_name}!S{row}", [[macroeco_score]])
             self._update_values(f"{sheet_name}!T{row}", [[eco]])
 
     def read_back(

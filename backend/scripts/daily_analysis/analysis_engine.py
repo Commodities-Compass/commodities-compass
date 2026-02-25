@@ -76,8 +76,6 @@ class AnalysisEngine:
         force: bool = False,
     ) -> AnalysisResult:
         """Execute the full pipeline for a given date."""
-        date_str = target_date.strftime("%m/%d/%Y")
-
         # --- Step 1: Read all inputs from production sheets ---
         logger.info("Step 1: Reading data from Google Sheets...")
         inputs = self.reader.read_all(target_date)
@@ -110,7 +108,7 @@ class AnalysisEngine:
             eco=macro.eco,
             dry_run=dry_run,
             force=force,
-            target_date_str=date_str,
+            target_date_str=inputs.technicals.today_date,
         )
         logger.info(
             "INDICATOR read-back: FINAL_INDICATOR=%.4f CONCLUSION=%s (row %d)",

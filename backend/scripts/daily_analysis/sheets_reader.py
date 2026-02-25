@@ -178,7 +178,7 @@ class SheetsReader:
         resumes: list[str] = []
         for row in rows[1:]:
             row_date = _safe_get(row, 0)
-            if row_date == date_str:
+            if _dates_match(row_date, date_str):
                 resume = _safe_get(row, 2)
                 if resume:
                     resumes.append(resume)
@@ -238,7 +238,7 @@ class SheetsReader:
 
         for row in rows[1:]:
             row_date = _safe_get(row, 0)
-            if row_date == date_str:
+            if _dates_match(row_date, date_str):
                 resume = _safe_get(row, 2)
                 if resume:
                     logger.info(
@@ -283,6 +283,20 @@ def _safe_get(row: list, idx: int) -> str:
     if idx < len(row):
         return str(row[idx]).strip()
     return ""
+
+
+def _dates_match(row_date: str, target_date: str) -> bool:
+    """Compare two MM/DD/YYYY dates ignoring leading zeros.
+
+    Google Sheets FORMATTED_VALUE may return '2/24/2026' while
+    strftime('%m/%d/%Y') produces '02/24/2026'.
+    """
+    try:
+        a = datetime.strptime(row_date, "%m/%d/%Y")
+        b = datetime.strptime(target_date, "%m/%d/%Y")
+        return a == b
+    except (ValueError, TypeError):
+        return row_date == target_date
 
 
 def _format_meteo_date(raw_date: str) -> str:

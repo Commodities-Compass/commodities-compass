@@ -20,6 +20,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass
+from datetime import datetime
 
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
@@ -88,21 +89,23 @@ class IndicatorWriter:
         """Read current INDICATOR sheet state.
 
         Finds the last data row and the 2 rows with HISTORIQUE references.
+        Uses max(col_A, col_Q) — column A may be empty if arrayformulas
+        haven't evaluated, but Q is always written by our script.
         """
         col_a = self._get_values(f"{sheet_name}!A:A")
-        all_rows = col_a.get("values", [])
-        last_data_row = len(all_rows)
+        col_q = self._get_values(f"{sheet_name}!Q:Q", value_render_option="FORMULA")
+        last_a = len(col_a.get("values", []))
+        last_q = len(col_q.get("values", []))
+        last_data_row = max(last_a, last_q)
         if last_data_row < 3:
             raise IndicatorWriterError(
                 f"INDICATOR sheet '{sheet_name}' has too few rows ({last_data_row})"
             )
 
-        # Read Q formulas for the last 10 rows to locate the 2 HISTORIQUE refs
+        # Scan Q formulas for the last 10 rows to locate the 2 HISTORIQUE refs
         start = max(2, last_data_row - 9)
-        formulas = self._get_values(
-            f"{sheet_name}!Q{start}:Q{last_data_row}",
-            value_render_option="FORMULA",
-        ).get("values", [])
+        all_q_values = col_q.get("values", [])
+        formulas = all_q_values[start - 1 : last_data_row]
 
         hist_rows: list[tuple[int, int]] = []
         for i, row in enumerate(formulas):
@@ -165,19 +168,24 @@ class IndicatorWriter:
         *,
         dry_run: bool = False,
     ) -> None:
-        """Write MACROECO BONUS (P), MACROECO SCORE (S), and ECO (T) to an INDICATOR row."""
+        """Write MACROECO BONUS (P), MACROECO SCORE (S), and ECO (T) to a row.
+
+        Writes via update (not append) so arrayformulas in A-O are untouched.
+        """
         macroeco_score = 1 + macroeco_bonus
+
         logger.info(
-            "Write values row %d → P=%.2f | S=%.2f | T=%s",
+            "Write INDICATOR row %d → P=%.2f | S=%.2f | T=%s",
             row,
             macroeco_bonus,
             macroeco_score,
             eco[:60],
         )
-        if not dry_run:
-            self._update_values(f"{sheet_name}!P{row}", [[macroeco_bonus]])
-            self._update_values(f"{sheet_name}!S{row}", [[macroeco_score]])
-            self._update_values(f"{sheet_name}!T{row}", [[eco]])
+        if dry_run:
+            return
+
+        self._update_values(f"{sheet_name}!P{row}", [[macroeco_bonus]])
+        self._update_values(f"{sheet_name}!S{row}:T{row}", [[macroeco_score, eco]])
 
     def read_back(
         self,
@@ -245,7 +253,7 @@ class IndicatorWriter:
         col_a = self._get_values(f"{sheet_name}!A:A")
         rows = col_a.get("values", [])
         for i, row in enumerate(rows[1:], start=2):  # skip header
-            if row and str(row[0]).strip() == date_str:
+            if row and _dates_match(str(row[0]).strip(), date_str):
                 # Check if column P (MACROECO BONUS) is already filled
                 p_val = self._get_values(f"{sheet_name}!P{i}")
                 p_rows = p_val.get("values", [])
@@ -274,9 +282,12 @@ class IndicatorWriter:
         1. Idempotency check (skip if date already exists, unless --force)
         2. Freeze the older HISTORIQUE row (inline formulas)
         3. Demote the newer HISTORIQUE row (R102 → R101)
-        4. Write MACROECO BONUS + ECO to the new row
-        5. Write HISTORIQUE R102 refs to the new row
-        6. Wait and read back FINAL INDICATOR + CONCLUSION
+        4. Copy formulas A-O from last row to new row (drag down)
+        5. Overwrite A with correct TECHNICALS date
+        6. Wait for formulas (B-O) to compute
+        7. Write P, S, T to the new row
+        8. Write HISTORIQUE R102 refs to the new row (Q/R)
+        9. Wait and read back FINAL INDICATOR + CONCLUSION
         """
         # Idempotency: check if data for this date already exists
         if target_date_str and not force:
@@ -297,17 +308,30 @@ class IndicatorWriter:
             sheet_name, state.newer_row, state.lower_ref, dry_run=dry_run
         )
 
-        # Step 3: write values to new row
+        # Step 3: copy formulas A-O from last row to new row
+        if not dry_run:
+            self._copy_formulas_down(sheet_name, state.last_data_row, new_row)
+
+        # Step 4: overwrite A with the correct TECHNICALS date
+        if not dry_run and target_date_str:
+            self._update_values(f"{sheet_name}!A{new_row}", [[target_date_str]])
+            logger.info("Wrote date A%d=%s", new_row, target_date_str)
+
+        # Step 5: wait for formulas (B-O) to compute
+        if not dry_run:
+            self._wait_for_formulas(sheet_name, new_row)
+
+        # Step 6: write P, S, T to the new row
         self.write_indicator_values(
             sheet_name, new_row, macroeco_bonus, eco, dry_run=dry_run
         )
 
-        # Step 4: write HISTORIQUE refs to new row (gets the higher ref)
+        # Step 7: write HISTORIQUE refs to new row (gets the higher ref)
         self.write_historique_refs(
             sheet_name, new_row, state.higher_ref, dry_run=dry_run
         )
 
-        # Step 5: read back
+        # Step 8: read back
         if dry_run:
             logger.info("[DRY RUN] Skipping read-back for row %d", new_row)
             return ReadBackResult(
@@ -319,6 +343,101 @@ class IndicatorWriter:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _get_sheet_id(self, sheet_name: str) -> int:
+        """Get numeric sheet ID from sheet name (required for batchUpdate)."""
+        try:
+            meta = (
+                self.service.spreadsheets()
+                .get(
+                    spreadsheetId=self.spreadsheet_id,
+                    fields="sheets.properties",
+                )
+                .execute()
+            )
+            for sheet in meta.get("sheets", []):
+                props = sheet.get("properties", {})
+                if props.get("title") == sheet_name:
+                    return props["sheetId"]
+            raise IndicatorWriterError(f"Sheet '{sheet_name}' not found in spreadsheet")
+        except HttpError as exc:
+            raise IndicatorWriterError(
+                f"Failed to get sheet ID for '{sheet_name}': {exc}"
+            ) from exc
+
+    def _copy_formulas_down(
+        self, sheet_name: str, source_row: int, target_row: int
+    ) -> None:
+        """Copy formulas from columns A-O of source_row to target_row.
+
+        Uses CopyPasteRequest (PASTE_FORMULA) — equivalent to dragging
+        formulas down in the UI. Relative references auto-adjust.
+        """
+        sheet_id = self._get_sheet_id(sheet_name)
+        # Grid ranges use 0-based indices
+        request = {
+            "requests": [
+                {
+                    "copyPaste": {
+                        "source": {
+                            "sheetId": sheet_id,
+                            "startRowIndex": source_row - 1,
+                            "endRowIndex": source_row,
+                            "startColumnIndex": 0,  # A
+                            "endColumnIndex": 15,  # O (exclusive)
+                        },
+                        "destination": {
+                            "sheetId": sheet_id,
+                            "startRowIndex": target_row - 1,
+                            "endRowIndex": target_row,
+                            "startColumnIndex": 0,
+                            "endColumnIndex": 15,
+                        },
+                        "pasteType": "PASTE_FORMULA",
+                    }
+                }
+            ]
+        }
+        try:
+            self.service.spreadsheets().batchUpdate(
+                spreadsheetId=self.spreadsheet_id, body=request
+            ).execute()
+            logger.info(
+                "Copied formulas A-O from row %d → row %d", source_row, target_row
+            )
+        except HttpError as exc:
+            raise IndicatorWriterError(
+                f"CopyPaste A-O failed (row {source_row}→{target_row}): {exc}"
+            ) from exc
+
+    def _wait_for_formulas(
+        self,
+        sheet_name: str,
+        row: int,
+        *,
+        max_retries: int = 5,
+        delay: float = 2.0,
+    ) -> None:
+        """Wait until formulas in A-O have computed for the given row."""
+        for attempt in range(1, max_retries + 1):
+            time.sleep(delay)
+            result = self._get_values(f"{sheet_name}!A{row}")
+            values = result.get("values", [])
+            cell = str(values[0][0]).strip() if values and values[0] else ""
+            if cell:
+                logger.info("Formulas ready: A%d=%s (attempt %d)", row, cell, attempt)
+                return
+            logger.info(
+                "Waiting for formulas on row %d (attempt %d/%d)",
+                row,
+                attempt,
+                max_retries,
+            )
+        logger.warning(
+            "Formulas did not compute for row %d after %d attempts — proceeding",
+            row,
+            max_retries,
+        )
 
     def _get_values(
         self, range_: str, *, value_render_option: str = "FORMATTED_VALUE"
@@ -360,3 +479,49 @@ class IndicatorWriter:
             raise IndicatorWriterError(
                 f"Sheets write failed ({range_}): {exc}"
             ) from exc
+
+    def _append_values(
+        self,
+        range_: str,
+        values: list[list],
+        *,
+        value_input_option: str = "USER_ENTERED",
+        insert_data_option: str = "INSERT_ROWS",
+    ) -> dict:
+        try:
+            return (
+                self.service.spreadsheets()
+                .values()
+                .append(
+                    spreadsheetId=self.spreadsheet_id,
+                    range=range_,
+                    valueInputOption=value_input_option,
+                    insertDataOption=insert_data_option,
+                    body={"values": values},
+                )
+                .execute()
+            )
+        except HttpError as exc:
+            raise IndicatorWriterError(
+                f"Sheets append failed ({range_}): {exc}"
+            ) from exc
+
+    @staticmethod
+    def _parse_row_from_range(updated_range: str) -> int:
+        """Extract row number from a range like 'INDICATOR!A351:T351'."""
+        match = re.search(r"(\d+)", updated_range.split("!")[-1])
+        if not match:
+            raise IndicatorWriterError(
+                f"Cannot parse row number from range: {updated_range}"
+            )
+        return int(match.group(1))
+
+
+def _dates_match(row_date: str, target_date: str) -> bool:
+    """Compare two MM/DD/YYYY dates ignoring leading zeros."""
+    try:
+        a = datetime.strptime(row_date, "%m/%d/%Y")
+        b = datetime.strptime(target_date, "%m/%d/%Y")
+        return a == b
+    except (ValueError, TypeError):
+        return row_date == target_date

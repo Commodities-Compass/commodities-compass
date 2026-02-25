@@ -182,8 +182,15 @@ Bloc très court listant les trois signaux techniques ou seuils critiques à sui
 
 E **IMPORTANT** Format final OBLIGATOIRE ET STRICT :
 
-Tu DOIS répondre UNIQUEMENT avec un objet JSON valide, sans texte autour :
-{{"decision": "OPEN ou MONITOR ou HEDGE", "confiance": 3, "direction": "HAUSSIERE ou BAISSIERE ou NEUTRE", "conclusion": "Texte complet de la conclusion. Chaque groupe d'idées séparé par un double saut de ligne. Pas de Markdown. Pas de phrases vagues. Chaque phrase concise et commençant une nouvelle ligne."}}
+Tu DOIS répondre UNIQUEMENT avec un objet JSON valide, sans texte autour.
+
+Le champ "conclusion" doit OBLIGATOIREMENT suivre ce format exact :
+- Ligne 1 : commence par "> " suivi d'une phrase résumé de la direction du marché
+- Lignes suivantes : chaque indicateur analysé sur sa propre ligne, commençant par "        • " (8 espaces + bullet •)
+- Section "A SURVEILLER" : une ligne commençant par "> A SURVEILLER AUJOURD'HUI:" suivie des seuils critiques en "        • " bullets
+- Pas de Markdown. Pas de phrases vagues. Chaque phrase concise avec des chiffres.
+
+{{"decision": "OPEN ou MONITOR ou HEDGE", "confiance": 3, "direction": "HAUSSIERE ou BAISSIERE ou NEUTRE", "conclusion": "> Le CLOSE a diminué passant de X à Y, indiquant une tendance baissière.\\n        • Le VOLUME a baissé de X à Y, montrant une réduction de l'activité.\\n        • OPEN INTEREST a réduit de X à Y, suggérant un repli des positions.\\n        • Le RSI est à X, signifiant une situation de survente.\\n        • MACD est négatif à X, confirmant la tendance baissière.\\n        • La volatilité implicite est à X%, indiquant les anticipations du marché.\\n        • Le STOCK EU a augmenté, passant de X à Y.\\n> A SURVEILLER AUJOURD'HUI:\\n        • RSI sous 40 = risque de cassure baissière.\\n        • Cassure haussière si CLOSE dépasse la résistance à X.\\n        • Monitorer le niveau de SUPPORT à X."}}
 """
 
 

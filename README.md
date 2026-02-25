@@ -109,7 +109,8 @@ commodities-compass/
 │   ├── scripts/           # Data import and utility scripts
 │   │   ├── barchart_scraper/  # Daily Barchart scraper (Playwright)
 │   │   ├── ice_stocks_scraper/ # ICE certified stocks scraper (httpx)
-│   │   └── cftc_scraper/      # Weekly CFTC COT scraper (httpx)
+│   │   ├── cftc_scraper/      # Weekly CFTC COT scraper (httpx)
+│   │   └── daily_analysis/    # Daily AI analysis pipeline (replaces Make.com)
 │   ├── alembic/           # Database migrations
 │   └── pyproject.toml     # Python dependencies and config
 ├── frontend/              # React frontend
@@ -230,6 +231,32 @@ All scrapers:
 - Monitored by Sentry Crons (missed run detection)
 - Deploy independently on Railway
 
+## Daily Analysis Pipeline
+
+The core AI analysis engine, replacing the Make.com DAILY BOT AI scenario. Reads market data, calls OpenAI twice, writes trading decisions back to Google Sheets.
+
+- **Schedule**: `00 23 * * 1-5` (11:00 PM UTC, weekdays)
+- **Location**: `backend/scripts/daily_analysis/`
+- **CLI**: `poetry run daily-analysis --sheet production [--dry-run] [--date YYYY-MM-DD] [--force]`
+
+### Pipeline Steps
+
+1. **Read** TECHNICALS (last 2 rows, 42 variables), BIBLIO_ALL (macronews), METEO_ALL (weather)
+2. **LLM Call #1** (gpt-4-turbo, T=1.0) — Macro/weather analysis → MACROECO_BONUS + ECO
+3. **Write to INDICATOR** — Copy formulas A-O (CopyPasteRequest), set date, write P/S/T, write Q/R HISTORIQUE refs
+4. **Read back** FINAL INDICATOR + CONCLUSION (retry with exponential backoff)
+5. **LLM Call #2** (gpt-4-turbo, T=0.7) — Trading decision → DECISION/CONFIANCE/DIRECTION/CONCLUSION
+6. **Write to TECHNICALS** — Update AO-AR on existing row
+
+### Key Features
+
+- **Idempotency**: Checks for existing data before writing, `--force` to overwrite
+- **Backfill**: `--date YYYY-MM-DD` to run for a past date
+- **HISTORIQUE row-shift**: Automated 2-slot circular buffer (freeze/demote/new)
+- **Formula management**: Copies A-O formulas via Google Sheets batchUpdate API (CopyPasteRequest)
+- **Multi-provider LLM**: `--llm-provider openai|anthropic` with configurable model
+- **Structured output**: Pydantic models replace fragile regex parsing
+
 ## Monitoring & Observability
 
 All services are monitored via [Sentry](https://commodities-compass.sentry.io/) with alerts routed to `#dev-monitoring` on Slack.
@@ -244,18 +271,19 @@ All services are monitored via [Sentry](https://commodities-compass.sentry.io/) 
 | **Barchart scraper** | Scrape results (contract, price, volume, OI, IV), cron check-ins |
 | **ICE Stocks scraper** | Stock data (tonnes, bags), cron check-ins |
 | **CFTC scraper** | Commercial net position, cron check-ins |
+| **Daily analysis** | LLM token usage, sheet writes (INDICATOR + TECHNICALS), pipeline timing, cron check-ins |
 
 ### Service Tags
 
 Every event is tagged with `service` for filtering in the Sentry dashboard:
 
 ```
-frontend | fastapi | daily-import | barchart-scraper | ice-stocks-scraper | cftc-scraper
+frontend | fastapi | daily-import | barchart-scraper | ice-stocks-scraper | cftc-scraper | daily-analysis
 ```
 
 ### Environment Variables (Production)
 
-**Backend + scrapers + daily import (5 Railway services):**
+**Backend + scrapers + daily import + daily analysis (6 Railway services):**
 
 | Variable | Required | Notes |
 |----------|----------|-------|

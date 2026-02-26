@@ -24,9 +24,9 @@ SHEET_NAMES: dict[str, dict[Provider, str]] = {
         Provider.GEMINI: "BIBLIO_ALL_STAGING_GEMINI",
     },
     "production": {
-        Provider.CLAUDE: "BIBLIO_ALL",
+        Provider.CLAUDE: "BIBLIO_ALL_STAGING_CLAUDE",
         Provider.OPENAI: "BIBLIO_ALL",
-        Provider.GEMINI: "BIBLIO_ALL",
+        Provider.GEMINI: "BIBLIO_ALL_STAGING_GEMINI",
     },
 }
 

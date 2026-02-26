@@ -72,6 +72,7 @@ lint = "app.lint:main"
 import = "app.services.data_import:main"
 press-review = "scripts.press_review_agent.main:main"
 daily-analysis = "scripts.daily_analysis.main:main"
+compass-brief = "scripts.compass_brief.main:main"
 
 [build-system]
 requires = ["poetry-core"]

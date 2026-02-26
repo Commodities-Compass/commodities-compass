@@ -112,6 +112,7 @@ def main() -> int:
         user_prompt = USER_PROMPT_TEMPLATE.format(
             date=date_str,
             close=close_price,
+            source_count=successful_sources,
             sources_text=sources_text,
         )
         logger.info(

@@ -87,9 +87,9 @@ MIN_SOURCES_REQUIRED = 2
 VALIDATION = {
     "resume_min_chars": 200,
     "resume_max_chars": 8000,
-    "mots_cle_min_chars": 50,
+    "mots_cle_min_chars": 20,
     "mots_cle_max_chars": 2000,
-    "impact_min_chars": 80,
+    "impact_min_chars": 60,
     "impact_max_chars": 3000,
 }
 
@@ -98,29 +98,45 @@ for professional cocoa traders. Your analysis feeds into an automated trading in
 system (Commodities Compass).
 
 Your output must be a valid JSON object (no markdown wrapping) with exactly 3 fields:
-- "resume": A thorough French market analysis (800-1200 words) covering:
-  * MARCHE: Today's price action on London (ICE) and New York, % changes, context
-  * FONDAMENTAUX: Surplus/deficit projections (StoneX, ICCO, Rabobank), grindings data, demand trends
-  * OFFRE: Ivory Coast arrivals, Ghana situation, weather impact, production outlook
-  * SENTIMENT MARCHE: Short-term vs medium-term outlook, key risks, technical signals
-- "mots_cle": A single string of semicolon-separated keywords with key numbers
-  (prices, % changes, volumes, projections). Example format:
-  "Londres CAH26 2 750 GBP/t (-7%) ; New York 3 797 $/t (-7,44%) ; StoneX surplus 2025/26 287 kt"
-- "impact_synthetiques": A single French paragraph (150-250 words) synthesizing
-  the net market impact for a cocoa hedger/trader.
+
+- "resume": A French market analysis (400-1200 words, proportional to source richness).
+  Structure with the following sections — include a section ONLY if today's sources provide
+  relevant information for it:
+  * MARCHE (always include): Today's price action on London (ICE) and New York using the
+    provided Close price and any price data found in sources
+  * FONDAMENTAUX: Surplus/deficit projections, grindings data, demand trends — only if
+    mentioned in today's sources
+  * OFFRE: Ivory Coast arrivals, Ghana situation, weather impact, production outlook — only
+    if mentioned in today's sources
+  * SENTIMENT MARCHE: Short-term vs medium-term outlook, key risks — synthesize only from
+    signals present in sources
+  On a thin news day, MARCHE alone with brief sentiment is acceptable.
+
+- "mots_cle": A single string of semicolon-separated keywords extracting ONLY numbers and
+  data points that appear in the provided sources. Can be short if few data points are
+  available. Example format:
+  "Londres CAH26 2 750 GBP/t (-7%) ; New York 3 797 $/t (-7,44%) ; surplus 2025/26 287 kt"
+
+- "impact_synthetiques": A single French paragraph (100-250 words) synthesizing the net
+  market impact for a cocoa hedger/trader based on available information.
 
 Rules:
 - Write in French (financial/commodity register)
-- Include specific numbers, sources, and data points -- never vague statements
-- If a data point is unavailable from today's sources, reference the most recent known value
-- Do not hallucinate numbers -- only use data from the provided sources
+- GROUNDING: Every number you cite MUST be traceable to either the provided Close price or
+  a specific source in the input. If you cannot attribute a figure, omit it.
+- If a data point is not present in today's sources, do NOT fill the gap from memory.
+  State "non disponible dans les sources du jour" or simply skip that aspect.
+- Prefer a qualitative statement ("le marché reste sous pression") over fabricating a
+  precise figure when no source provides one.
 - Be direct and analytical, not promotional
+- Shorter and accurate is always better than long and speculative
 - Output ONLY the JSON object, no markdown fences, no commentary"""
 
 USER_PROMPT_TEMPLATE = """Date: {date}
 London Cocoa Close: {close} GBP/t
 
-Sources available today:
+Sources available today ({source_count} sources scraped):
 {sources_text}
 
-Generate the daily cocoa press review."""
+Generate the daily cocoa press review. Calibrate depth and length to the richness of the
+sources above — do not pad with unverifiable information."""

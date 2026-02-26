@@ -69,7 +69,7 @@ The service account cannot create files in regular (My Drive) folders due to Goo
 |-------|-------|
 | Service name | `compass-brief` |
 | Image | Shared backend Dockerfile |
-| Command | `bash /app/backend/scripts/compass_brief/run_brief.sh` |
+| Command | `bash /app/scripts/compass_brief/run_brief.sh` |
 | Schedule | `15 23 * * 1-5` (11:15 PM UTC, weekdays) |
 | Sentry monitor slug | `compass-brief` |
 

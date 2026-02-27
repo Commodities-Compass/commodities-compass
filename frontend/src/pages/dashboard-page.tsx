@@ -36,11 +36,6 @@ const getYesterdayDate = (dateStr: string): string | undefined => {
   return convertToISODate(dateStr, -1);
 };
 
-// Get today's date in ISO format (no offset)
-const getTodayDate = (dateStr: string): string | undefined => {
-  return convertToISODate(dateStr, 0);
-};
-
 export default function DashboardPage() {
   const today = new Date().toLocaleDateString('en-US', {
     year: 'numeric',
@@ -68,7 +63,7 @@ export default function DashboardPage() {
 
       <PositionStatus 
         targetDate={getYesterdayDate(currentDate)} 
-        audioDate={getTodayDate(currentDate)} 
+        audioDate={getYesterdayDate(currentDate)}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">

@@ -71,20 +71,30 @@ class SheetsWriter:
             return
 
         try:
+            # Explicit row detection + update() instead of append().
+            # append() with INSERT_ROWS misplaces rows on sheets with
+            # Table objects (inserts at top instead of bottom on BIBLIO_ALL).
+            existing = (
+                self.service.spreadsheets()
+                .values()
+                .get(spreadsheetId=SPREADSHEET_ID, range=f"{sheet_name}!A:A")
+                .execute()
+            )
+            next_row = len(existing.get("values", [])) + 1
+            target_range = f"{sheet_name}!A{next_row}:F{next_row}"
+
             result = (
                 self.service.spreadsheets()
                 .values()
-                .append(
+                .update(
                     spreadsheetId=SPREADSHEET_ID,
-                    range=f"{sheet_name}!A:F",
+                    range=target_range,
                     valueInputOption="USER_ENTERED",
-                    insertDataOption="INSERT_ROWS",
                     body={"values": [row]},
                 )
                 .execute()
             )
-            updates = result.get("updates", {})
-            updated_range = updates.get("updatedRange", "unknown")
+            updated_range = result.get("updatedRange", "unknown")
             logger.info(
                 f"[{provider.value}] Wrote to '{sheet_name}' at {updated_range}"
             )

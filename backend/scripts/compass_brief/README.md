@@ -79,7 +79,7 @@ The service account cannot create files in regular (My Drive) folders due to Goo
  9:00 PM UTC  -- Barchart scraper       -> TECHNICALS (CLOSE, HIGH, LOW, VOL, OI, IV)
  9:10 PM UTC  -- ICE stocks + CFTC      -> TECHNICALS (STOCK US, COM NET US)
  9:10 PM UTC  -- Press review agent     -> BIBLIO_ALL
- 9:10 PM UTC  -- 1DAY METEO (Make.com)  -> METEO_ALL
+ 9:10 PM UTC  -- Meteo agent            -> METEO_ALL
  9:20 PM UTC  -- Daily analysis          -> INDICATOR + TECHNICALS (DECISION, SCORE)
  9:30 PM UTC  -- Compass brief          -> Drive (.txt)  ← this (reads all 4 sheets)
 ```

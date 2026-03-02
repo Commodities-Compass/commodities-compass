@@ -2,7 +2,7 @@
 
 ## What is this product?
 
-A **Business Intelligence platform for cocoa commodities trading** that provides real-time market insights, technical analysis (40+ indicators), and daily trading signals. The system ingests data from Google Sheets (updated daily via Make.com automation), stores it in PostgreSQL, and serves it through a dashboard with gauges, charts, and recommendations.
+A **Business Intelligence platform for cocoa commodities trading** that provides real-time market insights, technical analysis (40+ indicators), and daily trading signals. The system ingests data from Google Sheets (updated daily via Railway cron jobs), stores it in PostgreSQL, and serves it through a dashboard with gauges, charts, and recommendations.
 
 ---
 
@@ -88,14 +88,14 @@ commodities-compass/
 
 ## Data Pipeline
 
-Data flows daily via **Make.com automation** from Google Sheets to PostgreSQL:
+Data flows daily via **Railway cron jobs** from Google Sheets to PostgreSQL:
 
-| Time | Sheet | Model | Content |
-|------|-------|-------|---------|
-| 8:30 PM | TECHNICALS | Technicals | 40+ OHLCV/indicators per day |
-| 10:30 PM | BIBLIO_ALL | MarketResearch | Research articles with OpenAI impact synthesis |
-| 10:30 PM | METEO_ALL | WeatherData | Weather from Ghana/Cote d'Ivoire (10 locations) |
-| 11:00 PM | INDICATOR | Indicator | Normalized scores + OpenAI macro analysis |
+| Time (UTC) | Sheet | Model | Content |
+|------------|-------|-------|---------|
+| 9:00 PM | TECHNICALS | Technicals | 40+ OHLCV/indicators per day |
+| 9:10 PM | BIBLIO_ALL | MarketResearch | Research articles with LLM impact synthesis |
+| 9:10 PM | METEO_ALL | WeatherData | Weather from Ghana/Cote d'Ivoire (6 locations) |
+| 9:20 PM | INDICATOR | Indicator | Normalized scores + OpenAI macro analysis |
 
 The ETL service (`backend/app/services/data_import.py`) does a **full table refresh** on each import (truncate + insert). Column mappings are defined in `backend/app/core/excel_mappings.py`.
 

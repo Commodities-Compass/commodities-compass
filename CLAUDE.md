@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Commodities Compass is a Business Intelligence application for commodities trading, providing real-time market insights, technical analysis, and trading signals for cocoa (ICE contracts). This is a monorepo with a FastAPI backend and React frontend, using Auth0 for authentication and PostgreSQL for data storage. Data is imported from Google Sheets via an ETL pipeline and updated daily via Make.com automations.
+Commodities Compass is a Business Intelligence application for commodities trading, providing real-time market insights, technical analysis, and trading signals for cocoa (ICE contracts). This is a monorepo with a FastAPI backend and React frontend, using Auth0 for authentication and PostgreSQL for data storage. Data is imported from Google Sheets via an ETL pipeline and updated daily via Railway cron jobs.
 
 ## Development Commands
 
@@ -140,7 +140,7 @@ Frontend code uses Auth0 variables (not VITE_ prefixed) exposed via custom Vite 
 
 ## Data Pipeline
 
-Data flows from Google Sheets to PostgreSQL via ETL, updated daily by Make.com automations:
+Data flows from Google Sheets to PostgreSQL via ETL, updated daily by Railway cron jobs:
 
 1. **Google Sheets ETL** implemented in `app/services/data_import.py` (run with `poetry run import`)
 2. **Full refresh strategy**: Each import clears existing table data and re-inserts all rows

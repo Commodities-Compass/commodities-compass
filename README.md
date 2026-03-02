@@ -110,7 +110,10 @@ commodities-compass/
 │   │   ├── barchart_scraper/  # Daily Barchart scraper (Playwright)
 │   │   ├── ice_stocks_scraper/ # ICE certified stocks scraper (httpx)
 │   │   ├── cftc_scraper/      # Weekly CFTC COT scraper (httpx)
-│   │   └── daily_analysis/    # Daily AI analysis pipeline (replaces Make.com)
+│   │   ├── press_review_agent/  # Daily press review agent (LLM)
+│   │   ├── meteo_agent/         # Daily weather analysis agent (LLM)
+│   │   ├── daily_analysis/      # Daily AI analysis pipeline (LLM)
+│   │   └── compass_brief/       # Daily brief generator (Drive upload)
 │   ├── alembic/           # Database migrations
 │   └── pyproject.toml     # Python dependencies and config
 ├── frontend/              # React frontend
@@ -235,7 +238,7 @@ All scrapers:
 
 The core AI analysis engine, replacing the Make.com DAILY BOT AI scenario. Reads market data, calls OpenAI twice, writes trading decisions back to Google Sheets.
 
-- **Schedule**: `00 23 * * 1-5` (11:00 PM UTC, weekdays)
+- **Schedule**: `20 21 * * 1-5` (9:20 PM UTC, weekdays)
 - **Location**: `backend/scripts/daily_analysis/`
 - **CLI**: `poetry run daily-analysis --sheet production [--dry-run] [--date YYYY-MM-DD] [--force]`
 
@@ -271,14 +274,17 @@ All services are monitored via [Sentry](https://commodities-compass.sentry.io/) 
 | **Barchart scraper** | Scrape results (contract, price, volume, OI, IV), cron check-ins |
 | **ICE Stocks scraper** | Stock data (tonnes, bags), cron check-ins |
 | **CFTC scraper** | Commercial net position, cron check-ins |
+| **Press review agent** | LLM token usage, validation results, sheet writes (BIBLIO_ALL), cron check-ins |
+| **Meteo agent** | Weather data fetch, LLM token usage, sheet writes (METEO_ALL), cron check-ins |
 | **Daily analysis** | LLM token usage, sheet writes (INDICATOR + TECHNICALS), pipeline timing, cron check-ins |
+| **Compass brief** | Brief generation, Drive upload, cron check-ins |
 
 ### Service Tags
 
 Every event is tagged with `service` for filtering in the Sentry dashboard:
 
 ```
-frontend | fastapi | daily-import | barchart-scraper | ice-stocks-scraper | cftc-scraper | daily-analysis
+frontend | fastapi | daily-import | barchart-scraper | ice-stocks-scraper | cftc-scraper | press-review-agent | meteo-agent | daily-analysis | compass-brief
 ```
 
 ### Environment Variables (Production)

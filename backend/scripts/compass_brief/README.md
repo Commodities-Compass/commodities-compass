@@ -70,7 +70,7 @@ The service account cannot create files in regular (My Drive) folders due to Goo
 | Service name | `compass-brief` |
 | Image | Shared backend Dockerfile |
 | Command | `bash /app/scripts/compass_brief/run_brief.sh` |
-| Schedule | `15 23 * * 1-5` (11:15 PM UTC, weekdays) |
+| Schedule | `30 21 * * 1-5` (9:30 PM UTC, weekdays) |
 | Sentry monitor slug | `compass-brief` |
 
 ### Pipeline position
@@ -78,13 +78,13 @@ The service account cannot create files in regular (My Drive) folders due to Goo
 ```
  9:00 PM UTC  -- Barchart scraper       -> TECHNICALS (CLOSE, HIGH, LOW, VOL, OI, IV)
  9:10 PM UTC  -- ICE stocks + CFTC      -> TECHNICALS (STOCK US, COM NET US)
- 9:30 PM UTC  -- Press review agent     -> BIBLIO_ALL
-10:30 PM UTC  -- 1DAY METEO (Make.com)  -> METEO_ALL
-11:00 PM UTC  -- Daily analysis          -> INDICATOR + TECHNICALS (DECISION, SCORE)
-11:15 PM UTC  -- Compass brief           -> Drive (.txt)
+ 9:10 PM UTC  -- Press review agent     -> BIBLIO_ALL
+ 9:10 PM UTC  -- 1DAY METEO (Make.com)  -> METEO_ALL
+ 9:20 PM UTC  -- Daily analysis          -> INDICATOR + TECHNICALS (DECISION, SCORE)
+ 9:30 PM UTC  -- Compass brief          -> Drive (.txt)  ← this (reads all 4 sheets)
 ```
 
-Runs 15 minutes after daily-analysis to ensure all data is available.
+
 
 ## Manual workflow (current)
 

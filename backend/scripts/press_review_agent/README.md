@@ -99,14 +99,15 @@ Each run appends a new row at the bottom of the sheet (chronological order).
 ## Pipeline Schedule (Railway Cron)
 
 ```
-9:00 PM UTC  — Barchart scraper writes CLOSE to TECHNICALS
-9:00 PM UTC  — Press review agent reads CLOSE + fetches news + writes BIBLIO_ALL  ← this
-9:10 PM UTC  — ICE stocks + CFTC scrapers
-10:15 PM UTC — Railway ETL imports all sheets to PostgreSQL
-11:00 PM UTC — DAILY BOT AI reads everything → INDICATOR
+ 9:00 PM UTC  -- Barchart scraper       -> TECHNICALS (CLOSE, HIGH, LOW, VOL, OI, IV)
+ 9:10 PM UTC  -- ICE stocks + CFTC      -> TECHNICALS (STOCK US, COM NET US)
+ 9:10 PM UTC  -- Press review agent     -> BIBLIO_ALL  ← this
+ 9:10 PM UTC  -- 1DAY METEO (Make.com)  -> METEO_ALL
+ 9:20 PM UTC  -- Daily analysis          -> INDICATOR + TECHNICALS (DECISION, SCORE)
+ 9:30 PM UTC  -- Compass brief          -> Drive (.txt)
 ```
 
-Cron: `0 21 * * 1-5` (weekdays only, runs in parallel with Barchart scraper)
+Cron: `10 21 * * 1-5` (9:10 PM UTC weekdays, after Barchart scraper writes CLOSE)
 
 ## File Structure
 
@@ -165,7 +166,7 @@ load_dotenv(Path('.env'))
 - [x] JSON extractor hardened — handles markdown fences, literal newlines, truncation
 - [x] Live staging test — all 3 providers write successfully
 - [x] Pushed to main — Railway auto-deploy triggered
-- [ ] Create Railway cron service (`0 21 * * 1-5`, command: `poetry run press-review --sheet production`)
+- [ ] Create Railway cron service (`10 21 * * 1-5`, command: `poetry run press-review --sheet production`)
 - [ ] Add env vars to Railway: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`
 - [ ] Run 3-day A/B test, compare outputs in staging sheets
 - [ ] Pick winner, switch to single-provider production mode

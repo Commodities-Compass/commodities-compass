@@ -215,7 +215,7 @@ LLM_MODEL=gpt-4-turbo                            # Model override
 
 ```
 Service:  Railway cron "daily-analysis" (shared Dockerfile)
-Schedule: 00 23 * * 1-5  (11:00 PM UTC, weekdays)
+Schedule: 20 21 * * 1-5  (9:20 PM UTC, weekdays)
 Command:  poetry run daily-analysis --sheet production
 Monitor:  Sentry cron slug "daily-analysis"
 ```
@@ -224,11 +224,11 @@ Monitor:  Sentry cron slug "daily-analysis"
 
 ```
  9:00 PM UTC  -- Barchart scraper       -> TECHNICALS (CLOSE, HIGH, LOW, VOL, OI, IV)
- 9:10 PM UTC  -- ICE stocks scraper     -> TECHNICALS (STOCK US)
- 9:10 PM UTC  -- CFTC scraper           -> TECHNICALS (COM NET US)
- 9:30 PM UTC  -- Press review agent     -> BIBLIO_ALL
-10:30 PM UTC  -- 1DAY METEO (Make.com)  -> METEO_ALL
-11:00 PM UTC  -- daily-analysis (this)  -> INDICATOR + TECHNICALS
+ 9:10 PM UTC  -- ICE stocks + CFTC      -> TECHNICALS (STOCK US, COM NET US)
+ 9:10 PM UTC  -- Press review agent     -> BIBLIO_ALL
+ 9:10 PM UTC  -- 1DAY METEO (Make.com)  -> METEO_ALL
+ 9:20 PM UTC  -- Daily analysis (this)  -> INDICATOR + TECHNICALS (DECISION, SCORE)
+ 9:30 PM UTC  -- Compass brief          -> Drive (.txt)
 ```
 
 ## Not Yet Implemented

@@ -145,10 +145,10 @@ Data flows from Google Sheets to PostgreSQL via ETL, updated daily by Make.com a
 1. **Google Sheets ETL** implemented in `app/services/data_import.py` (run with `poetry run import`)
 2. **Full refresh strategy**: Each import clears existing table data and re-inserts all rows
 3. **5 sheets imported** with column mappings defined in `app/core/excel_mappings.py`:
-   - **TECHNICALS** → `technicals` table: OHLCV data with 40+ technical indicators (RSI, MACD, ATR, Bollinger Bands, pivot points, etc.), trading signals (OPEN/HEDGE/MONITOR), updated daily at 8:30 PM
-   - **INDICATOR** → `indicator` table: Normalized indicators (0-1 scale), composite scores, macroeconomic analysis (OpenAI-generated), updated daily at 11 PM
-   - **BIBLIO_ALL** → `market_research` table: Research articles with OpenAI impact synthesis, updated daily at 10:30 PM
-   - **METEO_ALL** → `weather_data` table: Agricultural weather from Ghana & Côte d'Ivoire (10 locations), updated daily at 10:30 PM
+   - **TECHNICALS** → `technicals` table: OHLCV data with 40+ technical indicators (RSI, MACD, ATR, Bollinger Bands, pivot points, etc.), trading signals (OPEN/HEDGE/MONITOR), updated daily at 9:00-9:20 PM UTC
+   - **INDICATOR** → `indicator` table: Normalized indicators (0-1 scale), composite scores, macroeconomic analysis (OpenAI-generated), updated daily at 9:20 PM UTC
+   - **BIBLIO_ALL** → `market_research` table: Research articles with LLM impact synthesis, updated daily at 9:10 PM UTC
+   - **METEO_ALL** → `weather_data` table: Agricultural weather from Ghana & Côte d'Ivoire (10 locations), updated daily at 9:10 PM UTC
    - **TEST RANGE** → `test_range` table: Color zone thresholds (RED/ORANGE/GREEN) for gauge indicators
 4. **Data transformations**: `parse_datetime`, `parse_decimal`, `parse_decimal_from_string`, `parse_integer` for handling US number formats, percentages, and formulas
 
@@ -261,7 +261,7 @@ The application integrates with Google Drive to fetch daily audio bulletins for 
    GOOGLE_DRIVE_AUDIO_FOLDER_ID="1A2B3C4D5E6F7G8H9I0J"
 
    # Optional: Separate Google Drive credentials (defaults to Google Sheets credentials)
-   GOOGLE_DRIVE_CREDENTIALS_JSON='{...}'
+   GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON='{...}'
    ```
 
 3. **Google Drive API permissions**:

@@ -27,6 +27,16 @@ from app.core.sentry import init_sentry
 logger = logging.getLogger(__name__)
 
 
+SHEETS_ERROR_VALUES = frozenset(
+    {"#REF!", "#N/A", "#VALUE!", "#DIV/0!", "#NAME?", "#NULL!", "#NUM!", "#ERROR!"}
+)
+
+
+def is_sheets_error(value: Any) -> bool:
+    """Return True if value is a Google Sheets formula error."""
+    return isinstance(value, str) and value.strip() in SHEETS_ERROR_VALUES
+
+
 class DataTransforms:
     """Data transformation utilities for cleaning Google Sheets data."""
 
@@ -225,8 +235,10 @@ class GoogleSheetsDataImporter:
                                 row[excel_col] if not pd.isna(row[excel_col]) else None
                             )
 
-                            # Convert empty strings to None
+                            # Convert empty strings and spreadsheet errors to None
                             if raw_value == "" or raw_value == "nan":
+                                raw_value = None
+                            elif is_sheets_error(raw_value):
                                 raw_value = None
 
                             # Apply transformation if specified

@@ -32,13 +32,13 @@ SHEET_NAMES: dict[str, dict[Provider, str]] = {
 
 MODEL_IDS = {
     Provider.CLAUDE: "claude-sonnet-4-5-20250929",
-    Provider.OPENAI: "gpt-4.1",
+    Provider.OPENAI: "o4-mini",
     Provider.GEMINI: "gemini-2.5-pro",
 }
 
 AUTHOR_LABELS = {
     Provider.CLAUDE: "LLM Agent (Claude Sonnet 4.5)",
-    Provider.OPENAI: "LLM Agent (GPT-4.1)",
+    Provider.OPENAI: "LLM Agent (o4-mini)",
     Provider.GEMINI: "LLM Agent (Gemini 2.5 Pro)",
 }
 
@@ -119,6 +119,12 @@ Your output must be a valid JSON object (no markdown wrapping) with exactly 3 fi
 
 - "impact_synthetiques": A single French paragraph (100-250 words) synthesizing the net
   market impact for a cocoa hedger/trader based on available information.
+
+Reasoning process (internal, before generating output):
+- For each number you plan to cite, identify the exact source passage containing it.
+- If no source passage contains the figure, omit it entirely.
+- Cross-check that percentage changes match the absolute values when both are available.
+- Only then produce the JSON.
 
 Rules:
 - Write in French (financial/commodity register)

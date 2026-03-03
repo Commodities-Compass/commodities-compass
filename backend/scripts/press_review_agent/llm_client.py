@@ -148,16 +148,17 @@ async def call_claude(system_prompt: str, user_prompt: str) -> LLMResult:
 
 
 async def call_openai(system_prompt: str, user_prompt: str) -> LLMResult:
-    """Call OpenAI GPT-4o."""
+    """Call OpenAI o4-mini."""
     provider = Provider.OPENAI
     start = time.monotonic()
     try:
         client = openai.AsyncOpenAI()
         response = await client.chat.completions.create(
             model=MODEL_IDS[provider],
-            max_tokens=8192,
+            max_completion_tokens=8192,
+            reasoning_effort="medium",
             messages=[
-                {"role": "system", "content": system_prompt},
+                {"role": "developer", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
         )

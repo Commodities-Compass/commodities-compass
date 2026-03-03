@@ -17,7 +17,7 @@ Running 3 providers in parallel for comparison before picking a winner:
 | Provider | Model | Staging Sheet |
 |----------|-------|---------------|
 | Claude | `claude-sonnet-4-5-20250929` | `BIBLIO_ALL_STAGING_CLAUDE` |
-| OpenAI | `gpt-4.1` | `BIBLIO_ALL_STAGING_OPENAI` |
+| OpenAI | `o4-mini` (reasoning_effort=medium) | `BIBLIO_ALL_STAGING_OPENAI` |
 | Gemini | `gemini-2.5-pro` | `BIBLIO_ALL_STAGING_GEMINI` |
 
 Same system prompt and news sources for all 3 — fair comparison.

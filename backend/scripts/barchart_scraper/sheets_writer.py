@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from typing import Dict, List, Optional
 from datetime import datetime
 
@@ -18,6 +19,23 @@ logger = logging.getLogger(__name__)
 
 # Google Sheets API scope (needs write access)
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+
+# YTD CONCLUSION formula template for column AS.
+# Computes a score based on INDICATOR decision vs next-day price move.
+# {row} is replaced with the actual row number at write time.
+CONCLUSION_FORMULA = (
+    '=IF(OR(INDICATOR!R{row}="", ISBLANK(B{row}), ISBLANK(B{next_row})), "",'
+    ' IF(AND(INDICATOR!R{row}="OPEN", B{next_row}>B{row}),'
+    " IF(ABS((B{next_row}-B{row})/B{row})>0.01, 1.25, 1),"
+    ' IF(AND(INDICATOR!R{row}="HEDGE", B{next_row}<B{row}),'
+    " IF(ABS((B{next_row}-B{row})/B{row})>0.01, 1.25, 1),"
+    ' IF(AND(INDICATOR!R{row}="OPEN", B{next_row}<B{row}),'
+    " -ABS((B{next_row}-B{row})/B{row})*2,"
+    ' IF(AND(INDICATOR!R{row}="HEDGE", B{next_row}>B{row}),'
+    " -ABS((B{next_row}-B{row})/B{row})*2,"
+    ' IF(AND(INDICATOR!R{row}="MONITOR", B{next_row}<>B{row}),'
+    " IF(ABS((B{next_row}-B{row})/B{row})>0.01, 1, 0.75), 0))))))"
+)
 
 
 class SheetsWriterError(Exception):
@@ -83,6 +101,30 @@ class SheetsWriter:
         logger.debug(f"Formatted row: {row}")
         return row
 
+    def _parse_row_number(self, updated_range: str) -> int:
+        """Extract row number from an updatedRange like 'TECHNICALS!A359:G359'."""
+        match = re.search(r"(\d+)", updated_range.split("!")[-1])
+        if not match:
+            raise SheetsWriterError(
+                f"Cannot parse row number from range: {updated_range}"
+            )
+        return int(match.group(1))
+
+    def _write_conclusion_formula(self, sheet_name: str, row: int) -> None:
+        """Write the CONCLUSION formula to column AS for the given row."""
+        formula = CONCLUSION_FORMULA.format(row=row, next_row=row + 1)
+        cell = f"{sheet_name}!AS{row}"
+        try:
+            self.service.spreadsheets().values().update(
+                spreadsheetId=SPREADSHEET_ID,
+                range=cell,
+                valueInputOption="USER_ENTERED",
+                body={"values": [[formula]]},
+            ).execute()
+            logger.info(f"CONCLUSION formula written to {cell}")
+        except HttpError as e:
+            logger.warning(f"Failed to write CONCLUSION formula to {cell}: {e}")
+
     def append_row(
         self,
         data: Dict[str, Optional[float]],
@@ -132,6 +174,10 @@ class SheetsWriter:
             logger.info(
                 f"Successfully wrote {updated_rows} row(s) to '{sheet_name}' at {updated_range}"
             )
+
+            # Write CONCLUSION formula (column AS) for the new row
+            new_row = self._parse_row_number(updated_range)
+            self._write_conclusion_formula(sheet_name, new_row)
 
         except HttpError as e:
             logger.error(f"Google Sheets API error: {e}")

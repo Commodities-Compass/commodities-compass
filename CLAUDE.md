@@ -86,7 +86,7 @@ The frontend uses modern React patterns:
 - **API Layer** - `src/api/` contains:
   - `client.ts` - Axios client with automatic token injection and 401 interceptor (dispatches `auth:token-expired` event)
   - `dashboard.ts` - Dashboard API service functions for all endpoints
-- **State Management** - React Query (TanStack Query) with 24-hour stale time for daily trading data
+- **State Management** - React Query (TanStack Query) — global default stale time is 5 minutes (`main.tsx`), but all dashboard hooks in `useDashboard.ts` override to 24-hour stale time (no auto-refetch) since trading data updates once daily
 - **Routing** - React Router with `ProtectedRoute` wrapper requiring authentication
   - `/` redirects to `/dashboard`
   - `/login` - Auth0 login page with redirect loop detection
@@ -168,12 +168,12 @@ Google Sheets TECHNICALS row:
 ### Barchart Scraper (`backend/scripts/barchart_scraper/`)
 
 - **Data**: C, H, L, V, OI, IV for London cocoa #7 (ICE Europe, GBP/tonne)
-- **Contract selection**: Uses specific contract code (e.g., `CAH26`), never Barchart's `CA*0` alias. Both prices and IV URLs use our roll logic.
-- **Contract roll**: Rolls to next contract **15 days before expiry** (last business day of delivery month). Delivery months: H(Mar), K(May), N(Jul), U(Sep), Z(Dec). CA\*0 is NOT used because Barchart rolls it on their own schedule (volume-based), which doesn't match our 15-day rule.
+- **Contract selection**: Explicit `ACTIVE_CONTRACT` env var (e.g., `CAK26`). No automatic roll logic — contract switches are manual. Delivery months: H(Mar), K(May), N(Jul), U(Sep), Z(Dec). CA\*0 is NOT used because Barchart rolls it on their own schedule (volume-based), which doesn't match our timing.
 - **Source**: `https://www.barchart.com/futures/quotes/{contract}/overview` (OHLCV+OI) + `/{contract}/volatility-greeks` (IV)
 - **Method**: Playwright browser → extracts OHLCV+OI from server-rendered inline JSON raw blocks (max-volume heuristic to pick the correct block among 4+). XHR API response used as backup for C/H/L/V (API omits OI). IV via XHR interception or HTML regex fallback.
 - **Volume**: Raw contract count (no conversion)
 - **IV conversion**: percentage → decimal (e.g., `55.38` → `0.5538` in Sheets)
+- **Post-write**: Auto-extends CONCLUSION formula in column AS (YTD scoring of INDICATOR decisions vs next-day price moves)
 - **Cron**: `0 21 * * 1-5` (9 PM UTC weekdays only)
 - **CLI**: `python -m scripts.barchart_scraper.main --sheet production [--dry-run] [--verbose] [--headful]`
 
@@ -198,11 +198,53 @@ Google Sheets TECHNICALS row:
 
 **Bug 1 — Wrong raw block (old scraper)**: Used `re.search` → picked FIRST of 4+ raw blocks. The first block was often a next-month contract or options data → wrong V and OI. Fix: max-volume heuristic picks the block with highest `volume` (always the main contract).
 
-**Bug 2 — CA\*0 roll mismatch**: Barchart's `CA*0` continuous symbol rolls based on volume shift, not calendar. In Feb 2026, Barchart already rolled CA\*0 to CAK26 (May) while we should track CAH26 (March) until March 16. Fix: both prices and IV URLs now use `get_current_contract_code()` which applies our 15-day-before-expiry roll rule. CA\*0 is never used in URLs.
+**Bug 2 — CA\*0 roll mismatch**: Barchart's `CA*0` continuous symbol rolls based on volume shift, not calendar. In Feb 2026, Barchart already rolled CA\*0 to CAK26 (May) while we should track CAH26 (March) until March 16. Fix: replaced auto-roll with explicit `ACTIVE_CONTRACT` env var. The scraper always uses the contract code from this env var. CA\*0 is never used in URLs.
 
 **Forensic proof of prod data errors**: Prod OI=36,333 and Close=2,438 matched CAH26's data exactly (`previousPrice=2438`, `openInterest=36333` on the CAH26 page). The human who filled prod was reading the wrong contract page (March instead of May). Prod V=3,625 was the correct raw contract count for CAH26.
 
 **Barchart page structure**: Angular SPA. XHR API (`/proxies/core-api/v1/quotes/get`) returns C/H/L/V as formatted strings (commas) but **omits OI**. Server-rendered inline JSON contains all 5 fields with raw numeric values. `networkidle` never fires (analytics polling) — use `wait_until="load"` + fixed 5s wait.
+
+## AI Agents
+
+Four LLM-powered agents run as Railway cron services, each generating content for Google Sheets or Google Drive. All share the same `backend/Dockerfile`.
+
+### Pipeline Schedule
+
+```
+ 9:00 PM UTC  -- Barchart scraper       -> TECHNICALS (CLOSE, HIGH, LOW, VOL, OI, IV)
+ 9:10 PM UTC  -- ICE stocks + CFTC      -> TECHNICALS (STOCK US, COM NET US)
+ 9:10 PM UTC  -- Press review agent     -> BIBLIO_ALL
+ 9:10 PM UTC  -- Meteo agent            -> METEO_ALL
+ 9:20 PM UTC  -- Daily analysis          -> INDICATOR + TECHNICALS (DECISION, SCORE)
+ 9:30 PM UTC  -- Compass brief          -> Drive (.txt)
+10:15 PM UTC  -- Data import ETL        -> PostgreSQL (full refresh)
+```
+
+### Press Review Agent (`backend/scripts/press_review_agent/`)
+
+- **Purpose**: Generates daily French-language cocoa press review from 6 news sources
+- **A/B test**: Running 3 providers — Claude (`claude-sonnet-4-5-20250929`), OpenAI (`o4-mini`), Gemini (`gemini-2.5-pro`)
+- **Output**: Appends row to BIBLIO_ALL (DATE, AUTEUR, RESUME, MOTS-CLE, IMPACT SYNTHETIQUES)
+- **Cron**: `10 21 * * 1-5` — **CLI**: `poetry run press-review --sheet production`
+
+### Meteo Agent (`backend/scripts/meteo_agent/`)
+
+- **Purpose**: Fetches weather data from Open-Meteo for 6 cocoa-growing locations (Ghana + Côte d'Ivoire), calls OpenAI (`gpt-4.1`) for French analysis
+- **Output**: Appends row to METEO_ALL (DATE, TEXTE, RESUME, MOTS-CLE, IMPACT SYNTHETIQUES)
+- **Cron**: `10 21 * * 1-5` — **CLI**: `poetry run meteo-agent --sheet production`
+
+### Daily Analysis (`backend/scripts/daily_analysis/`)
+
+- **Purpose**: Core AI analysis engine replacing Make.com DAILY BOT AI. Reads 42 variables from TECHNICALS + news + weather, runs 2 LLM calls (`gpt-4-turbo`), writes trading decisions
+- **LLM Call #1**: Macro/weather analysis → MACROECO_BONUS + ECO → writes to INDICATOR sheet with HISTORIQUE row-shift
+- **LLM Call #2**: Trading decision → DECISION/CONFIANCE/DIRECTION/CONCLUSION → writes to TECHNICALS cols AO-AR
+- **Cron**: `20 21 * * 1-5` — **CLI**: `poetry run daily-analysis --sheet production`
+
+### Compass Brief (`backend/scripts/compass_brief/`)
+
+- **Purpose**: Generates structured `.txt` brief from all 4 sheets, uploads to Google Drive Shared Drive for NotebookLM audio podcast generation
+- **Output**: `YYYYMMDD-CompassBrief.txt` uploaded to Drive (idempotent — updates existing file for same date)
+- **Cron**: `30 21 * * 1-5` — **CLI**: `poetry run compass-brief`
 
 ## Code Quality
 
@@ -227,6 +269,9 @@ All API endpoints are prefixed with `/v1` and include:
   - `GET /dashboard/news` - Latest market research article
   - `GET /dashboard/weather` - Latest weather update and market impact
   - `GET /dashboard/audio` - Audio file metadata with backend streaming URL
+  - `GET /dashboard/latest-indicator` - Legacy stub (use `/indicators-grid` instead)
+  - `GET /dashboard/dashboard-data` - Legacy stub (use specific endpoints instead)
+  - `GET /dashboard/summary` - Legacy stub (returns mock summary)
 - `/audio/*` - Audio streaming:
   - `GET /audio/stream` - Stream audio from Google Drive (no auth, for HTML audio element)
   - `GET /audio/info` - Audio metadata (requires auth)
@@ -295,12 +340,11 @@ The `PositionStatus` component automatically fetches and plays the audio file:
 
 ## Development Notes
 
-- Backend uses Poetry scripts: `poetry run dev`, `poetry run lint`, and `poetry run import`
+- Backend uses Poetry scripts: `poetry run dev`, `poetry run lint`, `poetry run import`, `poetry run daily-analysis`, `poetry run meteo-agent`, `poetry run compass-brief`, `poetry run press-review`
 - Frontend environment variables exposed via custom Vite `define` config (no VITE_ prefix needed)
 - Database migrations managed via Alembic with 4 existing migrations
 - Pre-commit hooks run via Husky (backend: ruff + pyright, frontend: eslint fix)
 - Development setup script available at `scripts/setup-dev.sh`
-- No test files exist yet - test infrastructure needs to be created
 - `commodities` and `historical` API endpoints return mock data (TODO: implement database queries)
 - Node.js 18+ and pnpm required (see root `package.json` engines)
 - **Always use pnpm** instead of npm for all JavaScript/TypeScript dependency management and script execution

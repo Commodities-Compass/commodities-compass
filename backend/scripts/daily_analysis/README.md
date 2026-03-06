@@ -2,8 +2,6 @@
 
 Replaces the `COMPASS - DAILY BOT AI` Make.com scenario (18 modules, 42 variables, 2 OpenAI calls) with version-controlled Python code. Reads market data from Google Sheets, runs two LLM calls, writes trading decisions back to Google Sheets.
 
-Spec: [`US-005-replace-daily-bot-ai-make-scenario.md`](../../../US-005-replace-daily-bot-ai-make-scenario.md)
-
 ## Pipeline Flow
 
 ```

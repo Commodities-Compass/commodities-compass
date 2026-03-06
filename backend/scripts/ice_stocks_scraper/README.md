@@ -6,7 +6,7 @@ Automated daily scraper for ICE US Cocoa Certified Stocks data. Downloads public
 
 ### Initial Assumptions vs Reality
 
-The [automation plan](../../../ice-stocks-automation-plan.md) assumed ice.com/report/41 was protected by Cloudflare WAF, requiring browser automation or proxy rotation. We ran a systematic recon to determine the actual protection.
+The original automation plan assumed ice.com/report/41 was protected by Cloudflare WAF, requiring browser automation or proxy rotation. We ran a systematic recon to determine the actual protection.
 
 **Findings:**
 - **No Cloudflare WAF** on the report page — the plan was wrong

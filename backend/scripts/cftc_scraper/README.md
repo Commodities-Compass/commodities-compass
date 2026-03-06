@@ -88,8 +88,8 @@ poetry run python -m scripts.cftc_scraper.main --dry-run --sheet=staging
 ## Monitoring
 
 ### Logs
-- Local: `cftc_scraper.log`
-- Railway: Cloud Logs in Railway dashboard
+- All logs go to stdout (Railway captures automatically)
+- Sentry cron monitoring for missed/failed runs
 
 ### Success Criteria
 - Exit code 0
@@ -128,5 +128,4 @@ railway run poetry run python -m scripts.cftc_scraper.main --sheet=staging
 ## Future Enhancements (P2)
 
 - Smart detection: Extract report date and skip if unchanged
-- Alerting: Integrate with Sentry for error notifications
 - Forward-fill: Update all empty cells instead of just last row

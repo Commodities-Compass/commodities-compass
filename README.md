@@ -124,7 +124,6 @@ commodities-compass/
 │   │   └── hooks/         # Custom React hooks
 │   ├── public/            # Static assets
 │   └── package.json       # Frontend dependencies
-├── static-react-app/      # Original static prototype (reference)
 ├── excel-sheet/           # Excel data files
 ├── scripts/               # Analysis and migration scripts
 └── package.json           # Monorepo configuration
@@ -211,7 +210,7 @@ Three independent scrapers run on Railway cron jobs to keep market data updated:
 - **Location**: `backend/scripts/barchart_scraper/`
 
 ### ICE Stocks Scraper
-- **Schedule**: Daily at 21:30 UTC
+- **Schedule**: Daily at 21:10 UTC
 - **Source**: ICE public cocoa certified stock reports (XLS)
 - **Method**: httpx + pandas (no browser)
 - **Data**: STOCK US — certified cocoa stocks in ICE US warehouses (bags to tonnes)
@@ -219,7 +218,7 @@ Three independent scrapers run on Railway cron jobs to keep market data updated:
 - **Location**: `backend/scripts/ice_stocks_scraper/`
 
 ### CFTC Scraper
-- **Schedule**: Daily at 21:30 UTC
+- **Schedule**: Daily at 21:10 UTC
 - **Source**: CFTC.gov (Agriculture Disaggregated Futures)
 - **Method**: httpx + regex (no browser)
 - **Data**: COM NET US (Producer/Merchant Long - Short positions)

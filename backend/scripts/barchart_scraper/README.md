@@ -33,6 +33,7 @@ There is no automatic roll logic. Contract switches are explicit — set the env
 - **IV**: Separate page (`/volatility-greeks`). XHR interception primary, HTML regex fallback.
 - **Validation**: Range checks, logical checks (HIGH ≥ CLOSE ≥ LOW), non-null checks
 - **Output**: Google Sheets API (append row to TECHNICALS or TECHNICALS_STAGING)
+- **Post-write**: After appending, writes CONCLUSION formula to column AS of the new row. This formula scores INDICATOR decisions (OPEN/HEDGE/MONITOR) against next-day price moves for YTD performance tracking.
 
 ### Barchart Page Structure
 

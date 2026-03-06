@@ -87,22 +87,23 @@ Once running, visit:
 backend/
 ├── app/
 │   ├── api/           # API endpoints (streamlined, HTTP layer only)
-│   │   └── api_v1/endpoints/dashboard.py # Dashboard endpoints (390 lines)
-│   ├── core/          # Core functionality (auth, config, db, excel_mappings)
+│   │   └── api_v1/endpoints/dashboard.py # Dashboard endpoints (~477 lines)
+│   ├── core/          # Core functionality (auth, config, db, sentry, excel_mappings)
 │   ├── models/        # SQLAlchemy models
-│   │   ├── trading.py # Trading data models (Technicals, Indicator, etc.)
-│   │   ├── indicator.py # Indicator model
-│   │   ├── test_range.py # Test range model
-│   │   ├── market_research.py # Market research model
-│   │   └── weather_data.py # Weather data model
+│   │   ├── technicals.py # OHLCV data with 40+ technical indicators
+│   │   ├── indicator.py # Normalized indicators and trading signals
+│   │   ├── test_range.py # Indicator color ranges (RED/ORANGE/GREEN)
+│   │   ├── market_research.py # Market research articles
+│   │   └── weather_data.py # Weather impact data
 │   ├── schemas/       # Pydantic schemas
 │   │   └── dashboard.py # Dashboard API schemas
 │   ├── services/      # Business logic layer
-│   │   ├── dashboard_service.py # Dashboard business logic (326 lines)
-│   │   ├── dashboard_transformers.py # Data transformation (192 lines)
-│   │   └── data_import.py # Excel to PostgreSQL ETL service
+│   │   ├── dashboard_service.py # Dashboard business logic (~344 lines)
+│   │   ├── dashboard_transformers.py # Data transformation (~274 lines)
+│   │   ├── audio_service.py # Google Drive audio file integration (singleton)
+│   │   └── data_import.py # Google Sheets to PostgreSQL ETL service
 │   └── utils/         # Utilities
-│       └── date_utils.py # Date utility functions (99 lines)
+│       └── date_utils.py # Date utility functions (~113 lines)
 ├── scripts/           # Data import and maintenance scripts
 ├── tests/             # Test files
 └── alembic/           # Database migrations
@@ -143,7 +144,6 @@ The backend follows a clean architecture pattern with clear separation of concer
 
 ### API Layer
 - **`dashboard.py`** - HTTP concerns only (validation, error handling, delegation to services)
-- Reduced from 668 to 390 lines through refactoring
 - No business logic - delegates to service layer
 
 ### Data Models

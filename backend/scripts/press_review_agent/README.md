@@ -158,7 +158,7 @@ load_dotenv(Path('.env'))
 
 ## Current Status
 
-- [x] All 8 module files created and importable
+- [x] All 9 files created and importable (8 Python modules + 1 shell script)
 - [x] Dependencies installed (`anthropic`, `openai`, `google-genai`)
 - [x] Sheets reader tested — reads CLOSE from TECHNICALS_STAGING
 - [x] News fetcher tested — 6/6 sources returning content

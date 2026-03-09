@@ -82,8 +82,8 @@ def create_indicator_for_gauge(
     # Convert ranges to IndicatorRange schema
     ranges = [
         IndicatorRange(
-            range_low=r.range_low,
-            range_high=r.range_high,
+            range_low=float(r.range_low),
+            range_high=float(r.range_high),
             area=r.area,
         )
         for r in test_ranges

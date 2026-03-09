@@ -208,7 +208,7 @@ class GoogleSheetsDataImporter:
             return {"error": f"Sheet {sheet_name} is empty"}
 
         # Convert to DataFrame for easier processing
-        df = pd.DataFrame(values[1:], columns=values[0] if values else [])
+        df = pd.DataFrame(values[1:], columns=values[0] if values else [])  # type: ignore[arg-type]
 
         # Track import statistics
         stats = {
@@ -232,7 +232,7 @@ class GoogleSheetsDataImporter:
                     for excel_col, db_col in column_mapping.items():
                         if excel_col in df.columns:
                             raw_value = (
-                                row[excel_col] if not pd.isna(row[excel_col]) else None
+                                row[excel_col] if not pd.isna(row[excel_col]) else None  # type: ignore[arg-type]
                             )
 
                             if raw_value == "" or raw_value == "nan":
@@ -318,7 +318,7 @@ class GoogleSheetsDataImporter:
 
                 except Exception as e:
                     stats["skipped_rows"] += 1
-                    stats["errors"].append(f"Row {index + 2}: {str(e)}")
+                    stats["errors"].append(f"Row {index + 2}: {str(e)}")  # type: ignore[operator]
 
         return stats
 
@@ -345,8 +345,8 @@ class GoogleSheetsDataImporter:
 
 # CLI function for running the import
 async def run_google_sheets_import(
-    spreadsheet_id: str = None,
-    credentials_json: str = None,
+    spreadsheet_id: Optional[str] = None,
+    credentials_json: Optional[str] = None,
 ):
     """Run the Google Sheets import process."""
     logger.info("Starting Google Sheets to PostgreSQL import...")

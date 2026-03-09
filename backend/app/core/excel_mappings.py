@@ -179,7 +179,7 @@ def get_sheet_mapping(sheet_name: str) -> dict:
     for mapping in EXCEL_MAPPINGS.values():
         if mapping["sheet_name"] == sheet_name:
             return mapping
-    return None
+    return None  # type: ignore[return-value]
 
 
 def get_model_for_sheet(sheet_name: str):

@@ -5,7 +5,7 @@ Streamlined API layer that focuses on parameter validation, error handling,
 and response formatting. Business logic is delegated to service layer.
 """
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,7 +50,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-def _parse_and_validate_date(date_str: str) -> tuple[datetime.date, datetime.date]:
+def _parse_and_validate_date(date_str: str) -> tuple[date, date]:
     """
     Parse and validate date string, converting to business date if needed.
 

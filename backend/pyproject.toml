@@ -70,6 +70,12 @@ daily-analysis = "scripts.daily_analysis.main:main"
 compass-brief = "scripts.compass_brief.main:main"
 meteo-agent = "scripts.meteo_agent.main:main"
 
+[tool.pyright]
+include = ["app", "tests"]
+exclude = ["scripts"]
+pythonVersion = "3.11"
+typeCheckingMode = "basic"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

@@ -10,7 +10,7 @@ if (dsn && import.meta.env.MODE === "production") {
       Sentry.browserTracingIntegration(),
       Sentry.replayIntegration({ maskAllText: false, blockAllMedia: false }),
     ],
-    tracesSampleRate: 1.0,
+    tracesSampleRate: 0.2,
     replaysSessionSampleRate: 0,
     replaysOnErrorSampleRate: 1.0,
   });

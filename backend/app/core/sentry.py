@@ -21,7 +21,7 @@ def init_sentry(
     sentry_sdk.init(
         dsn=dsn,
         environment=os.getenv("ENVIRONMENT", "production"),
-        traces_sample_rate=1.0,
+        traces_sample_rate=0.2,
         sample_rate=1.0,
         integrations=integrations or [],
         release=os.getenv("RAILWAY_GIT_COMMIT_SHA"),

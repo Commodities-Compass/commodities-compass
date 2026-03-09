@@ -9,7 +9,7 @@ from app.core.auth import get_current_user
 router = APIRouter()
 
 
-@router.get("/{commodity_id}")
+@router.get("/{commodity_id}", deprecated=True)
 async def get_historical_data(
     commodity_id: int,
     start_date: Optional[date] = Query(
@@ -51,7 +51,7 @@ async def get_historical_data(
     }
 
 
-@router.get("/{commodity_id}/indicators")
+@router.get("/{commodity_id}/indicators", deprecated=True)
 async def get_historical_indicators(
     commodity_id: int,
     indicator: str = Query(..., description="Indicator name (rsi, macd, atr, etc.)"),

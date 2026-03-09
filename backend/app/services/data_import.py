@@ -219,14 +219,14 @@ class GoogleSheetsDataImporter:
             "errors": [],
         }
 
-        # Clear existing data (for full refresh) - FIXED: Use proper SQLAlchemy delete
-        await session.execute(delete(table_model))
+        # Wrap delete + insert in explicit transaction for atomicity.
+        # If the process crashes mid-import, the entire operation rolls back
+        # and existing data remains intact.
+        async with session.begin():
+            await session.execute(delete(table_model))
 
-        # Process each row using savepoints to isolate per-row failures
-        for index, row in df.iterrows():
-            try:
-                async with session.begin_nested():
-                    # Transform row data according to mapping
+            for index, row in df.iterrows():
+                try:
                     model_data = {}
 
                     for excel_col, db_col in column_mapping.items():
@@ -235,13 +235,11 @@ class GoogleSheetsDataImporter:
                                 row[excel_col] if not pd.isna(row[excel_col]) else None
                             )
 
-                            # Convert empty strings and spreadsheet errors to None
                             if raw_value == "" or raw_value == "nan":
                                 raw_value = None
                             elif is_sheets_error(raw_value):
                                 raw_value = None
 
-                            # Apply transformation if specified
                             if db_col in transforms:
                                 transform_func = getattr(
                                     self.transforms, transforms[db_col]
@@ -250,11 +248,9 @@ class GoogleSheetsDataImporter:
                             else:
                                 transformed_value = raw_value
 
-                            # Final check: ensure empty strings become None for optional fields
                             if transformed_value == "":
                                 transformed_value = None
 
-                            # Additional cleanup for percentage values that might not be in transforms
                             if isinstance(
                                 transformed_value, str
                             ) and transformed_value.endswith("%"):
@@ -265,18 +261,14 @@ class GoogleSheetsDataImporter:
                                 except Exception:
                                     transformed_value = None
 
-                            # No longer need to validate score fields since they now use DECIMAL(8,2)
-
                             model_data[db_col] = transformed_value
 
-                    # Add default values for required fields if not present
                     if (
                         hasattr(table_model, "commodity_symbol")
                         and "commodity_symbol" not in model_data
                     ):
                         model_data["commodity_symbol"] = "CC"
 
-                    # Handle required fields that might be missing from Google Sheets
                     if table_model.__name__ == "Indicator":
                         if (
                             "close_pivot" not in model_data
@@ -299,7 +291,6 @@ class GoogleSheetsDataImporter:
                         if "eco" not in model_data or model_data["eco"] is None:
                             model_data["eco"] = ""
 
-                    # Handle weather_data required fields
                     if table_model.__name__ == "WeatherData":
                         for field in [
                             "text",
@@ -310,7 +301,6 @@ class GoogleSheetsDataImporter:
                             if field not in model_data or model_data[field] is None:
                                 model_data[field] = ""
 
-                    # Handle market_research required fields
                     if table_model.__name__ == "MarketResearch":
                         for field in [
                             "author",
@@ -321,20 +311,14 @@ class GoogleSheetsDataImporter:
                             if field not in model_data or model_data[field] is None:
                                 model_data[field] = ""
 
-                    # Create model instance
                     model_instance = table_model(**model_data)
                     session.add(model_instance)
 
-                # Savepoint succeeded — count the row
-                stats["imported_rows"] += 1
+                    stats["imported_rows"] += 1
 
-            except Exception as e:
-                # Savepoint rolled back — row skipped, outer transaction intact
-                stats["skipped_rows"] += 1
-                stats["errors"].append(f"Row {index + 2}: {str(e)}")
-
-        # Commit changes
-        await session.commit()
+                except Exception as e:
+                    stats["skipped_rows"] += 1
+                    stats["errors"].append(f"Row {index + 2}: {str(e)}")
 
         return stats
 
@@ -425,15 +409,12 @@ async def run_google_sheets_import(
             )
 
 
-# Init Sentry at module level so @monitor works
-init_sentry("daily-import")
-
-
 @monitor(monitor_slug="daily-import")
 def main():
     """Entry point for Poetry script."""
     import asyncio
 
+    init_sentry("daily-import")
     asyncio.run(run_google_sheets_import())
 
 

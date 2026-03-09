@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (lint + type-check + test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Configure Poetry
+        run: poetry config virtualenvs.in-project true
+
+      - name: Cache Poetry virtualenv
+        uses: actions/cache@v4
+        with:
+          path: backend/.venv
+          key: poetry-${{ runner.os }}-${{ hashFiles('backend/poetry.lock') }}
+
+      - name: Install dependencies
+        run: poetry install --no-root
+
+      - name: Ruff lint
+        run: poetry run ruff check .
+
+      - name: Ruff format check
+        run: poetry run ruff format --check .
+
+      - name: Pyright type check
+        run: poetry run pyright
+
+      - name: Run tests
+        run: poetry run pytest --cov=app --cov-report=xml
+        env:
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+          DATABASE_SYNC_URL: "sqlite:///:memory:"
+          AUTH0_DOMAIN: "test.auth0.com"
+          AUTH0_CLIENT_ID: "test-client-id"
+          AUTH0_API_AUDIENCE: "https://test-api"
+          AUTH0_ISSUER: "https://test.auth0.com/"
+          SPREADSHEET_ID: "test-spreadsheet-id"
+          GOOGLE_DRIVE_AUDIO_FOLDER_ID: "test-folder-id"
+
+  frontend:
+    name: Frontend (lint + type-check + build + test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: ESLint
+        run: pnpm lint
+
+      - name: TypeScript type check
+        run: pnpm type-check
+
+      - name: Build
+        run: pnpm build
+        env:
+          AUTH0_DOMAIN: "test.auth0.com"
+          AUTH0_CLIENT_ID: "test-client-id"
+          AUTH0_API_AUDIENCE: "https://test-api"
+          AUTH0_REDIRECT_URI: "http://localhost:5173"
+          API_BASE_URL: "http://localhost:8000"
+          AUTH0_ISSUER: "https://test.auth0.com/"
+
+      - name: Run tests
+        run: pnpm test

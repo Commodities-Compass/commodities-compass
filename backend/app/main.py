@@ -1,14 +1,19 @@
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.openapi.utils import get_openapi
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 import sentry_sdk
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 
 from app.core.config import settings
+from app.core.database import AsyncSessionLocal, engine, sync_engine, get_db
 from app.core.sentry import init_sentry
 from app.api.api_v1.api import api_router
 
@@ -19,16 +24,30 @@ init_sentry("fastapi", [FastApiIntegration(), SqlalchemyIntegration()])
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Verify DB on startup, dispose engines on shutdown."""
+    async with AsyncSessionLocal() as session:
+        await session.execute(text("SELECT 1"))
+    logger.info("Database connection verified")
+    yield
+    await engine.dispose()
+    sync_engine.dispose()
+    logger.info("Database connections disposed")
+
+
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    lifespan=lifespan,
 )
 
 # Set all CORS enabled origins
 origins = settings.BACKEND_CORS_ORIGINS
 
-logger.info(f"🔍 CORS Origins: {origins}")
+logger.info("CORS origins configured: %s", origins)
 
 app.add_middleware(
     CORSMiddleware,
@@ -41,10 +60,10 @@ app.add_middleware(
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    """Log all incoming requests for debugging"""
-    logger.info(f"🔍 {request.method} {request.url} - Headers: {dict(request.headers)}")
+    """Log incoming requests with sensitive data stripped."""
+    logger.info("%s %s", request.method, request.url.path)
     response = await call_next(request)
-    logger.info(f"🔍 Response status: {response.status_code}")
+    logger.info("%s %s -> %d", request.method, request.url.path, response.status_code)
     return response
 
 
@@ -58,7 +77,8 @@ async def root():
 
 
 @app.get("/health")
-async def health_check():
+async def health_check(db: AsyncSession = Depends(get_db)):
+    await db.execute(text("SELECT 1"))
     return {"status": "healthy", "timestamp": datetime.now(timezone.utc)}
 
 
@@ -69,14 +89,14 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 # Global exception handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    if isinstance(exc, (HTTPException, StarletteHTTPException)):
+        raise exc
+
     sentry_sdk.capture_exception(exc)
     logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
     return JSONResponse(
         status_code=500,
-        content={
-            "detail": "Internal server error",
-            "message": str(exc) if settings.DEBUG else "An error occurred",
-        },
+        content={"detail": "Internal server error"},
     )
 
 

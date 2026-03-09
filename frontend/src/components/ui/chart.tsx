@@ -1,5 +1,3 @@
-"use client"
-
 import * as React from "react"
 import * as RechartsPrimitive from "recharts"
 
@@ -76,26 +74,27 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
     return null
   }
 
+  const cssText = Object.entries(THEMES)
+    .map(([theme, prefix]) => {
+      const vars = colorConfig
+        .map(([key, itemConfig]) => {
+          const color =
+            itemConfig.theme?.[theme as keyof typeof itemConfig.theme] ||
+            itemConfig.color
+          if (!color) return null
+          // Validate color is a safe CSS value (hex, hsl, rgb, named colors, CSS vars)
+          const safeColor = /^[a-zA-Z0-9#(),.\s/%-]+$/.test(color) ? color : ""
+          return safeColor ? `  --color-${key}: ${safeColor};` : null
+        })
+        .filter(Boolean)
+        .join("\n")
+      return `${prefix} [data-chart=${id}] {\n${vars}\n}`
+    })
+    .join("\n")
+
   return (
     <style
-      dangerouslySetInnerHTML={{
-        __html: Object.entries(THEMES)
-          .map(
-            ([theme, prefix]) => `
-${prefix} [data-chart=${id}] {
-${colorConfig
-  .map(([key, itemConfig]) => {
-    const color =
-      itemConfig.theme?.[theme as keyof typeof itemConfig.theme] ||
-      itemConfig.color
-    return color ? `  --color-${key}: ${color};` : null
-  })
-  .join("\n")}
-}
-`
-          )
-          .join("\n"),
-      }}
+      dangerouslySetInnerHTML={{ __html: cssText }}
     />
   )
 }

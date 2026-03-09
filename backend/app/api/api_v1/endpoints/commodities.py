@@ -7,7 +7,7 @@ from app.core.auth import get_current_user
 router = APIRouter()
 
 
-@router.get("/")
+@router.get("/", deprecated=True)
 async def get_commodities(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -20,7 +20,7 @@ async def get_commodities(
     ]
 
 
-@router.get("/{commodity_id}")
+@router.get("/{commodity_id}", deprecated=True)
 async def get_commodity(
     commodity_id: int,
     current_user: dict = Depends(get_current_user),

@@ -1,100 +1,84 @@
-"""
-Dashboard business logic service.
+"""Dashboard business logic service.
 
 Contains pure business logic functions for dashboard operations,
 independent of FastAPI dependencies for better testability and reusability.
 """
 
-from datetime import date
-from typing import Optional, List, Dict, Any
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc, func, and_
 import logging
 import re
+from datetime import date, time, timedelta
+from datetime import datetime as dt_datetime
+from typing import Any, Dict, List, Optional
 
-from app.models.technicals import Technicals
+from sqlalchemy import and_, desc, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.models.indicator import Indicator
-from app.models.test_range import TestRange
 from app.models.market_research import MarketResearch
+from app.models.technicals import Technicals
+from app.models.test_range import TestRange
 from app.models.weather_data import WeatherData
-from app.utils.date_utils import get_year_start_date, get_business_date
+from app.utils.date_utils import get_business_date, get_year_start_date
 
 logger = logging.getLogger(__name__)
+
+
+def _date_filter(column, target_date: date):
+    """Create a range filter that uses timestamp indices efficiently.
+
+    Replaces func.date(column) == target_date which defeats index usage
+    by applying a function to every row before comparison.
+    """
+    day_start = dt_datetime.combine(target_date, time.min)
+    day_end = dt_datetime.combine(target_date + timedelta(days=1), time.min)
+    return and_(column >= day_start, column < day_end)
 
 
 async def calculate_ytd_performance(
     db: AsyncSession, reference_date: Optional[date] = None
 ) -> float:
-    """
-    Calculate Year-to-Date performance as the mean average of CONCLUSION values.
+    """Calculate Year-to-Date performance as the mean average of CONCLUSION values.
 
-    Args:
-        db: Database session
-        reference_date: The date to calculate YTD up to (defaults to current date)
-
-    Returns:
-        YTD performance as a percentage
+    Uses SQL AVG() instead of loading all rows into Python.
     """
     if reference_date is None:
         reference_date = date.today()
 
-    # Get the year from the reference date
     year = reference_date.year
     start_of_year = get_year_start_date(reference_date)
 
-    # Query for all CONCLUSION values in the current year up to the reference date
-    query = (
-        select(Technicals.conclusion)
-        .where(
-            and_(
-                func.date(Technicals.timestamp) >= start_of_year,
-                func.date(Technicals.timestamp) <= reference_date,
-                Technicals.conclusion.isnot(None),
-            )
+    year_start_dt = dt_datetime.combine(start_of_year, time.min)
+    year_end_dt = dt_datetime.combine(reference_date + timedelta(days=1), time.min)
+
+    query = select(func.avg(Technicals.conclusion)).where(
+        and_(
+            Technicals.timestamp >= year_start_dt,
+            Technicals.timestamp < year_end_dt,
+            Technicals.conclusion.isnot(None),
         )
-        .order_by(Technicals.timestamp)
     )
 
     result = await db.execute(query)
-    conclusions = result.scalars().all()
+    avg_conclusion = result.scalar()
 
-    if not conclusions:
-        # No data available, return 0.0
-        logger.warning(f"No CONCLUSION data found for YTD calculation in year {year}")
+    if avg_conclusion is None:
+        logger.warning("No CONCLUSION data found for YTD calculation in year %d", year)
         return 0.0
 
-    # Calculate the mean average
-    avg_conclusion = sum(conclusions) / len(conclusions)
-
-    # Convert to percentage (multiply by 100 to match original implementation)
     ytd_performance = float(avg_conclusion) * 100
-
-    logger.info(
-        f"YTD Performance calculated: {ytd_performance:.2f}% "
-        f"(based on {len(conclusions)} data points)"
-    )
-
+    logger.info("YTD Performance: %.2f%%", ytd_performance)
     return ytd_performance
 
 
 async def get_latest_technicals(
     db: AsyncSession, target_date: Optional[date] = None
 ) -> Optional[Technicals]:
-    """
-    Get the latest technicals record for a given date.
-
-    Args:
-        db: Database session
-        target_date: Target date (defaults to latest available)
-
-    Returns:
-        Latest technicals record or None if not found
-    """
+    """Get the latest technicals record for a given date."""
     query = select(Technicals).order_by(desc(Technicals.timestamp))
 
     if target_date:
         business_date = get_business_date(target_date)
-        query = query.where(func.date(Technicals.timestamp) == business_date)
+        query = query.where(_date_filter(Technicals.timestamp, business_date))
 
     result = await db.execute(query)
     return result.scalars().first()
@@ -103,22 +87,12 @@ async def get_latest_technicals(
 async def get_indicators_with_ranges(
     db: AsyncSession, target_date: Optional[date] = None
 ) -> Dict[str, Dict[str, Any]]:
-    """
-    Get all indicators with their ranges for a given date.
-
-    Args:
-        db: Database session
-        target_date: Target date (defaults to latest available)
-
-    Returns:
-        Dictionary of indicators with their data and ranges
-    """
-    # Get indicator data (not technicals) - matches original implementation
+    """Get all indicators with their ranges for a given date."""
     query = select(Indicator).order_by(desc(Indicator.date))
 
     if target_date:
         business_date = get_business_date(target_date)
-        query = query.where(func.date(Indicator.date) == business_date)
+        query = query.where(_date_filter(Indicator.date, business_date))
 
     result = await db.execute(query)
     indicator = result.scalars().first()
@@ -132,16 +106,14 @@ async def get_indicators_with_ranges(
     all_ranges = ranges_result.scalars().all()
 
     # Group ranges by indicator
-    ranges_by_indicator = {}
+    ranges_by_indicator: dict[str, list] = {}
     for range_obj in all_ranges:
         if range_obj.indicator not in ranges_by_indicator:
             ranges_by_indicator[range_obj.indicator] = []
         ranges_by_indicator[range_obj.indicator].append(range_obj)
 
-    # Build indicators data using original mapping from backup
     indicators = {}
 
-    # Map of indicator names to their database fields and display labels (from original)
     indicator_configs = [
         ("macroeco", indicator.macroeco_score, "MACROECO", "MACROECO"),
         ("rsi", indicator.rsi_norm, "RSI", "RSI"),
@@ -155,7 +127,6 @@ async def get_indicators_with_ranges(
         if value is not None and range_indicator_name in ranges_by_indicator:
             ranges = ranges_by_indicator[range_indicator_name]
 
-            # Calculate min and max from ranges
             all_values = []
             for r in ranges:
                 all_values.extend([r.range_low, r.range_high])
@@ -178,31 +149,21 @@ async def get_indicators_with_ranges(
     return indicators
 
 
-async def parse_recommendations_text(text: str) -> List[str]:
-    """
-    Parse recommendations from raw text.
-
-    Args:
-        text: Raw text containing recommendations
-
-    Returns:
-        List of parsed recommendation strings
-    """
+def parse_recommendations_text(text: str) -> list[str]:
+    """Parse recommendations from raw text. Pure CPU, no I/O."""
     if not text:
         return []
 
-    # Strip HTML tags (e.g. <br>, <br/>, <p>, etc.) replacing them with newlines
+    # Strip HTML tags replacing them with newlines
     text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
     text = re.sub(r"</?[a-z][a-z0-9]*[^>]*>", "\n", text, flags=re.IGNORECASE)
 
-    # Split by newlines and clean up
     lines = text.split("\n")
     recommendations = []
 
     for line in lines:
         line = line.strip()
         if line:
-            # Remove bullet points and clean up
             line = re.sub(r"^[-•*]\s*", "", line)
             if line:
                 recommendations.append(line)
@@ -213,79 +174,66 @@ async def parse_recommendations_text(text: str) -> List[str]:
 async def get_latest_recommendations(
     db: AsyncSession, target_date: Optional[date] = None
 ) -> tuple[List[str], Optional[str], Optional[date]]:
-    """
-    Get the latest recommendations from technicals data.
-
-    Args:
-        db: Database session
-        target_date: Target date (defaults to latest available)
-
-    Returns:
-        Tuple of (recommendations_list, raw_score, date)
-    """
+    """Get the latest recommendations from technicals data."""
     technicals = await get_latest_technicals(db, target_date)
     if not technicals or not technicals.score:
         return [], None, None
 
-    recommendations = await parse_recommendations_text(technicals.score)
+    recommendations = parse_recommendations_text(technicals.score)
     return recommendations, technicals.score, technicals.timestamp
 
 
 async def get_chart_data(db: AsyncSession, days: int = 30) -> List[Dict[str, Any]]:
-    """
-    Get historical chart data for the specified number of days.
+    """Get historical chart data for the specified number of days.
 
-    Args:
-        db: Database session
-        days: Number of days of historical data
-
-    Returns:
-        List of chart data points
+    Selects only needed columns instead of loading full ORM objects.
     """
-    query = select(Technicals).order_by(desc(Technicals.timestamp)).limit(days)
+    query = (
+        select(
+            Technicals.timestamp,
+            Technicals.close,
+            Technicals.volume,
+            Technicals.open_interest,
+            Technicals.rsi_14d,
+            Technicals.macd,
+            Technicals.stock_us,
+            Technicals.com_net_us,
+        )
+        .order_by(desc(Technicals.timestamp))
+        .limit(days)
+    )
 
     result = await db.execute(query)
-    technicals_data = result.scalars().all()
+    rows = result.all()
 
-    # Reverse to get chronological order
-    technicals_data = list(reversed(technicals_data))
-
-    chart_data = []
-    for tech in technicals_data:
-        chart_data.append(
-            {
-                "date": tech.timestamp.strftime("%Y-%m-%d"),
-                "close": tech.close,
-                "volume": tech.volume,
-                "open_interest": tech.open_interest,
-                "rsi_14d": tech.rsi_14d,
-                "macd": tech.macd,
-                "stock_us": tech.stock_us,
-                "com_net_us": tech.com_net_us,
-            }
-        )
-
-    return chart_data
+    return [
+        {
+            "date": row.timestamp.strftime("%Y-%m-%d"),
+            "close": (float(row.close) if row.close is not None else None),
+            "volume": (float(row.volume) if row.volume is not None else None),
+            "open_interest": (
+                float(row.open_interest) if row.open_interest is not None else None
+            ),
+            "rsi_14d": (float(row.rsi_14d) if row.rsi_14d is not None else None),
+            "macd": (float(row.macd) if row.macd is not None else None),
+            "stock_us": (float(row.stock_us) if row.stock_us is not None else None),
+            "com_net_us": (
+                float(row.com_net_us) if row.com_net_us is not None else None
+            ),
+        }
+        for row in reversed(rows)
+    ]
 
 
 async def get_latest_market_research(
     db: AsyncSession, target_date: Optional[date] = None
 ) -> Optional[MarketResearch]:
-    """
-    Get the latest market research record.
-
-    Args:
-        db: Database session
-        target_date: Target date (defaults to latest available)
-
-    Returns:
-        Latest market research record or None if not found
-    """
+    """Get the latest market research record."""
     query = select(MarketResearch).order_by(desc(MarketResearch.date))
 
     if target_date:
         business_date = get_business_date(target_date)
-        query = query.where(func.date(MarketResearch.date) == business_date)
+        query = query.where(_date_filter(MarketResearch.date, business_date))
 
     result = await db.execute(query)
     return result.scalars().first()
@@ -294,21 +242,12 @@ async def get_latest_market_research(
 async def get_latest_weather_data(
     db: AsyncSession, target_date: Optional[date] = None
 ) -> Optional[WeatherData]:
-    """
-    Get the latest weather data record.
-
-    Args:
-        db: Database session
-        target_date: Target date (defaults to latest available)
-
-    Returns:
-        Latest weather data record or None if not found
-    """
+    """Get the latest weather data record."""
     query = select(WeatherData).order_by(desc(WeatherData.date))
 
     if target_date:
         business_date = get_business_date(target_date)
-        query = query.where(func.date(WeatherData.date) == business_date)
+        query = query.where(_date_filter(WeatherData.date, business_date))
 
     result = await db.execute(query)
     return result.scalars().first()
@@ -317,22 +256,12 @@ async def get_latest_weather_data(
 async def get_position_from_technicals(
     db: AsyncSession, target_date: Optional[date] = None
 ) -> Optional[str]:
-    """
-    Get the position of the day from technicals decision data.
-
-    Args:
-        db: Database session
-        target_date: Target date (defaults to latest available)
-
-    Returns:
-        Position string from decision column ("OPEN", "HEDGE", "MONITOR") or None
-    """
-    # Get the latest technicals data
+    """Get the position of the day from technicals decision data."""
     query = select(Technicals).order_by(desc(Technicals.timestamp))
 
     if target_date:
         business_date = get_business_date(target_date)
-        query = query.where(func.date(Technicals.timestamp) == business_date)
+        query = query.where(_date_filter(Technicals.timestamp, business_date))
 
     result = await db.execute(query)
     technicals = result.scalars().first()
@@ -340,5 +269,4 @@ async def get_position_from_technicals(
     if not technicals:
         return None
 
-    # Return decision directly as position
     return technicals.decision

@@ -1,13 +1,14 @@
-'use client';
-
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Calendar } from '@/components/ui/calendar';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
-import { DatePicker } from 'antd';
-import type { Dayjs } from 'dayjs';
-import dayjs from 'dayjs';
+import { format, parseISO, addDays, subDays, isWeekend, isFuture, startOfDay } from 'date-fns';
 import { useState } from 'react';
-import 'dayjs/locale/en';
 
 interface DateSelectorProps {
   currentDate: string;
@@ -22,150 +23,88 @@ export default function DateSelector({
 }: DateSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
 
-  // Convert string date to dayjs object
-  const currentDayjs = dayjs(currentDate);
+  const selectedDate = parseISO(currentDate);
 
-  // Helper function to check if a date is a weekend
-  const isWeekend = (date: Dayjs) => {
-    const day = date.day();
-    return day === 0 || day === 6; // Sunday = 0, Saturday = 6
+  const getNextBusinessDay = (date: Date, direction: 'forward' | 'backward'): Date => {
+    const step = direction === 'forward' ? addDays : subDays;
+    let next = step(date, 1);
+    while (isWeekend(next)) {
+      next = step(next, 1);
+    }
+    return next;
   };
 
-  // Helper function to get the next business day
-  const getNextBusinessDay = (date: Date, direction: 'forward' | 'backward') => {
-    const newDate = new Date(date);
-    const increment = direction === 'forward' ? 1 : -1;
-    
-    do {
-      newDate.setDate(newDate.getDate() + increment);
-    } while (isWeekend(dayjs(newDate)));
-    
-    return newDate;
-  };
-
-  // Handle navigation to previous business day
   const handlePrevious = () => {
-    const date = new Date(currentDate);
-    const previousBusinessDay = getNextBusinessDay(date, 'backward');
-    
-    const newDate = previousBusinessDay.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-    onDateChange(newDate);
+    const previousBusinessDay = getNextBusinessDay(selectedDate, 'backward');
+    onDateChange(format(previousBusinessDay, 'yyyy-MM-dd'));
   };
 
-  // Handle navigation to next business day
   const handleNext = () => {
-    const date = new Date(currentDate);
-    const nextBusinessDay = getNextBusinessDay(date, 'forward');
-    const today = new Date();
-    
-    // Don't allow going beyond today
+    const nextBusinessDay = getNextBusinessDay(selectedDate, 'forward');
+    const today = startOfDay(new Date());
     if (nextBusinessDay <= today) {
-      const newDate = nextBusinessDay.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      });
-      onDateChange(newDate);
+      onDateChange(format(nextBusinessDay, 'yyyy-MM-dd'));
     }
   };
 
-  // Handle date selection from calendar
-  const handleCalendarChange = (date: Dayjs | null) => {
+  const handleCalendarSelect = (date: Date | undefined) => {
     if (date) {
-      const newDate = date.toDate().toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      });
-      onDateChange(newDate);
+      onDateChange(format(date, 'yyyy-MM-dd'));
       setIsOpen(false);
     }
   };
 
-  // Format date for display
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  };
-
-
-  // Check if next button should be disabled
   const isNextDisabled = () => {
-    const nextBusinessDay = getNextBusinessDay(new Date(currentDate), 'forward');
-    return nextBusinessDay > new Date();
+    const nextBusinessDay = getNextBusinessDay(selectedDate, 'forward');
+    return isFuture(nextBusinessDay);
   };
 
-  // Disable weekends and future dates
-  const disabledDate = (current: Dayjs) => {
-    const today = dayjs().endOf('day');
-    return isWeekend(current) || current.isAfter(today);
+  const disableDate = (date: Date) => {
+    return isWeekend(date) || isFuture(date);
   };
 
   return (
     <Card className={className}>
       <CardContent className="p-4">
-        <div className="flex items-center justify-between gap-2 date-selector-container relative">
+        <div className="flex items-center justify-between gap-2">
           <Button
             variant="outline"
             size="icon"
             onClick={handlePrevious}
-            title="Previous business day"
+            aria-label="Previous business day"
           >
             <ChevronLeftIcon className="h-4 w-4" />
           </Button>
 
-          <div className="relative flex-1 flex justify-center">
-            <div className="relative">
+          <Popover open={isOpen} onOpenChange={setIsOpen}>
+            <PopoverTrigger asChild>
               <Button
                 variant="ghost"
                 className="min-w-[280px] justify-center font-medium hover:bg-accent h-10 px-4 flex items-center gap-2"
-                onClick={() => setIsOpen(!isOpen)}
               >
                 <CalendarIcon className="h-5 w-5 text-gray-500" />
-                <span>{formatDate(currentDate)}</span>
+                <span>
+                  {format(selectedDate, 'EEEE, MMMM d, yyyy')}
+                </span>
               </Button>
-              
-              <DatePicker
-                value={currentDayjs}
-                onChange={handleCalendarChange}
-                disabledDate={disabledDate}
-                open={isOpen}
-                onOpenChange={setIsOpen}
-                allowClear={false}
-                placement="bottom"
-                style={{ 
-                  position: 'absolute',
-                  left: 0,
-                  top: 0,
-                  width: '100%',
-                  height: '100%',
-                  opacity: 0,
-                  pointerEvents: 'none'
-                }}
-                popupAlign={{
-                  points: ['tc', 'bc'],
-                  offset: [0, 4]
-                }}
-                getPopupContainer={(trigger) => trigger?.closest('.date-selector-container') || document.body}
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="center">
+              <Calendar
+                mode="single"
+                selected={selectedDate}
+                onSelect={handleCalendarSelect}
+                disabled={disableDate}
+                defaultMonth={selectedDate}
               />
-            </div>
-          </div>
+            </PopoverContent>
+          </Popover>
 
           <Button
             variant="outline"
             size="icon"
             onClick={handleNext}
             disabled={isNextDisabled()}
-            title="Next business day"
+            aria-label="Next business day"
           >
             <ChevronRightIcon className="h-4 w-4" />
           </Button>

@@ -1,20 +1,21 @@
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import jwt, JWTError
-from jose.exceptions import JOSEError
+from typing import Any
+
 import httpx
 import sentry_sdk
 from cachetools import TTLCache
-from typing import Any
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jose import jwt, JWTError
+from jose.exceptions import JOSEError
 
 from app.core.config import settings
 
-# JWKS cache with 6 hour TTL like in the working example
+# JWKS cache with 6 hour TTL
 jwks_cache: TTLCache[str, Any] = TTLCache(maxsize=1, ttl=21600)
 
 
-def get_jwks() -> dict[str, Any]:
-    """Fetches and caches JWKS from Auth0."""
+async def get_jwks() -> dict[str, Any]:
+    """Fetch and cache JWKS from Auth0 (async, with timeout)."""
     try:
         if "jwks" in jwks_cache:
             return jwks_cache["jwks"]
@@ -23,11 +24,12 @@ def get_jwks() -> dict[str, Any]:
 
     jwks_url = f"https://{settings.AUTH0_DOMAIN}/.well-known/jwks.json"
     try:
-        response = httpx.get(jwks_url)
-        response.raise_for_status()
-        jwks_data = response.json()
-        jwks_cache["jwks"] = jwks_data
-        return jwks_data
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(jwks_url)
+            response.raise_for_status()
+            jwks_data = response.json()
+            jwks_cache["jwks"] = jwks_data
+            return jwks_data
     except httpx.RequestError as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -52,7 +54,7 @@ async def validate_auth0_token(token: str) -> dict:
         raise credentials_exception
 
     try:
-        jwks = get_jwks()
+        jwks = await get_jwks()
         unverified_header = jwt.get_unverified_header(token)
 
         rsa_key = {}
@@ -88,14 +90,14 @@ async def validate_auth0_token(token: str) -> dict:
         raise credentials_exception from e
 
 
-# Use the same HTTPBearer scheme as the working example
+# HTTPBearer scheme
 oauth2_scheme = HTTPBearer(scheme_name="Auth0ImplicitBearer", auto_error=True)
 
 
 async def get_current_user(
     token: HTTPAuthorizationCredentials = Depends(oauth2_scheme),
 ) -> dict:
-    """Get current user from Auth0 token"""
+    """Get current user from Auth0 token."""
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -113,9 +115,8 @@ async def get_current_user(
 
     payload = await validate_auth0_token(actual_token_str)
 
-    # Extract user info from token
     user = {
-        "sub": payload.get("sub"),  # Auth0 user ID
+        "sub": payload.get("sub"),
         "email": payload.get("email"),
         "name": payload.get("name"),
         "permissions": payload.get("permissions", []),

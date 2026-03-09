@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, Suspense } from 'react';
 import {
   BrowserRouter as Router,
   Routes,
@@ -6,11 +6,13 @@ import {
   Navigate,
 } from 'react-router-dom';
 import { useAuth0 } from '@auth0/auth0-react';
-import DashboardLayout from '@/components/dashboard-layout';
-import LoginPage from '@/pages/login-page-auth0';
-import DashboardPage from '@/pages/dashboard-page';
-import HistoricalPage from '@/pages/historical-page';
+import { useAuth } from '@/hooks/useAuth';
 import LoadingSpinner from '@/components/LoadingSpinner';
+
+const DashboardLayout = React.lazy(() => import('@/components/dashboard-layout'));
+const LoginPage = React.lazy(() => import('@/pages/login-page-auth0'));
+const DashboardPage = React.lazy(() => import('@/pages/dashboard-page'));
+const HistoricalPage = React.lazy(() => import('@/pages/historical-page'));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth0();
@@ -26,22 +28,39 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function NotFoundPage() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background">
+      <div className="text-center space-y-4 p-8">
+        <h1 className="text-4xl font-bold text-foreground">404</h1>
+        <p className="text-muted-foreground">Page not found</p>
+        <a
+          href="/dashboard"
+          className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+        >
+          Go to Dashboard
+        </a>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
-  const { isAuthenticated, getAccessTokenSilently, logout } = useAuth0();
-  const tokenRefreshAttemptedRef = useRef(false);
+  const { isAuthenticated, logout } = useAuth0();
   const logoutInProgressRef = useRef(false);
+
+  // Initialize token getter via useAuth hook
+  useAuth();
 
   // Listen for 401 errors from API calls and trigger logout
   useEffect(() => {
     const handleTokenExpired = () => {
       if (isAuthenticated && !logoutInProgressRef.current) {
-        console.warn('Token expired detected - logging out');
         logoutInProgressRef.current = true;
-
         logout({
           logoutParams: {
-            returnTo: window.location.origin + '/login'
-          }
+            returnTo: window.location.origin + '/login',
+          },
         });
       }
     };
@@ -52,75 +71,46 @@ export default function App() {
     };
   }, [isAuthenticated, logout]);
 
+  // Reset logout flag when auth state changes
   useEffect(() => {
-    const getToken = async () => {
-      // Only try to refresh token once to prevent infinite loops
-      if (isAuthenticated && !tokenRefreshAttemptedRef.current) {
-        tokenRefreshAttemptedRef.current = true;
-
-        try {
-          const token = await getAccessTokenSilently();
-          localStorage.setItem('auth0_token', token);
-          // Clear any previous 401 error flags on successful token refresh
-          sessionStorage.removeItem('auth_401_error');
-        } catch (error) {
-          console.error('Error getting access token:', error);
-
-          // Clear stored token
-          localStorage.removeItem('auth0_token');
-
-          // Properly logout from Auth0 to clear session state
-          // This breaks the redirect loop by setting isAuthenticated to false
-          if (!logoutInProgressRef.current) {
-            logoutInProgressRef.current = true;
-            logout({
-              logoutParams: {
-                returnTo: window.location.origin + '/login'
-              }
-            });
-          }
-        }
-      }
-    };
-
-    getToken();
-
-    // Reset the flags when authentication state changes
     if (!isAuthenticated) {
-      tokenRefreshAttemptedRef.current = false;
       logoutInProgressRef.current = false;
     }
-  }, [isAuthenticated, getAccessTokenSilently, logout]);
+  }, [isAuthenticated]);
 
   return (
     <Router>
-      <Routes>
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Suspense fallback={<LoadingSpinner />}>
+        <Routes>
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
-        <Route path="/login" element={<LoginPage />} />
+          <Route path="/login" element={<LoginPage />} />
 
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute>
-              <DashboardLayout>
-                <DashboardPage />
-              </DashboardLayout>
-            </ProtectedRoute>
-          }
-        />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout>
+                  <DashboardPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
 
-        <Route
-          path="/dashboard/historical"
-          element={
-            <ProtectedRoute>
-              <DashboardLayout>
-                <HistoricalPage />
-              </DashboardLayout>
-            </ProtectedRoute>
-          }
-        />
-      </Routes>
+          <Route
+            path="/dashboard/historical"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout>
+                  <HistoricalPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </Suspense>
     </Router>
   );
 }

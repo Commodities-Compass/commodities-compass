@@ -54,11 +54,9 @@ export default function LoginPage() {
         console.warn('Redirect loop detected - forcing logout to break cycle');
         logoutTriggeredRef.current = true;
 
-        // Clear all auth state
-        localStorage.removeItem('auth0_token');
+        // Clear redirect loop tracking
         sessionStorage.removeItem(REDIRECT_LOOP_KEY);
         sessionStorage.removeItem(REDIRECT_LOOP_TIMESTAMP_KEY);
-        sessionStorage.removeItem('auth_401_error');
 
         // Force Auth0 logout to clear session
         logout({
@@ -69,23 +67,16 @@ export default function LoginPage() {
         return;
       }
 
-      // Only redirect if authenticated AND we have a valid token AND no loop detected
-      const token = localStorage.getItem('auth0_token');
-      const has401Error = sessionStorage.getItem('auth_401_error');
-
-      if (token && !has401Error) {
-        // Clear redirect counter on successful navigation
-        sessionStorage.removeItem(REDIRECT_LOOP_KEY);
-        sessionStorage.removeItem(REDIRECT_LOOP_TIMESTAMP_KEY);
-        navigate('/dashboard');
-      }
+      // Redirect to dashboard if authenticated and no loop detected
+      sessionStorage.removeItem(REDIRECT_LOOP_KEY);
+      sessionStorage.removeItem(REDIRECT_LOOP_TIMESTAMP_KEY);
+      navigate('/dashboard');
     }
 
     // Clear redirect counter if not authenticated
     if (!isAuthenticated && !isLoading) {
       sessionStorage.removeItem(REDIRECT_LOOP_KEY);
       sessionStorage.removeItem(REDIRECT_LOOP_TIMESTAMP_KEY);
-      sessionStorage.removeItem('auth_401_error');
     }
   }, [isAuthenticated, error, navigate, logout, isLoading]);
 

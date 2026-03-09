@@ -1,13 +1,11 @@
-"""
-Audio service for Google Drive integration.
+"""Audio service for Google Drive integration."""
 
-Handles fetching audio files from Google Drive and generating download links.
-"""
-
+import asyncio
+import json
+import logging
 from datetime import date, datetime
 from typing import Optional
-import logging
-import json
+
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -27,25 +25,23 @@ class AudioService:
         self._initialize_drive_service()
 
     def _initialize_drive_service(self):
-        """Initialize Google Drive API service."""
+        """Initialize Google Drive API service.
+
+        Logs warnings instead of raising if env vars are missing,
+        so the web app can start without Google Drive configured.
+        """
         try:
-            # Check if folder ID is configured
             if not settings.GOOGLE_DRIVE_AUDIO_FOLDER_ID:
-                error_msg = (
-                    "GOOGLE_DRIVE_AUDIO_FOLDER_ID is required but not configured. \n"
-                    "To find your folder ID:\n"
-                    "1. Open Google Drive in your browser\n"
-                    "2. Navigate to the folder containing your audio files\n"
-                    "3. Look at the URL - it will be something like: \n"
-                    "   https://drive.google.com/drive/folders/YOUR_FOLDER_ID\n"
-                    "4. Copy the folder ID (the part after 'folders/')\n"
-                    "5. Add it to your .env file as GOOGLE_DRIVE_AUDIO_FOLDER_ID"
+                logger.warning(
+                    "GOOGLE_DRIVE_AUDIO_FOLDER_ID not configured — audio disabled"
                 )
-                logger.error(error_msg)
-                raise ValueError(error_msg)
+                return
 
             if not settings.GOOGLE_DRIVE_CREDENTIALS_JSON:
-                raise ValueError("Google Drive credentials not configured")
+                logger.warning(
+                    "Google Drive credentials not configured — audio disabled"
+                )
+                return
 
             credentials_dict = json.loads(settings.GOOGLE_DRIVE_CREDENTIALS_JSON)
             credentials = service_account.Credentials.from_service_account_info(
@@ -54,39 +50,21 @@ class AudioService:
             )
 
             self.drive_service = build("drive", "v3", credentials=credentials)
-
-            # Test basic API access
-            try:
-                self.drive_service.about().get(fields="user").execute()
-                logger.info("Google Drive service initialized successfully")
-            except Exception as api_test_error:
-                logger.warning(
-                    f"API test failed but service may still work: {api_test_error}"
-                )
+            logger.info("Google Drive service initialized successfully")
 
         except Exception as e:
-            logger.error(f"Failed to initialize Google Drive service: {e}")
+            logger.error("Failed to initialize Google Drive service: %s", e)
             self.drive_service = None
-            raise
 
     async def get_audio_metadata(
         self, target_date: Optional[date] = None
     ) -> Optional[dict]:
-        """
-        Get metadata for audio file including URL and title.
-
-        Args:
-            target_date: The date to get audio for
-
-        Returns:
-            Dictionary with audio metadata or None if not found
-        """
-        result = await self._get_audio_file_info(target_date)
+        """Get metadata for audio file including URL and title."""
+        result = await self.get_audio_file_info(target_date)
 
         if not result:
             return None
 
-        # Format date for display
         display_date = target_date if target_date else datetime.now().date()
 
         return {
@@ -96,35 +74,31 @@ class AudioService:
             "filename": result["filename"],
         }
 
-    async def _get_audio_file_info(
+    async def get_audio_file_info(
         self, target_date: Optional[date] = None
     ) -> Optional[dict]:
-        """
-        Internal method to get audio file info including URL and actual filename.
+        """Get audio file info including URL and filename.
 
-        Args:
-            target_date: The date to get audio for
-
-        Returns:
-            Dictionary with url and filename, or None if not found
+        Returns dict with url and filename, or None if not found.
         """
         if not self.drive_service:
             logger.error("Google Drive service not initialized")
             return None
 
-        # Use current date if not provided
         if target_date is None:
             target_date = datetime.now().date()
 
-        # Convert to business date (follows same pattern as dashboard services)
         business_date = get_business_date(target_date)
+        if business_date != target_date:
+            logger.info(
+                "Weekend date %s converted to %s for audio lookup",
+                target_date,
+                business_date,
+            )
 
-        # Format filename base according to pattern: 20250709-CompassAudio
         filename_base = f"{business_date.strftime('%Y%m%d')}-CompassAudio"
 
         try:
-            # Search for .wav, .m4a, and .mp4 files in Google Drive
-            # Note: Google Drive uses various MIME types for audio files
             query = (
                 f"(name='{filename_base}.wav' or name='{filename_base}.m4a' or name='{filename_base}.mp4') and "
                 f"(mimeType='audio/wav' or mimeType='audio/x-wav' or mimeType='audio/x-m4a' or mimeType='audio/mp4' or mimeType='audio/mpeg' or mimeType='video/mp4') and "
@@ -132,61 +106,51 @@ class AudioService:
                 f"'{settings.GOOGLE_DRIVE_AUDIO_FOLDER_ID}' in parents"
             )
 
-            # Verify folder access first
-            try:
-                self.drive_service.files().get(
-                    fileId=settings.GOOGLE_DRIVE_AUDIO_FOLDER_ID, fields="id, name"
-                ).execute()
-            except HttpError as folder_error:
-                if folder_error.resp.status == 404:
-                    logger.error(
-                        "Folder not found! Check if the folder ID is correct and the service account has access."
-                    )
-                elif folder_error.resp.status == 403:
-                    logger.error(
-                        "Permission denied! The service account doesn't have access to this folder."
-                    )
-                return None
-
-            # Search for the audio file
-            response = (
-                self.drive_service.files()
-                .list(
-                    q=query,
-                    fields="files(id, name, mimeType)",
-                    supportsAllDrives=True,
-                    includeItemsFromAllDrives=True,
-                )
-                .execute()
+            # Run sync Google API in thread to avoid blocking event loop
+            request = self.drive_service.files().list(
+                q=query,
+                fields="files(id, name, mimeType)",
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
             )
+            response = await asyncio.to_thread(request.execute)
 
             files = response.get("files", [])
 
             if not files:
                 logger.warning(
-                    f"Audio file not found: {filename_base}.wav, {filename_base}.m4a, or {filename_base}.mp4"
+                    "Audio file not found: %s.wav, %s.m4a, or %s.mp4",
+                    filename_base,
+                    filename_base,
+                    filename_base,
                 )
                 return None
 
-            # Use the first matching file
             file = files[0]
             file_id = file.get("id")
             actual_filename = file.get("name")
 
-            logger.info(f"Found audio file: {actual_filename}")
+            logger.info("Found audio file: %s", actual_filename)
 
-            # Generate download URL for backend proxy
             audio_url = f"https://drive.google.com/uc?id={file_id}&export=download"
 
             return {"url": audio_url, "filename": actual_filename}
 
         except HttpError as e:
-            logger.error(f"Google Drive API error: {e}")
+            logger.error("Google Drive API error: %s", e)
             return None
         except Exception as e:
-            logger.error(f"Unexpected error retrieving audio file: {e}")
+            logger.error("Unexpected error retrieving audio file: %s", e)
             return None
 
 
-# Singleton instance
-audio_service = AudioService()
+# Lazy singleton — won't crash if env vars are missing at import time
+_audio_service: Optional[AudioService] = None
+
+
+def get_audio_service() -> AudioService:
+    """Get or create the AudioService singleton."""
+    global _audio_service
+    if _audio_service is None:
+        _audio_service = AudioService()
+    return _audio_service

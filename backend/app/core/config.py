@@ -1,10 +1,17 @@
 from typing import List
-from pydantic_settings import BaseSettings
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from decouple import config
 import json
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        case_sensitive=True,
+        env_file=".env",
+        extra="ignore",
+    )
+
     # Application
     APP_NAME: str = config("APP_NAME", default="Commodities Compass")
     APP_VERSION: str = config("APP_VERSION", default="1.0.0")
@@ -72,10 +79,6 @@ class Settings(BaseSettings):
     AWS_SECRET_ACCESS_KEY: str = config("AWS_SECRET_ACCESS_KEY", default="")
     AWS_REGION: str = config("AWS_REGION", default="us-east-1")
     S3_BUCKET_NAME: str = config("S3_BUCKET_NAME", default="")
-
-    class Config:
-        case_sensitive = True
-        env_file = ".env"
 
 
 settings = Settings()

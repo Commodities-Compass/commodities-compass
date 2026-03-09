@@ -1,19 +1,15 @@
-"""
-Test Range model for defining indicator color thresholds.
+"""Test Range model for defining indicator color thresholds."""
 
-This model stores the range boundaries for each indicator that determine
-whether values fall into RED, ORANGE, or GREEN zones for trading decisions.
-"""
+from decimal import Decimal
 
-from sqlalchemy import Column, Integer, String, DECIMAL, UniqueConstraint
-from sqlalchemy.orm import validates
+from sqlalchemy import DECIMAL, String, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column, validates
 
 from .base import Base
 
 
 class TestRange(Base):
-    """
-    Test Range table for indicator color zone definitions.
+    """Test Range table for indicator color zone definitions.
 
     Each row defines a range (low to high) for a specific indicator
     and assigns it a color zone (RED, ORANGE, GREEN) used for
@@ -22,37 +18,28 @@ class TestRange(Base):
 
     __tablename__ = "test_range"
 
-    # Primary key
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
 
-    # Indicator name (MACROECO, RSI, MACD, %K, ATR, CLOSE/PIVOT, VOL/OI)
-    indicator = Column(
+    indicator: Mapped[str] = mapped_column(
         String(50),
-        nullable=False,
-        comment="Name of the indicator (e.g., MACROECO, RSI, MACD, %K, ATR, CLOSE/PIVOT, VOL/OI)",
+        comment="Name of the indicator (e.g., MACROECO, RSI, MACD)",
     )
 
-    # Range boundaries
-    range_low = Column(
+    range_low: Mapped[Decimal] = mapped_column(
         DECIMAL(15, 6),
-        nullable=False,
         comment="Lower boundary of the range (inclusive)",
     )
 
-    range_high = Column(
+    range_high: Mapped[Decimal] = mapped_column(
         DECIMAL(15, 6),
-        nullable=False,
         comment="Upper boundary of the range (inclusive)",
     )
 
-    # Color zone
-    area = Column(
+    area: Mapped[str] = mapped_column(
         String(10),
-        nullable=False,
         comment="Color zone for this range (RED, ORANGE, GREEN)",
     )
 
-    # Ensure unique combination of indicator and range
     __table_args__ = (
         UniqueConstraint(
             "indicator", "range_low", "range_high", name="uq_indicator_range"

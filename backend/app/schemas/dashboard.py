@@ -1,11 +1,10 @@
-"""
-Dashboard API schemas for position status and indicators.
-"""
+"""Dashboard API schemas for position status and indicators."""
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional, List
-from pydantic import BaseModel, Field
+from typing import List, Optional
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class IndicatorRange(BaseModel):
@@ -17,11 +16,7 @@ class IndicatorRange(BaseModel):
 
 
 class CommodityIndicator(BaseModel):
-    """
-    Indicator gauge display data.
-
-    Used for displaying normalized indicator values in gauge components.
-    """
+    """Indicator gauge display data."""
 
     value: float = Field(..., description="Current indicator value")
     min: float = Field(..., description="Minimum value for the gauge scale")
@@ -33,11 +28,11 @@ class CommodityIndicator(BaseModel):
 
 
 class PositionStatusResponse(BaseModel):
-    """
-    Response schema for position status endpoint.
+    """Response schema for position status endpoint."""
 
-    Contains current trading position and YTD performance.
-    """
+    model_config = ConfigDict(
+        json_encoders={datetime: lambda v: v.isoformat(), Decimal: float}
+    )
 
     date: datetime = Field(..., description="Date of the current position")
     position: str = Field(..., description="Current position: OPEN, HEDGE, or MONITOR")
@@ -45,49 +40,38 @@ class PositionStatusResponse(BaseModel):
         ..., description="Year-to-date performance percentage"
     )
 
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat(), Decimal: lambda v: float(v)}
-
 
 class IndicatorData(BaseModel):
-    """
-    Raw indicator data from database.
-    """
+    """Raw indicator data from database."""
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={
+            datetime: lambda v: v.isoformat(),
+            Decimal: lambda v: float(v) if v is not None else None,
+        },
+    )
 
     date: datetime
     conclusion: Optional[str] = None
     final_indicator: Optional[Decimal] = None
 
-    class Config:
-        from_attributes = True
-        json_encoders = {
-            datetime: lambda v: v.isoformat(),
-            Decimal: lambda v: float(v) if v is not None else None,
-        }
-
 
 class IndicatorsGridResponse(BaseModel):
-    """
-    Response schema for indicators grid endpoint.
+    """Response schema for indicators grid endpoint."""
 
-    Contains all indicators with their values and ranges.
-    """
+    model_config = ConfigDict(json_encoders={datetime: lambda v: v.isoformat()})
 
     date: datetime = Field(..., description="Date of the indicators")
     indicators: dict[str, CommodityIndicator] = Field(
         ..., description="Map of indicator names to their data"
     )
 
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}
-
 
 class RecommendationsResponse(BaseModel):
-    """
-    Response schema for recommendations endpoint.
+    """Response schema for recommendations endpoint."""
 
-    Contains the score text from technicals table.
-    """
+    model_config = ConfigDict(json_encoders={datetime: lambda v: v.isoformat()})
 
     date: datetime = Field(..., description="Date of the recommendations")
     recommendations: List[str] = Field(
@@ -98,41 +82,26 @@ class RecommendationsResponse(BaseModel):
         None, description="Raw score text from technicals table"
     )
 
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}
-
 
 class NewsResponse(BaseModel):
-    """
-    Response schema for news endpoint from market research.
-    """
+    """Response schema for news endpoint from market research."""
 
     date: str = Field(..., description="Date of the news article")
     title: str = Field(..., description="Title from impact_synthesis column")
     content: str = Field(..., description="Content from summary column")
     author: Optional[str] = Field(None, description="Author information")
 
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}
-
 
 class WeatherResponse(BaseModel):
-    """
-    Response schema for weather endpoint from weather data.
-    """
+    """Response schema for weather endpoint from weather data."""
 
     date: str = Field(..., description="Date of the weather update")
     description: str = Field(..., description="Weather description from text column")
     impact: str = Field(..., description="Market impact from impact_synthesis column")
 
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}
-
 
 class ChartDataPoint(BaseModel):
-    """
-    Single data point for chart display.
-    """
+    """Single data point for chart display."""
 
     date: str = Field(..., description="Date in YYYY-MM-DD format")
     close: Optional[float] = Field(None, description="Close price")
@@ -145,24 +114,13 @@ class ChartDataPoint(BaseModel):
 
 
 class ChartDataResponse(BaseModel):
-    """
-    Response schema for chart data endpoint.
-
-    Contains historical data from technicals table.
-    """
+    """Response schema for chart data endpoint."""
 
     data: List[ChartDataPoint] = Field(..., description="Historical chart data points")
 
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}
-
 
 class AudioResponse(BaseModel):
-    """
-    Response schema for audio endpoint.
-
-    Contains the publicly playable URL and metadata for audio files from Google Drive.
-    """
+    """Response schema for audio endpoint."""
 
     url: str = Field(..., description="Publicly accessible URL for the audio file")
     title: str = Field(..., description="Display title for the audio")

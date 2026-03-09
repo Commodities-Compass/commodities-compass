@@ -5,7 +5,7 @@ Streamlined API layer that focuses on parameter validation, error handling,
 and response formatting. Business logic is delegated to service layer.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -44,7 +44,7 @@ from app.utils.date_utils import (
     get_business_date,
     log_business_date_conversion,
 )
-from app.services.audio_service import audio_service
+from app.services.audio_service import get_audio_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -404,7 +404,7 @@ async def get_audio(
             parsed_date, _ = _parse_and_validate_date(target_date)
 
         # Get audio metadata from service
-        audio_metadata = await audio_service.get_audio_metadata(parsed_date)
+        audio_metadata = await get_audio_service().get_audio_metadata(parsed_date)
 
         if not audio_metadata:
             # Provide helpful error message
@@ -442,35 +442,32 @@ async def get_audio(
 
 
 # Legacy endpoints for backward compatibility
-@router.get("/latest-indicator")
+@router.get("/latest-indicator", deprecated=True)
 async def get_latest_indicator(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get latest indicator data (legacy endpoint)."""
-    # TODO: Implement or deprecate
+    """Get latest indicator data (legacy endpoint). Use /indicators-grid instead."""
     return {"message": "Legacy endpoint - use /indicators-grid instead"}
 
 
-@router.get("/dashboard-data")
+@router.get("/dashboard-data", deprecated=True)
 async def get_dashboard_data(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get dashboard data (legacy endpoint)."""
-    # TODO: Implement or deprecate
+    """Get dashboard data (legacy endpoint). Use specific endpoints instead."""
     return {"message": "Legacy endpoint - use specific endpoints instead"}
 
 
-@router.get("/summary")
+@router.get("/summary", deprecated=True)
 async def get_dashboard_summary(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get quick summary for dashboard (legacy endpoint)."""
-    # TODO: Implement or deprecate
     return {
-        "lastUpdate": datetime.utcnow().isoformat(),
+        "lastUpdate": datetime.now(timezone.utc).isoformat(),
         "activePositions": 1,
         "totalCommodities": 1,
         "alerts": [],

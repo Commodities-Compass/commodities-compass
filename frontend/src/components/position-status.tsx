@@ -5,7 +5,7 @@ import { PlayIcon, PauseIcon, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { usePositionStatus, useAudio } from '@/hooks/useDashboard';
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 
 interface PositionStatusProps {
   targetDate?: string;
@@ -24,80 +24,62 @@ export default function PositionStatus({
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Fetch position status from API (using targetDate which is yesterday's date)
   const { data, isLoading, error } = usePositionStatus(targetDate);
-
-  // Fetch audio URL from API - use audioDate which is today's date
   const {
     data: audioData,
     isLoading: audioLoading,
     error: audioError,
   } = useAudio(audioDate);
 
-  // Set up audio source when data is available
-  const setupAudioSource = () => {
+  const setupAudioSource = useCallback(() => {
     if (audioRef.current && audioData?.url) {
-      // Convert relative URL to absolute URL using API base
-      // @ts-expect-error - API_BASE_URL is available at runtime from .env
       const apiBaseUrl = import.meta.env.API_BASE_URL || '';
       const absoluteUrl = audioData.url.startsWith('/')
         ? `${apiBaseUrl}${audioData.url}`
         : audioData.url;
       audioRef.current.src = absoluteUrl;
-      audioRef.current.load(); // Reload the audio element with new source
-      // Reset playing state when source changes
+      audioRef.current.load();
       setIsPlaying(false);
       setCurrentTime(0);
       if (audioRef.current.duration) {
         setDuration(audioRef.current.duration);
       }
-      return true;
     }
-    return false;
-  };
-
-  // Update audio source when new audio data is fetched
-  useEffect(() => {
-    setupAudioSource();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [audioData]);
-
-  // Also setup when ref becomes available (after render)
-  useEffect(() => {
-    if (audioData?.url) {
-      // Small delay to ensure ref is mounted
-      const timer = setTimeout(() => {
-        setupAudioSource();
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audioData?.url]);
 
-  const togglePlayPause = () => {
+  useEffect(() => {
+    setupAudioSource();
+  }, [setupAudioSource]);
+
+  const togglePlayPause = useCallback(() => {
     if (audioRef.current) {
       if (isPlaying) {
         audioRef.current.pause();
       } else {
-        audioRef.current.play().catch((error) => {
-          console.error('Audio play failed:', error);
+        audioRef.current.play().catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : 'Unknown error';
+          console.error('Audio play failed:', message);
         });
       }
       setIsPlaying(!isPlaying);
     }
-  };
+  }, [isPlaying]);
 
-  const handleTimeUpdate = () => {
+  const handleTimeUpdate = useCallback(() => {
     if (audioRef.current) {
       setCurrentTime(audioRef.current.currentTime);
     }
-  };
+  }, []);
 
-  const handleLoadedMetadata = () => {
+  const handleLoadedMetadata = useCallback(() => {
     if (audioRef.current) {
       setDuration(audioRef.current.duration);
     }
-  };
+  }, []);
+
+  const handleEnded = useCallback(() => {
+    setIsPlaying(false);
+  }, []);
 
   const handleProgressChange = (value: number[]) => {
     if (audioRef.current) {
@@ -112,7 +94,6 @@ export default function PositionStatus({
     return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
   };
 
-  // Show loading state
   if (isLoading) {
     return (
       <Card
@@ -123,7 +104,6 @@ export default function PositionStatus({
     );
   }
 
-  // Show error state
   if (error || !data) {
     return (
       <Card
@@ -135,7 +115,7 @@ export default function PositionStatus({
           </p>
           {error && (
             <p className="text-xs text-red-500">
-              Error: {error.message || 'Unknown error'}
+              Unable to fetch data. Please try again later.
             </p>
           )}
           <p className="text-xs text-gray-400">Target date: {targetDate}</p>
@@ -146,7 +126,6 @@ export default function PositionStatus({
 
   const { position, ytd_performance } = data;
 
-  // Get badge styles based on position value
   const getBadgeStyles = () => {
     switch (position) {
       case 'HEDGE':
@@ -177,7 +156,6 @@ export default function PositionStatus({
         </CardContent>
       </div>
 
-      {/* Audio Player Section */}
       <div className="flex-1 border-b md:border-b-0 md:border-r border-border flex flex-col justify-between">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium text-gray-500 dark:text-gray-400">
@@ -190,7 +168,7 @@ export default function PositionStatus({
               ref={audioRef}
               onTimeUpdate={handleTimeUpdate}
               onLoadedMetadata={handleLoadedMetadata}
-              onEnded={() => setIsPlaying(false)}
+              onEnded={handleEnded}
             />
 
             <div className="flex items-center gap-3">
@@ -200,6 +178,7 @@ export default function PositionStatus({
                 className="h-10 w-10 flex-shrink-0"
                 onClick={togglePlayPause}
                 disabled={audioLoading || !audioData?.url}
+                aria-label={isPlaying ? 'Pause audio' : 'Play audio'}
               >
                 {audioLoading ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
@@ -232,14 +211,13 @@ export default function PositionStatus({
             </div>
             {audioError && (
               <p className="text-xs text-red-500 mt-2">
-                Unable to load audio: {audioError.message || 'File not found'}
+                Unable to load audio file.
               </p>
             )}
           </div>
         </CardContent>
       </div>
 
-      {/* YTD Performance Section */}
       <div className="flex-1 flex flex-col justify-between">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium text-gray-500 dark:text-gray-400">

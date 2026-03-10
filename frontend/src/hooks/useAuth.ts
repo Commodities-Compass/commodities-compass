@@ -1,16 +1,19 @@
 import { useAuth0 } from '@auth0/auth0-react';
-import { useLayoutEffect } from 'react';
+import { useEffect } from 'react';
 import { setTokenGetter } from '@/api/client';
 
 export const useAuth = () => {
   const { user, logout, getAccessTokenSilently, isLoading, isAuthenticated, error } = useAuth0();
 
-  // useLayoutEffect runs before ALL regular useEffects (including React Query's
-  // queryFn). This prevents a race condition where child component effects
-  // (dashboard API calls) fire before tokenGetter is set.
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (isAuthenticated) {
       setTokenGetter(() => getAccessTokenSilently());
+
+      // Eagerly fetch and cache token in localStorage so the Axios
+      // interceptor has a synchronous fallback on page load.
+      getAccessTokenSilently()
+        .then((token) => localStorage.setItem('auth0_token', token))
+        .catch(() => {});
     } else {
       setTokenGetter(null);
     }
@@ -18,6 +21,7 @@ export const useAuth = () => {
 
   const handleLogout = () => {
     setTokenGetter(null);
+    localStorage.removeItem('auth0_token');
     logout({
       logoutParams: {
         returnTo: window.location.origin,

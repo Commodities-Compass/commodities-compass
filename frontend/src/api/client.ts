@@ -19,13 +19,24 @@ export const apiClient = axios.create({
 
 apiClient.interceptors.request.use(
   async (config) => {
+    // Try tokenGetter first (fresh token via Auth0 SDK)
     if (tokenGetter) {
       try {
         const token = await tokenGetter();
-        config.headers.Authorization = `Bearer ${token}`;
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+          localStorage.setItem('auth0_token', token);
+          return config;
+        }
       } catch {
-        // Token fetch failed — proceed without auth header
+        // tokenGetter failed — fall through to localStorage
       }
+    }
+
+    // Fallback: read cached token from localStorage
+    const cachedToken = localStorage.getItem('auth0_token');
+    if (cachedToken) {
+      config.headers.Authorization = `Bearer ${cachedToken}`;
     }
     return config;
   },
@@ -36,6 +47,7 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
+      localStorage.removeItem('auth0_token');
       sessionStorage.setItem('auth_401_error', 'true');
       window.dispatchEvent(new CustomEvent('auth:token-expired'));
     } else {

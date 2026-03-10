@@ -10,7 +10,9 @@ from datetime import date, time, timedelta
 from datetime import datetime as dt_datetime
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import and_, desc, func, select
+from decimal import Decimal
+
+from sqlalchemy import and_, asc, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.indicator import Indicator
@@ -34,39 +36,103 @@ def _date_filter(column, target_date: date):
     return and_(column >= day_start, column < day_end)
 
 
+def _score_day(decision: str, close_t: float, close_t1: float) -> Optional[float]:
+    """Replicate the Google Sheets CONCLUSION scoring formula server-side.
+
+    Scoring rules (mirrors TECHNICALS column AS formula exactly):
+      OPEN  + price up   → +1.25 if |move| > 1%, else +1
+      HEDGE + price down → +1.25 if |move| > 1%, else +1
+      OPEN  + price down → -2 × |%change|
+      HEDGE + price up   → -2 × |%change|
+      MONITOR + any move → +1 if |move| > 1%, else +0.75
+      MONITOR + no move  → 0
+
+    No contract roll filtering — matches the original formula behavior.
+    """
+    if close_t == 0:
+        return None
+
+    abs_pct = abs((close_t1 - close_t) / close_t)
+
+    if decision == "OPEN":
+        if close_t1 > close_t:
+            return 1.25 if abs_pct > 0.01 else 1.0
+        return -abs_pct * 2
+
+    if decision == "HEDGE":
+        if close_t1 < close_t:
+            return 1.25 if abs_pct > 0.01 else 1.0
+        return -abs_pct * 2
+
+    if decision == "MONITOR":
+        if close_t1 != close_t:
+            return 1.0 if abs_pct > 0.01 else 0.75
+        return 0.0
+
+    return None
+
+
 async def calculate_ytd_performance(
     db: AsyncSession, reference_date: Optional[date] = None
 ) -> float:
-    """Calculate Year-to-Date performance as the mean average of CONCLUSION values.
+    """Calculate YTD performance by replicating the CONCLUSION scoring server-side.
 
-    Uses SQL AVG() instead of loading all rows into Python.
+    Computes from raw decision + close data instead of the mutable Google Sheets
+    CONCLUSION formula. Deterministic regardless of import timing.
     """
     if reference_date is None:
         reference_date = date.today()
 
-    year = reference_date.year
     start_of_year = get_year_start_date(reference_date)
-
     year_start_dt = dt_datetime.combine(start_of_year, time.min)
     year_end_dt = dt_datetime.combine(reference_date + timedelta(days=1), time.min)
 
-    query = select(func.avg(Technicals.conclusion)).where(
-        and_(
-            Technicals.timestamp >= year_start_dt,
-            Technicals.timestamp < year_end_dt,
-            Technicals.conclusion.isnot(None),
+    query = (
+        select(Technicals.timestamp, Technicals.close, Technicals.decision)
+        .where(
+            and_(
+                Technicals.timestamp >= year_start_dt,
+                Technicals.timestamp < year_end_dt,
+            )
         )
+        .order_by(asc(Technicals.timestamp))
     )
 
     result = await db.execute(query)
-    avg_conclusion = result.scalar()
+    rows = result.all()
 
-    if avg_conclusion is None:
-        logger.warning("No CONCLUSION data found for YTD calculation in year %d", year)
+    scores: list[float] = []
+
+    for i in range(len(rows) - 1):
+        current = rows[i]
+        next_day = rows[i + 1]
+
+        decision = current.decision
+        close_t = current.close
+        close_t1 = next_day.close
+
+        if not decision or not close_t or not close_t1:
+            continue
+
+        decision_upper = decision.strip().upper()
+        close_t_f = float(close_t) if isinstance(close_t, Decimal) else close_t
+        close_t1_f = float(close_t1) if isinstance(close_t1, Decimal) else close_t1
+
+        score = _score_day(decision_upper, close_t_f, close_t1_f)
+        if score is not None:
+            scores.append(score)
+
+    if not scores:
+        logger.warning("No scoring data found for YTD calculation")
         return 0.0
 
-    ytd_performance = float(avg_conclusion) * 100
-    logger.info("YTD Performance: %.2f%%", ytd_performance)
+    avg_score = sum(scores) / len(scores)
+    ytd_performance = avg_score * 100
+    logger.info(
+        "YTD Performance: %.2f%% (server-side, %d days scored)",
+        ytd_performance,
+        len(scores),
+    )
     return ytd_performance
 
 

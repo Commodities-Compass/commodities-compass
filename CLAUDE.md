@@ -72,7 +72,7 @@ The backend follows a clean architecture with separation of concerns:
   - `dashboard.py` - All dashboard response schemas (PositionStatus, IndicatorsGrid, Recommendations, ChartData, News, Weather, Audio)
 - **`app/services/`** - Business logic layer (service-oriented architecture):
   - `data_import.py` - Google Sheets to PostgreSQL ETL pipeline
-  - `dashboard_service.py` - Pure business logic for dashboard operations
+  - `dashboard_service.py` - Pure business logic for dashboard operations (YTD computed server-side from raw decision+close data, not from mutable Google Sheets CONCLUSION column)
   - `dashboard_transformers.py` - Data transformation between models and API responses
   - `audio_service.py` - Google Drive audio file integration (singleton service)
 - **`app/utils/`** - Reusable utility functions:
@@ -262,7 +262,7 @@ All API endpoints are prefixed with `/v1` and include:
   - `GET /auth/me` - Get current user info from token
   - `GET /auth/verify` - Verify token validity
 - `/dashboard/*` - Trading dashboard data (all require auth):
-  - `GET /dashboard/position-status` - Position (OPEN/HEDGE/MONITOR) and YTD performance
+  - `GET /dashboard/position-status` - Position (OPEN/HEDGE/MONITOR) and YTD performance (server-side scoring)
   - `GET /dashboard/indicators-grid` - All indicators with color ranges for gauges
   - `GET /dashboard/recommendations` - Parsed trading recommendations from technicals.score
   - `GET /dashboard/chart-data` - Historical data for charting (1-365 days)

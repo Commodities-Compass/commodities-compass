@@ -111,3 +111,9 @@ backend/scripts/ice_stocks_scraper/cookie.txt
 
 # North Star design doc (private, never committed)
 The_North_Star.md
+
+# Terraform
+infra/terraform/.terraform/
+infra/terraform/*.tfstate*
+infra/terraform/*.tfplan
+# NOTE: .terraform.lock.hcl is intentionally NOT ignored — commit it for reproducible builds

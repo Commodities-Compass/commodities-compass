@@ -32,6 +32,11 @@ output "cloudsql_private_ip" {
   sensitive   = true
 }
 
+output "cloudsql_public_ip" {
+  description = "Cloud SQL public IP (no authorized networks — use Auth Proxy)"
+  value       = google_sql_database_instance.main.public_ip_address
+}
+
 # ---- Artifact Registry ----
 
 output "artifact_registry_url" {

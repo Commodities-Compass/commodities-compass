@@ -46,7 +46,12 @@
               ┌───────▼────────┐
               │  Cloud SQL     │
               │  cc-postgres   │
-              │  PG15 (private)│
+              │  PG15 priv+pub │
+              └───────┬────────┘
+                      │ Cloud SQL Auth Proxy (public IP, no authorized networks)
+              ┌───────▼────────┐
+              │  Local Dev     │
+              │  (DBeaver)     │
               └────────────────┘
 ```
 
@@ -85,11 +90,14 @@ infra/terraform/
 
 | Resource | Name | Details |
 |----------|------|---------|
-| Instance | `cc-postgres` | PG15, `db-f1-micro`, ZONAL, private IP only |
+| Instance | `cc-postgres` | PG15, `db-f1-micro`, ZONAL, private + public IP |
 | Database | `commodities_compass` | — |
 | User | `cc_app` | 32-char random password (no special chars) |
+| Public IP | `34.155.163.32` | No authorized networks — proxy-only access |
+| Private IP | `10.119.160.3` | Cloud Run connects via VPC connector |
 
 - 10GB SSD, autoresize enabled
+- SSL: `ENCRYPTED_ONLY` (all connections must use TLS)
 - Backups at 03:00 UTC, 7 days retention, no PITR
 - Maintenance: Sunday 04:00 UTC, stable track
 - `deletion_protection = true`
@@ -207,6 +215,67 @@ gcloud iam service-accounts list --filter="email:cc-*"
 gcloud scheduler jobs list --location=europe-west1
 ```
 
+## Local Development Access
+
+### Cloud SQL (GCP — future production)
+
+The instance has a public IP but **zero authorized networks** — no direct TCP connections are possible. Access requires the Cloud SQL Auth Proxy, which authenticates via your IAM identity.
+
+**Prerequisites:**
+```bash
+brew install cloud-sql-proxy       # one-time
+gcloud auth application-default login  # one-time (or when token expires)
+```
+
+**Start the proxy:**
+```bash
+cloud-sql-proxy cacaooo:europe-west9:cc-postgres --port 5434
+```
+
+**DBeaver connection (GCP):**
+
+| Field | Value |
+|-------|-------|
+| Host | `127.0.0.1` |
+| Port | `5434` |
+| Database | `commodities_compass` |
+| User | `cc_app` |
+| Password | *(in Terraform state — see below)* |
+
+**Retrieve password:**
+```bash
+cd infra/terraform
+terraform state pull | python3 -c "
+import json, sys
+state = json.load(sys.stdin)
+for r in state['resources']:
+    if r.get('type') == 'google_sql_user' and r.get('name') == 'app':
+        print(r['instances'][0]['attributes']['password'])
+        break
+"
+```
+
+**Works from any location** — no IP whitelisting. Auth is IAM-based, not network-based.
+
+**Current state:** Database is empty (schema not yet deployed). Tables will appear after Phase 1 commit triggers Railway-style `alembic upgrade head`, or after manual migration against GCP.
+
+### Railway (current production)
+
+Railway exposes a public PostgreSQL URL. Connection details are in the Railway dashboard:
+**Railway** → Commodities DB → **Connect** button → copy credentials.
+
+**DBeaver connection (Railway):**
+
+| Field | Value |
+|-------|-------|
+| Host | *(from Railway dashboard)* |
+| Port | *(from Railway dashboard)* |
+| Database | `railway` |
+| User | `postgres` |
+| Password | *(from Railway dashboard)* |
+
+This is the database with the live data (5 legacy tables, 6 total with `alembic_version`).
+
 ## Cost Estimate
 
 | Resource | $/mo |
@@ -226,7 +295,7 @@ gcloud scheduler jobs list --location=europe-west1
 | Flat files, no modules | Single env, single region | Modules add indirection unjustified at this stage |
 | Cloud SQL `db-f1-micro` | 353 rows, 1 user | Upgrade via `db_tier` variable |
 | Cloud SQL ZONAL | No HA | Doubles cost, no business justification yet |
-| Cloud SQL private IP only | No public exposure | Cloud Run connects via VPC connector |
+| Cloud SQL public IP + no authorized networks | Public IP enabled for Auth Proxy, zero direct connections allowed | Cloud Run uses private IP via VPC; local dev uses Auth Proxy via public IP |
 | 2 runtime SAs | `cc-api` + `cc-jobs` | Audit separation, future per-secret scoping |
 | Cloud Run outside TF | GitHub Actions deploys | Intentional boundary — TF owns platform, GHA owns app |
 | `disable_on_destroy = false` | All API enablements | Prevents accidental API disable breaking other services |

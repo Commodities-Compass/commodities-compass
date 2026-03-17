@@ -6,6 +6,8 @@ Wide columns for indicators (36 columns, not EAV).
 Contract-centric keying: (date, contract_id).
 """
 
+from __future__ import annotations
+
 import uuid
 from datetime import date, datetime
 from decimal import Decimal

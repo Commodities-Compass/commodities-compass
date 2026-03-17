@@ -4,6 +4,8 @@ Static and semi-static entities: exchanges, commodities, contracts, trading cale
 All in public schema with ref_ prefix, ready for eventual schema split.
 """
 
+from __future__ import annotations
+
 import uuid
 from datetime import date, datetime
 from typing import Optional

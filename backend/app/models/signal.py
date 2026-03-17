@@ -4,6 +4,8 @@ Per-indicator contribution to composite trading signal.
 Enables explainability: "why did you say HEDGE on Feb 10?"
 """
 
+from __future__ import annotations
+
 import uuid
 from datetime import date, datetime
 from decimal import Decimal

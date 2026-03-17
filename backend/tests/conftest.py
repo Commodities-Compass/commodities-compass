@@ -14,26 +14,32 @@ os.environ.setdefault("AUTH0_ISSUER", "https://test.auth0.com/")
 os.environ.setdefault("SPREADSHEET_ID", "test-spreadsheet-id")
 os.environ.setdefault("GOOGLE_DRIVE_AUDIO_FOLDER_ID", "test-folder-id")
 
-from collections.abc import AsyncGenerator  # noqa: E402
+from collections.abc import AsyncGenerator, Generator  # noqa: E402
 
 import pytest  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
+from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.ext.asyncio import (  # noqa: E402
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
 
 from app.core.database import get_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models.base import Base  # noqa: E402
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+TEST_SYNC_DATABASE_URL = "sqlite:///test_seed.db"
 
 test_engine = create_async_engine(TEST_DATABASE_URL, echo=False)
 TestSessionLocal = async_sessionmaker(
     test_engine, class_=AsyncSession, expire_on_commit=False
 )
+
+test_sync_engine = create_engine(TEST_SYNC_DATABASE_URL, echo=False)
+TestSyncSessionLocal = sessionmaker(test_sync_engine, expire_on_commit=False)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -72,6 +78,16 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
         yield ac
 
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def sync_db_session() -> Generator[Session, None, None]:
+    """Provide a sync transactional session for seed script tests."""
+    Base.metadata.create_all(test_sync_engine)
+    with TestSyncSessionLocal() as session:
+        yield session
+        session.rollback()
+    Base.metadata.drop_all(test_sync_engine)
 
 
 @pytest.fixture

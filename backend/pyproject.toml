@@ -69,6 +69,7 @@ press-review = "scripts.press_review_agent.main:main"
 daily-analysis = "scripts.daily_analysis.main:main"
 compass-brief = "scripts.compass_brief.main:main"
 meteo-agent = "scripts.meteo_agent.main:main"
+seed-gcp = "scripts.seed_gcp:main"
 
 [tool.pyright]
 include = ["app", "tests"]

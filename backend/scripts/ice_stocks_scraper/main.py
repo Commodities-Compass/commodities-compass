@@ -95,8 +95,20 @@ def main() -> int:
             else ""
         )
 
-        # Step 3: Write to Sheets (grand total converted to tonnes)
-        logger.info(f"Step 3: Writing to Google Sheets ({args.sheet})...")
+        # Step 3: Write to GCP PostgreSQL (non-blocking)
+        logger.info("Step 3: Writing to GCP PostgreSQL...")
+        try:
+            from scripts.db import get_session
+            from scripts.ice_stocks_scraper.db_writer import write_stock_us
+
+            with get_session() as session:
+                write_stock_us(session, stock_us_tonnes, dry_run=args.dry_run)
+        except Exception as db_err:
+            logger.error("DB write failed (continuing to Sheets): %s", db_err)
+            sentry_sdk.capture_exception(db_err)
+
+        # Step 4: Write to Sheets (grand total converted to tonnes)
+        logger.info(f"Step 4: Writing to Google Sheets ({args.sheet})...")
         creds = os.getenv("GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON")
         if not creds:
             raise RuntimeError("GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON not set")

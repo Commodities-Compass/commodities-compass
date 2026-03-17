@@ -5,7 +5,7 @@ Automated LLM agent that generates a daily French-language cocoa press review an
 ## Architecture
 
 ```
-TECHNICALS sheet (read CLOSE) → httpx (6 news sources) → LLM(s) → BIBLIO_ALL sheet(s)
+TECHNICALS sheet (read CLOSE) → httpx (6 news sources) → LLM(s) → GCP PostgreSQL + BIBLIO_ALL sheet(s)
 ```
 
 Follows the same patterns as existing scrapers (barchart, ICE, CFTC): argparse CLI, Sentry cron monitoring, Google Sheets API, structured logging.
@@ -52,6 +52,9 @@ Graceful degradation: if < 2 sources return content, agent runs in price-only mo
 ANTHROPIC_API_KEY=sk-ant-...
 OPENAI_API_KEY=sk-proj-...
 GEMINI_API_KEY=AIza...
+
+# Required — GCP Cloud SQL
+DATABASE_SYNC_URL=postgresql://...
 
 # Existing — already set in .env
 GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON=...
@@ -119,10 +122,24 @@ backend/scripts/press_review_agent/
 ├── news_fetcher.py      # httpx + BeautifulSoup, 6 sources
 ├── llm_client.py        # 3 async provider functions + JSON extraction
 ├── validator.py         # Output length/structure checks
+├── db_writer.py         # GCP PostgreSQL writer (pl_fundamental_article + aud_llm_call)
 ├── sheets_writer.py     # Append row to BIBLIO_ALL sheets (bottom of sheet)
-├── main.py              # CLI orchestrator with Sentry monitoring
+├── main.py              # CLI orchestrator with Sentry monitoring (dual-write: DB then Sheets)
 └── run_agent.sh         # Railway cron entry point
 ```
+
+## GCP Database Write
+
+For each successful provider result, writes two records:
+
+1. **`pl_fundamental_article`** — `write_article(session, provider, parsed, article_date, dry_run)`
+   - Field mapping: `parsed["resume"]` -> `summary`, `parsed["mots_cle"]` -> `keywords`, `parsed["impact_synthetiques"]` -> `impact_synthesis`
+   - `AUTHOR_LABELS[provider]` -> `source`, `provider.value` -> `llm_provider`, `category="macro"`
+
+2. **`aud_llm_call`** — `write_llm_call(session, provider, usage, latency_ms, dry_run)`
+   - LLM audit trail per invocation (tokens, latency, model)
+
+DB write is non-blocking per provider — if one provider's DB write fails, it continues to Sheets and other providers.
 
 ## Troubleshooting
 

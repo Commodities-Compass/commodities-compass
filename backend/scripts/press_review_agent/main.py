@@ -152,6 +152,37 @@ def main() -> int:
                 )
                 continue
 
+            # DB write (non-blocking)
+            try:
+                from scripts.db import get_session
+                from scripts.press_review_agent.db_writer import (
+                    write_article,
+                    write_llm_call,
+                )
+
+                with get_session() as session:
+                    write_article(
+                        session,
+                        result.provider,
+                        result.parsed,
+                        dry_run=args.dry_run,
+                    )
+                    write_llm_call(
+                        session,
+                        result.provider,
+                        result.usage,
+                        result.latency_ms,
+                        dry_run=args.dry_run,
+                    )
+            except Exception as db_err:
+                logger.error(
+                    "[%s] DB write failed (continuing to Sheets): %s",
+                    result.provider.value,
+                    db_err,
+                )
+                sentry_sdk.capture_exception(db_err)
+
+            # Sheets write
             try:
                 writer.append_row(
                     provider=result.provider,

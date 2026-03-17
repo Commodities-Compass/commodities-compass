@@ -68,8 +68,20 @@ def main() -> int:
 
         logger.info(f"COM NET US: {commercial_net:,.0f}")
 
-        # Step 2: Update Google Sheets
-        logger.info("Step 2: Updating Google Sheets...")
+        # Step 2: Write to GCP PostgreSQL (non-blocking)
+        logger.info("Step 2: Writing to GCP PostgreSQL...")
+        try:
+            from scripts.cftc_scraper.db_writer import write_com_net_us
+            from scripts.db import get_session
+
+            with get_session() as session:
+                write_com_net_us(session, commercial_net, dry_run=args.dry_run)
+        except Exception as db_err:
+            logger.error("DB write failed (continuing to Sheets): %s", db_err)
+            sentry_sdk.capture_exception(db_err)
+
+        # Step 3: Update Google Sheets
+        logger.info("Step 3: Updating Google Sheets...")
 
         creds = os.getenv("GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON")
         if not creds:

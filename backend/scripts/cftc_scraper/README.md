@@ -4,9 +4,10 @@ Standalone scraper for CFTC Commitments of Traders data (COM NET US field).
 
 ## Features
 
-- **Simple daily execution**: Scrapes CFTC data and updates Google Sheets
-- **Last row update**: Finds last row with date and updates column I
-- **Dry-run mode**: Test without writing to sheets
+- **Dual-write**: Writes to GCP Cloud SQL (`pl_contract_data_daily.com_net_us`) and Google Sheets
+- **Non-blocking DB write**: If DB fails, Sheets write proceeds normally
+- **Last row update**: Finds last row with date and updates column I (Sheets) / latest row for active contract (DB)
+- **Dry-run mode**: Test without writing to DB or Sheets
 - **Environment selection**: Staging or production sheets
 
 ## Usage
@@ -28,6 +29,7 @@ poetry run python -m scripts.cftc_scraper.main --sheet=production
 
 Required:
 - `GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON` - Google Sheets service account credentials
+- `DATABASE_SYNC_URL` - GCP Cloud SQL connection string
 
 ## Deployment (Railway)
 
@@ -51,8 +53,9 @@ Required:
 2. **Parse cocoa section** to extract Producer/Merchant Long/Short positions
 3. **Calculate COM NET US** = Long - Short
 4. **Validate range** (-100k to +100k)
-5. **Find last row** with date in column A of TECHNICALS sheet
-6. **Update column I** of that row with COM NET US value
+5. **Write to GCP PostgreSQL** — update `com_net_us` on latest `pl_contract_data_daily` row for active contract (non-blocking)
+6. **Find last row** with date in column A of TECHNICALS sheet
+7. **Update column I** of that row with COM NET US value
 
 ## Sheet Structure
 
@@ -125,7 +128,13 @@ railway run poetry run python -m scripts.cftc_scraper.main --sheet=staging
 - Ensure sheet name (TECHNICALS or TECHNICALS_STAGING) exists
 - Confirm column A has dates and column I exists
 
-## Future Enhancements (P2)
+## GCP Database Write
+
+Updates `com_net_us` on the most recent `pl_contract_data_daily` row for the active contract (queried via `ref_contract.is_active`). The row must already exist — Barchart scraper creates it at 9:00 PM UTC. If no row exists, logs an error and continues to Sheets.
+
+Writer: `db_writer.py` — `write_com_net_us(session, commercial_net, dry_run=False)`
+
+## Future Enhancements
 
 - Smart detection: Extract report date and skip if unchanged
 - Forward-fill: Update all empty cells instead of just last row

@@ -10,7 +10,7 @@ Scrapes 6 fields from Barchart.com for the active London cocoa #7 contract (ICE 
 - **Open Interest**: Open interest (contracts)
 - **Implied Volatility**: Percentage (from volatility-greeks page)
 
-Writes to Google Sheets **TECHNICALS** tab.
+Dual-writes to **GCP Cloud SQL** (`pl_contract_data_daily`) and **Google Sheets** TECHNICALS tab.
 
 ## Contract Selection
 
@@ -32,8 +32,10 @@ There is no automatic roll logic. Contract switches are explicit — set the env
   2. **Backup — XHR interception** (C/H/L/V only, no OI): Intercepts Barchart's internal API responses via `page.on("response")`. API omits `openInterest`.
 - **IV**: Separate page (`/volatility-greeks`). XHR interception primary, HTML regex fallback.
 - **Validation**: Range checks, logical checks (HIGH ≥ CLOSE ≥ LOW), non-null checks
-- **Output**: Google Sheets API (append row to TECHNICALS or TECHNICALS_STAGING)
+- **DB Output**: GCP PostgreSQL `pl_contract_data_daily` table (upsert by date+contract_id). Contract resolved via `resolve_by_code()` using `ACTIVE_CONTRACT` env var. IV converted from percentage to decimal (/ 100).
+- **Sheets Output**: Google Sheets API (append row to TECHNICALS or TECHNICALS_STAGING)
 - **Post-write**: After appending, writes CONCLUSION formula to column AS of the new row. This formula scores INDICATOR decisions (OPEN/HEDGE/MONITOR) against next-day price moves for YTD performance tracking.
+- **Dual-write**: DB write is non-blocking — if it fails, Sheets write still proceeds. DB write happens first.
 
 ### Barchart Page Structure
 
@@ -96,7 +98,7 @@ poetry run python -m scripts.barchart_scraper.main --headful --dry-run
 | **Start command** | Dockerfile-based |
 | **Cron schedule** | `0 21 * * 1-5` (9 PM UTC weekdays only) |
 | **Restart policy** | Never (cron job) |
-| **Required env vars** | `ACTIVE_CONTRACT`, `GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON` |
+| **Required env vars** | `ACTIVE_CONTRACT`, `GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON`, `DATABASE_SYNC_URL` (GCP Cloud SQL) |
 
 ## Troubleshooting
 
@@ -114,5 +116,6 @@ The max-volume heuristic should pick the correct block. If values look wrong, ru
 - `config.py` — Contract resolution, sheet names, validation ranges, browser settings
 - `scraper.py` — Playwright scraper with HTML + XHR extraction
 - `validator.py` — Data validation logic
+- `db_writer.py` — GCP PostgreSQL writer (`write_ohlcv()` upsert to `pl_contract_data_daily`)
 - `sheets_writer.py` — Google Sheets API writer
-- `main.py` — CLI orchestrator
+- `main.py` — CLI orchestrator (dual-write: DB then Sheets)

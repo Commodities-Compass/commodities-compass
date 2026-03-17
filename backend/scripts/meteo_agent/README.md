@@ -7,7 +7,8 @@ Replaces the Make.com "COMPASS - 1DAY METEO" automation. Fetches weather data fr
 1. **Fetches** daily + hourly weather data from Open-Meteo API (6 locations, no API key needed)
 2. **Calls** OpenAI GPT-4.1 to generate a structured French weather analysis for cocoa traders
 3. **Validates** output field lengths (texte, resume, mots_cle, impact_synthetiques)
-4. **Writes** a single row to METEO_ALL sheet (columns A-E)
+4. **Writes** to GCP Cloud SQL (`pl_weather_observation` + `aud_llm_call`) — non-blocking
+5. **Writes** a single row to METEO_ALL sheet (columns A-E)
 
 ## Locations
 
@@ -63,6 +64,7 @@ poetry run meteo-agent --sheet production --verbose
 |----------|----------|-------------|
 | `OPENAI_API_KEY` | yes | OpenAI API key for GPT-4.1 |
 | `GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON` | yes | Service account JSON (read+write) |
+| `DATABASE_SYNC_URL` | yes | GCP Cloud SQL connection string |
 | `SENTRY_DSN` | no | Sentry monitoring DSN |
 
 ## Pipeline Schedule (Railway Cron)
@@ -93,14 +95,27 @@ Cron: `10 21 * * 1-5` (9:10 PM UTC weekdays). No upstream dependencies except Op
 ```
 backend/scripts/meteo_agent/
 ├── __init__.py
-├── main.py              # CLI entry point + Sentry monitoring
+├── main.py              # CLI entry point + Sentry monitoring (dual-write: DB then Sheets)
 ├── config.py            # Locations, API params, prompts, validation, sheet config
 ├── weather_fetcher.py   # httpx call to Open-Meteo API
 ├── llm_client.py        # OpenAI GPT-4.1 call + JSON extraction
 ├── validator.py         # Output field length validation
+├── db_writer.py         # GCP PostgreSQL writer (pl_weather_observation + aud_llm_call)
 ├── sheets_writer.py     # Write to METEO_ALL (explicit row detection + update)
 └── run_meteo.sh         # Railway cron entry point
 ```
+
+## GCP Database Write
+
+Writes two records per run:
+
+1. **`pl_weather_observation`** — `write_observation(session, parsed, observation_date, dry_run)`
+   - Field mapping: `parsed["texte"]` -> `observation`, `parsed["resume"]` -> `summary`, `parsed["mots_cle"]` -> `keywords`, `parsed["impact_synthetiques"]` -> `impact_assessment`
+
+2. **`aud_llm_call`** — `write_llm_call(session, usage, latency_ms, dry_run)`
+   - Provider: `openai`, Model: `gpt-4.1`
+
+DB write is non-blocking — if it fails, Sheets write proceeds normally.
 
 ## Downstream consumers
 

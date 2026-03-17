@@ -116,11 +116,26 @@ def main() -> int:
             )
             return 1
 
-        # Step 3: Write to Sheets
+        # Step 3: Write to GCP PostgreSQL (non-blocking)
+        logger.info("Step 3: Writing to GCP PostgreSQL...")
+        try:
+            from scripts.barchart_scraper.config import get_current_contract_code
+            from scripts.barchart_scraper.db_writer import write_ohlcv
+            from scripts.db import get_session
+
+            with get_session() as session:
+                write_ohlcv(
+                    session, data, get_current_contract_code(), dry_run=args.dry_run
+                )
+        except Exception as db_err:
+            logger.error("DB write failed (continuing to Sheets): %s", db_err)
+            sentry_sdk.capture_exception(db_err)
+
+        # Step 4: Write to Sheets
         sheet_name = (
             SHEET_NAME_STAGING if args.sheet == "staging" else SHEET_NAME_PRODUCTION
         )
-        logger.info(f"Step 3: Writing to Google Sheets ({sheet_name})...")
+        logger.info(f"Step 4: Writing to Google Sheets ({sheet_name})...")
 
         creds = load_credentials()
         writer = SheetsWriter(creds)

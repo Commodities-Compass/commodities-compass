@@ -1,6 +1,6 @@
 # ICE Certified Cocoa Stocks Scraper (Report 41)
 
-Automated daily scraper for ICE US Cocoa Certified Stocks data. Downloads public XLS files from ice.com, parses warehouse stock totals, converts to tonnes, and writes to Google Sheets column H (STOCK US).
+Automated daily scraper for ICE US Cocoa Certified Stocks data. Downloads public XLS files from ice.com, parses warehouse stock totals, converts to tonnes, and dual-writes to GCP Cloud SQL (`pl_contract_data_daily.stock_us`) and Google Sheets column H (STOCK US).
 
 ## Discovery (2026-02-17)
 
@@ -32,8 +32,9 @@ The entire reCAPTCHA + SPA + API chain is unnecessary. ICE publishes daily XLS f
 ice_stocks_scraper/
   config.py          # URLs, sheet IDs, column index, validation ranges
   scraper.py         # download_xls() + parse_xls() + scrape()
+  db_writer.py       # GCP PostgreSQL writer (update stock_us on latest row)
   sheets_manager.py  # Google Sheets column H writer
-  main.py            # CLI entry point
+  main.py            # CLI entry point (dual-write: DB then Sheets)
   run_scraper.sh     # Railway cron job entry point
 ```
 
@@ -49,6 +50,7 @@ ICE public XLS (ice.com/publicdocs/...)
   → xlrd/pandas parse
   → Extract "GRAND TOTAL" warehouse bags
   → Convert: bags × 70 / 1000 = tonnes (truncated)
+  → Write to GCP PostgreSQL pl_contract_data_daily.stock_us (non-blocking)
   → Write to Google Sheets TECHNICALS column H
 ```
 
@@ -105,6 +107,13 @@ poetry run python -m scripts.ice_stocks_scraper.main --dry-run --verbose
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON` | Yes | Service account JSON for Sheets API |
+| `DATABASE_SYNC_URL` | Yes | GCP Cloud SQL connection string |
+
+## GCP Database Write
+
+Updates `stock_us` on the most recent `pl_contract_data_daily` row for the active contract (queried via `ref_contract.is_active`). The row must already exist — Barchart scraper creates it at 9:00 PM UTC. If no row exists, logs an error and continues to Sheets.
+
+The DB write is non-blocking: if it fails, the Sheets write proceeds normally.
 
 ## Railway Deployment
 
@@ -122,8 +131,7 @@ poetry run python -m scripts.ice_stocks_scraper.main --dry-run --verbose
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON` | Yes | Service account JSON with **write** access to the TECHNICALS spreadsheet |
-
-No other env vars needed. No database, no Auth0, no AWS.
+| `DATABASE_SYNC_URL` | Yes | GCP Cloud SQL connection string |
 
 ### Why This Schedule
 

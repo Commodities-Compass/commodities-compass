@@ -109,11 +109,20 @@ backend/scripts/ice_stocks_scraper/html_dumps/
 backend/scripts/ice_stocks_scraper/session.json
 backend/scripts/ice_stocks_scraper/cookie.txt
 
-# North Star design doc (private, never committed)
+# Internal strategy docs (private, never committed)
 The_North_Star.md
+2026-03-06-roadmap-12-weeks.md
+2026-03-09-phase0-and-frontend-review.md
+gcp-candidate-deployment.md
+gcp-data-migration-plan.md
 
 # Terraform
 infra/terraform/.terraform/
 infra/terraform/*.tfstate*
 infra/terraform/*.tfplan
+infra/terraform/tfplan
+
+# Frontend env files (only .env.example and .env.production.example are committed)
+frontend/.env.production
+
 # NOTE: .terraform.lock.hcl is intentionally NOT ignored — commit it for reproducible builds

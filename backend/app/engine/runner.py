@@ -92,7 +92,9 @@ def _convert_numeric_columns(df: pd.DataFrame) -> pd.DataFrame:
             result[col] = pd.to_numeric(result[col], errors="coerce")
     for col in ["volume", "oi"]:
         if col in result.columns:
-            result[col] = pd.to_numeric(result[col], errors="coerce").astype("Int64")
+            result[col] = pd.Series(pd.to_numeric(result[col], errors="coerce")).astype(
+                "Int64"
+            )
     return result
 
 
@@ -132,7 +134,7 @@ def load_market_data(session: Session, contract_code: str) -> pd.DataFrame:
         "contract_id",
         "macroeco_bonus",
     ]
-    return _convert_numeric_columns(pd.DataFrame(rows, columns=columns))
+    return _convert_numeric_columns(pd.DataFrame(rows, columns=pd.Index(columns)))
 
 
 def load_all_market_data(session: Session) -> pd.DataFrame:
@@ -175,7 +177,7 @@ def load_all_market_data(session: Session) -> pd.DataFrame:
         "contract_code",
         "macroeco_bonus",
     ]
-    return _convert_numeric_columns(pd.DataFrame(rows, columns=columns))
+    return _convert_numeric_columns(pd.DataFrame(rows, columns=pd.Index(columns)))
 
 
 def _print_summary(signals: pd.DataFrame) -> None:
@@ -184,7 +186,7 @@ def _print_summary(signals: pd.DataFrame) -> None:
     logger.info("Decisions: %s", dict(valid_decisions))
 
     final = signals["final_indicator"].dropna()
-    if not final.empty:
+    if len(final) > 0:
         logger.info(
             "Score stats: min=%.3f, max=%.3f, mean=%.3f, median=%.3f",
             final.min(),
@@ -203,7 +205,7 @@ def _print_tail(signals: pd.DataFrame, n: int = 5) -> None:
     for _, row in tail.iterrows():
         score = (
             f"{row['final_indicator']:.3f}"
-            if pd.notna(row["final_indicator"])
+            if bool(pd.notna(row["final_indicator"]))
             else "N/A"
         )
         contract = f"  [{row['contract_code']}]" if "contract_code" in row.index else ""
@@ -241,7 +243,7 @@ def _write_results_per_contract(
         counts = write_pipeline_results(
             session=session,
             signals_df=group_df,
-            contract_id=contract_id,
+            contract_id=uuid.UUID(str(contract_id)),
             algorithm_version_id=algo_version_id,
             config=config,
         )

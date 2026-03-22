@@ -32,5 +32,5 @@ class MACDSignal:
 
     def compute(self, df: pd.DataFrame) -> pd.DataFrame:
         result = df.copy()
-        result["macd_signal"] = _compute_ema(result["macd"], 9)
+        result["macd_signal"] = _compute_ema(pd.Series(result["macd"]), 9)
         return result

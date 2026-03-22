@@ -59,7 +59,7 @@ class EMA12:
 
     def compute(self, df: pd.DataFrame) -> pd.DataFrame:
         result = df.copy()
-        result["ema12"] = _compute_ema(result["close"], 12)
+        result["ema12"] = _compute_ema(pd.Series(result["close"]), 12)
         return result
 
 
@@ -71,5 +71,5 @@ class EMA26:
 
     def compute(self, df: pd.DataFrame) -> pd.DataFrame:
         result = df.copy()
-        result["ema26"] = _compute_ema(result["close"], 26)
+        result["ema26"] = _compute_ema(pd.Series(result["close"]), 26)
         return result

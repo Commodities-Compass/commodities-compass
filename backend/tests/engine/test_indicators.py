@@ -5,6 +5,7 @@ Each test validates against known reference values or mathematical properties.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 
 import numpy as np
 import pandas as pd
@@ -21,11 +22,11 @@ from app.engine.indicators.stochastic import StochasticK, StochasticD
 
 
 def _make_ohlcv(
-    closes: list[float],
-    highs: list[float] | None = None,
-    lows: list[float] | None = None,
-    volumes: list[int] | None = None,
-    ois: list[int] | None = None,
+    closes: Sequence[float],
+    highs: Sequence[float] | None = None,
+    lows: Sequence[float] | None = None,
+    volumes: Sequence[int] | None = None,
+    ois: Sequence[int] | None = None,
 ) -> pd.DataFrame:
     """Helper to build a minimal OHLCV DataFrame."""
     n = len(closes)

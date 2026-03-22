@@ -61,7 +61,7 @@ def normalize_scores(
 
     for score_col, norm_col in _SCORE_TO_NORM.items():
         result[norm_col] = rolling_zscore(
-            result[score_col], window=window, outlier_cap=outlier_cap
+            pd.Series(result[score_col]), window=window, outlier_cap=outlier_cap
         )
 
     return result

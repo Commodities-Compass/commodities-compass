@@ -30,6 +30,9 @@ Commodities Compass is a Business Intelligence application for commodities tradi
 - `poetry install` - Install Python dependencies
 - `poetry run alembic upgrade head` - Run database migrations
 - `poetry run pytest` - Run backend tests
+- `poetry run compute-indicators --all-contracts --dry-run` - Compute indicators (dry run)
+- `poetry run compute-indicators --all-contracts` - Compute indicators and write to GCP DB
+- `poetry run compute-indicators --contract CAK26` - Compute for a single contract
 
 ### Frontend Commands (from frontend/)
 
@@ -63,11 +66,14 @@ The backend follows a clean architecture with separation of concerns:
   - `endpoints/historical.py` - Historical data endpoints (stub/mock data, TODO)
 - **`app/models/`** - SQLAlchemy database models split by domain:
   - `base.py` - DeclarativeBase class
-  - `technicals.py` - OHLCV data with 40+ technical indicators
-  - `indicator.py` - Normalized indicators and trading signals
-  - `market_research.py` - Market research articles
-  - `weather_data.py` - Weather impact data
+  - `technicals.py` - Legacy: OHLCV data with 40+ technical indicators (Railway, read by dashboard)
+  - `indicator.py` - Legacy: normalized indicators and trading signals (Railway, read by dashboard)
+  - `market_research.py` - Legacy: market research articles
+  - `weather_data.py` - Legacy: weather impact data
   - `test_range.py` - Indicator color ranges (RED/ORANGE/GREEN)
+  - `reference.py` - MVP: ref_commodity, ref_exchange, ref_contract, ref_trading_calendar
+  - `pipeline.py` - MVP: pl_contract_data_daily, pl_derived_indicators, pl_indicator_daily, pl_algorithm_version, pl_algorithm_config, pl_fundamental_article, pl_weather_observation
+  - `signal.py` - MVP: pl_signal_component (per-indicator contribution decomposition)
 - **`app/schemas/`** - Pydantic request/response models:
   - `dashboard.py` - All dashboard response schemas (PositionStatus, IndicatorsGrid, Recommendations, ChartData, News, Weather, Audio)
 - **`app/services/`** - Business logic layer (service-oriented architecture):
@@ -77,6 +83,16 @@ The backend follows a clean architecture with separation of concerns:
   - `audio_service.py` - Google Drive audio file integration (singleton service)
 - **`app/utils/`** - Reusable utility functions:
   - `date_utils.py` - Date parsing, validation, business date conversion (weekend to Friday)
+- **`app/engine/`** - Indicator computation engine (Phase 3.1). Replaces the Google Sheets formula engine. See `app/engine/README.md` for full docs.
+  - `types.py` - AlgorithmConfig (frozen), NEW CHAMPION params, column constants
+  - `indicators/` - 14 technical indicators (pivots, EMA, MACD, RSI Wilder, Stochastic, ATR Wilder, Bollinger, ratios), each implementing the `Indicator` protocol
+  - `registry.py` - Indicator registry with topological sort on dependency graph
+  - `smoothing.py` - 5-day SMA scoring layer
+  - `normalization.py` - Rolling 252-day z-score (replaces Sheets' full-history z-score which had look-ahead bias)
+  - `composite.py` - NEW CHAMPION power formula (`k + Σ(coeff × sign(x) × |x|^exp)`) with decision thresholds (OPEN ≥ 1.5, HEDGE ≤ -1.5)
+  - `pipeline.py` - Orchestrator: raw OHLCV → derived indicators → raw scores → z-scores → composite score + decision
+  - `db_writer.py` - Upsert results to `pl_derived_indicators`, `pl_indicator_daily`, `pl_signal_component`
+  - `runner.py` - CLI entry point (`poetry run compute-indicators`)
 
 ### Frontend (React 19 + TypeScript)
 
@@ -127,7 +143,8 @@ Frontend code uses Auth0 variables (not VITE_ prefixed) exposed via custom Vite 
 - Redis 7 runs on custom port 6380 (not default 6379) via Docker
 - Database URL: `postgresql+asyncpg://postgres:password@localhost:5433/commodities_compass`
 - Async SQLAlchemy with asyncpg driver for app, sync engine for Alembic migrations
-- 4 migrations exist: initial schema, score field precision update, unused table cleanup, test_range table
+- 6 migrations exist: initial schema, score field precision update, unused table cleanup, test_range table, MVP schema (15 pl_* tables), drop volatility column
+- **Two database layers coexist**: legacy tables (technicals, indicator, market_research, weather_data) read by dashboard API, and MVP `pl_*` tables written by scrapers (dual-write) and the indicator engine. Legacy tables die in Phase 5.
 
 ### Authentication Flow
 
@@ -140,17 +157,38 @@ Frontend code uses Auth0 variables (not VITE_ prefixed) exposed via custom Vite 
 
 ## Data Pipeline
 
+### Legacy Pipeline (Railway — still active, dies in Phase 5)
+
 Data flows from Google Sheets to PostgreSQL via ETL, updated daily by Railway cron jobs:
 
 1. **Google Sheets ETL** implemented in `app/services/data_import.py` (run with `poetry run import`)
 2. **Full refresh strategy**: Each import clears existing table data and re-inserts all rows
 3. **5 sheets imported** with column mappings defined in `app/core/excel_mappings.py`:
-   - **TECHNICALS** → `technicals` table: OHLCV data with 40+ technical indicators (RSI, MACD, ATR, Bollinger Bands, pivot points, etc.), trading signals (OPEN/HEDGE/MONITOR), updated daily at 9:00-9:20 PM UTC
-   - **INDICATOR** → `indicator` table: Normalized indicators (0-1 scale), composite scores, macroeconomic analysis (OpenAI-generated), updated daily at 9:20 PM UTC
-   - **BIBLIO_ALL** → `market_research` table: Research articles with LLM impact synthesis, updated daily at 9:10 PM UTC
-   - **METEO_ALL** → `weather_data` table: Agricultural weather from Ghana & Côte d'Ivoire (10 locations), updated daily at 9:10 PM UTC
-   - **TEST RANGE** → `test_range` table: Color zone thresholds (RED/ORANGE/GREEN) for gauge indicators
+   - **TECHNICALS** → `technicals` table: OHLCV data with 40+ technical indicators
+   - **INDICATOR** → `indicator` table: Normalized indicators, composite scores, macroeconomic analysis
+   - **BIBLIO_ALL** → `market_research` table: Research articles with LLM impact synthesis
+   - **METEO_ALL** → `weather_data` table: Agricultural weather from Ghana & Côte d'Ivoire
+   - **TEST RANGE** → `test_range` table: Color zone thresholds for gauge indicators
 4. **Data transformations**: `parse_datetime`, `parse_decimal`, `parse_decimal_from_string`, `parse_integer` for handling US number formats, percentages, and formulas
+
+### New Pipeline (GCP — Phase 3.1 complete)
+
+Scrapers dual-write to both Google Sheets and `pl_contract_data_daily` (GCP Cloud SQL). The indicator computation engine (`app/engine/`) replaces the Google Sheets formula engine:
+
+```
+Scrapers → pl_contract_data_daily (raw OHLCV)
+               │
+               └→ compute-indicators (app/engine/)
+                    ├→ pl_derived_indicators (27 technical indicators)
+                    ├→ pl_indicator_daily (scores, z-scores, composite, decision)
+                    └→ pl_signal_component (per-indicator contribution)
+```
+
+- **Fixes 9 documented bugs** vs Sheets: Wilder's RSI/ATR, symmetric Bollinger, rolling z-scores (no look-ahead bias), correct Stochastic bounds, correct decision labels
+- **Contract-centric**: all data keyed on `(date, contract_id)`
+- **Algorithm config as data**: NEW CHAMPION power formula params stored in `pl_algorithm_config`, not hardcoded
+- **CLI**: `poetry run compute-indicators --all-contracts [--dry-run]`
+- **Full docs**: `app/engine/README.md`
 
 ## Scrapers
 
@@ -198,7 +236,7 @@ Google Sheets TECHNICALS row:
 
 **Bug 1 — Wrong raw block (old scraper)**: Used `re.search` → picked FIRST of 4+ raw blocks. The first block was often a next-month contract or options data → wrong V and OI. Fix: max-volume heuristic picks the block with highest `volume` (always the main contract).
 
-**Bug 2 — CA\*0 roll mismatch**: Barchart's `CA*0` continuous symbol rolls based on volume shift, not calendar. In Feb 2026, Barchart already rolled CA\*0 to CAK26 (May) while we should track CAH26 (March) until March 16. Fix: replaced auto-roll with explicit `ACTIVE_CONTRACT` env var. The scraper always uses the contract code from this env var. CA\*0 is never used in URLs.
+**Bug 2 — CA\*0 roll mismatch**: Barchart's `CA*0` continuous symbol rolls based on volume shift, not calendar. In Feb 2026, Barchart already rolled CA\*0 to CAK26 (May) while we should track CAH26 (March) until Feb 27. The actual roll to CAK26 happened on March 2 (first trading day of March), based on OI crossover. Fix: replaced auto-roll with explicit `ACTIVE_CONTRACT` env var. The scraper always uses the contract code from this env var. CA\*0 is never used in URLs.
 
 **Forensic proof of prod data errors**: Prod OI=36,333 and Close=2,438 matched CAH26's data exactly (`previousPrice=2438`, `openInterest=36333` on the CAH26 page). The human who filled prod was reading the wrong contract page (March instead of May). Prod V=3,625 was the correct raw contract count for CAH26.
 
@@ -342,7 +380,7 @@ The `PositionStatus` component automatically fetches and plays the audio file:
 
 - Backend uses Poetry scripts: `poetry run dev`, `poetry run lint`, `poetry run import`, `poetry run daily-analysis`, `poetry run meteo-agent`, `poetry run compass-brief`, `poetry run press-review`
 - Frontend environment variables exposed via custom Vite `define` config (no VITE_ prefix needed)
-- Database migrations managed via Alembic with 4 existing migrations
+- Database migrations managed via Alembic with 6 existing migrations
 - Pre-commit hooks run via Husky (backend: ruff + pyright, frontend: eslint fix)
 - Development setup script available at `scripts/setup-dev.sh`
 - `commodities` and `historical` API endpoints return mock data (TODO: implement database queries)

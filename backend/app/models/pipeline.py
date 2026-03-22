@@ -106,7 +106,6 @@ class PlDerivedIndicators(Base):
     # Volatility
     atr: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
     atr_14d: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
-    volatility: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
 
     # Bollinger Bands
     bollinger: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))

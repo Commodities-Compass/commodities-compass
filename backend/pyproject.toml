@@ -70,6 +70,7 @@ daily-analysis = "scripts.daily_analysis.main:main"
 compass-brief = "scripts.compass_brief.main:main"
 meteo-agent = "scripts.meteo_agent.main:main"
 seed-gcp = "scripts.seed_gcp:main"
+compute-indicators = "app.engine.runner:main"
 
 [tool.pyright]
 include = ["app", "tests"]

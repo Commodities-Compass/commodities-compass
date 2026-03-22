@@ -1,8 +1,66 @@
 # Daily Analysis Pipeline
 
-Replaces the `COMPASS - DAILY BOT AI` Make.com scenario (18 modules, 42 variables, 2 OpenAI calls) with version-controlled Python code. Reads market data from Google Sheets, runs two LLM calls, writes trading decisions back to Google Sheets.
+Core AI analysis engine: reads market data, runs two LLM calls (macro/weather analysis + trading decision), writes trading signals. Supports two modes:
 
-## Pipeline Flow
+- **`--db` mode** (new, Phase 3.3): Reads from `pl_*` tables, computes indicators with `app/engine/`, writes to `pl_indicator_daily` + `aud_llm_call`. No Google Sheets dependency.
+- **`--sheet` mode** (legacy): Reads/writes Google Sheets with HISTORIQUE row-shift formula management. Still active during transition.
+
+## DB Mode (Recommended)
+
+```bash
+# Dry run
+poetry run daily-analysis --db --dry-run
+
+# Full run against GCP
+DATABASE_SYNC_URL="postgresql+psycopg2://..." poetry run daily-analysis --db
+
+# Specific date and contract
+poetry run daily-analysis --db --date 2026-03-20 --contract CAK26
+```
+
+### DB Mode Flow
+
+```
+[1] Read from DB
+    +-- pl_contract_data_daily + pl_derived_indicators → 21 TOD/YES variable pairs
+    +-- pl_fundamental_article (or market_research fallback) → MACRONEWS
+    +-- pl_weather_observation (or weather_data fallback) → METEOTODAY + METEONEWS
+
+[2] LLM Call #1 — Macro/Weather Analysis → MACROECO_BONUS + ECO
+
+[3] Compute FINAL_INDICATOR using app.engine.composite (no Sheets recalc!)
+    +-- Read z-scores from pl_indicator_daily
+    +-- Apply NEW CHAMPION power formula
+    +-- Determine CONCLUSION (OPEN/MONITOR/HEDGE)
+
+[4] LLM Call #2 — Trading Decision → DECISION / CONFIANCE / DIRECTION / CONCLUSION
+
+[5] Write to DB
+    +-- Update pl_indicator_daily (macroeco, final_indicator, decision, etc.)
+    +-- Insert 2 rows to aud_llm_call (audit trail)
+```
+
+### DB Mode Files
+
+| File | Purpose |
+|------|---------|
+| `db_reader.py` | Reads technicals + context from `pl_*` tables |
+| `db_analysis_engine.py` | Orchestrates DB-first pipeline (replaces `analysis_engine.py`) |
+
+### What's Eliminated in DB Mode
+
+- `sheets_reader.py` → replaced by `db_reader.py`
+- `indicator_writer.py` (528 lines of HISTORIQUE row-shift) → replaced by `app.engine.composite`
+- Google Sheets API dependency → not needed
+- Formula recalculation polling → deterministic DB computation
+
+---
+
+## Legacy Sheets Mode
+
+> Still active during transition. Will be removed in Phase 5.
+
+## Legacy Pipeline Flow
 
 ```
 main.py
@@ -38,14 +96,16 @@ main.py
 ```
 scripts/daily_analysis/
 +-- __init__.py
-+-- main.py              # CLI entry point, 3 modes: inspect / indicator-only / full pipeline
-+-- config.py            # Sheet names, formula templates, variable mappings, credentials
-+-- sheets_reader.py     # Read TECHNICALS, BIBLIO_ALL, METEO_ALL (production only)
-+-- indicator_writer.py  # INDICATOR sheet writes + HISTORIQUE row-shift + read-back
-+-- llm_client.py        # OpenAI API client with retry logic
-+-- prompts.py           # Prompt templates (extracted verbatim from Make.com blueprint JSON)
-+-- output_parser.py     # Pydantic models for structured JSON LLM output parsing
-+-- analysis_engine.py   # Pipeline orchestrator
++-- main.py                # CLI entry point: --db (new) or --sheet (legacy)
++-- config.py              # Sheet names, formula templates, variable mappings
++-- db_reader.py           # [NEW] Read technicals + context from pl_* tables
++-- db_analysis_engine.py  # [NEW] DB-first pipeline orchestrator (uses app/engine/)
++-- sheets_reader.py       # [LEGACY] Read from Google Sheets
++-- indicator_writer.py    # [LEGACY] INDICATOR sheet writes + HISTORIQUE row-shift
++-- analysis_engine.py     # [LEGACY] Sheets-dependent pipeline orchestrator
++-- llm_client.py          # OpenAI API client with retry (shared by both modes)
++-- prompts.py             # Prompt templates (shared by both modes)
++-- output_parser.py       # Pydantic models for LLM output (shared by both modes)
 ```
 
 ## CLI Usage

@@ -1,10 +1,13 @@
 # Compass Brief Generator
 
-Replaces the manual Looker Studio PDF export step in the daily audio podcast workflow. Reads market data from Google Sheets and uploads a structured `.txt` brief to Google Drive, ready for NotebookLM consumption.
+Generates a structured `.txt` brief from market data and uploads to Google Drive for NotebookLM podcast consumption. Supports two data sources:
+
+- **`--db` mode** (new, Phase 3.4): Reads from `pl_*` tables. No Sheets dependency.
+- **Default mode** (legacy): Reads from Google Sheets.
 
 ## What it does
 
-1. Reads the **last 2 rows** from TECHNICALS, INDICATOR, BIBLIO_ALL, METEO_ALL (production sheets)
+1. Reads the **last 2 days** of market data (technicals, indicators, press review, weather)
 2. Generates a single `.txt` file with two dated sections: **VEILLE** (yesterday) and **AUJOURD'HUI** (today)
 3. Uploads to a **Shared Drive** folder ("Compass Briefs")
 4. Idempotent: re-running for the same date updates the existing file
@@ -25,23 +28,23 @@ The brief mirrors the Looker PDF content:
 ## Usage
 
 ```bash
-# Dry run -- generate brief, print to stdout, no upload
-poetry run compass-brief --dry-run
+# DB mode (recommended)
+poetry run compass-brief --db --dry-run        # preview from DB
+poetry run compass-brief --db                  # generate + upload from DB
 
-# Generate and upload to Drive
-poetry run compass-brief
+# Legacy Sheets mode
+poetry run compass-brief --dry-run             # preview from Sheets
+poetry run compass-brief                       # generate + upload from Sheets
 
-# Save locally + upload
-poetry run compass-brief --output /tmp/brief.txt
-
-# Verbose logging
-poetry run compass-brief --dry-run --verbose
+# Save locally
+poetry run compass-brief --db --output /tmp/brief.txt
 ```
 
 ## CLI flags
 
 | Flag | Default | Description |
 |------|---------|-------------|
+| `--db` | off | Read from `pl_*` tables instead of Google Sheets |
 | `--dry-run` | off | Print brief to stdout, skip Drive upload |
 | `--output` | none | Save brief to local file path |
 | `--verbose` | off | DEBUG logging |
@@ -102,16 +105,28 @@ Steps 1-3 remain manual until the audio agent (US-008) is implemented.
 ```
 backend/scripts/compass_brief/
 ├── __init__.py
-├── main.py              # CLI entry point + Sentry monitoring
+├── main.py              # CLI entry point: --db (new) or legacy Sheets
 ├── config.py            # Column mappings, env var helpers, spreadsheet ID
-├── sheets_reader.py     # Reads TECHNICALS, INDICATOR, BIBLIO_ALL, METEO_ALL
-├── brief_generator.py   # Formats data into structured text
-├── drive_uploader.py    # Uploads .txt to Shared Drive folder
+├── db_reader.py         # [NEW] Read from pl_* tables
+├── sheets_reader.py     # [LEGACY] Read from Google Sheets
+├── brief_generator.py   # Formats data into structured text (shared)
+├── drive_uploader.py    # Uploads .txt to Shared Drive folder (shared)
 ├── run_brief.sh         # Railway cron entry point
 └── README.md
 ```
 
 ## Data sources
+
+### DB mode (`--db`)
+
+| Table | Data |
+|-------|------|
+| `pl_contract_data_daily` + `pl_derived_indicators` | OHLCV, technicals (last 2 days) |
+| `pl_indicator_daily` | Scores, norms, decision, ECO (last 2 days) |
+| `pl_fundamental_article` (fallback: `market_research`) | Press review summaries |
+| `pl_weather_observation` (fallback: `weather_data`) | Weather + market impact |
+
+### Legacy Sheets mode
 
 | Sheet | Range | Data |
 |-------|-------|------|

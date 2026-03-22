@@ -1,12 +1,13 @@
-"""Generates a structured text brief from Sheets data.
+"""Generates a structured text brief from market data.
 
 Produces a single .txt file with yesterday + today sections,
-mirroring the content of the Looker Studio PDFs for NotebookLM consumption.
+for NotebookLM podcast consumption. Works with both Sheets and DB data sources.
 """
 
-from datetime import datetime
+from __future__ import annotations
 
-from scripts.compass_brief.sheets_reader import BriefData, DayData
+from datetime import datetime
+from typing import Any
 
 MOIS_FR = {
     1: "janvier",
@@ -26,7 +27,7 @@ MOIS_FR = {
 SEP = "=" * 70
 
 
-def generate_brief(data: BriefData) -> str:
+def generate_brief(data: Any) -> str:
     """Generate the full brief text from BriefData."""
     lines: list[str] = []
 
@@ -47,7 +48,7 @@ def generate_brief(data: BriefData) -> str:
     return "\n".join(lines)
 
 
-def _day_section(day: DayData, label: str) -> str:
+def _day_section(day: Any, label: str) -> str:
     lines: list[str] = []
 
     lines.append(SEP)

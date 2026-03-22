@@ -1,17 +1,16 @@
 """CLI entry point for the Compass Brief generator.
 
 Usage:
-    # Dry run — generate brief, print to stdout, no upload
-    poetry run compass-brief --dry-run
+    # DB mode (new — no Sheets dependency)
+    poetry run compass-brief --db --dry-run
+    poetry run compass-brief --db
 
-    # Generate and upload to Drive
+    # Legacy Sheets mode
+    poetry run compass-brief --dry-run
     poetry run compass-brief
 
-    # Generate, save locally, and upload
-    poetry run compass-brief --output /tmp/brief.txt
-
-    # Verbose logging
-    poetry run compass-brief --dry-run --verbose
+    # Save locally
+    poetry run compass-brief --db --output /tmp/brief.txt
 """
 
 import argparse
@@ -31,7 +30,6 @@ from scripts.compass_brief.config import (
     get_drive_briefs_folder_id,
 )
 from scripts.compass_brief.drive_uploader import DriveUploader
-from scripts.compass_brief.sheets_reader import SheetsReader
 
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s — %(message)s"
 
@@ -49,6 +47,11 @@ init_sentry("compass-brief")
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Commodities Compass — Daily Brief Generator"
+    )
+    parser.add_argument(
+        "--db",
+        action="store_true",
+        help="Read from pl_* tables instead of Google Sheets",
     )
     parser.add_argument(
         "--dry-run",
@@ -69,6 +72,31 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _read_from_db():
+    """Read brief data from database."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    from app.core.config import settings
+    from scripts.compass_brief.db_reader import DBBriefReader
+
+    db_url = str(settings.DATABASE_SYNC_URL)
+    engine = create_engine(db_url)
+
+    with Session(engine) as session:
+        reader = DBBriefReader(session)
+        return reader.read_all()
+
+
+def _read_from_sheets():
+    """Read brief data from Google Sheets (legacy)."""
+    from scripts.compass_brief.sheets_reader import SheetsReader
+
+    creds = get_credentials_json()
+    reader = SheetsReader(creds)
+    return reader.read_all()
+
+
 @monitor(monitor_slug="compass-brief")
 def main() -> int:
     args = _parse_args()
@@ -76,25 +104,28 @@ def main() -> int:
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
+    mode = "DB" if args.db else "SHEETS"
     logger.info("=" * 60)
-    logger.info("Compass Brief Generator")
+    logger.info("Compass Brief Generator (%s)", mode)
     logger.info("Mode: %s", "DRY RUN" if args.dry_run else "UPLOAD")
     logger.info("=" * 60)
 
     try:
-        # 1. Read data from Sheets
-        creds = get_credentials_json()
-        reader = SheetsReader(creds)
-        data = reader.read_all()
+        # 1. Read data
+        if args.db:
+            data = _read_from_db()
+        else:
+            data = _read_from_sheets()
 
         # 2. Generate brief text
         brief = generate_brief(data)
 
-        # 3. Derive filename from today's date in TECHNICALS
+        # 3. Derive filename from today's date
         dt = datetime.strptime(data.today.date, "%m/%d/%Y")
         filename = f"{dt.strftime('%Y%m%d')}-CompassBrief.txt"
 
         logger.info("Generated brief: %s (%d chars)", filename, len(brief))
+        logger.info("Today: %s | Yesterday: %s", data.today.date, data.yesterday.date)
 
         # 4. Save locally if requested
         if args.output:
@@ -107,6 +138,7 @@ def main() -> int:
             return 0
 
         # 6. Upload to Drive
+        creds = get_credentials_json()
         uploader = DriveUploader(creds)
         folder_id = get_drive_briefs_folder_id()
         file_id = uploader.upload(brief, filename, folder_id)
@@ -114,6 +146,7 @@ def main() -> int:
         sentry_sdk.set_context(
             "compass_brief",
             {
+                "source": mode,
                 "today": data.today.date,
                 "yesterday": data.yesterday.date,
                 "filename": filename,

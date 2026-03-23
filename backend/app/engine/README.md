@@ -59,17 +59,17 @@ poetry run compute-indicators --contract CAK26
 # Custom normalization window
 poetry run compute-indicators --contract CAK26 --window 365
 
-# Specific algorithm version
-poetry run compute-indicators --contract CAK26 --algorithm new_champion
+# Specific algorithm and version
+poetry run compute-indicators --contract CAK26 --algorithm legacy --algorithm-version 1.0.0
 ```
 
 ## Programmatic Usage
 
 ```python
 from app.engine.pipeline import IndicatorPipeline
-from app.engine.types import NEW_CHAMPION
+from app.engine.types import LEGACY_V1
 
-pipeline = IndicatorPipeline(config=NEW_CHAMPION, normalization_window=252)
+pipeline = IndicatorPipeline(config=LEGACY_V1, normalization_window=252)
 result = pipeline.run(raw_df)
 
 # result.derived    → DataFrame with 27 indicator columns

@@ -84,10 +84,10 @@ class AlgorithmConfig:
         )
 
 
-# NEW CHAMPION production params (CONFIG col G) — hardcoded as fallback only.
+# Legacy v1.0.0 production params (CONFIG col G) — hardcoded as fallback only.
 # In production, always load from pl_algorithm_config.
-NEW_CHAMPION = AlgorithmConfig(
-    version_name="new_champion_v1",
+LEGACY_V1 = AlgorithmConfig(
+    version_name="legacy_v1.0.0",
     k=-1.2,
     a=-1.3,
     b=1.8,

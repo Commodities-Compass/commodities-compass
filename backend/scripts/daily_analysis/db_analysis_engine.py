@@ -21,7 +21,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.engine.composite import compute_decision, compute_momentum, compute_score
-from app.engine.types import AlgorithmConfig, NEW_CHAMPION
+from app.engine.types import AlgorithmConfig, LEGACY_V1
 from scripts.daily_analysis.db_reader import DBReader, PipelineInputs
 from scripts.daily_analysis.llm_client import LLMClient, LLMResponse
 from scripts.daily_analysis.output_parser import (
@@ -55,7 +55,7 @@ class DBAnalysisEngine:
         self,
         session: Session,
         *,
-        algorithm_config: AlgorithmConfig = NEW_CHAMPION,
+        algorithm_config: AlgorithmConfig = LEGACY_V1,
         llm_provider: str = "openai",
         llm_model: str | None = None,
         call1_temperature: float = 1.0,

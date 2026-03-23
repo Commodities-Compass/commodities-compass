@@ -15,7 +15,7 @@ from app.engine.indicators import ALL_INDICATORS
 from app.engine.normalization import normalize_scores
 from app.engine.registry import IndicatorRegistry
 from app.engine.smoothing import compute_raw_scores
-from app.engine.types import AlgorithmConfig, NEW_CHAMPION
+from app.engine.types import AlgorithmConfig, LEGACY_V1
 
 
 @dataclass(frozen=True)
@@ -39,7 +39,7 @@ class IndicatorPipeline:
 
     def __init__(
         self,
-        config: AlgorithmConfig = NEW_CHAMPION,
+        config: AlgorithmConfig = LEGACY_V1,
         normalization_window: int = 252,
         outlier_cap: float = 10.0,
     ) -> None:

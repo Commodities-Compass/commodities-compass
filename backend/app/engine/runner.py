@@ -1,8 +1,9 @@
 """CLI entry point for the indicator computation engine.
 
 Usage:
-    poetry run compute-indicators --contract CAK26 [--dry-run] [--window 252]
     poetry run compute-indicators --all-contracts [--dry-run]
+    poetry run compute-indicators --all-contracts --algorithm legacy --algorithm-version 1.1.0
+    poetry run compute-indicators --contract CAK26 [--dry-run] [--window 252]
 
 Reads from pl_contract_data_daily, computes all indicators, and writes to
 pl_derived_indicators + pl_indicator_daily + pl_signal_component.
@@ -27,41 +28,67 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.engine.db_writer import write_pipeline_results
 from app.engine.pipeline import IndicatorPipeline
-from app.engine.types import AlgorithmConfig, NEW_CHAMPION
+from app.engine.types import AlgorithmConfig, LEGACY_V1
 
 logger = logging.getLogger(__name__)
 
 
-def load_algorithm_config(session: Session, version_name: str) -> AlgorithmConfig:
-    """Load algorithm config from DB. Falls back to hardcoded NEW_CHAMPION."""
-    result = session.execute(
-        text("""
-            SELECT ac.parameter_name, ac.value
-            FROM pl_algorithm_config ac
-            JOIN pl_algorithm_version av ON ac.algorithm_version_id = av.id
-            WHERE av.name = :name AND av.is_active = true
-            ORDER BY ac.parameter_name
-        """),
-        {"name": version_name},
-    )
+def load_algorithm_config(
+    session: Session, version_name: str, version: str | None = None
+) -> AlgorithmConfig:
+    """Load algorithm config from DB. Falls back to hardcoded LEGACY_V1."""
+    if version:
+        result = session.execute(
+            text("""
+                SELECT ac.parameter_name, ac.value
+                FROM pl_algorithm_config ac
+                JOIN pl_algorithm_version av ON ac.algorithm_version_id = av.id
+                WHERE av.name = :name AND av.version = :version
+                ORDER BY ac.parameter_name
+            """),
+            {"name": version_name, "version": version},
+        )
+    else:
+        result = session.execute(
+            text("""
+                SELECT ac.parameter_name, ac.value
+                FROM pl_algorithm_config ac
+                JOIN pl_algorithm_version av ON ac.algorithm_version_id = av.id
+                WHERE av.name = :name AND av.is_active = true
+                ORDER BY ac.parameter_name
+            """),
+            {"name": version_name},
+        )
     params = {row[0]: row[1] for row in result}
     if not params:
         logger.warning(
-            "No active algorithm config found for '%s', using hardcoded NEW_CHAMPION",
+            "No active algorithm config found for '%s' version=%s, using hardcoded LEGACY_V1",
             version_name,
+            version,
         )
-        return NEW_CHAMPION
-    return AlgorithmConfig.from_db_rows(version_name, params)
+        return LEGACY_V1
+    label = f"{version_name}_v{version}" if version else version_name
+    return AlgorithmConfig.from_db_rows(label, params)
 
 
-def load_algorithm_version_id(session: Session, version_name: str) -> uuid.UUID | None:
+def load_algorithm_version_id(
+    session: Session, version_name: str, version: str | None = None
+) -> uuid.UUID | None:
     """Load the algorithm version UUID from DB."""
-    result = session.execute(
-        text(
-            "SELECT id FROM pl_algorithm_version WHERE name = :name AND is_active = true"
-        ),
-        {"name": version_name},
-    )
+    if version:
+        result = session.execute(
+            text(
+                "SELECT id FROM pl_algorithm_version WHERE name = :name AND version = :version"
+            ),
+            {"name": version_name, "version": version},
+        )
+    else:
+        result = session.execute(
+            text(
+                "SELECT id FROM pl_algorithm_version WHERE name = :name AND is_active = true"
+            ),
+            {"name": version_name},
+        )
     row = result.fetchone()
     return row[0] if row else None
 
@@ -271,8 +298,11 @@ def main() -> None:
         default=252,
         help="Normalization rolling window (default: 252)",
     )
+    parser.add_argument("--algorithm", default="legacy", help="Algorithm name")
     parser.add_argument(
-        "--algorithm", default="new_champion", help="Algorithm version name"
+        "--algorithm-version",
+        default=None,
+        help="Algorithm version (e.g., 1.0.0, 1.1.0)",
     )
     args = parser.parse_args()
 
@@ -284,8 +314,12 @@ def main() -> None:
     engine = create_engine(db_url)
 
     with Session(engine) as session:
-        logger.info("Loading algorithm config: %s", args.algorithm)
-        config = load_algorithm_config(session, args.algorithm)
+        logger.info(
+            "Loading algorithm config: %s version=%s",
+            args.algorithm,
+            args.algorithm_version or "active",
+        )
+        config = load_algorithm_config(session, args.algorithm, args.algorithm_version)
 
         # Load data
         if args.all_contracts:
@@ -320,7 +354,9 @@ def main() -> None:
             return
 
         # Resolve algorithm version ID
-        algo_version_id = load_algorithm_version_id(session, args.algorithm)
+        algo_version_id = load_algorithm_version_id(
+            session, args.algorithm, args.algorithm_version
+        )
         if algo_version_id is None:
             logger.error(
                 "Algorithm version '%s' not found or not active", args.algorithm

@@ -12,7 +12,7 @@ from app.engine.composite import (
     compute_momentum,
     compute_score,
 )
-from app.engine.types import NEW_CHAMPION, AlgorithmConfig
+from app.engine.types import LEGACY_V1, AlgorithmConfig
 
 
 class TestPowerTerm:
@@ -50,8 +50,8 @@ class TestPowerTerm:
 class TestComputeScore:
     def test_all_zeros(self) -> None:
         """All zero inputs should return just the constant k."""
-        score = compute_score(0, 0, 0, 0, 0, 0, 0, 0, NEW_CHAMPION)
-        assert score == pytest.approx(NEW_CHAMPION.k)
+        score = compute_score(0, 0, 0, 0, 0, 0, 0, 0, LEGACY_V1)
+        assert score == pytest.approx(LEGACY_V1.k)
 
     def test_known_values(self) -> None:
         """Spot-check with known inputs."""
@@ -64,41 +64,41 @@ class TestComputeScore:
             voi_norm=0.0,
             momentum=0.2,
             macroeco=0.05,
-            config=NEW_CHAMPION,
+            config=LEGACY_V1,
         )
         # Manual calculation:
-        expected = NEW_CHAMPION.k
-        expected += NEW_CHAMPION.a * 1.0 * abs(1.0) ** NEW_CHAMPION.b  # RSI
-        expected += NEW_CHAMPION.c * 1.0 * abs(0.5) ** NEW_CHAMPION.d  # MACD
-        expected += NEW_CHAMPION.e * (-1.0) * abs(-1.0) ** NEW_CHAMPION.f  # STOCH
+        expected = LEGACY_V1.k
+        expected += LEGACY_V1.a * 1.0 * abs(1.0) ** LEGACY_V1.b  # RSI
+        expected += LEGACY_V1.c * 1.0 * abs(0.5) ** LEGACY_V1.d  # MACD
+        expected += LEGACY_V1.e * (-1.0) * abs(-1.0) ** LEGACY_V1.f  # STOCH
         # ATR, CP, VOI = 0 → no contribution
-        expected += NEW_CHAMPION.n * 1.0 * abs(0.2) ** NEW_CHAMPION.o  # MOMENTUM
-        expected += NEW_CHAMPION.p * 1.0 * abs(0.05) ** NEW_CHAMPION.q  # MACROECO
+        expected += LEGACY_V1.n * 1.0 * abs(0.2) ** LEGACY_V1.o  # MOMENTUM
+        expected += LEGACY_V1.p * 1.0 * abs(0.05) ** LEGACY_V1.q  # MACROECO
         assert score == pytest.approx(expected)
 
     def test_symmetry_sign_flip(self) -> None:
         """Flipping all input signs should change the score."""
-        score_pos = compute_score(1, 1, 1, 1, 1, 1, 0.2, 0.05, NEW_CHAMPION)
-        score_neg = compute_score(-1, -1, -1, -1, -1, -1, -0.2, -0.05, NEW_CHAMPION)
+        score_pos = compute_score(1, 1, 1, 1, 1, 1, 0.2, 0.05, LEGACY_V1)
+        score_neg = compute_score(-1, -1, -1, -1, -1, -1, -0.2, -0.05, LEGACY_V1)
         assert score_pos != pytest.approx(score_neg)
 
 
 class TestComputeDecision:
     def test_open(self) -> None:
-        assert compute_decision(2.0, NEW_CHAMPION) == "OPEN"
-        assert compute_decision(1.5, NEW_CHAMPION) == "OPEN"  # exactly at threshold
+        assert compute_decision(2.0, LEGACY_V1) == "OPEN"
+        assert compute_decision(1.5, LEGACY_V1) == "OPEN"  # exactly at threshold
 
     def test_hedge(self) -> None:
-        assert compute_decision(-2.0, NEW_CHAMPION) == "HEDGE"
-        assert compute_decision(-1.5, NEW_CHAMPION) == "HEDGE"  # exactly at threshold
+        assert compute_decision(-2.0, LEGACY_V1) == "HEDGE"
+        assert compute_decision(-1.5, LEGACY_V1) == "HEDGE"  # exactly at threshold
 
     def test_monitor(self) -> None:
-        assert compute_decision(0.0, NEW_CHAMPION) == "MONITOR"
-        assert compute_decision(1.49, NEW_CHAMPION) == "MONITOR"
-        assert compute_decision(-1.49, NEW_CHAMPION) == "MONITOR"
+        assert compute_decision(0.0, LEGACY_V1) == "MONITOR"
+        assert compute_decision(1.49, LEGACY_V1) == "MONITOR"
+        assert compute_decision(-1.49, LEGACY_V1) == "MONITOR"
 
     def test_nan(self) -> None:
-        assert compute_decision(float("nan"), NEW_CHAMPION) == "MONITOR"
+        assert compute_decision(float("nan"), LEGACY_V1) == "MONITOR"
 
 
 class TestComputeMomentum:
@@ -155,7 +155,7 @@ class TestAlgorithmConfig:
         assert config.open_threshold == 1.5
         assert config.version_name == "test_v1"
 
-    def test_new_champion_frozen(self) -> None:
+    def test_legacy_v1_frozen(self) -> None:
         """AlgorithmConfig should be immutable."""
         with pytest.raises(AttributeError):
-            NEW_CHAMPION.k = 0.0  # type: ignore[misc]
+            LEGACY_V1.k = 0.0  # type: ignore[misc]

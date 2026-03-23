@@ -10,7 +10,7 @@ from app.engine.normalization import rolling_zscore
 from app.engine.pipeline import IndicatorPipeline, PipelineResult
 from app.engine.registry import IndicatorRegistry
 from app.engine.smoothing import compute_raw_scores
-from app.engine.types import NEW_CHAMPION
+from app.engine.types import LEGACY_V1
 
 
 def _make_market_data(n: int = 300, seed: int = 42) -> pd.DataFrame:
@@ -147,7 +147,7 @@ class TestFullPipeline:
     def test_pipeline_runs_end_to_end(self) -> None:
         """Pipeline should produce all expected columns without crashing."""
         df = _make_market_data(300)
-        pipeline = IndicatorPipeline(config=NEW_CHAMPION)
+        pipeline = IndicatorPipeline(config=LEGACY_V1)
         result = pipeline.run(df)
 
         assert isinstance(result, PipelineResult)

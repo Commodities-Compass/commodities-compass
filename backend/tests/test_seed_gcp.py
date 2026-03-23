@@ -1,7 +1,7 @@
 """Tests for the clean GCP seed script.
 
 Tests cover:
-- NEW CHAMPION algorithm config (19 params)
+- Legacy algorithm config (19 params)
 - Raw market data migration (no derived indicators)
 - AI output join (technicals + indicator by date)
 - Decision fallback (technicals.decision → indicator.conclusion)
@@ -34,9 +34,9 @@ from app.models.weather_data import WeatherData
 from scripts.seed_gcp import (
     COMPOSITE_FIELDS,
     CONTRACTS,
-    NEW_CHAMPION_ALGO_NAME,
-    NEW_CHAMPION_ALGO_VERSION,
-    NEW_CHAMPION_PARAMS,
+    LEGACY_ALGO_NAME,
+    LEGACY_ALGO_VERSION,
+    LEGACY_PARAMS,
     NORM_FIELDS,
     build_contract_lookup,
     decimal_or_none,
@@ -46,7 +46,7 @@ from scripts.seed_gcp import (
     migrate_raw_market_data,
     migrate_test_range,
     migrate_weather,
-    seed_algorithm_new_champion,
+    seed_algorithm_legacy,
     seed_reference_data,
     ts_to_date,
     validate_clean,
@@ -188,14 +188,14 @@ class TestBuildContractLookup:
 
 class TestSeedAlgorithmNewChampion:
     def test_creates_algorithm_and_19_params(self, sync_db_session):
-        algo_id = seed_algorithm_new_champion(sync_db_session)
+        algo_id = seed_algorithm_legacy(sync_db_session)
         assert algo_id is not None
 
         algo = sync_db_session.execute(
             select(PlAlgorithmVersion).where(PlAlgorithmVersion.id == algo_id)
         ).scalar_one()
-        assert algo.name == NEW_CHAMPION_ALGO_NAME
-        assert algo.version == NEW_CHAMPION_ALGO_VERSION
+        assert algo.name == LEGACY_ALGO_NAME
+        assert algo.version == LEGACY_ALGO_VERSION
         assert algo.is_active is True
 
         config_count = sync_db_session.execute(
@@ -205,8 +205,8 @@ class TestSeedAlgorithmNewChampion:
         ).scalar()
         assert config_count == 19
 
-    def test_params_match_new_champion_values(self, sync_db_session):
-        algo_id = seed_algorithm_new_champion(sync_db_session)
+    def test_params_match_legacy_values(self, sync_db_session):
+        algo_id = seed_algorithm_legacy(sync_db_session)
 
         configs = (
             sync_db_session.execute(
@@ -219,11 +219,11 @@ class TestSeedAlgorithmNewChampion:
         )
 
         param_dict = {c.parameter_name: c.value for c in configs}
-        assert param_dict == NEW_CHAMPION_PARAMS
+        assert param_dict == LEGACY_PARAMS
 
     def test_idempotent(self, sync_db_session):
-        id1 = seed_algorithm_new_champion(sync_db_session)
-        id2 = seed_algorithm_new_champion(sync_db_session)
+        id1 = seed_algorithm_legacy(sync_db_session)
+        id2 = seed_algorithm_legacy(sync_db_session)
         assert id1 == id2
 
 
@@ -312,7 +312,7 @@ class TestMigrateAiOutputs:
     def test_raw_scores_preserved(self, sync_db_session):
         refs = seed_reference_data(sync_db_session)
         contract_lookup = build_contract_lookup(refs["contract_ids"])
-        algo_id = seed_algorithm_new_champion(sync_db_session)
+        algo_id = seed_algorithm_legacy(sync_db_session)
 
         ind = _make_indicator(
             datetime(2025, 1, 15),
@@ -342,7 +342,7 @@ class TestMigrateAiOutputs:
         """All normalized z-score fields must be NULL."""
         refs = seed_reference_data(sync_db_session)
         contract_lookup = build_contract_lookup(refs["contract_ids"])
-        algo_id = seed_algorithm_new_champion(sync_db_session)
+        algo_id = seed_algorithm_legacy(sync_db_session)
 
         ind = _make_indicator(
             datetime(2025, 1, 15),
@@ -365,7 +365,7 @@ class TestMigrateAiOutputs:
         """All composite fields must be NULL."""
         refs = seed_reference_data(sync_db_session)
         contract_lookup = build_contract_lookup(refs["contract_ids"])
-        algo_id = seed_algorithm_new_champion(sync_db_session)
+        algo_id = seed_algorithm_legacy(sync_db_session)
 
         ind = _make_indicator(
             datetime(2025, 1, 15),
@@ -385,7 +385,7 @@ class TestMigrateAiOutputs:
     def test_macroeco_score_migrated(self, sync_db_session):
         refs = seed_reference_data(sync_db_session)
         contract_lookup = build_contract_lookup(refs["contract_ids"])
-        algo_id = seed_algorithm_new_champion(sync_db_session)
+        algo_id = seed_algorithm_legacy(sync_db_session)
 
         ind = _make_indicator(
             datetime(2025, 1, 15),
@@ -405,7 +405,7 @@ class TestMigrateAiOutputs:
         """technicals.decision (GPT Call #2) is preferred source."""
         refs = seed_reference_data(sync_db_session)
         contract_lookup = build_contract_lookup(refs["contract_ids"])
-        algo_id = seed_algorithm_new_champion(sync_db_session)
+        algo_id = seed_algorithm_legacy(sync_db_session)
 
         tech = _make_tech(
             datetime(2025, 1, 15),
@@ -434,7 +434,7 @@ class TestMigrateAiOutputs:
         """When technicals.decision is NULL, fall back to indicator.conclusion."""
         refs = seed_reference_data(sync_db_session)
         contract_lookup = build_contract_lookup(refs["contract_ids"])
-        algo_id = seed_algorithm_new_champion(sync_db_session)
+        algo_id = seed_algorithm_legacy(sync_db_session)
 
         tech = _make_tech(datetime(2025, 1, 15), Decimal("5000"))
         ind = _make_indicator(
@@ -453,7 +453,7 @@ class TestMigrateAiOutputs:
         """Decision is None when both sources are null."""
         refs = seed_reference_data(sync_db_session)
         contract_lookup = build_contract_lookup(refs["contract_ids"])
-        algo_id = seed_algorithm_new_champion(sync_db_session)
+        algo_id = seed_algorithm_legacy(sync_db_session)
 
         ind = _make_indicator(datetime(2025, 1, 15))
         sync_db_session.add(ind)
@@ -467,7 +467,7 @@ class TestMigrateAiOutputs:
     def test_eco_field_preserved(self, sync_db_session):
         refs = seed_reference_data(sync_db_session)
         contract_lookup = build_contract_lookup(refs["contract_ids"])
-        algo_id = seed_algorithm_new_champion(sync_db_session)
+        algo_id = seed_algorithm_legacy(sync_db_session)
 
         ind = _make_indicator(
             datetime(2025, 1, 15),
@@ -580,7 +580,7 @@ class TestValidateClean:
         """Full pipeline validation passes when data is correctly migrated."""
         refs = seed_reference_data(sync_db_session)
         contract_lookup = build_contract_lookup(refs["contract_ids"])
-        algo_id = seed_algorithm_new_champion(sync_db_session)
+        algo_id = seed_algorithm_legacy(sync_db_session)
 
         # Seed source data
         tech = _make_tech(datetime(2025, 1, 15), Decimal("5000"))

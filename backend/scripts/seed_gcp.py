@@ -81,10 +81,10 @@ DEFAULT_TARGET_URL = (
     "postgresql+psycopg2://postgres:password@localhost:5434/commodities_compass"
 )
 
-# NEW CHAMPION production power formula params from CONFIG col G (19 params)
-NEW_CHAMPION_ALGO_NAME = "new_champion"
-NEW_CHAMPION_ALGO_VERSION = "1.0.0"
-NEW_CHAMPION_PARAMS = {
+# Legacy v1.0.0 power formula params from CONFIG col G (19 params)
+LEGACY_ALGO_NAME = "legacy"
+LEGACY_ALGO_VERSION = "1.0.0"
+LEGACY_PARAMS = {
     "k": "-1.2",
     "a": "-1.3",
     "b": "1.8",
@@ -218,32 +218,32 @@ def seed_reference_data(session: Session) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def seed_algorithm_new_champion(session: Session) -> uuid.UUID:
-    """Insert NEW CHAMPION algorithm version and 19 config params."""
+def seed_algorithm_legacy(session: Session) -> uuid.UUID:
+    """Insert legacy algorithm version and 19 config params."""
     algo = session.execute(
         select(PlAlgorithmVersion).where(
-            PlAlgorithmVersion.name == NEW_CHAMPION_ALGO_NAME,
-            PlAlgorithmVersion.version == NEW_CHAMPION_ALGO_VERSION,
+            PlAlgorithmVersion.name == LEGACY_ALGO_NAME,
+            PlAlgorithmVersion.version == LEGACY_ALGO_VERSION,
         )
     ).scalar_one_or_none()
 
     if algo is None:
         algo = PlAlgorithmVersion(
-            name=NEW_CHAMPION_ALGO_NAME,
-            version=NEW_CHAMPION_ALGO_VERSION,
+            name=LEGACY_ALGO_NAME,
+            version=LEGACY_ALGO_VERSION,
             horizon="short_term",
             is_active=True,
-            description="NEW CHAMPION power formula params from CONFIG col G",
+            description="Legacy power formula params from CONFIG col G",
         )
         session.add(algo)
         session.flush()
         log.info(
             "Created algorithm: %s v%s",
-            NEW_CHAMPION_ALGO_NAME,
-            NEW_CHAMPION_ALGO_VERSION,
+            LEGACY_ALGO_NAME,
+            LEGACY_ALGO_VERSION,
         )
 
-        for param_name, value in NEW_CHAMPION_PARAMS.items():
+        for param_name, value in LEGACY_PARAMS.items():
             session.add(
                 PlAlgorithmConfig(
                     algorithm_version_id=algo.id,
@@ -252,12 +252,12 @@ def seed_algorithm_new_champion(session: Session) -> uuid.UUID:
                 )
             )
         session.flush()
-        log.info("Inserted %d algorithm config params", len(NEW_CHAMPION_PARAMS))
+        log.info("Inserted %d algorithm config params", len(LEGACY_PARAMS))
     else:
         log.info(
             "Algorithm already exists: %s v%s",
-            NEW_CHAMPION_ALGO_NAME,
-            NEW_CHAMPION_ALGO_VERSION,
+            LEGACY_ALGO_NAME,
+            LEGACY_ALGO_VERSION,
         )
 
     return algo.id
@@ -691,12 +691,12 @@ def validate_clean(src: Session, tgt: Session) -> bool:
     config_count = (
         tgt.execute(select(func.count()).select_from(PlAlgorithmConfig)).scalar() or 0
     )
-    config_ok = config_count == len(NEW_CHAMPION_PARAMS)
+    config_ok = config_count == len(LEGACY_PARAMS)
     log.info(
         "%-35s count=%d expected=%d [%s]",
         "algorithm_config",
         config_count,
-        len(NEW_CHAMPION_PARAMS),
+        len(LEGACY_PARAMS),
         "OK" if config_ok else "INCOMPLETE",
     )
     if not config_ok:
@@ -735,8 +735,8 @@ def run(
         refs = seed_reference_data(tgt)
         contract_lookup = build_contract_lookup(refs["contract_ids"])
 
-        log.info("=== Seeding NEW CHAMPION algorithm config ===")
-        algo_id = seed_algorithm_new_champion(tgt)
+        log.info("=== Seeding legacy algorithm config ===")
+        algo_id = seed_algorithm_legacy(tgt)
 
         log.info("=== Migrating raw market data ===")
         cd_count = migrate_raw_market_data(src, tgt, contract_lookup)

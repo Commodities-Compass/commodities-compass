@@ -31,7 +31,8 @@ Commodities Compass is a Business Intelligence application for commodities tradi
 - `poetry run alembic upgrade head` - Run database migrations
 - `poetry run pytest` - Run backend tests
 - `poetry run compute-indicators --all-contracts --dry-run` - Compute indicators (dry run)
-- `poetry run compute-indicators --all-contracts` - Compute indicators and write to GCP DB
+- `poetry run compute-indicators --all-contracts` - Compute indicators and write to DB
+- `poetry run compute-indicators --all-contracts --algorithm legacy --algorithm-version 1.1.0` - Compute with specific version
 - `poetry run compute-indicators --contract CAK26` - Compute for a single contract
 
 ### Frontend Commands (from frontend/)
@@ -84,12 +85,12 @@ The backend follows a clean architecture with separation of concerns:
 - **`app/utils/`** - Reusable utility functions:
   - `date_utils.py` - Date parsing, validation, business date conversion (weekend to Friday)
 - **`app/engine/`** - Indicator computation engine (Phase 3.1). Replaces the Google Sheets formula engine. See `app/engine/README.md` for full docs.
-  - `types.py` - AlgorithmConfig (frozen), NEW CHAMPION params, column constants
+  - `types.py` - AlgorithmConfig (frozen), legacy v1.0.0 params (fallback), column constants
   - `indicators/` - 14 technical indicators (pivots, EMA, MACD, RSI Wilder, Stochastic, ATR Wilder, Bollinger, ratios), each implementing the `Indicator` protocol
   - `registry.py` - Indicator registry with topological sort on dependency graph
   - `smoothing.py` - 5-day SMA scoring layer
   - `normalization.py` - Rolling 252-day z-score (replaces Sheets' full-history z-score which had look-ahead bias)
-  - `composite.py` - NEW CHAMPION power formula (`k + Σ(coeff × sign(x) × |x|^exp)`) with decision thresholds (OPEN ≥ 1.5, HEDGE ≤ -1.5)
+  - `composite.py` - Power formula (`k + Σ(coeff × sign(x) × |x|^exp)`) with configurable decision thresholds
   - `pipeline.py` - Orchestrator: raw OHLCV → derived indicators → raw scores → z-scores → composite score + decision
   - `db_writer.py` - Upsert results to `pl_derived_indicators`, `pl_indicator_daily`, `pl_signal_component`
   - `runner.py` - CLI entry point (`poetry run compute-indicators`)
@@ -186,7 +187,7 @@ Scrapers → pl_contract_data_daily (raw OHLCV)
 
 - **Fixes 9 documented bugs** vs Sheets: Wilder's RSI/ATR, symmetric Bollinger, rolling z-scores (no look-ahead bias), correct Stochastic bounds, correct decision labels
 - **Contract-centric**: all data keyed on `(date, contract_id)`
-- **Algorithm config as data**: NEW CHAMPION power formula params stored in `pl_algorithm_config`, not hardcoded
+- **Algorithm config as data**: Power formula params stored in `pl_algorithm_config`, versioned (legacy v1.0.0, v1.1.0). CLI: `--algorithm legacy --algorithm-version 1.1.0`
 - **CLI**: `poetry run compute-indicators --all-contracts [--dry-run]`
 - **Full docs**: `app/engine/README.md`
 

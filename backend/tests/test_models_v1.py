@@ -115,7 +115,7 @@ class TestRefContract:
 
 
 class TestRefTradingCalendar:
-    async def test_insert_trading_day(self, db_session):
+    async def test_insert_regular_trading_day(self, db_session):
         exchange = make_ref_exchange(code="ICE_EU_TC")
         db_session.add(exchange)
         await db_session.flush()
@@ -132,6 +132,58 @@ class TestRefTradingCalendar:
         row = result.scalar_one()
         assert row.date == date(2026, 3, 13)
         assert row.is_trading_day is True
+        assert row.session_type == "regular"
+        assert row.reason is None
+
+    async def test_insert_holiday(self, db_session):
+        exchange = make_ref_exchange(code="ICE_EU_HOL")
+        db_session.add(exchange)
+        await db_session.flush()
+
+        cal = make_ref_trading_calendar(
+            exchange.id,
+            date=date(2026, 4, 3),
+            is_trading_day=False,
+            session_type="holiday",
+            reason="Good Friday",
+        )
+        db_session.add(cal)
+        await db_session.flush()
+
+        result = await db_session.execute(
+            select(RefTradingCalendar).where(
+                RefTradingCalendar.exchange_id == exchange.id
+            )
+        )
+        row = result.scalar_one()
+        assert row.is_trading_day is False
+        assert row.session_type == "holiday"
+        assert row.reason == "Good Friday"
+
+    async def test_insert_half_day(self, db_session):
+        exchange = make_ref_exchange(code="ICE_EU_HALF")
+        db_session.add(exchange)
+        await db_session.flush()
+
+        cal = make_ref_trading_calendar(
+            exchange.id,
+            date=date(2026, 12, 24),
+            is_trading_day=True,
+            session_type="half_day",
+            reason="Christmas Eve",
+        )
+        db_session.add(cal)
+        await db_session.flush()
+
+        result = await db_session.execute(
+            select(RefTradingCalendar).where(
+                RefTradingCalendar.exchange_id == exchange.id
+            )
+        )
+        row = result.scalar_one()
+        assert row.is_trading_day is True
+        assert row.session_type == "half_day"
+        assert row.reason == "Christmas Eve"
 
 
 # === Pipeline Tables ===

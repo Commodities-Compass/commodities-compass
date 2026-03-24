@@ -143,6 +143,8 @@ def make_ref_trading_calendar(exchange_id, **overrides) -> RefTradingCalendar:
         "exchange_id": exchange_id,
         "date": date(2026, 3, 13),
         "is_trading_day": True,
+        "session_type": "regular",
+        "reason": None,
     }
     return RefTradingCalendar(**(defaults | overrides))
 

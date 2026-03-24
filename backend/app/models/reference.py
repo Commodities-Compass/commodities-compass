@@ -17,6 +17,7 @@ from sqlalchemy import (
     Boolean,
     ForeignKey,
     Index,
+    String,
     UniqueConstraint,
     Uuid,
     func,
@@ -83,6 +84,8 @@ class RefTradingCalendar(Base):
     )
     date: Mapped[date] = mapped_column(DATE, nullable=False)
     is_trading_day: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    session_type: Mapped[Optional[str]] = mapped_column(String(20))
+    reason: Mapped[Optional[str]] = mapped_column(String(100))
 
     __table_args__ = (
         UniqueConstraint(

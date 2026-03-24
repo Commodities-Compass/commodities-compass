@@ -236,7 +236,7 @@ def _get_last_computed_date(
     )
     row = result.fetchone()
     if row and row[0]:
-        return pd.Timestamp(row[0])
+        return pd.Timestamp(row[0])  # type: ignore[return-value]
     return None
 
 
@@ -247,7 +247,8 @@ def _filter_new_rows(
     if last_date is None:
         return signals
     cutoff = last_date.date() if hasattr(last_date, "date") else last_date
-    return signals[signals["date"] > cutoff].copy()
+    result: pd.DataFrame = signals.loc[signals["date"] > cutoff].copy()  # type: ignore[assignment]
+    return result
 
 
 def _print_summary(signals: pd.DataFrame) -> None:

@@ -285,18 +285,31 @@ class DBAnalysisEngine:
             },
         )
 
-        # Write LLM audit trail
+        # Write LLM audit trail — create parent pipeline run first
         pipeline_run_id = uuid.uuid4()
+        self._session.execute(
+            text("""
+                INSERT INTO aud_pipeline_run
+                    (id, pipeline_name, started_at, status, created_at)
+                VALUES
+                    (:id, :name, NOW(), :status, NOW())
+            """),
+            {
+                "id": pipeline_run_id,
+                "name": "daily-analysis-db",
+                "status": "success",
+            },
+        )
         for call_num, response in [(1, call1_response), (2, call2_response)]:
             self._session.execute(
                 text("""
                     INSERT INTO aud_llm_call
                         (id, pipeline_run_id, provider, model,
-                         prompt, response, tokens_input, tokens_output,
+                         prompt, response, input_tokens, output_tokens,
                          latency_ms)
                     VALUES
                         (:id, :pipeline_run_id, :provider, :model,
-                         :prompt, :response, :tokens_input, :tokens_output,
+                         :prompt, :response, :input_tokens, :output_tokens,
                          :latency_ms)
                 """),
                 {
@@ -306,8 +319,8 @@ class DBAnalysisEngine:
                     "model": response.model,
                     "prompt": f"[daily_analysis_call_{call_num}]",
                     "response": response.raw_text,
-                    "tokens_input": response.input_tokens,
-                    "tokens_output": response.output_tokens,
+                    "input_tokens": response.input_tokens,
+                    "output_tokens": response.output_tokens,
                     "latency_ms": response.latency_ms,
                 },
             )

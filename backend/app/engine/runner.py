@@ -1,12 +1,28 @@
 """CLI entry point for the indicator computation engine.
 
 Usage:
-    poetry run compute-indicators --all-contracts [--dry-run]
-    poetry run compute-indicators --all-contracts --algorithm legacy --algorithm-version 1.1.0
+    # Incremental (default) — compute full history, write only new rows
+    poetry run compute-indicators --all-contracts
+    poetry run compute-indicators --all-contracts --dry-run
+
+    # Full rewrite — recompute and overwrite all rows (for version switches, backfills)
+    poetry run compute-indicators --all-contracts --full
+
+    # Specific version
+    poetry run compute-indicators --all-contracts --algorithm legacy --algorithm-version 1.0.1
+
+    # Single contract
     poetry run compute-indicators --contract CAK26 [--dry-run] [--window 252]
 
 Reads from pl_contract_data_daily, computes all indicators, and writes to
 pl_derived_indicators + pl_indicator_daily + pl_signal_component.
+
+Incremental mode (default): Computes on the full price series (required for
+recursive indicators like EMA/RSI/ATR), but only writes rows with dates
+after the last existing date in pl_derived_indicators. Safe for nightly crons.
+
+Full mode (--full): Upserts all rows. Use for algorithm version switches,
+historical backfills, or when you need to overwrite existing data.
 
 --all-contracts mode: Loads the full price history across all contracts
 as one continuous series (matching how the Sheets engine worked), computes
@@ -207,6 +223,33 @@ def load_all_market_data(session: Session) -> pd.DataFrame:
     return _convert_numeric_columns(pd.DataFrame(rows, columns=pd.Index(columns)))
 
 
+def _get_last_computed_date(
+    session: Session, algo_version_id: uuid.UUID
+) -> pd.Timestamp | None:
+    """Get the last date with computed indicators for a given algorithm version."""
+    result = session.execute(
+        text("""
+            SELECT MAX(date) FROM pl_indicator_daily
+            WHERE algorithm_version_id = :vid
+        """),
+        {"vid": algo_version_id},
+    )
+    row = result.fetchone()
+    if row and row[0]:
+        return pd.Timestamp(row[0])
+    return None
+
+
+def _filter_new_rows(
+    signals: pd.DataFrame, last_date: pd.Timestamp | None
+) -> pd.DataFrame:
+    """Filter signals to only rows after last_date."""
+    if last_date is None:
+        return signals
+    cutoff = last_date.date() if hasattr(last_date, "date") else last_date
+    return signals[signals["date"] > cutoff].copy()
+
+
 def _print_summary(signals: pd.DataFrame) -> None:
     """Log decision distribution and score stats."""
     valid_decisions = signals["decision"].value_counts()
@@ -298,11 +341,16 @@ def main() -> None:
         default=252,
         help="Normalization rolling window (default: 252)",
     )
+    parser.add_argument(
+        "--full",
+        action="store_true",
+        help="Full rewrite: upsert all rows (default: incremental, only new rows)",
+    )
     parser.add_argument("--algorithm", default="legacy", help="Algorithm name")
     parser.add_argument(
         "--algorithm-version",
         default=None,
-        help="Algorithm version (e.g., 1.0.0, 1.1.0)",
+        help="Algorithm version (e.g., 1.0.0, 1.0.1)",
     )
     args = parser.parse_args()
 
@@ -348,11 +396,6 @@ def main() -> None:
 
         _print_summary(signals)
 
-        if args.dry_run:
-            logger.info("Dry run — skipping DB write")
-            _print_tail(signals, n=10)
-            return
-
         # Resolve algorithm version ID
         algo_version_id = load_algorithm_version_id(
             session, args.algorithm, args.algorithm_version
@@ -363,11 +406,38 @@ def main() -> None:
             )
             sys.exit(1)
 
+        # Incremental mode: filter to only new rows
+        write_signals = signals
+        if not args.full:
+            last_date = _get_last_computed_date(session, algo_version_id)
+            if last_date is not None:
+                write_signals = _filter_new_rows(signals, last_date)
+                logger.info(
+                    "Incremental mode: last computed date=%s, %d new rows to write",
+                    last_date.date(),
+                    len(write_signals),
+                )
+                if write_signals.empty:
+                    logger.info("No new rows to write — database is up to date")
+                    return
+            else:
+                logger.info(
+                    "Incremental mode: no existing data, writing full history (%d rows)",
+                    len(write_signals),
+                )
+        else:
+            logger.info("Full mode: writing all %d rows (upsert)", len(write_signals))
+
+        if args.dry_run:
+            logger.info("Dry run — skipping DB write")
+            _print_tail(write_signals, n=10)
+            return
+
         if args.all_contracts:
             # Write results per contract (each row tagged with its contract_id)
             logger.info("Writing results to database (per contract)...")
             totals = _write_results_per_contract(
-                session, signals, algo_version_id, config
+                session, write_signals, algo_version_id, config
             )
         else:
             # Single contract
@@ -379,7 +449,7 @@ def main() -> None:
             logger.info("Writing results to database...")
             totals = write_pipeline_results(
                 session=session,
-                signals_df=signals,
+                signals_df=write_signals,
                 contract_id=contract_id,
                 algorithm_version_id=algo_version_id,
                 config=config,

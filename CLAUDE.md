@@ -31,8 +31,9 @@ Commodities Compass is a Business Intelligence application for commodities tradi
 - `poetry run alembic upgrade head` - Run database migrations
 - `poetry run pytest` - Run backend tests
 - `poetry run compute-indicators --all-contracts --dry-run` - Compute indicators (dry run)
-- `poetry run compute-indicators --all-contracts` - Compute indicators and write to DB
-- `poetry run compute-indicators --all-contracts --algorithm legacy --algorithm-version 1.1.0` - Compute with specific version
+- `poetry run compute-indicators --all-contracts` - Compute indicators, write only new rows (incremental, default)
+- `poetry run compute-indicators --all-contracts --full` - Recompute and upsert all rows (for version switches, backfills)
+- `poetry run compute-indicators --all-contracts --algorithm legacy --algorithm-version 1.0.1` - Compute with specific version
 - `poetry run compute-indicators --contract CAK26` - Compute for a single contract
 
 ### Frontend Commands (from frontend/)
@@ -187,7 +188,7 @@ Scrapers → pl_contract_data_daily (raw OHLCV)
 
 - **Fixes 9 documented bugs** vs Sheets: Wilder's RSI/ATR, symmetric Bollinger, rolling z-scores (no look-ahead bias), correct Stochastic bounds, correct decision labels
 - **Contract-centric**: all data keyed on `(date, contract_id)`
-- **Algorithm config as data**: Power formula params stored in `pl_algorithm_config`, versioned (legacy v1.0.0, v1.1.0). CLI: `--algorithm legacy --algorithm-version 1.1.0`
+- **Algorithm config as data**: Power formula params stored in `pl_algorithm_config`, versioned (legacy v1.0.0, v1.0.1). CLI: `--algorithm legacy --algorithm-version 1.0.1`
 - **CLI**: `poetry run compute-indicators --all-contracts [--dry-run]`
 - **Full docs**: `app/engine/README.md`
 

@@ -40,53 +40,59 @@ class BriefData:
     yesterday: DayData
 
 
-# DB column → brief template label for technicals
-_TECHNICALS_MAP: dict[str, str] = {
-    "close": "CLOSE",
-    "high": "HIGH",
-    "low": "LOW",
-    "volume": "VOLUME",
-    "oi": "OI",
-    "implied_volatility": "IV",
-    "stock_us": "STOCK US",
-    "com_net_us": "COM NET US",
-    "r1": "R1",
-    "pivot": "PIVOT",
-    "s1": "S1",
-    "ema12": "EMA9",  # brief uses legacy Sheets labels
-    "ema26": "EMA21",
-    "macd": "MACD",
-    "macd_signal": "SIGNAL",
-    "rsi_14d": "RSI 14D",
-    "stochastic_k_14": "%K",
-    "stochastic_d_14": "%D",
-    "atr_14d": "ATR",
-    "bollinger_upper": "BANDE SUP",
-    "bollinger_lower": "BANDE INF",
+# DB column → (brief label, format type)
+# Format types: "int" = no decimals, "dec2" = 2 decimals, "pct" = percentage, "str" = as-is
+_TECHNICALS_MAP: dict[str, tuple[str, str]] = {
+    "close": ("CLOSE", "int"),
+    "high": ("HIGH", "int"),
+    "low": ("LOW", "int"),
+    "volume": ("VOLUME", "int"),
+    "oi": ("OI", "int"),
+    "implied_volatility": ("IV", "pct"),
+    "stock_us": ("STOCK US", "int"),
+    "com_net_us": ("COM NET US", "int"),
+    "r1": ("R1", "int"),
+    "pivot": ("PIVOT", "int"),
+    "s1": ("S1", "int"),
+    "ema12": ("EMA9", "int"),  # brief uses legacy Sheets labels
+    "ema26": ("EMA21", "int"),
+    "macd": ("MACD", "int"),
+    "macd_signal": ("SIGNAL", "int"),
+    "rsi_14d": ("RSI 14D", "dec2"),
+    "stochastic_k_14": ("%K", "dec2"),
+    "stochastic_d_14": ("%D", "dec2"),
+    "atr_14d": ("ATR", "int"),
+    "bollinger_upper": ("BANDE SUP", "int"),
+    "bollinger_lower": ("BANDE INF", "int"),
 }
 
-# DB column → brief template label for indicator scores
-_INDICATOR_MAP: dict[str, str] = {
-    "rsi_score": "RSI SCORE",
-    "macd_score": "MACD SCORE",
-    "stochastic_score": "STOCHASTIC SCORE",
-    "atr_score": "ATR SCORE",
-    "close_pivot": "CLOSE/PIVOT",
-    "volume_oi": "VOLUME/OI",
-    "rsi_norm": "RSI NORM",
-    "macd_norm": "MACD NORM",
-    "stoch_k_norm": "STOCH %K NORM",
-    "atr_norm": "ATR NORM",
-    "close_pivot_norm": "CLOSE/PIVOT NORM",
-    "vol_oi_norm": "VOL/OI NORM",
-    "indicator_value": "INDICATOR",
-    "momentum": "MOMENTUM",
-    "macroeco_bonus": "MACROECO BONUS",
-    "final_indicator": "FINAL INDICATOR",
-    "decision": "CONCLUSION",
-    "macroeco_score": "MACROECO SCORE",
-    "eco": "ECO",
+# DB column → (brief label, format type)
+_INDICATOR_MAP: dict[str, tuple[str, str]] = {
+    "rsi_score": ("RSI SCORE", "dec2"),
+    "macd_score": ("MACD SCORE", "int"),
+    "stochastic_score": ("STOCHASTIC SCORE", "dec2"),
+    "atr_score": ("ATR SCORE", "dec2"),
+    "close_pivot": ("CLOSE/PIVOT", "dec3"),
+    "volume_oi": ("VOLUME/OI", "pct"),
+    "rsi_norm": ("RSI NORM", "dec2"),
+    "macd_norm": ("MACD NORM", "dec2"),
+    "stoch_k_norm": ("STOCH %K NORM", "dec2"),
+    "atr_norm": ("ATR NORM", "dec2"),
+    "close_pivot_norm": ("CLOSE/PIVOT NORM", "dec2"),
+    "vol_oi_norm": ("VOL/OI NORM", "dec2"),
+    "indicator_value": ("INDICATOR", "dec3"),
+    "momentum": ("MOMENTUM", "dec3"),
+    "macroeco_bonus": ("MACROECO BONUS", "dec2"),
+    "final_indicator": ("FINAL INDICATOR", "dec3"),
+    "decision": ("CONCLUSION", "str"),
+    "macroeco_score": ("MACROECO SCORE", "dec1"),
+    "eco": ("ECO", "str"),
 }
+
+
+_INDICATOR_DAILY_FILTER = """
+    JOIN pl_algorithm_version av ON i.algorithm_version_id = av.id AND av.is_active = true
+"""
 
 
 class DBBriefReader:
@@ -170,27 +176,28 @@ class DBBriefReader:
         row_dict = dict(zip(columns, row))
 
         technicals: dict[str, str] = {}
-        for db_col, label in _TECHNICALS_MAP.items():
+        for db_col, (label, fmt_type) in _TECHNICALS_MAP.items():
             val = row_dict.get(db_col)
-            technicals[label] = _fmt(val)
+            technicals[label] = _fmt(val, fmt_type)
 
         return technicals
 
     def _read_indicators(self, target_date: date) -> dict[str, str]:
         """Read indicator scores + norms + composite for a date."""
         result = self._session.execute(
-            text("""
+            text(f"""
                 SELECT
-                    rsi_score, macd_score, stochastic_score, atr_score,
-                    close_pivot, volume_oi,
-                    rsi_norm, macd_norm, stoch_k_norm, atr_norm,
-                    close_pivot_norm, vol_oi_norm,
-                    indicator_value, momentum,
-                    macroeco_bonus, macroeco_score,
-                    final_indicator, decision, eco
-                FROM pl_indicator_daily
-                WHERE date = :target_date
-                ORDER BY created_at DESC
+                    i.rsi_score, i.macd_score, i.stochastic_score, i.atr_score,
+                    i.close_pivot, i.volume_oi,
+                    i.rsi_norm, i.macd_norm, i.stoch_k_norm, i.atr_norm,
+                    i.close_pivot_norm, i.vol_oi_norm,
+                    i.indicator_value, i.momentum,
+                    i.macroeco_bonus, i.macroeco_score,
+                    i.final_indicator, i.decision, i.eco
+                FROM pl_indicator_daily i
+                {_INDICATOR_DAILY_FILTER}
+                WHERE i.date = :target_date
+                ORDER BY i.created_at DESC
                 LIMIT 1
             """),
             {"target_date": target_date},
@@ -203,32 +210,34 @@ class DBBriefReader:
         row_dict = dict(zip(columns, row))
 
         indicators: dict[str, str] = {}
-        for db_col, label in _INDICATOR_MAP.items():
+        for db_col, (label, fmt_type) in _INDICATOR_MAP.items():
             val = row_dict.get(db_col)
-            indicators[label] = _fmt(val)
+            indicators[label] = _fmt(val, fmt_type)
 
         return indicators
 
     def _read_confidence(self, target_date: date) -> str:
         """Read LLM confidence for a date."""
         result = self._session.execute(
-            text("""
-                SELECT confidence FROM pl_indicator_daily
-                WHERE date = :target_date
-                ORDER BY created_at DESC LIMIT 1
+            text(f"""
+                SELECT i.confidence FROM pl_indicator_daily i
+                {_INDICATOR_DAILY_FILTER}
+                WHERE i.date = :target_date
+                ORDER BY i.created_at DESC LIMIT 1
             """),
             {"target_date": target_date},
         )
         row = result.fetchone()
-        return _fmt(row[0]) if row and row[0] else ""
+        return _fmt(row[0], "int") if row and row[0] else ""
 
     def _read_direction(self, target_date: date) -> str:
         """Read LLM direction for a date."""
         result = self._session.execute(
-            text("""
-                SELECT direction FROM pl_indicator_daily
-                WHERE date = :target_date
-                ORDER BY created_at DESC LIMIT 1
+            text(f"""
+                SELECT i.direction FROM pl_indicator_daily i
+                {_INDICATOR_DAILY_FILTER}
+                WHERE i.date = :target_date
+                ORDER BY i.created_at DESC LIMIT 1
             """),
             {"target_date": target_date},
         )
@@ -238,10 +247,11 @@ class DBBriefReader:
     def _read_score_text(self, target_date: date) -> str:
         """Read LLM conclusion/score text for a date."""
         result = self._session.execute(
-            text("""
-                SELECT composite_score FROM pl_indicator_daily
-                WHERE date = :target_date
-                ORDER BY created_at DESC LIMIT 1
+            text(f"""
+                SELECT i.composite_score FROM pl_indicator_daily i
+                {_INDICATOR_DAILY_FILTER}
+                WHERE i.date = :target_date
+                ORDER BY i.created_at DESC LIMIT 1
             """),
             {"target_date": target_date},
         )
@@ -303,10 +313,34 @@ class DBBriefReader:
         return str(row[0] or ""), str(row[1] or "")
 
 
-def _fmt(value: object) -> str:
-    """Format a DB value as string for the brief template."""
+def _fmt(value: object, fmt_type: str = "str") -> str:
+    """Format a DB value to match Sheets FORMATTED_VALUE display style.
+
+    Format types:
+        int  - round to integer, no decimals (e.g. 2414)
+        dec1 - 1 decimal place (e.g. 1.0)
+        dec2 - 2 decimal places (e.g. 69.48)
+        dec3 - 3 decimal places (e.g. -9.559)
+        pct  - percentage display (e.g. 36.34%)
+        str  - as-is string
+    """
     if value is None:
         return ""
-    if isinstance(value, float):
-        return f"{value:g}"
+    try:
+        num = float(value)
+    except (ValueError, TypeError):
+        return str(value)
+
+    if fmt_type == "str":
+        return str(value)
+    if fmt_type == "int":
+        return str(round(num))
+    if fmt_type == "dec1":
+        return f"{num:.1f}"
+    if fmt_type == "dec2":
+        return f"{num:.2f}"
+    if fmt_type == "dec3":
+        return f"{num:.3f}"
+    if fmt_type == "pct":
+        return f"{num * 100:.2f}%"
     return str(value)

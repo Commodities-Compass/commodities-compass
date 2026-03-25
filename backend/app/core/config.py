@@ -51,7 +51,7 @@ class Settings(BaseSettings):
                 ]
 
     # Database
-    DATABASE_URL: str = config("DATABASE_URL", cast=str)
+    DATABASE_URL: str = config("DATABASE_URL", default="", cast=str)
     DATABASE_SYNC_URL: str = config("DATABASE_SYNC_URL", cast=str)
 
     # Redis

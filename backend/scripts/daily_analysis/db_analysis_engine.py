@@ -263,7 +263,7 @@ class DBAnalysisEngine:
                     decision = :decision,
                     confidence = :confidence,
                     direction = :direction,
-                    composite_score = :composite_score,
+                    conclusion = :conclusion,
                     momentum = :momentum
                 WHERE date = :target_date
                   AND contract_id = :contract_id
@@ -277,7 +277,7 @@ class DBAnalysisEngine:
                 "decision": trading.decision,
                 "confidence": trading.confiance,
                 "direction": trading.direction,
-                "composite_score": trading.conclusion,
+                "conclusion": trading.conclusion,
                 "momentum": 0.0,  # will be computed properly once we have prior row
                 "target_date": target_date,
                 "contract_id": contract_id,

@@ -221,7 +221,7 @@ class PlIndicatorDaily(Base):
     confidence: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(5, 2))
     direction: Mapped[Optional[str]] = mapped_column(VARCHAR(50))
     eco: Mapped[Optional[str]] = mapped_column(TEXT)
-    composite_score: Mapped[Optional[str]] = mapped_column(TEXT)
+    conclusion: Mapped[Optional[str]] = mapped_column(TEXT)
 
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
 

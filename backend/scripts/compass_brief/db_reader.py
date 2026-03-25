@@ -248,7 +248,7 @@ class DBBriefReader:
         """Read LLM conclusion/score text for a date."""
         result = self._session.execute(
             text(f"""
-                SELECT i.composite_score FROM pl_indicator_daily i
+                SELECT i.conclusion FROM pl_indicator_daily i
                 {_INDICATOR_DAILY_FILTER}
                 WHERE i.date = :target_date
                 ORDER BY i.created_at DESC LIMIT 1

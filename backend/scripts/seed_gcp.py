@@ -395,7 +395,7 @@ def migrate_ai_outputs(
         # Confidence, direction, score from technicals (GPT Call #2)
         confidence = decimal_or_none(tech.confidence) if tech else None
         direction = tech.direction if tech else None
-        composite_score = tech.score if tech else None
+        conclusion = tech.score if tech else None
 
         tgt.add(
             PlIndicatorDaily(
@@ -428,7 +428,7 @@ def migrate_ai_outputs(
                 decision=decision,
                 confidence=confidence,
                 direction=direction,
-                composite_score=composite_score,
+                conclusion=conclusion,
             )
         )
         count += 1

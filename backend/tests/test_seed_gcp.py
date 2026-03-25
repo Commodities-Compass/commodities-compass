@@ -428,7 +428,7 @@ class TestMigrateAiOutputs:
         assert row.decision == "OPEN"
         assert row.confidence == Decimal("85")
         assert row.direction == "BULLISH"
-        assert row.composite_score == "composite: 2.3"
+        assert row.conclusion == "composite: 2.3"
 
     def test_decision_fallback_to_conclusion(self, sync_db_session):
         """When technicals.decision is NULL, fall back to indicator.conclusion."""

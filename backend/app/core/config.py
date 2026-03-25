@@ -20,14 +20,14 @@ class Settings(BaseSettings):
     DEBUG: bool = config("DEBUG", default=False, cast=bool)
     BACKEND_PORT: int = config("BACKEND_PORT", default=8000, cast=int)
 
-    # Auth0
-    AUTH0_DOMAIN: str = config("AUTH0_DOMAIN", cast=str)
-    AUTH0_CLIENT_ID: str = config("AUTH0_CLIENT_ID", cast=str)
-    AUTH0_API_AUDIENCE: str = config("AUTH0_API_AUDIENCE", cast=str)
+    # Auth0 (defaults allow standalone cron services that don't need auth)
+    AUTH0_DOMAIN: str = config("AUTH0_DOMAIN", default="", cast=str)
+    AUTH0_CLIENT_ID: str = config("AUTH0_CLIENT_ID", default="", cast=str)
+    AUTH0_API_AUDIENCE: str = config("AUTH0_API_AUDIENCE", default="", cast=str)
     AUTH0_ALGORITHMS: List[str] = config(
         "AUTH0_ALGORITHMS", default="RS256", cast=str
     ).split(",")
-    AUTH0_ISSUER: str = config("AUTH0_ISSUER", cast=str)
+    AUTH0_ISSUER: str = config("AUTH0_ISSUER", default="", cast=str)
 
     # CORS
     BACKEND_CORS_ORIGINS: List[str] = []
@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     GOOGLE_SHEETS_CREDENTIALS_JSON: str = config(
         "GOOGLE_SHEETS_CREDENTIALS_JSON", default="", cast=str
     )
-    SPREADSHEET_ID: str = config("SPREADSHEET_ID", cast=str)
+    SPREADSHEET_ID: str = config("SPREADSHEET_ID", default="", cast=str)
 
     # Google Drive
     GOOGLE_DRIVE_CREDENTIALS_JSON: str = config(
@@ -69,7 +69,9 @@ class Settings(BaseSettings):
         default=config("GOOGLE_SHEETS_CREDENTIALS_JSON", default="", cast=str),
         cast=str,
     )
-    GOOGLE_DRIVE_AUDIO_FOLDER_ID: str = config("GOOGLE_DRIVE_AUDIO_FOLDER_ID", cast=str)
+    GOOGLE_DRIVE_AUDIO_FOLDER_ID: str = config(
+        "GOOGLE_DRIVE_AUDIO_FOLDER_ID", default="", cast=str
+    )
 
     # External APIs
     WEATHER_API_KEY: str = config("WEATHER_API_KEY", default="", cast=str)

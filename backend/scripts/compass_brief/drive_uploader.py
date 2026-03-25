@@ -41,6 +41,7 @@ class DriveUploader:
                 .update(
                     fileId=existing_id,
                     media_body=media,
+                    supportsAllDrives=True,
                 )
                 .execute()
             )

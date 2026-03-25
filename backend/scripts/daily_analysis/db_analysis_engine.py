@@ -253,7 +253,7 @@ class DBAnalysisEngine:
         algo_version_id = algo_row[0] if algo_row else None
 
         # Update pl_indicator_daily with LLM outputs
-        self._session.execute(
+        result = self._session.execute(
             text("""
                 UPDATE pl_indicator_daily
                 SET macroeco_bonus = :macroeco_bonus,
@@ -284,6 +284,45 @@ class DBAnalysisEngine:
                 "algo_version_id": algo_version_id,
             },
         )
+        if result.rowcount == 0:
+            logger.warning(
+                "pl_indicator_daily UPDATE matched 0 rows for date=%s contract=%s — "
+                "row may not exist yet (compute-indicators not run?)",
+                target_date,
+                contract_code,
+            )
+
+        # Update macroeco signal component with LLM-provided values
+        from app.engine.composite import _power_term
+
+        macroeco_contribution = _power_term(
+            self._config.p, self._config.q, macro.macroeco_bonus
+        )
+        sc_result = self._session.execute(
+            text("""
+                UPDATE pl_signal_component
+                SET raw_value = :raw_value,
+                    normalized_value = :normalized_value,
+                    weighted_contribution = :weighted_contribution
+                WHERE date = :target_date
+                  AND contract_id = :contract_id
+                  AND indicator_name = 'macroeco'
+                  AND algorithm_version_id = :algo_version_id
+            """),
+            {
+                "raw_value": macro.macroeco_bonus,
+                "normalized_value": macro.macroeco_bonus,
+                "weighted_contribution": round(macroeco_contribution, 6),
+                "target_date": target_date,
+                "contract_id": contract_id,
+                "algo_version_id": algo_version_id,
+            },
+        )
+        if sc_result.rowcount == 0:
+            logger.warning(
+                "pl_signal_component macroeco UPDATE matched 0 rows for date=%s",
+                target_date,
+            )
 
         # Write LLM audit trail — create parent pipeline run first
         pipeline_run_id = uuid.uuid4()

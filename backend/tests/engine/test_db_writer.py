@@ -6,7 +6,7 @@ from decimal import Decimal
 
 import numpy as np
 
-from app.engine.db_writer import _to_decimal, _to_str
+from app.utils.converters import to_decimal as _to_decimal, to_str as _to_str
 
 
 class TestToDecimal:

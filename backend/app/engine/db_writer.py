@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 import uuid
-from decimal import Decimal
 from typing import Any
 
 import numpy as np
@@ -17,24 +16,9 @@ import pandas as pd
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.utils.converters import to_decimal, to_str
+
 logger = logging.getLogger(__name__)
-
-
-def _to_decimal(value: Any) -> Decimal | None:
-    """Convert a value to Decimal, returning None for NaN/None."""
-    if value is None or (isinstance(value, float) and np.isnan(value)):
-        return None
-    try:
-        return Decimal(str(round(float(value), 6)))
-    except (ValueError, TypeError, OverflowError):
-        return None
-
-
-def _to_str(value: Any) -> str | None:
-    """Convert to string, None for NaN."""
-    if value is None or (isinstance(value, float) and np.isnan(value)):
-        return None
-    return str(value)
 
 
 # Columns from the pipeline DataFrame that map to pl_derived_indicators fields.
@@ -118,7 +102,7 @@ def write_derived_indicators(
 
     for _, row in signals_df.iterrows():
         row_date = row["date"]
-        values = {col: _to_decimal(row.get(col)) for col in _DERIVED_COLS}
+        values = {col: to_decimal(row.get(col)) for col in _DERIVED_COLS}
 
         # Upsert: insert or update on (date, contract_id) conflict
         session.execute(
@@ -171,11 +155,11 @@ def write_indicator_daily(
         for col in (
             _INDICATOR_SCORE_COLS + _INDICATOR_NORM_COLS + _INDICATOR_COMPOSITE_COLS
         ):
-            values[col] = _to_decimal(row.get(col))
+            values[col] = to_decimal(row.get(col))
 
-        values["macroeco_bonus"] = _to_decimal(row.get("macroeco_bonus"))
+        values["macroeco_bonus"] = to_decimal(row.get("macroeco_bonus"))
         values["macroeco_score"] = (
-            _to_decimal(1.0 + float(row["macroeco_bonus"]))
+            to_decimal(1.0 + float(row["macroeco_bonus"]))
             if row.get("macroeco_bonus") is not None
             and not (
                 isinstance(row.get("macroeco_bonus"), float)
@@ -183,7 +167,7 @@ def write_indicator_daily(
             )
             else None
         )
-        values["decision"] = _to_str(row.get("decision"))
+        values["decision"] = to_str(row.get("decision"))
 
         session.execute(
             text(
@@ -297,9 +281,9 @@ def write_signal_components(
                     "date": row_date,
                     "contract_id": contract_id,
                     "indicator_name": comp_name,
-                    "raw_value": _to_decimal(raw_val),
-                    "normalized_value": _to_decimal(norm_val),
-                    "weighted_contribution": _to_decimal(contribution),
+                    "raw_value": to_decimal(raw_val),
+                    "normalized_value": to_decimal(norm_val),
+                    "weighted_contribution": to_decimal(contribution),
                     "algorithm_version_id": algorithm_version_id,
                 },
             )

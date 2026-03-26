@@ -21,6 +21,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.engine.composite import compute_decision, compute_score
+from app.utils.converters import to_float
 from app.engine.types import AlgorithmConfig, LEGACY_V1
 from scripts.daily_analysis.db_reader import DBReader, PipelineInputs
 from scripts.daily_analysis.llm_client import LLMClient, LLMResponse
@@ -199,13 +200,13 @@ class DBAnalysisEngine:
         today = dict(zip(result.keys(), row))
 
         score = compute_score(
-            rsi_norm=_to_float(today.get("rsi_norm")),
-            macd_norm=_to_float(today.get("macd_norm")),
-            stoch_norm=_to_float(today.get("stoch_k_norm")),
-            atr_norm=_to_float(today.get("atr_norm")),
-            cp_norm=_to_float(today.get("close_pivot_norm")),
-            voi_norm=_to_float(today.get("vol_oi_norm")),
-            momentum=_to_float(today.get("momentum")),
+            rsi_norm=to_float(today.get("rsi_norm")),
+            macd_norm=to_float(today.get("macd_norm")),
+            stoch_norm=to_float(today.get("stoch_k_norm")),
+            atr_norm=to_float(today.get("atr_norm")),
+            cp_norm=to_float(today.get("close_pivot_norm")),
+            voi_norm=to_float(today.get("vol_oi_norm")),
+            momentum=to_float(today.get("momentum")),
             macroeco=macroeco_bonus,
             config=self._config,
         )
@@ -365,13 +366,3 @@ class DBAnalysisEngine:
         logger.info("  MACRONEWS: %d chars", len(c.macronews))
         logger.info("  METEONEWS: %d chars", len(c.meteonews))
         logger.info("  METEOTODAY: %d chars", len(c.meteotoday))
-
-
-def _to_float(value: object) -> float:
-    """Convert DB value to float, defaulting to 0.0 for None/NaN."""
-    if value is None:
-        return 0.0
-    try:
-        return float(value)
-    except (ValueError, TypeError):
-        return 0.0

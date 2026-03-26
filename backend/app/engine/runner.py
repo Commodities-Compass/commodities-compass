@@ -363,6 +363,19 @@ def main() -> None:
     engine = create_engine(db_url)
 
     with Session(engine) as session:
+        # Validate algorithm version exists BEFORE loading config or computing.
+        # Fail fast — don't waste time computing with a fallback config.
+        algo_version_id = load_algorithm_version_id(
+            session, args.algorithm, args.algorithm_version
+        )
+        if algo_version_id is None:
+            logger.error(
+                "Algorithm version '%s' version=%s not found or not active",
+                args.algorithm,
+                args.algorithm_version or "active",
+            )
+            sys.exit(1)
+
         logger.info(
             "Loading algorithm config: %s version=%s",
             args.algorithm,
@@ -396,16 +409,6 @@ def main() -> None:
         signals = result.signals
 
         _print_summary(signals)
-
-        # Resolve algorithm version ID
-        algo_version_id = load_algorithm_version_id(
-            session, args.algorithm, args.algorithm_version
-        )
-        if algo_version_id is None:
-            logger.error(
-                "Algorithm version '%s' not found or not active", args.algorithm
-            )
-            sys.exit(1)
 
         # Incremental mode: filter to only new rows
         write_signals = signals

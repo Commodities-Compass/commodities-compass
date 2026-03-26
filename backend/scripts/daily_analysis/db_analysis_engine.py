@@ -20,7 +20,7 @@ from datetime import date
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.engine.composite import compute_decision, compute_momentum, compute_score
+from app.engine.composite import compute_decision, compute_score
 from app.engine.types import AlgorithmConfig, LEGACY_V1
 from scripts.daily_analysis.db_reader import DBReader, PipelineInputs
 from scripts.daily_analysis.llm_client import LLMClient, LLMResponse
@@ -40,7 +40,6 @@ class AnalysisResult:
     """Full output of the DB-first daily analysis pipeline."""
 
     macro: MacroAnalysisOutput
-    momentum: float
     final_indicator: float
     final_conclusion: str
     trading: TradingDecisionOutput
@@ -105,16 +104,15 @@ class DBAnalysisEngine:
 
         # --- Step 3: Compute FINAL_INDICATOR from DB (no Sheets!) ---
         logger.info("Step 3: Computing FINAL_INDICATOR from engine...")
-        final_indicator, final_conclusion, momentum = self._compute_final_indicator(
+        final_indicator, final_conclusion = self._compute_final_indicator(
             target_date,
             contract_code,
             macro.macroeco_bonus,
         )
         logger.info(
-            "Engine result: FINAL_INDICATOR=%.4f CONCLUSION=%s MOMENTUM=%.1f",
+            "Engine result: FINAL_INDICATOR=%.4f CONCLUSION=%s",
             final_indicator,
             final_conclusion,
-            momentum,
         )
 
         # --- Step 4: LLM Call #2 — Trading decision ---
@@ -145,7 +143,6 @@ class DBAnalysisEngine:
                 target_date=target_date,
                 contract_code=contract_code,
                 macro=macro,
-                momentum=momentum,
                 final_indicator=final_indicator,
                 final_conclusion=final_conclusion,
                 trading=trading,
@@ -157,7 +154,6 @@ class DBAnalysisEngine:
 
         return AnalysisResult(
             macro=macro,
-            momentum=momentum,
             final_indicator=final_indicator,
             final_conclusion=final_conclusion,
             trading=trading,
@@ -171,51 +167,37 @@ class DBAnalysisEngine:
         target_date: date,
         contract_code: str,
         macroeco_bonus: float,
-    ) -> tuple[float, str, float]:
-        """Compute composite score from normalized indicators in DB.
+    ) -> tuple[float, str]:
+        """Recompute composite score with fresh macroeco from LLM.
 
-        Reads the latest pl_indicator_daily row for z-scores,
-        computes momentum from the previous day's linear indicator,
-        then applies the NEW CHAMPION power formula.
-
-        Returns (score, decision, momentum).
+        Reads z-scores and momentum from pl_indicator_daily (written by
+        compute-indicators). Only recomputes final_indicator and decision
+        — does NOT recompute or overwrite technical indicators.
         """
-        # Get last 2 days of normalized scores
         result = self._session.execute(
             text("""
                 SELECT
-                    i.date,
                     i.rsi_norm, i.macd_norm, i.stoch_k_norm,
                     i.atr_norm, i.close_pivot_norm, i.vol_oi_norm,
-                    i.indicator_value, i.momentum
+                    i.momentum
                 FROM pl_indicator_daily i
                 JOIN ref_contract c ON i.contract_id = c.id
-                WHERE i.date <= :target_date
-                ORDER BY i.date DESC
-                LIMIT 2
+                WHERE i.date = :target_date AND c.code = :contract_code
+                LIMIT 1
             """),
-            {"target_date": target_date},
+            {"target_date": target_date, "contract_code": contract_code},
         )
-        rows = result.fetchall()
+        row = result.fetchone()
 
-        if not rows:
-            logger.warning("No indicator data found — returning default MONITOR")
-            return 0.0, "MONITOR", 0.0
+        if not row:
+            logger.warning(
+                "No indicator data found for %s — returning default MONITOR",
+                target_date,
+            )
+            return 0.0, "MONITOR"
 
-        today = dict(zip(result.keys(), rows[0]))
+        today = dict(zip(result.keys(), row))
 
-        # Get momentum: compare today's linear indicator vs yesterday's
-        momentum = 0.0
-        if len(rows) >= 2:
-            yesterday = dict(zip(result.keys(), rows[1]))
-            today_linear = today.get("indicator_value")
-            yesterday_linear = yesterday.get("indicator_value")
-            if today_linear is not None and yesterday_linear is not None:
-                momentum = compute_momentum(
-                    float(today_linear), float(yesterday_linear)
-                )
-
-        # Apply power formula
         score = compute_score(
             rsi_norm=_to_float(today.get("rsi_norm")),
             macd_norm=_to_float(today.get("macd_norm")),
@@ -223,12 +205,12 @@ class DBAnalysisEngine:
             atr_norm=_to_float(today.get("atr_norm")),
             cp_norm=_to_float(today.get("close_pivot_norm")),
             voi_norm=_to_float(today.get("vol_oi_norm")),
-            momentum=momentum,
+            momentum=_to_float(today.get("momentum")),
             macroeco=macroeco_bonus,
             config=self._config,
         )
         decision = compute_decision(score, self._config)
-        return score, decision, momentum
+        return score, decision
 
     def _write_results(
         self,
@@ -236,7 +218,6 @@ class DBAnalysisEngine:
         target_date: date,
         contract_code: str,
         macro: MacroAnalysisOutput,
-        momentum: float,
         final_indicator: float,
         final_conclusion: str,
         trading: TradingDecisionOutput,
@@ -259,7 +240,9 @@ class DBAnalysisEngine:
         ).fetchone()
         algo_version_id = algo_row[0] if algo_row else None
 
-        # Update pl_indicator_daily with LLM outputs
+        # Update pl_indicator_daily with LLM outputs only.
+        # Technical indicators (momentum, z-scores) are owned by compute-indicators
+        # and must not be overwritten here.
         result = self._session.execute(
             text("""
                 UPDATE pl_indicator_daily
@@ -270,8 +253,7 @@ class DBAnalysisEngine:
                     decision = :decision,
                     confidence = :confidence,
                     direction = :direction,
-                    conclusion = :conclusion,
-                    momentum = :momentum
+                    conclusion = :conclusion
                 WHERE date = :target_date
                   AND contract_id = :contract_id
                   AND algorithm_version_id = :algo_version_id
@@ -285,7 +267,6 @@ class DBAnalysisEngine:
                 "confidence": trading.confiance,
                 "direction": trading.direction,
                 "conclusion": trading.conclusion,
-                "momentum": momentum,
                 "target_date": target_date,
                 "contract_id": contract_id,
                 "algo_version_id": algo_version_id,

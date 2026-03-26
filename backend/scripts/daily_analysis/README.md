@@ -29,14 +29,15 @@ poetry run daily-analysis --db --date 2026-03-20 --contract CAK26
 [2] LLM Call #1 — Macro/Weather Analysis → MACROECO_BONUS + ECO
 
 [3] Compute FINAL_INDICATOR using app.engine.composite (no Sheets recalc!)
-    +-- Read z-scores from pl_indicator_daily
-    +-- Apply NEW CHAMPION power formula
+    +-- Read z-scores + momentum from pl_indicator_daily (written by compute-indicators)
+    +-- Apply NEW CHAMPION power formula with fresh macroeco
     +-- Determine CONCLUSION (OPEN/MONITOR/HEDGE)
 
 [4] LLM Call #2 — Trading Decision → DECISION / CONFIANCE / DIRECTION / CONCLUSION
 
-[5] Write to DB
-    +-- Update pl_indicator_daily (macroeco, final_indicator, decision, etc.)
+[5] Write to DB (LLM-owned columns ONLY — does NOT overwrite technical indicators)
+    +-- Update pl_indicator_daily (macroeco, final_indicator, decision, confidence, direction, conclusion)
+    +-- Update pl_signal_component macroeco row
     +-- Insert 2 rows to aud_llm_call (audit trail)
 ```
 

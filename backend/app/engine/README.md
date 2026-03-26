@@ -141,6 +141,16 @@ Decision thresholds:
 
 Momentum is binary ±0.2, derived from the linear indicator direction change.
 
+> **Known limitation — momentum does not follow the standard indicator pipeline.**
+> The 6 core indicators go through: derived → SMA smoothing → rolling z-score → power formula.
+> Momentum skips all three steps: it's a binary ±0.2 derived from the direction change of the
+> linear indicator (itself a weighted sum of the 6 z-scores). It enters the power formula raw,
+> mixing an arbitrary-scale binary value with z-scored continuous inputs. Additionally, it's
+> circular — derived from the same indicators already in the formula, lagged by 1 day.
+> Macroeco has a similar exception (no smoothing, no z-score) but is at least an independent
+> signal (LLM-generated). Future algorithm versions should address this by defining momentum
+> as a continuous derived indicator with proper smoothing and normalization.
+
 ## Bugs Fixed vs Google Sheets
 
 | Bug | Sheets | Engine |

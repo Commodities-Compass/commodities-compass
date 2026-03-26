@@ -40,6 +40,7 @@ class AnalysisResult:
     """Full output of the DB-first daily analysis pipeline."""
 
     macro: MacroAnalysisOutput
+    momentum: float
     final_indicator: float
     final_conclusion: str
     trading: TradingDecisionOutput
@@ -104,15 +105,16 @@ class DBAnalysisEngine:
 
         # --- Step 3: Compute FINAL_INDICATOR from DB (no Sheets!) ---
         logger.info("Step 3: Computing FINAL_INDICATOR from engine...")
-        final_indicator, final_conclusion = self._compute_final_indicator(
+        final_indicator, final_conclusion, momentum = self._compute_final_indicator(
             target_date,
             contract_code,
             macro.macroeco_bonus,
         )
         logger.info(
-            "Engine result: FINAL_INDICATOR=%.4f CONCLUSION=%s",
+            "Engine result: FINAL_INDICATOR=%.4f CONCLUSION=%s MOMENTUM=%.1f",
             final_indicator,
             final_conclusion,
+            momentum,
         )
 
         # --- Step 4: LLM Call #2 — Trading decision ---
@@ -143,6 +145,7 @@ class DBAnalysisEngine:
                 target_date=target_date,
                 contract_code=contract_code,
                 macro=macro,
+                momentum=momentum,
                 final_indicator=final_indicator,
                 final_conclusion=final_conclusion,
                 trading=trading,
@@ -154,6 +157,7 @@ class DBAnalysisEngine:
 
         return AnalysisResult(
             macro=macro,
+            momentum=momentum,
             final_indicator=final_indicator,
             final_conclusion=final_conclusion,
             trading=trading,
@@ -167,12 +171,14 @@ class DBAnalysisEngine:
         target_date: date,
         contract_code: str,
         macroeco_bonus: float,
-    ) -> tuple[float, str]:
+    ) -> tuple[float, str, float]:
         """Compute composite score from normalized indicators in DB.
 
         Reads the latest pl_indicator_daily row for z-scores,
         computes momentum from the previous day's linear indicator,
         then applies the NEW CHAMPION power formula.
+
+        Returns (score, decision, momentum).
         """
         # Get last 2 days of normalized scores
         result = self._session.execute(
@@ -194,7 +200,7 @@ class DBAnalysisEngine:
 
         if not rows:
             logger.warning("No indicator data found — returning default MONITOR")
-            return 0.0, "MONITOR"
+            return 0.0, "MONITOR", 0.0
 
         today = dict(zip(result.keys(), rows[0]))
 
@@ -222,7 +228,7 @@ class DBAnalysisEngine:
             config=self._config,
         )
         decision = compute_decision(score, self._config)
-        return score, decision
+        return score, decision, momentum
 
     def _write_results(
         self,
@@ -230,6 +236,7 @@ class DBAnalysisEngine:
         target_date: date,
         contract_code: str,
         macro: MacroAnalysisOutput,
+        momentum: float,
         final_indicator: float,
         final_conclusion: str,
         trading: TradingDecisionOutput,
@@ -278,7 +285,7 @@ class DBAnalysisEngine:
                 "confidence": trading.confiance,
                 "direction": trading.direction,
                 "conclusion": trading.conclusion,
-                "momentum": 0.0,  # will be computed properly once we have prior row
+                "momentum": momentum,
                 "target_date": target_date,
                 "contract_id": contract_id,
                 "algo_version_id": algo_version_id,

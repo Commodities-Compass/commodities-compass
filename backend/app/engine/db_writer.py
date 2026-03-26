@@ -90,16 +90,18 @@ _INDICATOR_COMPOSITE_COLS = [
     "final_indicator",
 ]
 
-# Signal component names and their norm + coefficient config param names.
+# Signal component: (name, raw_score_col, norm_col, coeff_key, exp_key).
+# raw_score_col = pre-normalization score, norm_col = z-score normalized value.
+# For momentum/macroeco (no z-score step), both point to the same column.
 _SIGNAL_COMPONENTS = [
-    ("rsi", "rsi_norm", "a", "b"),
-    ("macd", "macd_norm", "c", "d"),
-    ("stochastic", "stoch_k_norm", "e", "f"),
-    ("atr", "atr_norm", "g", "h"),
-    ("close_pivot", "close_pivot_norm", "i", "j"),
-    ("volume_oi", "vol_oi_norm", "l", "m"),
-    ("momentum", "momentum", "n", "o"),
-    ("macroeco", "macroeco_bonus", "p", "q"),
+    ("rsi", "rsi_score", "rsi_norm", "a", "b"),
+    ("macd", "macd_score", "macd_norm", "c", "d"),
+    ("stochastic", "stochastic_score", "stoch_k_norm", "e", "f"),
+    ("atr", "atr_score", "atr_norm", "g", "h"),
+    ("close_pivot", "close_pivot", "close_pivot_norm", "i", "j"),
+    ("volume_oi", "volume_oi", "vol_oi_norm", "l", "m"),
+    ("momentum", "momentum", "momentum", "n", "o"),
+    ("macroeco", "macroeco_bonus", "macroeco_bonus", "p", "q"),
 ]
 
 
@@ -272,9 +274,9 @@ def write_signal_components(
     for _, row in signals_df.iterrows():
         row_date = row["date"]
 
-        for comp_name, norm_col, coeff_key, exp_key in _SIGNAL_COMPONENTS:
-            raw_val = float(row.get(norm_col, 0) or 0)
-            norm_val = raw_val  # already normalized
+        for comp_name, raw_col, norm_col, coeff_key, exp_key in _SIGNAL_COMPONENTS:
+            raw_val = float(row.get(raw_col, 0) or 0)
+            norm_val = float(row.get(norm_col, 0) or 0)
             coeff = config_params[coeff_key]
             exp = config_params[exp_key]
             contribution = _power_term(coeff, exp, norm_val)

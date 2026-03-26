@@ -12,7 +12,12 @@ from dotenv import load_dotenv
 from sentry_sdk.crons import monitor
 
 from app.core.sentry import init_sentry
-from scripts.meteo_agent.config import LOG_FORMAT, SYSTEM_PROMPT, USER_PROMPT_TEMPLATE
+from scripts.meteo_agent.config import (
+    LOG_FORMAT,
+    SYSTEM_PROMPT_TEMPLATE,
+    USER_PROMPT_TEMPLATE,
+    build_seasonal_context,
+)
 from scripts.meteo_agent.llm_client import call_openai
 from scripts.meteo_agent.sheets_writer import SheetsWriter, SheetsWriterError
 from scripts.meteo_agent.validator import validate_output
@@ -58,11 +63,20 @@ def main() -> int:
         action="store_true",
         help="Enable debug logging",
     )
+    parser.add_argument(
+        "--bootstrap-memory",
+        action="store_true",
+        help="Backfill seasonal scores for current campaign from Open-Meteo history, then exit",
+    )
 
     args = parser.parse_args()
 
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
+
+    # Bootstrap mode — compute and store seasonal scores, then exit
+    if args.bootstrap_memory:
+        return _run_bootstrap()
 
     logger.info("=" * 60)
     logger.info("Meteo Agent - Cocoa Weather Analysis")
@@ -76,10 +90,38 @@ def main() -> int:
         weather_data = fetch_weather()
         logger.info("Weather data: %d chars", len(weather_data))
 
-        # Step 2: Build prompt and call LLM
-        logger.info("Step 2: Calling OpenAI for analysis...")
-        user_prompt = USER_PROMPT_TEMPLATE.format(weather_data=weather_data)
-        result = asyncio.run(call_openai(SYSTEM_PROMPT, user_prompt))
+        # Step 2: Build campaign memory from DB
+        logger.info("Step 2: Loading campaign memory...")
+        from datetime import datetime
+
+        from scripts.meteo_agent.seasonal_memory import build_campaign_memory
+
+        campaign_memory = ""
+        try:
+            from scripts.db import get_session
+
+            with get_session() as session:
+                campaign_memory = build_campaign_memory(session)
+            if campaign_memory:
+                logger.info("Campaign memory: %d chars", len(campaign_memory))
+            else:
+                logger.info("No campaign memory available (first run?)")
+        except Exception as mem_err:
+            logger.warning("Campaign memory unavailable: %s (continuing)", mem_err)
+
+        # Step 3: Build prompt and call LLM
+        logger.info("Step 3: Calling OpenAI for analysis...")
+        current_month = datetime.now().month
+        seasonal_context = build_seasonal_context(current_month)
+        system_prompt = SYSTEM_PROMPT_TEMPLATE.format(seasonal_context=seasonal_context)
+        memory_block = f"\n\n{campaign_memory}" if campaign_memory else ""
+        user_prompt = (
+            USER_PROMPT_TEMPLATE.format(weather_data=weather_data) + memory_block
+        )
+        logger.info(
+            "Season: %s (month %d)", seasonal_context.split("\n")[0], current_month
+        )
+        result = asyncio.run(call_openai(system_prompt, user_prompt))
 
         if not result.success:
             logger.error("LLM call failed: %s", result.error)
@@ -88,8 +130,8 @@ def main() -> int:
             )
             return 1
 
-        # Step 3: Validate output
-        logger.info("Step 3: Validating output...")
+        # Step 4: Validate output
+        logger.info("Step 4: Validating output...")
         errors = validate_output(result.parsed)
         if errors:
             logger.error("Validation failed: %s", errors)
@@ -98,8 +140,8 @@ def main() -> int:
             )
             return 1
 
-        # Step 4: Write to GCP PostgreSQL (non-blocking)
-        logger.info("Step 4: Writing to GCP PostgreSQL...")
+        # Step 5: Write to GCP PostgreSQL (non-blocking)
+        logger.info("Step 5: Writing to GCP PostgreSQL...")
         try:
             from scripts.db import get_session
             from scripts.meteo_agent.db_writer import write_llm_call, write_observation
@@ -113,8 +155,8 @@ def main() -> int:
             logger.error("DB write failed (continuing to Sheets): %s", db_err)
             sentry_sdk.capture_exception(db_err)
 
-        # Step 5: Write to METEO_ALL
-        logger.info("Step 5: Writing to METEO_ALL...")
+        # Step 6: Write to METEO_ALL
+        logger.info("Step 6: Writing to METEO_ALL...")
         if args.dry_run:
             logger.info("[DRY RUN] Output preview:")
             for field in ("texte", "resume", "mots_cle", "impact_synthetiques"):
@@ -154,6 +196,25 @@ def main() -> int:
     except Exception as e:
         logger.exception("Unexpected error: %s", e)
         sentry_sdk.capture_exception(e)
+        return 1
+
+
+def _run_bootstrap() -> int:
+    """Backfill seasonal scores for the current campaign."""
+    from scripts.db import get_session
+    from scripts.meteo_agent.seasonal_memory import bootstrap_campaign
+
+    logger.info("=" * 60)
+    logger.info("Meteo Agent — Bootstrap Seasonal Memory")
+    logger.info("=" * 60)
+
+    try:
+        with get_session() as session:
+            bootstrap_campaign(session)
+        logger.info("Bootstrap complete")
+        return 0
+    except Exception as e:
+        logger.exception("Bootstrap failed: %s", e)
         return 1
 
 

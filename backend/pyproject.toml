@@ -71,6 +71,7 @@ compass-brief = "scripts.compass_brief.main:main"
 meteo-agent = "scripts.meteo_agent.main:main"
 seed-gcp = "scripts.seed_gcp:main"
 seed-trading-calendar = "scripts.seed_trading_calendar:main"
+seed-historical-csv = "scripts.seed_historical_csv:main"
 compute-indicators = "app.engine.runner:main"
 
 [tool.pyright]

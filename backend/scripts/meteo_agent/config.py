@@ -38,7 +38,16 @@ DAILY_PARAMS = [
     "sunshine_duration",
     "temperature_2m_max",
     "temperature_2m_min",
+    "winddirection_10m_dominant",
 ]
+
+# Harmattan detection thresholds (literature: ICCO, CRIG, WMO West Africa)
+# Harmattan = dry NE trade wind from Sahara, Nov–Mar, West Africa cocoa belt
+HARMATTAN_RH_THRESHOLD = 40.0  # daily min RH < 40% = Harmattan signature
+HARMATTAN_WIND_DIR_MIN = 315.0  # NE/N quadrant: 315°→360° and 0°→90°
+HARMATTAN_WIND_DIR_MAX = 90.0
+HARMATTAN_IMPACT_DAYS = 24  # cumulative days > 24 → quality risk
+HARMATTAN_SEASON_MONTHS = (11, 12, 1, 2, 3)  # Nov–Mar
 HOURLY_PARAMS = [
     "soil_moisture_9_to_27cm",
     "soil_moisture_3_to_9cm",
@@ -258,17 +267,26 @@ L'impact sur les prix est proportionnel au nombre de localités en "stress confi
 - 4+ localités : impact significatif (6-8/10)
 - Impact > 8/10 réservé aux événements exceptionnels (inondations, sécheresse multi-semaines)
 
-FORMAT DE SORTIE — JSON valide avec exactement 4 champs :
+FORMAT DE SORTIE — JSON valide avec exactement 5 champs :
 
-- "texte": Analyse factuelle avec les chiffres calculés à l'étape 1. Mentionner le bilan \
-hydrique exact par zone. Ne pas utiliser de superlatifs sans données les justifiant. \
-Terminer par l'impact marché calibré.
+- "texte": Analyse NARRATIVE et fluide, rédigée comme un bulletin météo professionnel — \
+PAS une liste par localité. Regrouper les zones par situation similaire, comparer entre pays \
+(Côte d'Ivoire vs Ghana), mentionner les tendances spatiales. Intégrer les chiffres clés \
+(bilans hydriques, températures, humidité sol) dans le fil du texte, pas en tableau. \
+Utiliser des connecteurs ("tandis que", "en revanche", "spatialement"). \
+Le texte doit être compréhensible par un trader non météorologue. \
+Terminer par la conséquence marché calibrée. Ne pas utiliser de superlatifs sans données \
+les justifiant.
 
 - "resume": Diagnostic principal + localités concernées + impact prix calibré (2-3 phrases max)
 
 - "mots_cle": zone géographique, type de stress le cas échéant, stade phénologique (séparés par virgules)
 
 - "impact_synthetiques": "X/10; justification avec chiffres"
+
+- "diagnostics": Objet avec une clé par localité et le diagnostic de l'étape 2 comme valeur. \
+Valeurs possibles UNIQUEMENT : "normal", "degraded", "stress". \
+Exemple : {{"Daloa": "normal", "San-Pédro": "degraded", "Kumasi": "stress", "Soubré": "normal", "Takoradi": "degraded", "Goaso": "normal"}}
 
 IMPORTANT : Réponds UNIQUEMENT avec le JSON, sans markdown fences ni texte avant ou après."""
 

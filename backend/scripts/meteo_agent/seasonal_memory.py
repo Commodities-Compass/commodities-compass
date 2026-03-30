@@ -21,6 +21,11 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from scripts.meteo_agent.config import (
+    HARMATTAN_IMPACT_DAYS,
+    HARMATTAN_RH_THRESHOLD,
+    HARMATTAN_SEASON_MONTHS,
+    HARMATTAN_WIND_DIR_MAX,
+    HARMATTAN_WIND_DIR_MIN,
     HTTP_TIMEOUT,
     LOCATIONS,
     SEASONAL_PROFILES,
@@ -106,37 +111,53 @@ def get_completed_seasons(target_date: date) -> list[SeasonDateRange]:
 def _resolve_season_dates(
     profile: SeasonalProfile, campaign_start_year: int
 ) -> SeasonDateRange | None:
-    """Convert a season profile + campaign year into concrete date range."""
-    months = sorted(profile.months)
-    if not months:
+    """Convert a season profile + campaign year into concrete date range.
+
+    Campaign runs Oct→Sep. Months 10-12 belong to campaign_start_year,
+    months 1-9 belong to campaign_start_year + 1.
+    Saison sèche (12, 1, 2, 3) spans two calendar years.
+    """
+    if not profile.months:
         return None
 
-    # Determine year for each month
-    # Campaign starts in October: months 10-12 are in start_year,
-    # months 1-9 are in start_year + 1
-    first_month = months[0]
-    last_month = months[-1]
+    # Assign each month to its calendar year within the campaign.
+    # Campaign runs Oct Y → Sep Y+1.
+    # Base rule: months 10-12 → start_year, months 1-9 → start_year+1
+    # Special case: petite_saison_pluies (9,10,11) — all pre-campaign,
+    # so all months belong to start_year.
+    has_oct_plus = any(m >= 10 for m in profile.months)
+    has_pre_oct = any(1 <= m <= 9 for m in profile.months)
+    # If season has months on both sides of Oct AND the low months are
+    # close to Oct (>=9), it's a pre-campaign season — all in start_year.
+    # If the low months are <=3, it's a cross-year season (saison sèche).
+    pre_campaign_season = (
+        has_oct_plus and has_pre_oct and min(m for m in profile.months if m < 10) >= 9
+    )
 
-    if first_month >= 10:
-        start_year = campaign_start_year
-    else:
-        start_year = campaign_start_year + 1
+    month_years: list[tuple[int, int]] = []
+    for m in profile.months:
+        if pre_campaign_season:
+            year = campaign_start_year
+        elif m >= 10:
+            year = campaign_start_year
+        else:
+            year = campaign_start_year + 1
+        month_years.append((m, year))
 
-    if last_month >= 10:
-        end_year = campaign_start_year
-    else:
-        end_year = campaign_start_year + 1
+    # Sort by (year, month) to get chronological order
+    month_years.sort(key=lambda my: (my[1], my[0]))
 
-    start_date = date(start_year, first_month, 1)
+    first_month, first_year = month_years[0]
+    last_month, last_year = month_years[-1]
 
-    # End date = last day of last month
+    start_date = date(first_year, first_month, 1)
     if last_month == 12:
-        end_date = date(end_year, 12, 31)
+        end_date = date(last_year, 12, 31)
     else:
-        end_date = date(end_year, last_month + 1, 1) - timedelta(days=1)
+        end_date = date(last_year, last_month + 1, 1) - timedelta(days=1)
 
-    month_names = [date(2000, m, 1).strftime("%b") for m in months]
-    months_str = f"{month_names[0]}-{month_names[-1]} {start_year}"
+    month_names = [date(2000, m, 1).strftime("%b") for m in profile.months]
+    months_str = f"{month_names[0]}-{month_names[-1]} {first_year}"
     campaign = f"{campaign_start_year}-{campaign_start_year + 1}"
 
     return SeasonDateRange(
@@ -153,12 +174,18 @@ def fetch_season_weather(start_date: date, end_date: date) -> list[dict]:
     latitudes = ",".join(str(loc.latitude) for loc in LOCATIONS)
     longitudes = ",".join(str(loc.longitude) for loc in LOCATIONS)
 
-    # Use archive API for past data, forecast API for recent/current
+    # Archive API covers historical data (up to ~5 days ago).
+    # Forecast API only covers ~2 weeks back. For seasonal data that spans
+    # months, always use archive and cap end_date to 5 days ago.
     today = date.today()
-    if end_date < today - timedelta(days=5):
-        base_url = OPEN_METEO_ARCHIVE
-    else:
+    capped_end = min(end_date, today - timedelta(days=5))
+    if capped_end < start_date:
+        # Season hasn't started long enough ago — use forecast for short window
         base_url = OPEN_METEO_FORECAST
+        capped_end = end_date
+    else:
+        base_url = OPEN_METEO_ARCHIVE
+        end_date = capped_end
 
     url = (
         f"{base_url}"
@@ -183,6 +210,138 @@ def fetch_season_weather(start_date: date, end_date: date) -> list[dict]:
 
     data = response.json()
     return data if isinstance(data, list) else [data]
+
+
+def fetch_harmattan_weather(start_date: date, end_date: date) -> list[dict]:
+    """Fetch daily wind direction + hourly RH from Open-Meteo for Harmattan detection.
+
+    Always uses archive API since Harmattan season is Nov-Mar (historical).
+    Fetches for all locations in a single request.
+    """
+    latitudes = ",".join(str(loc.latitude) for loc in LOCATIONS)
+    longitudes = ",".join(str(loc.longitude) for loc in LOCATIONS)
+
+    today = date.today()
+    capped_end = min(end_date, today - timedelta(days=5))
+    if capped_end < start_date:
+        capped_end = min(end_date, today - timedelta(days=1))
+
+    url = (
+        f"{OPEN_METEO_ARCHIVE}"
+        f"?latitude={latitudes}"
+        f"&longitude={longitudes}"
+        f"&daily=winddirection_10m_dominant"
+        f"&hourly=relative_humidity_2m"
+        f"&start_date={start_date.isoformat()}"
+        f"&end_date={capped_end.isoformat()}"
+        f"&timezone=auto"
+    )
+
+    logger.info("Fetching Harmattan data %s → %s", start_date, capped_end)
+    with httpx.Client(timeout=HTTP_TIMEOUT) as client:
+        response = client.get(url)
+        response.raise_for_status()
+
+    data = response.json()
+    return data if isinstance(data, list) else [data]
+
+
+def _is_harmattan_direction(wind_dir: float) -> bool:
+    """True if wind direction is in the NE/N quadrant (315°-360° or 0°-90°)."""
+    return wind_dir >= HARMATTAN_WIND_DIR_MIN or wind_dir <= HARMATTAN_WIND_DIR_MAX
+
+
+def compute_harmattan_days(
+    location_data: dict,
+    start_date: date,
+) -> int:
+    """Count cumulative Harmattan days for one location.
+
+    A Harmattan day requires:
+    - Daily dominant wind direction in NE/N quadrant (315°-360° or 0°-90°)
+    - Daily minimum RH < HARMATTAN_RH_THRESHOLD (40%)
+    - Date within Nov-Mar window
+
+    Returns cumulative count of qualifying days.
+    """
+    daily = location_data.get("daily", {})
+    hourly = location_data.get("hourly", {})
+
+    wind_dirs = daily.get("winddirection_10m_dominant", [])
+    rh_hourly = hourly.get("relative_humidity_2m", [])
+    time_daily = daily.get("time", [])
+
+    if not wind_dirs or not rh_hourly:
+        return 0
+
+    # Compute daily min RH from hourly data (24 values per day)
+    n_days = len(wind_dirs)
+    daily_rh_min: list[float] = []
+    for day_idx in range(n_days):
+        start_h = day_idx * 24
+        end_h = start_h + 24
+        day_rh = [v for v in rh_hourly[start_h:end_h] if v is not None]
+        daily_rh_min.append(min(day_rh) if day_rh else 100.0)
+
+    harmattan_count = 0
+    for i, (wind_dir, rh_min) in enumerate(zip(wind_dirs, daily_rh_min)):
+        if wind_dir is None:
+            continue
+        # Check date is in Harmattan season
+        if i < len(time_daily):
+            try:
+                day_date = date.fromisoformat(time_daily[i])
+                if day_date.month not in HARMATTAN_SEASON_MONTHS:
+                    continue
+            except (ValueError, TypeError):
+                pass
+        if _is_harmattan_direction(float(wind_dir)) and rh_min < HARMATTAN_RH_THRESHOLD:
+            harmattan_count += 1
+
+    return harmattan_count
+
+
+def get_campaign_harmattan_days(session: Session, campaign: str) -> int:
+    """Sum harmattan_days across all saison_seche rows for the campaign.
+
+    Returns 0 if no data (before first bootstrap or outside season).
+    """
+    result = session.execute(
+        text("""
+            SELECT COALESCE(SUM(harmattan_days), 0)
+            FROM pl_seasonal_score
+            WHERE campaign = :campaign
+              AND season_name = 'saison_seche'
+              AND harmattan_days IS NOT NULL
+        """),
+        {"campaign": campaign},
+    )
+    row = result.fetchone()
+    return int(row[0]) if row else 0
+
+
+def build_harmattan_context(harmattan_days: int, current_month: int) -> str:
+    """Build the Harmattan block for the LLM prompt.
+
+    Three states:
+    - Hors saison (Apr-Oct): empty string — don't pollute the prompt
+    - En saison, sous seuil: informational note
+    - Seuil franchi (>24j): quality risk warning
+    """
+    if current_month not in HARMATTAN_SEASON_MONTHS:
+        return ""
+
+    if harmattan_days > HARMATTAN_IMPACT_DAYS:
+        return (
+            f"\nHARMATTAN — {harmattan_days} jours cumulés depuis nov. 1 "
+            f"(seuil critique : {HARMATTAN_IMPACT_DAYS}j) : "
+            "⚠ RISQUE QUALITÉ confirmé — conditions propices aux petites fèves. "
+            "Mentionner dans le texte et les mots-clés."
+        )
+    return (
+        f"\nHARMATTAN — {harmattan_days}j/{HARMATTAN_IMPACT_DAYS}j cumulés depuis nov. 1 "
+        "(sous le seuil critique — surveiller)."
+    )
 
 
 def compute_season_stats(
@@ -279,22 +438,28 @@ def write_seasonal_scores(
     season_range: SeasonDateRange,
     stats_list: list[LocationSeasonStats],
     scores: list[float],
+    harmattan_days_per_location: list[int] | None = None,
 ) -> int:
     """Upsert seasonal scores to pl_seasonal_score."""
     rows_written = 0
-    for stats, score_val in zip(stats_list, scores):
+    for i, (stats, score_val) in enumerate(zip(stats_list, scores)):
+        harmattan = (
+            harmattan_days_per_location[i]
+            if harmattan_days_per_location and i < len(harmattan_days_per_location)
+            else None
+        )
         session.execute(
             text("""
                 INSERT INTO pl_seasonal_score
                     (id, campaign, season_name, location_name, months_covered,
                      start_date, end_date,
                      total_precip_mm, total_et0_mm, cumulative_balance_mm,
-                     days_rain, days_stress_temp, avg_tmax, score)
+                     days_rain, days_stress_temp, avg_tmax, harmattan_days, score)
                 VALUES
                     (:id, :campaign, :season_name, :location_name, :months_covered,
                      :start_date, :end_date,
                      :total_precip_mm, :total_et0_mm, :cumulative_balance_mm,
-                     :days_rain, :days_stress_temp, :avg_tmax, :score)
+                     :days_rain, :days_stress_temp, :avg_tmax, :harmattan_days, :score)
                 ON CONFLICT ON CONSTRAINT uq_seasonal_score
                 DO UPDATE SET
                     months_covered = EXCLUDED.months_covered,
@@ -306,6 +471,7 @@ def write_seasonal_scores(
                     days_rain = EXCLUDED.days_rain,
                     days_stress_temp = EXCLUDED.days_stress_temp,
                     avg_tmax = EXCLUDED.avg_tmax,
+                    harmattan_days = EXCLUDED.harmattan_days,
                     score = EXCLUDED.score,
                     computed_at = NOW()
             """),
@@ -323,6 +489,7 @@ def write_seasonal_scores(
                 "days_rain": stats.days_rain,
                 "days_stress_temp": stats.days_stress_temp,
                 "avg_tmax": stats.avg_tmax,
+                "harmattan_days": harmattan,
                 "score": score_val,
             },
         )
@@ -341,8 +508,19 @@ def compute_and_store_season(
     """
     raw_data = fetch_season_weather(season_range.start_date, season_range.end_date)
 
+    # Fetch Harmattan data only for saison_seche (Nov-Mar)
+    harmattan_raw: list[dict] = []
+    if season_range.season.name == "saison_seche":
+        try:
+            harmattan_raw = fetch_harmattan_weather(
+                season_range.start_date, season_range.end_date
+            )
+        except Exception as e:
+            logger.warning("Harmattan fetch failed (non-blocking): %s", e)
+
     stats_list: list[LocationSeasonStats] = []
     scores: list[float] = []
+    harmattan_days_per_location: list[int] = []
 
     for i, loc in enumerate(LOCATIONS):
         if i >= len(raw_data):
@@ -356,19 +534,33 @@ def compute_and_store_season(
         score_val = compute_score(stats, season_range.season)
         stats_list.append(stats)
         scores.append(score_val)
+
+        # Compute Harmattan days if data available
+        h_days = None
+        if harmattan_raw and i < len(harmattan_raw):
+            h_days = compute_harmattan_days(harmattan_raw[i], season_range.start_date)
+            harmattan_days_per_location.append(h_days)
+
         logger.info(
             "  %s: precip=%.0fmm, ET0=%.0fmm, balance=%+.0fmm, "
-            "rain=%dd, stress_temp=%dd, score=%.1f/5",
+            "rain=%dd, stress_temp=%dd%s, score=%.1f/5",
             loc.name,
             stats.total_precip_mm,
             stats.total_et0_mm,
             stats.cumulative_balance_mm,
             stats.days_rain,
             stats.days_stress_temp,
+            f", harmattan={h_days}d" if h_days is not None else "",
             score_val,
         )
 
-    written = write_seasonal_scores(session, season_range, stats_list, scores)
+    written = write_seasonal_scores(
+        session,
+        season_range,
+        stats_list,
+        scores,
+        harmattan_days_per_location if harmattan_days_per_location else None,
+    )
     logger.info("Season %s: %d scores written", season_range.season.name, written)
     return list(zip([s.location_name for s in stats_list], scores))
 

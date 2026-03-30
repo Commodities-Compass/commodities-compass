@@ -90,22 +90,35 @@ def main() -> int:
         weather_data = fetch_weather()
         logger.info("Weather data: %d chars", len(weather_data))
 
-        # Step 2: Build campaign memory from DB
+        # Step 2: Build campaign memory + Harmattan context from DB
         logger.info("Step 2: Loading campaign memory...")
         from datetime import datetime
 
-        from scripts.meteo_agent.seasonal_memory import build_campaign_memory
+        from scripts.meteo_agent.seasonal_memory import (
+            build_campaign_memory,
+            build_harmattan_context,
+            get_campaign,
+            get_campaign_harmattan_days,
+        )
 
         campaign_memory = ""
+        harmattan_context = ""
         try:
             from scripts.db import get_session
 
             with get_session() as session:
                 campaign_memory = build_campaign_memory(session)
+                current_campaign = get_campaign(datetime.now().date())
+                harmattan_days = get_campaign_harmattan_days(session, current_campaign)
+                harmattan_context = build_harmattan_context(
+                    harmattan_days, datetime.now().month
+                )
             if campaign_memory:
                 logger.info("Campaign memory: %d chars", len(campaign_memory))
             else:
                 logger.info("No campaign memory available (first run?)")
+            if harmattan_context:
+                logger.info("Harmattan context: %s", harmattan_context.strip())
         except Exception as mem_err:
             logger.warning("Campaign memory unavailable: %s (continuing)", mem_err)
 
@@ -115,8 +128,11 @@ def main() -> int:
         seasonal_context = build_seasonal_context(current_month)
         system_prompt = SYSTEM_PROMPT_TEMPLATE.format(seasonal_context=seasonal_context)
         memory_block = f"\n\n{campaign_memory}" if campaign_memory else ""
+        harmattan_block = harmattan_context  # already prefixed with \n if non-empty
         user_prompt = (
-            USER_PROMPT_TEMPLATE.format(weather_data=weather_data) + memory_block
+            USER_PROMPT_TEMPLATE.format(weather_data=weather_data)
+            + memory_block
+            + harmattan_block
         )
         logger.info(
             "Season: %s (month %d)", seasonal_context.split("\n")[0], current_month

@@ -292,6 +292,7 @@ class PlSeasonalScore(Base):
     days_rain: Mapped[Optional[int]] = mapped_column(INTEGER)
     days_stress_temp: Mapped[Optional[int]] = mapped_column(INTEGER)
     avg_tmax: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(4, 1))
+    harmattan_days: Mapped[Optional[int]] = mapped_column(INTEGER)
     score: Mapped[Decimal] = mapped_column(DECIMAL(2, 1), nullable=False)
     computed_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
 

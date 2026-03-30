@@ -23,6 +23,11 @@ const clientId = import.meta.env.AUTH0_CLIENT_ID;
 const audience = import.meta.env.AUTH0_API_AUDIENCE;
 const redirectUri = import.meta.env.AUTH0_REDIRECT_URI || window.location.origin;
 
+// Debug: log Auth0 config at startup
+console.log('[Auth0 Debug] config:', { domain, clientId, audience, redirectUri });
+console.log('[Auth0 Debug] URL:', window.location.href);
+console.log('[Auth0 Debug] has code:', window.location.search.includes('code='));
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <Sentry.ErrorBoundary fallback={<ErrorFallback />}>
@@ -35,6 +40,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         }}
         cacheLocation="localstorage"
         useRefreshTokens={true}
+        onRedirectCallback={(appState) => {
+          console.log('[Auth0 Debug] redirect callback fired:', appState);
+        }}
       >
         <QueryClientProvider client={queryClient}>
           <App />

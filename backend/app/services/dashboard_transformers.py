@@ -5,7 +5,7 @@ Transforms database models and raw data into API response formats.
 Separates data transformation logic from API endpoints.
 """
 
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional, Union
 from datetime import date
 
 from app.models.technicals import Technicals
@@ -239,16 +239,17 @@ def transform_to_chart_data_response(
     return ChartDataResponse(data=data_points)
 
 
-def transform_market_research_to_news(market_research: MarketResearch) -> NewsResponse:
-    """
-    Transform MarketResearch model to NewsResponse.
-
-    Args:
-        market_research: MarketResearch model instance
-
-    Returns:
-        NewsResponse
-    """
+def transform_market_research_to_news(
+    market_research: Union[MarketResearch, Dict[str, Any]],
+) -> NewsResponse:
+    """Transform MarketResearch ORM or pl_fundamental_article dict to NewsResponse."""
+    if isinstance(market_research, dict):
+        return NewsResponse(
+            date=format_date_for_display(market_research["date"]),
+            title=market_research.get("impact_synthesis") or "Market Research Update",
+            content=market_research.get("summary") or "No summary available",
+            author=market_research.get("author") or "Market Research Team",
+        )
     return NewsResponse(
         date=format_date_for_display(market_research.date),
         title=market_research.impact_synthesis or "Market Research Update",
@@ -257,16 +258,17 @@ def transform_market_research_to_news(market_research: MarketResearch) -> NewsRe
     )
 
 
-def transform_weather_data_to_response(weather_data: WeatherData) -> WeatherResponse:
-    """
-    Transform WeatherData model to WeatherResponse.
-
-    Args:
-        weather_data: WeatherData model instance
-
-    Returns:
-        WeatherResponse
-    """
+def transform_weather_data_to_response(
+    weather_data: Union[WeatherData, Dict[str, Any]],
+) -> WeatherResponse:
+    """Transform WeatherData ORM or pl_weather_observation dict to WeatherResponse."""
+    if isinstance(weather_data, dict):
+        return WeatherResponse(
+            date=format_date_for_display(weather_data["date"]),
+            description=weather_data.get("text") or "No weather description available",
+            impact=weather_data.get("impact_synthesis")
+            or "No market impact assessment available",
+        )
     return WeatherResponse(
         date=format_date_for_display(weather_data.date),
         description=weather_data.text or "No weather description available",

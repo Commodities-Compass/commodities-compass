@@ -73,6 +73,9 @@ class Settings(BaseSettings):
         "GOOGLE_DRIVE_AUDIO_FOLDER_ID", default="", cast=str
     )
 
+    # Feature flags
+    USE_NEW_TABLES: bool = config("USE_NEW_TABLES", default=False, cast=bool)
+
     # External APIs
     WEATHER_API_KEY: str = config("WEATHER_API_KEY", default="", cast=str)
     NEWS_API_KEY: str = config("NEWS_API_KEY", default="", cast=str)

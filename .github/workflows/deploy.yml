@@ -171,7 +171,7 @@ jobs:
 
           SECRETS="--set-secrets=DATABASE_URL=DATABASE_URL:latest,DATABASE_SYNC_URL=DATABASE_SYNC_URL:latest,GOOGLE_SHEETS_CREDENTIALS_JSON=GOOGLE_SHEETS_CREDENTIALS_JSON:latest,GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON=GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON:latest,GOOGLE_DRIVE_CREDENTIALS_JSON=GOOGLE_DRIVE_CREDENTIALS_JSON:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,SENTRY_DSN=SENTRY_DSN:latest"
 
-          ENV_VARS="--set-env-vars=SPREADSHEET_ID=${{ vars.SPREADSHEET_ID }},GOOGLE_DRIVE_AUDIO_FOLDER_ID=${{ vars.GOOGLE_DRIVE_AUDIO_FOLDER_ID }}"
+          ENV_VARS="--set-env-vars=SPREADSHEET_ID=${{ vars.SPREADSHEET_ID }},GOOGLE_DRIVE_AUDIO_FOLDER_ID=${{ vars.GOOGLE_DRIVE_AUDIO_FOLDER_ID }},GOOGLE_DRIVE_BRIEFS_FOLDER_ID=${{ vars.GOOGLE_DRIVE_BRIEFS_FOLDER_ID }}"
 
           deploy_job() {
             local name=$1
@@ -197,7 +197,21 @@ jobs:
             fi
           }
 
-          deploy_job cc-barchart-scraper     2Gi  "barchart-scraper,--sheet,production"
+          # Barchart needs ACTIVE_CONTRACT env var (explicit contract, no auto-roll)
+          BARCHART_ENV="--set-env-vars=SPREADSHEET_ID=${{ vars.SPREADSHEET_ID }},GOOGLE_DRIVE_AUDIO_FOLDER_ID=${{ vars.GOOGLE_DRIVE_AUDIO_FOLDER_ID }},GOOGLE_DRIVE_BRIEFS_FOLDER_ID=${{ vars.GOOGLE_DRIVE_BRIEFS_FOLDER_ID }},ACTIVE_CONTRACT=${{ vars.ACTIVE_CONTRACT }}"
+          deploy_job_custom() {
+            local name=$1
+            local memory=$2
+            shift 2
+            local args="$@"
+            echo "--- Deploying ${name} (${memory}) ---"
+            if gcloud run jobs describe "${name}" --region="${REGION}" --format="value(name)" 2>/dev/null; then
+              gcloud run jobs update "${name}" --image="${IMAGE}" --memory="${memory}" --cpu=1 --args="${args}" ${COMMON_FLAGS} ${SECRETS} ${BARCHART_ENV}
+            else
+              gcloud run jobs create "${name}" --image="${IMAGE}" --memory="${memory}" --cpu=1 --args="${args}" ${COMMON_FLAGS} ${SECRETS} ${BARCHART_ENV}
+            fi
+          }
+          deploy_job_custom cc-barchart-scraper     2Gi  "barchart-scraper,--sheet,production"
           deploy_job cc-ice-stocks-scraper   512Mi "ice-stocks-scraper,--sheet,production"
           deploy_job cc-cftc-scraper         512Mi "cftc-scraper,--sheet,production"
           deploy_job cc-press-review-agent   1Gi  "press-review,--sheet,production"

@@ -7,9 +7,11 @@ and response formatting. Business logic is delegated to service layer.
 
 from datetime import date, datetime, timezone
 from typing import Optional
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 import logging
+
+from app.core.rate_limit import limiter
 
 from app.core.database import get_db
 from app.core.auth import get_current_user
@@ -73,7 +75,9 @@ def _parse_and_validate_date(date_str: str) -> tuple[date, date]:
 
 
 @router.get("/position-status", response_model=PositionStatusResponse)
+@limiter.limit("60/minute")
 async def get_position_status(
+    request: Request,
     target_date: Optional[str] = Query(
         default=None, description="Specific date for position data (YYYY-MM-DD format)"
     ),
@@ -126,7 +130,9 @@ async def get_position_status(
 
 
 @router.get("/indicators-grid", response_model=IndicatorsGridResponse)
+@limiter.limit("60/minute")
 async def get_indicators_grid(
+    request: Request,
     target_date: Optional[str] = Query(
         default=None, description="Specific date for indicators (YYYY-MM-DD format)"
     ),
@@ -180,7 +186,9 @@ async def get_indicators_grid(
 
 
 @router.get("/recommendations", response_model=RecommendationsResponse)
+@limiter.limit("60/minute")
 async def get_recommendations(
+    request: Request,
     target_date: Optional[str] = Query(
         default=None,
         description="Specific date for recommendations (YYYY-MM-DD format)",
@@ -238,7 +246,9 @@ async def get_recommendations(
 
 
 @router.get("/chart-data", response_model=ChartDataResponse)
+@limiter.limit("60/minute")
 async def get_chart_data_endpoint(
+    request: Request,
     days: int = Query(
         default=30, ge=1, le=365, description="Number of days of historical data"
     ),
@@ -279,7 +289,9 @@ async def get_chart_data_endpoint(
 
 
 @router.get("/news", response_model=NewsResponse)
+@limiter.limit("60/minute")
 async def get_news(
+    request: Request,
     target_date: Optional[str] = Query(
         default=None, description="Specific date for news (YYYY-MM-DD format)"
     ),
@@ -327,7 +339,9 @@ async def get_news(
 
 
 @router.get("/weather", response_model=WeatherResponse)
+@limiter.limit("60/minute")
 async def get_weather(
+    request: Request,
     target_date: Optional[str] = Query(
         default=None, description="Specific date for weather data (YYYY-MM-DD format)"
     ),
@@ -375,7 +389,9 @@ async def get_weather(
 
 
 @router.get("/audio", response_model=AudioResponse)
+@limiter.limit("10/minute")
 async def get_audio(
+    request: Request,
     target_date: Optional[str] = Query(
         default=None, description="Specific date for audio file (YYYY-MM-DD format)"
     ),

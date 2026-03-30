@@ -5,6 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.openapi.utils import get_openapi
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 import logging
@@ -16,6 +18,7 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal, engine, sync_engine, get_db
 from app.core.sentry import init_sentry
 from app.api.api_v1.api import api_router
+from app.core.rate_limit import limiter
 
 # Initialize Sentry before FastAPI instantiation
 init_sentry("fastapi", [FastApiIntegration(), SqlalchemyIntegration()])
@@ -44,9 +47,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Set all CORS enabled origins
-origins = settings.BACKEND_CORS_ORIGINS
+# Rate limiter
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
+# CORS
+origins = settings.BACKEND_CORS_ORIGINS
 logger.info("CORS origins configured: %s", origins)
 
 app.add_middleware(
@@ -54,8 +60,20 @@ app.add_middleware(
     allow_origins=origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allow_headers=["*"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
 )
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    """Add security headers to all responses."""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Strict-Transport-Security"] = (
+        "max-age=31536000; includeSubDomains"
+    )
+    return response
 
 
 @app.middleware("http")

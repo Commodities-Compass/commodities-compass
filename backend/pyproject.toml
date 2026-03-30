@@ -41,6 +41,7 @@ sentry-sdk = {extras = ["fastapi", "sqlalchemy", "httpx"], version = "^2.0.0"}
 
 # Utilities
 httpx = "^0.26.0"
+slowapi = "^0.1.9"
 python-dateutil = "^2.8.2"
 pytz = "^2024.1"
 playwright = "^1.58.0"

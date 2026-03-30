@@ -24,16 +24,19 @@ def upgrade() -> None:
         "ix_indicator_daily_algo_date",
         "pl_indicator_daily",
         ["algorithm_version_id", sa.text("date DESC")],
+        if_not_exists=True,
     )
     op.create_index(
         "ix_indicator_daily_contract_date",
         "pl_indicator_daily",
         ["contract_id", "date"],
+        if_not_exists=True,
     )
     op.create_index(
         "ix_signal_component_lookup",
         "pl_signal_component",
         ["contract_id", "date", "indicator_name"],
+        if_not_exists=True,
     )
 
 

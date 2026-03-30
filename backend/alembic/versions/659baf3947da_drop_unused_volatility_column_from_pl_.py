@@ -9,6 +9,7 @@ Create Date: 2026-03-22 14:17:06.607921
 from typing import Sequence, Union
 
 from alembic import op
+from sqlalchemy import inspect
 import sqlalchemy as sa
 
 
@@ -19,8 +20,16 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _has_column(table: str, column: str) -> bool:
+    bind = op.get_bind()
+    insp = inspect(bind)
+    columns = [c["name"] for c in insp.get_columns(table)]
+    return column in columns
+
+
 def upgrade() -> None:
-    op.drop_column("pl_derived_indicators", "volatility")
+    if _has_column("pl_derived_indicators", "volatility"):
+        op.drop_column("pl_derived_indicators", "volatility")
 
 
 def downgrade() -> None:

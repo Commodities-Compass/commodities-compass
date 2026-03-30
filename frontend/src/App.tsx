@@ -28,6 +28,17 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function RootRedirect() {
+  const { isLoading } = useAuth0();
+
+  // Wait for Auth0 to finish processing ?code= callback before redirecting
+  if (isLoading) {
+    return <LoadingSpinner />;
+  }
+
+  return <Navigate to="/dashboard" replace />;
+}
+
 function NotFoundPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">
@@ -82,7 +93,7 @@ export default function App() {
     <Router>
       <Suspense fallback={<LoadingSpinner />}>
         <Routes>
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/" element={<RootRedirect />} />
 
           <Route path="/login" element={<LoginPage />} />
 

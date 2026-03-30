@@ -138,6 +138,14 @@ export default function LoginPage() {
               </div>
             </div>
 
+            {error && (
+              <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                <p className="text-sm text-red-700 dark:text-red-300 font-mono break-all">
+                  Auth0 error: {error.message}
+                </p>
+              </div>
+            )}
+
             <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
               <p className="text-sm text-center text-gray-600 dark:text-gray-400">
                 <span className="inline-flex items-center gap-1">

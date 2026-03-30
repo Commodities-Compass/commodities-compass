@@ -42,6 +42,10 @@ locals {
       description = "Generate structured brief and upload to Google Drive"
       schedule    = "30 21 * * 1-5"
     }
+    compute-indicators = {
+      description = "Compute technical indicators from raw market data"
+      schedule    = "15 21 * * 1-5"
+    }
     data-import-etl = {
       description = "Full-refresh ETL from Google Sheets to PostgreSQL"
       schedule    = "15 22 * * 1-5"

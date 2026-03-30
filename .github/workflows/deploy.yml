@@ -10,6 +10,12 @@ concurrency:
   group: deploy-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  REGISTRY: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/commodities-compass
+  SA_API: cc-cloud-run-api@${{ vars.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+  SA_JOBS: cc-cloud-run-jobs@${{ vars.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+  VPC_CONNECTOR: cc-vpc-connector
+
 jobs:
   deploy-backend:
     name: Deploy Backend to Cloud Run
@@ -36,17 +42,40 @@ jobs:
       - name: Build and push backend image
         run: |
           docker build \
-            -t ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/commodities-compass/backend:${{ github.sha }} \
-            -t ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/commodities-compass/backend:latest \
+            -t ${{ env.REGISTRY }}/backend:${{ github.sha }} \
+            -t ${{ env.REGISTRY }}/backend:latest \
             backend/
-          docker push --all-tags ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/commodities-compass/backend
+          docker push --all-tags ${{ env.REGISTRY }}/backend
 
       - name: Deploy to Cloud Run
         uses: google-github-actions/deploy-cloudrun@v2
         with:
           service: backend
           region: ${{ vars.GCP_REGION }}
-          image: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/commodities-compass/backend:${{ github.sha }}
+          image: ${{ env.REGISTRY }}/backend:${{ github.sha }}
+          flags: >-
+            --service-account=${{ env.SA_API }}
+            --vpc-connector=${{ env.VPC_CONNECTOR }}
+            --vpc-egress=private-ranges-only
+            --memory=512Mi
+            --cpu=1
+            --min-instances=0
+            --max-instances=2
+            --port=8000
+            --allow-unauthenticated
+          env_vars: |
+            SPREADSHEET_ID=${{ vars.SPREADSHEET_ID }}
+            GOOGLE_DRIVE_AUDIO_FOLDER_ID=${{ vars.GOOGLE_DRIVE_AUDIO_FOLDER_ID }}
+            BACKEND_CORS_ORIGINS=${{ vars.BACKEND_CORS_ORIGINS }}
+          secrets: |
+            DATABASE_URL=DATABASE_URL:latest
+            DATABASE_SYNC_URL=DATABASE_SYNC_URL:latest
+            AUTH0_DOMAIN=AUTH0_DOMAIN:latest
+            AUTH0_CLIENT_ID=AUTH0_CLIENT_ID:latest
+            AUTH0_API_AUDIENCE=AUTH0_API_AUDIENCE:latest
+            AUTH0_ISSUER=AUTH0_ISSUER:latest
+            GOOGLE_SHEETS_CREDENTIALS_JSON=GOOGLE_SHEETS_CREDENTIALS_JSON:latest
+            SENTRY_DSN=SENTRY_DSN:latest
 
   deploy-frontend:
     name: Deploy Frontend to Cloud Run
@@ -79,14 +108,101 @@ jobs:
             --build-arg AUTH0_REDIRECT_URI=${{ vars.FRONTEND_URL }} \
             --build-arg API_BASE_URL=${{ vars.API_BASE_URL }} \
             --build-arg AUTH0_ISSUER=${{ secrets.AUTH0_ISSUER }} \
-            -t ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/commodities-compass/frontend:${{ github.sha }} \
-            -t ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/commodities-compass/frontend:latest \
+            -t ${{ env.REGISTRY }}/frontend:${{ github.sha }} \
+            -t ${{ env.REGISTRY }}/frontend:latest \
             frontend/
-          docker push --all-tags ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/commodities-compass/frontend
+          docker push --all-tags ${{ env.REGISTRY }}/frontend
 
       - name: Deploy to Cloud Run
         uses: google-github-actions/deploy-cloudrun@v2
         with:
           service: frontend
           region: ${{ vars.GCP_REGION }}
-          image: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/commodities-compass/frontend:${{ github.sha }}
+          image: ${{ env.REGISTRY }}/frontend:${{ github.sha }}
+          flags: >-
+            --service-account=${{ env.SA_API }}
+            --memory=256Mi
+            --cpu=1
+            --min-instances=0
+            --max-instances=2
+            --port=3000
+            --allow-unauthenticated
+
+  deploy-jobs:
+    name: Deploy Cloud Run Jobs
+    runs-on: ubuntu-latest
+    needs: [deploy-backend]
+    if: github.event.workflow_run.conclusion == 'success'
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_SA_EMAIL }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ vars.GCP_REGION }}-docker.pkg.dev
+
+      - name: Build and push jobs image
+        run: |
+          docker build \
+            -f backend/Dockerfile.jobs \
+            -t ${{ env.REGISTRY }}/jobs:${{ github.sha }} \
+            -t ${{ env.REGISTRY }}/jobs:latest \
+            backend/
+          docker push --all-tags ${{ env.REGISTRY }}/jobs
+
+      - name: Deploy Cloud Run Jobs
+        run: |
+          IMAGE="${{ env.REGISTRY }}/jobs:${{ github.sha }}"
+          REGION="${{ vars.GCP_REGION }}"
+          SA="${{ env.SA_JOBS }}"
+          VPC="${{ env.VPC_CONNECTOR }}"
+
+          COMMON_FLAGS="--region=${REGION} --service-account=${SA} --vpc-connector=${VPC} --vpc-egress=private-ranges-only --max-retries=1 --task-timeout=900s"
+
+          SECRETS="--set-secrets=DATABASE_URL=DATABASE_URL:latest,DATABASE_SYNC_URL=DATABASE_SYNC_URL:latest,GOOGLE_SHEETS_CREDENTIALS_JSON=GOOGLE_SHEETS_CREDENTIALS_JSON:latest,GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON=GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON:latest,GOOGLE_DRIVE_CREDENTIALS_JSON=GOOGLE_DRIVE_CREDENTIALS_JSON:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,SENTRY_DSN=SENTRY_DSN:latest"
+
+          ENV_VARS="--set-env-vars=SPREADSHEET_ID=${{ vars.SPREADSHEET_ID }},GOOGLE_DRIVE_AUDIO_FOLDER_ID=${{ vars.GOOGLE_DRIVE_AUDIO_FOLDER_ID }}"
+
+          deploy_job() {
+            local name=$1
+            local memory=$2
+            shift 2
+            local args="$@"
+
+            echo "--- Deploying ${name} (${memory}) ---"
+            if gcloud run jobs describe "${name}" --region="${REGION}" --format="value(name)" 2>/dev/null; then
+              gcloud run jobs update "${name}" \
+                --image="${IMAGE}" \
+                --memory="${memory}" \
+                --cpu=1 \
+                --args="${args}" \
+                ${COMMON_FLAGS} ${SECRETS} ${ENV_VARS}
+            else
+              gcloud run jobs create "${name}" \
+                --image="${IMAGE}" \
+                --memory="${memory}" \
+                --cpu=1 \
+                --args="${args}" \
+                ${COMMON_FLAGS} ${SECRETS} ${ENV_VARS}
+            fi
+          }
+
+          deploy_job cc-barchart-scraper     2Gi  "barchart-scraper,--sheet,production"
+          deploy_job cc-ice-stocks-scraper   512Mi "ice-stocks-scraper,--sheet,production"
+          deploy_job cc-cftc-scraper         512Mi "cftc-scraper,--sheet,production"
+          deploy_job cc-press-review-agent   1Gi  "press-review,--sheet,production"
+          deploy_job cc-meteo-agent          1Gi  "meteo-agent,--sheet,production"
+          deploy_job cc-compute-indicators   1Gi  "compute-indicators,--all-contracts"
+          deploy_job cc-daily-analysis       1Gi  "daily-analysis,--db"
+          deploy_job cc-compass-brief        1Gi  "compass-brief"
+          deploy_job cc-data-import-etl      1Gi  "import"

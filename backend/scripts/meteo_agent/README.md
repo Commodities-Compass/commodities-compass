@@ -67,7 +67,7 @@ poetry run meteo-agent --sheet production --verbose
 | `DATABASE_SYNC_URL` | yes | GCP Cloud SQL connection string |
 | `SENTRY_DSN` | no | Sentry monitoring DSN |
 
-## Pipeline Schedule (Railway Cron)
+## Pipeline Schedule (Cloud Scheduler → Cloud Run Jobs)
 
 ```
  9:00 PM UTC  -- Barchart scraper       -> TECHNICALS (CLOSE, HIGH, LOW, VOL, OI, IV)
@@ -80,15 +80,14 @@ poetry run meteo-agent --sheet production --verbose
 
 Cron: `10 21 * * 1-5` (9:10 PM UTC weekdays). No upstream dependencies except Open-Meteo API availability.
 
-## Railway deployment
+## Deployment (GCP Cloud Run Jobs)
 
 | Field | Value |
 |-------|-------|
-| Service name | `meteo-agent` |
-| Image | Shared backend Dockerfile |
-| Command | `bash /app/scripts/meteo_agent/run_meteo.sh` |
-| Schedule | `10 21 * * 1-5` (9:10 PM UTC, weekdays) |
-| Sentry monitor slug | `meteo-agent` |
+| **Cloud Run Job** | `cc-meteo-agent` |
+| **Image** | `Dockerfile.jobs` |
+| **Cloud Scheduler** | `10 21 * * 1-5` (9:10 PM UTC, weekdays) |
+| **Sentry monitor slug** | `meteo-agent` |
 
 ## Module structure
 

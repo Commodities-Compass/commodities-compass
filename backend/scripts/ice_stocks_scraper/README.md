@@ -35,7 +35,7 @@ ice_stocks_scraper/
   db_writer.py       # GCP PostgreSQL writer (update stock_us on latest row)
   sheets_manager.py  # Google Sheets column H writer
   main.py            # CLI entry point (dual-write: DB then Sheets)
-  run_scraper.sh     # Railway cron job entry point
+  run_scraper.sh     # Cloud Run Jobs entry point
 ```
 
 **Dependencies:** `httpx`, `xlrd`, `pandas`, `google-api-python-client` (all already in pyproject.toml)
@@ -115,23 +115,15 @@ Updates `stock_us` on the most recent `pl_contract_data_daily` row for the activ
 
 The DB write is non-blocking: if it fails, the Sheets write proceeds normally.
 
-## Railway Deployment
-
-### Service Configuration
+## Deployment (GCP Cloud Run Jobs)
 
 | Setting | Value |
 |---------|-------|
-| **Root directory** | `backend` |
-| **Start command** | `bash scripts/ice_stocks_scraper/run_scraper.sh` |
-| **Cron schedule** | `10 21 * * 1-5` (9:10 PM UTC weekdays only) |
-| **Restart policy** | Never (cron job, not long-running) |
-
-### Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON` | Yes | Service account JSON with **write** access to the TECHNICALS spreadsheet |
-| `DATABASE_SYNC_URL` | Yes | GCP Cloud SQL connection string |
+| **Cloud Run Job** | `cc-ice-stocks-scraper` |
+| **Image** | `Dockerfile.jobs` |
+| **Cloud Scheduler** | `10 21 * * 1-5` (9:10 PM UTC weekdays only) |
+| **Timeout** | 300s |
+| **Required env vars** | `GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON`, `DATABASE_SYNC_URL` |
 
 ### Why This Schedule
 

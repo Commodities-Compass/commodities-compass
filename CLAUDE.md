@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Commodities Compass is a Business Intelligence application for commodities trading, providing real-time market insights, technical analysis, and trading signals for cocoa (ICE contracts). This is a monorepo with a FastAPI backend and React frontend, using Auth0 for authentication and PostgreSQL for data storage. Data is imported from Google Sheets via an ETL pipeline and updated daily via Railway cron jobs.
+Commodities Compass is a Business Intelligence application for commodities trading, providing real-time market insights, technical analysis, and trading signals for cocoa (ICE contracts). This is a monorepo with a FastAPI backend and React frontend, using Auth0 for authentication and PostgreSQL (GCP Cloud SQL) for data storage. Deployed on GCP Cloud Run with 9 automated Cloud Run Jobs (scrapers, agents, compute engine). Dashboard reads from `pl_*` tables (`USE_NEW_TABLES=true`). Railway is paused, pending Phase 5 kill.
 
 ## Development Commands
 
@@ -52,12 +52,13 @@ Commodities Compass is a Business Intelligence application for commodities tradi
 
 The backend follows a clean architecture with separation of concerns:
 
-- **`app/main.py`** - FastAPI application entry point with CORS, request logging middleware, exception handling, and OpenAPI/Auth0 schema configuration
+- **`app/main.py`** - FastAPI application entry point with CORS, rate limiting (slowapi), security headers middleware, request logging, exception handling, and OpenAPI/Auth0 schema configuration
 - **`app/core/`** - Core functionality:
-  - `config.py` - Pydantic settings with environment variable management
+  - `config.py` - Pydantic settings with environment variable management. Includes `USE_NEW_TABLES` feature flag for pl_* table migration.
   - `auth.py` - Auth0 JWT token verification with JWKS caching (6-hour TTL) and user extraction
   - `security.py` - Password hashing (bcrypt) and token utilities
   - `database.py` - Async SQLAlchemy setup with dual engines (async for app, sync for Alembic)
+  - `rate_limit.py` - Shared slowapi limiter instance (extracted to avoid circular imports)
   - `excel_mappings.py` - Excel/Google Sheets column to database mapping configuration (5 sheets, 100+ column mappings)
 - **`app/api/api_v1/`** - API endpoints focused on HTTP concerns:
   - `api.py` - Router aggregator combining all endpoint modules
@@ -79,12 +80,13 @@ The backend follows a clean architecture with separation of concerns:
 - **`app/schemas/`** - Pydantic request/response models:
   - `dashboard.py` - All dashboard response schemas (PositionStatus, IndicatorsGrid, Recommendations, ChartData, News, Weather, Audio)
 - **`app/services/`** - Business logic layer (service-oriented architecture):
-  - `data_import.py` - Google Sheets to PostgreSQL ETL pipeline
-  - `dashboard_service.py` - Pure business logic for dashboard operations (YTD computed server-side from raw decision+close data, not from mutable Google Sheets CONCLUSION column)
-  - `dashboard_transformers.py` - Data transformation between models and API responses
+  - `data_import.py` - Google Sheets to PostgreSQL ETL pipeline (legacy, kept during transition)
+  - `dashboard_service.py` - Pure business logic for dashboard operations. Feature flag `USE_NEW_TABLES` switches between legacy tables and pl_* tables. Each function has a `_pl_*` variant for contract-centric queries.
+  - `dashboard_transformers.py` - Data transformation between models/dicts and API responses. Accepts both ORM objects (legacy) and dicts (pl_* path).
   - `audio_service.py` - Google Drive audio file integration (singleton service)
 - **`app/utils/`** - Reusable utility functions:
   - `date_utils.py` - Date parsing, validation, business date conversion (weekend to Friday)
+  - `contract_resolver.py` - Active contract and algorithm version resolution from ref_contract/pl_algorithm_version tables. Bridges commodity-centric to contract-centric queries.
 - **`app/engine/`** - Indicator computation engine (Phase 3.1). Replaces the Google Sheets formula engine. See `app/engine/README.md` for full docs.
   - `types.py` - AlgorithmConfig (frozen), legacy v1.0.0 params (fallback), column constants
   - `indicators/` - 14 technical indicators (pivots, EMA, MACD, RSI Wilder, Stochastic, ATR Wilder, Bollinger, ratios), each implementing the `Indicator` protocol
@@ -106,8 +108,8 @@ The frontend uses modern React patterns:
   - `dashboard.ts` - Dashboard API service functions for all endpoints
 - **State Management** - React Query (TanStack Query) — global default stale time is 5 minutes (`main.tsx`), but all dashboard hooks in `useDashboard.ts` override to 24-hour stale time (no auto-refetch) since trading data updates once daily
 - **Routing** - React Router with `ProtectedRoute` wrapper requiring authentication
-  - `/` redirects to `/dashboard`
-  - `/login` - Auth0 login page with redirect loop detection
+  - `/` → `RootRedirect` (waits for Auth0 `isLoading` before redirecting to `/dashboard` — prevents stripping `?code=` callback params)
+  - `/login` - Auth0 login page with redirect loop detection and error display
   - `/dashboard` - Main trading dashboard (protected)
   - `/dashboard/historical` - Historical data view (protected)
 - **UI Components** - Shadcn/ui (new-york style) with Radix UI primitives in `src/components/ui/`
@@ -145,8 +147,8 @@ Frontend code uses Auth0 variables (not VITE_ prefixed) exposed via custom Vite 
 - Redis 7 runs on custom port 6380 (not default 6379) via Docker
 - Database URL: `postgresql+asyncpg://postgres:password@localhost:5433/commodities_compass`
 - Async SQLAlchemy with asyncpg driver for app, sync engine for Alembic migrations
-- 6 migrations exist: initial schema, score field precision update, unused table cleanup, test_range table, MVP schema (15 pl_* tables), drop volatility column
-- **Two database layers coexist**: legacy tables (technicals, indicator, market_research, weather_data) read by dashboard API, and MVP `pl_*` tables written by scrapers (dual-write) and the indicator engine. Legacy tables die in Phase 5.
+- Multiple migrations exist (idempotent with `_has_column()` checks and `if_not_exists=True` for safe re-application on GCP)
+- **Two database layers coexist**: legacy tables (technicals, indicator, market_research, weather_data) and MVP `pl_*` tables. Dashboard API reads from pl_* tables (`USE_NEW_TABLES=true` since 2026-03-30). Legacy tables kept alive by `data-import-etl` during transition. Legacy tables die in Phase 5.
 
 ### Authentication Flow
 
@@ -159,9 +161,9 @@ Frontend code uses Auth0 variables (not VITE_ prefixed) exposed via custom Vite 
 
 ## Data Pipeline
 
-### Legacy Pipeline (Railway — still active, dies in Phase 5)
+### Legacy Pipeline (Railway — PAUSED since 2026-03-30, dies in Phase 5)
 
-Data flows from Google Sheets to PostgreSQL via ETL, updated daily by Railway cron jobs:
+Data flows from Google Sheets to PostgreSQL via ETL. Railway crons are paused; the `data-import-etl` Cloud Run Job keeps legacy tables in sync during transition:
 
 1. **Google Sheets ETL** implemented in `app/services/data_import.py` (run with `poetry run import`)
 2. **Full refresh strategy**: Each import clears existing table data and re-inserts all rows
@@ -173,9 +175,9 @@ Data flows from Google Sheets to PostgreSQL via ETL, updated daily by Railway cr
    - **TEST RANGE** → `test_range` table: Color zone thresholds for gauge indicators
 4. **Data transformations**: `parse_datetime`, `parse_decimal`, `parse_decimal_from_string`, `parse_integer` for handling US number formats, percentages, and formulas
 
-### New Pipeline (GCP — Phase 3.1 complete)
+### Active Pipeline (GCP Cloud Run Jobs — LIVE since 2026-03-30)
 
-Scrapers dual-write to both Google Sheets and `pl_contract_data_daily` (GCP Cloud SQL). The indicator computation engine (`app/engine/`) replaces the Google Sheets formula engine:
+9 Cloud Run Jobs run on Cloud Scheduler (21:00-22:15 UTC weekdays). Scrapers dual-write to both Google Sheets and `pl_contract_data_daily` (GCP Cloud SQL). The indicator computation engine (`app/engine/`) replaces the Google Sheets formula engine:
 
 ```
 Scrapers → pl_contract_data_daily (raw OHLCV)
@@ -194,7 +196,7 @@ Scrapers → pl_contract_data_daily (raw OHLCV)
 
 ## Scrapers
 
-Three automated scrapers feed columns A–I of the TECHNICALS Google Sheet. Each is a standalone Railway cron service sharing the same `backend/Dockerfile`.
+Three automated scrapers feed columns A–I of the TECHNICALS Google Sheet. Each runs as a GCP Cloud Run Job using `backend/Dockerfile.jobs` (with Playwright). Previously Railway cron services.
 
 ### Architecture
 
@@ -372,19 +374,39 @@ The `PositionStatus` component automatically fetches and plays the audio file:
 
 ## Deployment
 
-- **Platform**: Railway (primary deployment target)
-- **Backend**: Dockerfile-based (`backend/Dockerfile`, Python 3.11-slim), `start.sh` runs Alembic migrations then uvicorn. Health check: `/health` (300s timeout).
-- **Frontend**: Dockerfile-based (`frontend/Dockerfile`, Node 18-alpine), pnpm build + serve static. Health check: `/` (300s timeout).
-- **Daily Import**: Railway cron job, runs `poetry run import` at 10:15 PM UTC nightly. Full-refresh ETL (Sheets → PostgreSQL).
-- **Auto-deploy**: Push to `main` triggers rebuild of all services.
+- **Platform**: GCP Cloud Run (primary). Railway paused (Phase 5 kill pending).
+- **CI/CD**: `.github/workflows/deploy.yml` — push to `main` triggers CI (lint + test) → Deploy (backend + frontend + 9 Cloud Run Jobs).
+- **Backend**: `backend/Dockerfile` (Python 3.11-slim, no Playwright, ~200MB). Alembic migrations on startup via `start.sh`. Cloud Run: 512Mi, 1 CPU, max 2 instances, VPC connector for Cloud SQL.
+- **Frontend**: `frontend/Dockerfile` (Node 18-alpine, serve static). Auth0 vars baked at build time via `--build-arg` from GitHub vars. Cloud Run: 256Mi, 1 CPU, max 2 instances.
+- **Cloud Run Jobs**: `backend/Dockerfile.jobs` (with Playwright, ~1GB). 9 jobs deployed via deploy.yml. `ENTRYPOINT ["poetry", "run"]`, command passed via job args.
+- **Cloud Scheduler**: 9 cron jobs in `europe-west1` (scheduler doesn't support `europe-west9`). Triggers Cloud Run Job execution via HTTP + OAuth. Schedule: 21:00-22:15 UTC weekdays.
+- **Secrets**: GCP Secret Manager (14 secrets). Non-sensitive env vars via GitHub Vars → deploy.yml `--set-env-vars`.
+- **Auth**: Workload Identity Federation (keyless GitHub → GCP auth). No SA key files in CI/CD.
+- **Infra as code**: `infra/terraform/` — Cloud SQL, VPC connector, service accounts, schedulers.
+
+### Nightly Pipeline Schedule (UTC, weekdays)
+
+```
+21:00  cc-barchart-scraper      → OHLCV + IV (Playwright)
+21:10  cc-ice-stocks-scraper    → STOCK US
+21:10  cc-cftc-scraper          → COM NET US
+21:10  cc-press-review-agent    → BIBLIO_ALL + pl_fundamental_article
+21:10  cc-meteo-agent           → METEO_ALL + pl_weather_observation
+21:15  cc-compute-indicators    → pl_derived + pl_indicator_daily
+21:20  cc-daily-analysis        → decision + score (LLM)
+21:30  cc-compass-brief         → Google Drive (.txt for NotebookLM)
+22:15  cc-data-import-etl       → Sheets → legacy tables (transition only)
+```
 
 ## Development Notes
 
-- Backend uses Poetry scripts: `poetry run dev`, `poetry run lint`, `poetry run import`, `poetry run daily-analysis`, `poetry run meteo-agent`, `poetry run compass-brief`, `poetry run press-review`
+- Backend uses Poetry scripts: `poetry run dev`, `poetry run lint`, `poetry run import`, `poetry run daily-analysis`, `poetry run meteo-agent`, `poetry run compass-brief`, `poetry run press-review`, `poetry run barchart-scraper`, `poetry run ice-stocks-scraper`, `poetry run cftc-scraper`, `poetry run compute-indicators`, `poetry run seed-gcp`, `poetry run seed-trading-calendar`
 - Frontend environment variables exposed via custom Vite `define` config (no VITE_ prefix needed)
-- Database migrations managed via Alembic with 6 existing migrations
+- Database migrations managed via Alembic (migrations are idempotent for safe GCP re-application)
 - Pre-commit hooks run via Husky (backend: ruff + pyright, frontend: eslint fix)
 - Development setup script available at `scripts/setup-dev.sh`
 - `commodities` and `historical` API endpoints return mock data (TODO: implement database queries)
 - Node.js 18+ and pnpm required (see root `package.json` engines)
 - **Always use pnpm** instead of npm for all JavaScript/TypeScript dependency management and script execution
+- **GCP env var gotcha**: `gcloud run services update --set-env-vars` REPLACES all env vars. Use `--update-env-vars` to add/update without wiping existing vars.
+- **Auth0 + React Router gotcha**: Never use bare `<Navigate>` on the Auth0 callback route. `Navigate` runs in `useLayoutEffect` and strips `?code=` params before Auth0Provider's `useEffect` can read them. Use a wrapper that waits for `isLoading=false`.

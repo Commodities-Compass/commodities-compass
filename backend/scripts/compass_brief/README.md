@@ -66,15 +66,14 @@ The service account cannot create files in regular (My Drive) folders due to Goo
 3. Add `commodities-compass-data@cacaooo.iam.gserviceaccount.com` as a **Content Manager** on the Shared Drive
 4. Copy the folder ID from the URL and set `GOOGLE_DRIVE_BRIEFS_FOLDER_ID` in `.env`
 
-## Railway cron deployment
+## Deployment (GCP Cloud Run Jobs)
 
 | Field | Value |
 |-------|-------|
-| Service name | `compass-brief` |
-| Image | Shared backend Dockerfile |
-| Command | `bash /app/scripts/compass_brief/run_brief.sh` |
-| Schedule | `30 21 * * 1-5` (9:30 PM UTC, weekdays) |
-| Sentry monitor slug | `compass-brief` |
+| **Cloud Run Job** | `cc-compass-brief` |
+| **Image** | `Dockerfile.jobs` |
+| **Cloud Scheduler** | `30 21 * * 1-5` (9:30 PM UTC, weekdays) |
+| **Sentry monitor slug** | `compass-brief` |
 
 ### Pipeline position
 

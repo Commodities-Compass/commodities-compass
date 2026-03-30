@@ -270,14 +270,15 @@ LLM_PROVIDER=openai                              # LLM provider (only openai sup
 LLM_MODEL=gpt-4-turbo                            # Model override
 ```
 
-## Railway Deployment
+## Deployment (GCP Cloud Run Jobs)
 
-```
-Service:  Railway cron "daily-analysis" (shared Dockerfile)
-Schedule: 20 21 * * 1-5  (9:20 PM UTC, weekdays)
-Command:  poetry run daily-analysis --sheet production
-Monitor:  Sentry cron slug "daily-analysis"
-```
+| Field | Value |
+|-------|-------|
+| **Cloud Run Job** | `cc-daily-analysis` |
+| **Image** | `Dockerfile.jobs` |
+| **Cloud Scheduler** | `20 21 * * 1-5` (9:20 PM UTC, weekdays) |
+| **Command** | `poetry run daily-analysis --db` |
+| **Sentry monitor slug** | `daily-analysis` |
 
 ### Pipeline Timing
 

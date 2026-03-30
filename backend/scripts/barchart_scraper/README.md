@@ -26,7 +26,7 @@ There is no automatic roll logic. Contract switches are explicit — set the env
 
 ## Architecture
 
-- **Browser**: Playwright (WebKit on macOS, Chromium on Linux/Railway)
+- **Browser**: Playwright (WebKit on macOS, Chromium on Linux/Cloud Run)
 - **Extraction**: Two strategies with fallback:
   1. **Primary — HTML inline JSON** (has all 6 fields including OI): Finds ALL `"raw"` JSON blocks in server-rendered HTML, picks the one with highest volume (max-volume heuristic).
   2. **Backup — XHR interception** (C/H/L/V only, no OI): Intercepts Barchart's internal API responses via `page.on("response")`. API omits `openInterest`.
@@ -90,20 +90,19 @@ poetry run python -m scripts.barchart_scraper.main --sheet production
 poetry run python -m scripts.barchart_scraper.main --headful --dry-run
 ```
 
-## Deployment
+## Deployment (GCP Cloud Run Jobs)
 
 | Setting | Value |
 |---------|-------|
-| **Root directory** | `backend` |
-| **Start command** | Dockerfile-based |
-| **Cron schedule** | `0 21 * * 1-5` (9 PM UTC weekdays only) |
-| **Restart policy** | Never (cron job) |
-| **Required env vars** | `ACTIVE_CONTRACT`, `GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON`, `DATABASE_SYNC_URL` (GCP Cloud SQL) |
+| **Cloud Run Job** | `cc-barchart-scraper` |
+| **Image** | `Dockerfile.jobs` |
+| **Cloud Scheduler** | `0 21 * * 1-5` (9 PM UTC weekdays only) |
+| **Required env vars** | `ACTIVE_CONTRACT`, `GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON`, `DATABASE_SYNC_URL` |
 
 ## Troubleshooting
 
 ### "ACTIVE_CONTRACT env var not set"
-Set `ACTIVE_CONTRACT` to the current contract code (e.g., `CAK26`) in Railway or `.env`.
+Set `ACTIVE_CONTRACT` to the current contract code (e.g., `CAK26`) in Cloud Run Job env vars or `.env` locally.
 
 ### "Failed to extract data from both HTML and XHR"
 Barchart changed their HTML structure or Angular app. Run `--headful --verbose`, inspect page source, check if `"raw"` blocks still exist with `lastPrice`/`highPrice`/`lowPrice`/`volume`/`openInterest` fields.

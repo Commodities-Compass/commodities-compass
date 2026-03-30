@@ -99,7 +99,7 @@ Each run appends a new row at the bottom of the sheet (chronological order).
 | E | IMPACT SYNTHETIQUES | 150-250 word synthesis paragraph |
 | F | DATE TEXT | `=TEXT(A{row},"MM/DD/YYYY")` → `02/24/2026` |
 
-## Pipeline Schedule (Railway Cron)
+## Pipeline Schedule (Cloud Scheduler → Cloud Run Jobs)
 
 ```
  9:00 PM UTC  -- Barchart scraper       -> TECHNICALS (CLOSE, HIGH, LOW, VOL, OI, IV)
@@ -182,9 +182,9 @@ load_dotenv(Path('.env'))
 - [x] Validator tested — catches short/missing fields
 - [x] JSON extractor hardened — handles markdown fences, literal newlines, truncation
 - [x] Live staging test — all 3 providers write successfully
-- [x] Pushed to main — Railway auto-deploy triggered
-- [ ] Create Railway cron service (`10 21 * * 1-5`, command: `poetry run press-review --sheet production`)
-- [ ] Add env vars to Railway: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`
+- [x] Pushed to main — auto-deploy triggered
+- [x] Cloud Run Job `cc-press-review` deployed with Cloud Scheduler (`10 21 * * 1-5`)
+- [x] Env vars configured: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`
 - [ ] Run 3-day A/B test, compare outputs in staging sheets
 - [ ] Pick winner, switch to single-provider production mode
 - [ ] Monitor first week in production

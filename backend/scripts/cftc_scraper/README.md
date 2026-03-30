@@ -31,21 +31,16 @@ Required:
 - `GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON` - Google Sheets service account credentials
 - `DATABASE_SYNC_URL` - GCP Cloud SQL connection string
 
-## Deployment (Railway)
+## Deployment (GCP Cloud Run Jobs)
 
-### Setup
+| Setting | Value |
+|---------|-------|
+| **Cloud Run Job** | `cc-cftc-scraper` |
+| **Image** | `Dockerfile.jobs` |
+| **Cloud Scheduler** | `10 21 * * 1-5` (9:10 PM UTC weekdays) |
+| **Required env vars** | `GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON`, `DATABASE_SYNC_URL` |
 
-1. **Create new Railway service**: "cftc-scraper"
-
-2. **Configure environment variables** (Railway dashboard):
-   ```
-   GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON=<json-credentials>
-   ```
-
-3. **Set cron schedule** (Railway settings):
-   - **Cron expression**: `10 21 * * 1-5` (9:10 PM UTC weekdays)
-   - **Command**: `bash scripts/cftc_scraper/run_scraper.sh`
-   - Idempotent: Mon-Thu rewrites same value, Friday picks up new report
+Idempotent: Mon-Thu rewrites same value, Friday picks up new report. Env vars configured in Cloud Run Job env vars or Secret Manager.
 
 ## How It Works
 
@@ -91,7 +86,7 @@ poetry run python -m scripts.cftc_scraper.main --dry-run --sheet=staging
 ## Monitoring
 
 ### Logs
-- All logs go to stdout (Railway captures automatically)
+- All logs go to stdout (Cloud Run captures automatically)
 - Sentry cron monitoring for missed/failed runs
 
 ### Success Criteria
@@ -102,17 +97,18 @@ poetry run python -m scripts.cftc_scraper.main --dry-run --sheet=staging
 ## Maintenance
 
 ### Daily Schedule (Weekdays)
-- **21:10 UTC (10:10 PM CET)**: Automated run via Railway cron
+- **21:10 UTC (10:10 PM CET)**: Automated run via Cloud Scheduler → Cloud Run Job
 - Idempotent — always reads the latest published CFTC report (updated Fridays ~9:30 PM CET)
 
 ### Manual Run
 If automation fails, run manually:
 
 ```bash
-# Via Railway CLI
-railway run poetry run python -m scripts.cftc_scraper.main --sheet=staging
+# Via gcloud CLI
+gcloud run jobs execute cc-cftc-scraper --region europe-west9
 
-# Or trigger from Railway dashboard
+# Or run locally
+poetry run python -m scripts.cftc_scraper.main --sheet=staging
 ```
 
 ### Troubleshooting

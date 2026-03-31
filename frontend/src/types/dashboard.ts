@@ -53,10 +53,39 @@ export interface NewsResponse {
   author: string | null;
 }
 
+export interface SeasonStatus {
+  season_name: string;
+  label: string;
+  months_covered: string;
+  score: number | null;
+  status: "completed" | "in_progress" | "upcoming";
+}
+
+export interface LocationDiagnostic {
+  location_name: string;
+  country: "CIV" | "GHA";
+  score: number | null;
+  status: "normal" | "degraded" | "stress";
+  harmattan_days?: number | null;
+}
+
+export interface HarmattanStatus {
+  days: number;
+  threshold: number;
+  risk: boolean;
+  in_season: boolean;
+}
+
 export interface WeatherResponse {
   date: string;
   description: string;
   impact: string;
+  campaign?: string;
+  campaign_health?: number | null;
+  seasons?: SeasonStatus[];
+  diagnostics?: LocationDiagnostic[];
+  impact_score?: number | null;
+  harmattan?: HarmattanStatus | null;
 }
 
 export interface AudioResponse {

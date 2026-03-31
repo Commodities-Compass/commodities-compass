@@ -20,6 +20,10 @@ from app.schemas.dashboard import (
     RecommendationsResponse,
     NewsResponse,
     WeatherResponse,
+    WeatherEnrichedResponse,
+    HarmattanStatus,
+    SeasonStatus,
+    LocationDiagnostic,
     ChartDataResponse,
     ChartDataPoint,
 )
@@ -272,4 +276,27 @@ def transform_weather_data_to_response(
         date=format_date_for_display(weather_data.date),
         description=weather_data.text,
         impact=weather_data.impact_synthesis,
+    )
+
+
+def transform_to_weather_enriched_response(
+    weather_data: WeatherData,
+    campaign: Optional[str],
+    campaign_health: Optional[float],
+    seasons: list[SeasonStatus],
+    diagnostics: list[LocationDiagnostic],
+    impact_score: Optional[int],
+    harmattan: Optional[HarmattanStatus] = None,
+) -> WeatherEnrichedResponse:
+    """Transform WeatherData + seasonal data into enriched response."""
+    return WeatherEnrichedResponse(
+        date=format_date_for_display(weather_data.date),
+        description=weather_data.text or "No weather description available",
+        impact=weather_data.impact_synthesis or "No market impact assessment available",
+        campaign=campaign,
+        campaign_health=campaign_health,
+        seasons=seasons,
+        diagnostics=diagnostics,
+        impact_score=impact_score,
+        harmattan=harmattan,
     )

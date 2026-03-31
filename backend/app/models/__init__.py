@@ -27,6 +27,7 @@ from .pipeline import (
     PlIndicatorDaily,
     PlFundamentalArticle,
     PlWeatherObservation,
+    PlSeasonalScore,
 )
 
 # MVP schema — Audit tables
@@ -56,6 +57,7 @@ __all__ = [
     "PlIndicatorDaily",
     "PlFundamentalArticle",
     "PlWeatherObservation",
+    "PlSeasonalScore",
     # Audit
     "AudPipelineRun",
     "AudLlmCall",

@@ -104,6 +104,64 @@ class WeatherResponse(BaseModel):
     )
 
 
+class SeasonStatus(BaseModel):
+    """Status of a single season within a campaign."""
+
+    season_name: str = Field(..., description="Internal season key (e.g. saison_seche)")
+    label: str = Field(..., description="Display label (e.g. Saison Sèche)")
+    months_covered: str = Field(..., description="Human-readable month range")
+    score: Optional[float] = Field(
+        None, description="Average score across locations (1-5)"
+    )
+    status: str = Field(..., description="completed, in_progress, or upcoming")
+
+
+class LocationDiagnostic(BaseModel):
+    """Health diagnostic for a single cocoa-growing location."""
+
+    location_name: str = Field(..., description="Location name (e.g. Daloa)")
+    country: str = Field(..., description="CIV or GHA")
+    score: Optional[float] = Field(
+        None, description="Average score across seasons (1-5)"
+    )
+    status: str = Field(..., description="normal, degraded, or stress")
+    harmattan_days: Optional[int] = Field(
+        None, description="Cumulative Harmattan days this saison_seche"
+    )
+
+
+class HarmattanStatus(BaseModel):
+    """Harmattan index status for the current campaign."""
+
+    days: int = Field(..., description="Cumulative Harmattan days since Nov 1")
+    threshold: int = Field(..., description="Critical threshold (24 days)")
+    risk: bool = Field(..., description="True if days > threshold")
+    in_season: bool = Field(
+        ..., description="True if current month is in Nov-Mar window"
+    )
+
+
+class WeatherEnrichedResponse(WeatherResponse):
+    """Enriched weather response with seasonal campaign data."""
+
+    campaign: Optional[str] = Field(
+        None, description="Campaign identifier (e.g. 2025-2026)"
+    )
+    campaign_health: Optional[float] = Field(
+        None, description="Average score across all location-seasons"
+    )
+    seasons: List[SeasonStatus] = Field(
+        default_factory=list, description="Season statuses"
+    )
+    diagnostics: List[LocationDiagnostic] = Field(
+        default_factory=list, description="Per-location diagnostics"
+    )
+    impact_score: Optional[int] = Field(None, description="Parsed impact score (1-10)")
+    harmattan: Optional[HarmattanStatus] = Field(
+        None, description="Harmattan wind index"
+    )
+
+
 class ChartDataPoint(BaseModel):
     """Single data point for chart display."""
 

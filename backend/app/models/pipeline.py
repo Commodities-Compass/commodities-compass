@@ -273,3 +273,38 @@ class PlWeatherObservation(Base):
     keywords: Mapped[Optional[str]] = mapped_column(TEXT)
     impact_assessment: Mapped[Optional[str]] = mapped_column(TEXT)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+
+
+class PlSeasonalScore(Base):
+    """Per-location seasonal score for campaign memory.
+
+    One row per (campaign, season, location). Computed from Open-Meteo
+    historical data at each season transition. Injected into the meteo
+    agent prompt to provide cumulative context.
+    """
+
+    __tablename__ = "pl_seasonal_score"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    campaign: Mapped[str] = mapped_column(VARCHAR(20), nullable=False)
+    season_name: Mapped[str] = mapped_column(VARCHAR(50), nullable=False)
+    location_name: Mapped[str] = mapped_column(VARCHAR(100), nullable=False)
+    months_covered: Mapped[str] = mapped_column(VARCHAR(50), nullable=False)
+    start_date: Mapped[date] = mapped_column(DATE, nullable=False)
+    end_date: Mapped[date] = mapped_column(DATE, nullable=False)
+    total_precip_mm: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 1))
+    total_et0_mm: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 1))
+    cumulative_balance_mm: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 1))
+    days_rain: Mapped[Optional[int]] = mapped_column(INTEGER)
+    days_stress_temp: Mapped[Optional[int]] = mapped_column(INTEGER)
+    avg_tmax: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(4, 1))
+    harmattan_days: Mapped[Optional[int]] = mapped_column(INTEGER)
+    score: Mapped[Decimal] = mapped_column(DECIMAL(2, 1), nullable=False)
+    computed_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint(
+            "campaign", "season_name", "location_name", name="uq_seasonal_score"
+        ),
+        Index("ix_seasonal_score_campaign", "campaign"),
+    )

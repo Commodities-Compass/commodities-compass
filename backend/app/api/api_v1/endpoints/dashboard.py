@@ -20,7 +20,7 @@ from app.schemas.dashboard import (
     IndicatorsGridResponse,
     RecommendationsResponse,
     NewsResponse,
-    WeatherResponse,
+    WeatherEnrichedResponse,
     ChartDataResponse,
     AudioResponse,
 )
@@ -39,7 +39,16 @@ from app.services.dashboard_transformers import (
     transform_to_recommendations_response,
     transform_to_chart_data_response,
     transform_market_research_to_news,
-    transform_weather_data_to_response,
+    transform_to_weather_enriched_response,
+)
+from app.services.weather_service import (
+    get_current_campaign,
+    get_harmattan_status,
+    get_seasonal_scores,
+    compute_campaign_health,
+    build_season_statuses,
+    build_location_diagnostics,
+    parse_impact_score,
 )
 from app.utils.date_utils import parse_date_string
 from app.utils.trading_calendar import TradingCalendarError, get_latest_trading_day
@@ -334,7 +343,7 @@ async def get_news(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/weather", response_model=WeatherResponse)
+@router.get("/weather", response_model=WeatherEnrichedResponse)
 @limiter.limit("60/minute")
 async def get_weather(
     request: Request,
@@ -343,37 +352,49 @@ async def get_weather(
     ),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> WeatherResponse:
-    """
-    Get the latest weather update from weather data.
-
-    Returns the most recent weather information with
-    conditions and market impact assessment.
-
-    Args:
-        target_date: Optional specific date. If not provided, returns latest data.
-        current_user: Authenticated user
-        db: Database session
-
-    Returns:
-        Latest weather update data
-
-    Raises:
-        HTTPException: If data not found or date format invalid
-    """
+) -> WeatherEnrichedResponse:
+    """Get weather update enriched with seasonal campaign data."""
     try:
-        # Parse and validate date if provided
         business_date = None
         if target_date:
             business_date = await _parse_and_validate_date(target_date, db)
 
-        # Get weather data from service layer
         weather_data = await get_latest_weather_data(db, business_date)
-
         if not weather_data:
             raise HTTPException(status_code=404, detail="No weather data found")
 
-        return transform_weather_data_to_response(weather_data)
+        # Enrich with seasonal scores + harmattan (non-blocking: graceful fallback)
+        reference = business_date or date.today()
+        campaign = get_current_campaign(reference)
+        campaign_health = None
+        seasons: list = []
+        diagnostics: list = []
+        harmattan = None
+
+        try:
+            scores = await get_seasonal_scores(db, campaign)
+            if scores:
+                campaign_health = compute_campaign_health(scores)
+                seasons = build_season_statuses(scores, reference)
+                diagnostics = build_location_diagnostics(scores)
+            else:
+                seasons = build_season_statuses([], reference)
+            harmattan = await get_harmattan_status(db, campaign, reference)
+        except Exception as e:
+            logger.warning(f"Seasonal enrichment failed (non-blocking): {e}")
+            campaign = None
+
+        impact_score = parse_impact_score(weather_data.impact_synthesis or "")
+
+        return transform_to_weather_enriched_response(
+            weather_data=weather_data,
+            campaign=campaign,
+            campaign_health=campaign_health,
+            seasons=seasons,
+            diagnostics=diagnostics,
+            impact_score=impact_score,
+            harmattan=harmattan,
+        )
 
     except HTTPException:
         raise

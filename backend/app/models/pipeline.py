@@ -263,9 +263,7 @@ class PlWeatherObservation(Base):
     """Weather data. Replaces METEO_ALL / weather_data."""
 
     __tablename__ = "pl_weather_observation"
-    __table_args__ = (
-        UniqueConstraint("date", name="uq_weather_observation_date"),
-    )
+    __table_args__ = (UniqueConstraint("date", name="uq_weather_observation_date"),)
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     date: Mapped[date] = mapped_column(DATE, nullable=False, index=True)

@@ -240,6 +240,11 @@ class PlFundamentalArticle(Base):
     """Press review + fundamentals. Replaces BIBLIO_ALL / market_research."""
 
     __tablename__ = "pl_fundamental_article"
+    __table_args__ = (
+        UniqueConstraint(
+            "date", "llm_provider", name="uq_fundamental_article_date_provider"
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     date: Mapped[date] = mapped_column(DATE, nullable=False, index=True)
@@ -250,7 +255,7 @@ class PlFundamentalArticle(Base):
     keywords: Mapped[Optional[str]] = mapped_column(TEXT)
     sentiment: Mapped[Optional[str]] = mapped_column(VARCHAR(50))
     impact_synthesis: Mapped[Optional[str]] = mapped_column(TEXT)
-    llm_provider: Mapped[Optional[str]] = mapped_column(VARCHAR(50))
+    llm_provider: Mapped[str] = mapped_column(VARCHAR(50), nullable=False)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
 
 
@@ -258,6 +263,9 @@ class PlWeatherObservation(Base):
     """Weather data. Replaces METEO_ALL / weather_data."""
 
     __tablename__ = "pl_weather_observation"
+    __table_args__ = (
+        UniqueConstraint("date", name="uq_weather_observation_date"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     date: Mapped[date] = mapped_column(DATE, nullable=False, index=True)

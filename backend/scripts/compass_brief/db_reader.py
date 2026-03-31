@@ -291,6 +291,7 @@ class DBBriefReader:
             text("""
                 SELECT summary, impact_assessment FROM pl_weather_observation
                 WHERE date = :target_date AND summary IS NOT NULL
+                ORDER BY created_at DESC
                 LIMIT 1
             """),
             {"target_date": target_date},

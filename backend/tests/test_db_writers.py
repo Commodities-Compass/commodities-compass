@@ -340,6 +340,30 @@ class TestPressReviewDbWriter:
         providers = {r.llm_provider for r in rows}
         assert providers == {"claude", "openai", "gemini"}
 
+    def test_duplicate_date_provider_raises(self, sync_db_session):
+        from scripts.press_review_agent.config import Provider
+        from scripts.press_review_agent.db_writer import (
+            DuplicateArticleError,
+            write_article,
+        )
+
+        parsed = {"resume": "Test", "mots_cle": "test", "impact_synthetiques": "test"}
+
+        write_article(
+            sync_db_session, Provider.OPENAI, parsed, article_date=date(2026, 3, 17)
+        )
+
+        with pytest.raises(DuplicateArticleError, match="already exists"):
+            write_article(
+                sync_db_session,
+                Provider.OPENAI,
+                parsed,
+                article_date=date(2026, 3, 17),
+            )
+
+        rows = sync_db_session.execute(select(PlFundamentalArticle)).scalars().all()
+        assert len(rows) == 1
+
     def test_dry_run_no_write(self, sync_db_session):
         from scripts.press_review_agent.config import Provider
         from scripts.press_review_agent.db_writer import write_article
@@ -394,6 +418,29 @@ class TestMeteoDbWriter:
         assert row.input_tokens == 3000
         assert row.output_tokens == 800
         assert row.latency_ms == 2100
+
+    def test_duplicate_date_raises(self, sync_db_session):
+        from scripts.meteo_agent.db_writer import (
+            DuplicateObservationError,
+            write_observation,
+        )
+
+        parsed = {
+            "texte": "First observation",
+            "resume": "First summary",
+            "mots_cle": "v1",
+            "impact_synthetiques": "5/10",
+        }
+
+        write_observation(sync_db_session, parsed, observation_date=date(2026, 3, 17))
+
+        with pytest.raises(DuplicateObservationError, match="already exists"):
+            write_observation(
+                sync_db_session, parsed, observation_date=date(2026, 3, 17)
+            )
+
+        rows = sync_db_session.execute(select(PlWeatherObservation)).scalars().all()
+        assert len(rows) == 1
 
     def test_dry_run_no_write(self, sync_db_session):
         from scripts.meteo_agent.db_writer import write_observation

@@ -4,6 +4,7 @@ import logging
 import uuid
 from datetime import date
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.audit import AudLlmCall
@@ -17,6 +18,12 @@ class DbWriterError(Exception):
     pass
 
 
+class DuplicateObservationError(DbWriterError):
+    """Raised when a weather observation already exists for this date."""
+
+    pass
+
+
 def write_observation(
     session: Session,
     parsed: dict[str, str],
@@ -25,6 +32,7 @@ def write_observation(
 ) -> uuid.UUID | None:
     """Insert weather observation into pl_weather_observation.
 
+    Raises DuplicateObservationError if a row already exists for this date.
     Returns the observation UUID, or None if dry_run.
     """
     row_date = observation_date or date.today()
@@ -36,6 +44,18 @@ def write_observation(
             len(parsed.get("texte", "")),
         )
         return None
+
+    existing = session.execute(
+        select(PlWeatherObservation.id).where(
+            PlWeatherObservation.date == row_date,
+        )
+    ).scalar_one_or_none()
+
+    if existing:
+        raise DuplicateObservationError(
+            f"Weather observation already exists for date={row_date} "
+            f"(id={existing}). Pipeline may have run twice today."
+        )
 
     obs = PlWeatherObservation(
         date=row_date,

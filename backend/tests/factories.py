@@ -215,6 +215,7 @@ def make_pl_fundamental_article(**overrides) -> PlFundamentalArticle:
         "source": "Test Author",
         "summary": "Test summary content",
         "impact_synthesis": "Test impact synthesis",
+        "llm_provider": "openai",
     }
     return PlFundamentalArticle(**(defaults | overrides))
 

@@ -1,12 +1,20 @@
-"""Shared pytest fixtures for backend tests."""
+"""Shared pytest fixtures for backend tests.
+
+Uses local PostgreSQL (docker-compose, port 5433) for all tests.
+Run `pnpm db:up` before running tests.
+"""
 
 import os
 
 # Set test environment variables BEFORE importing app modules.
-# python-decouple reads env vars at class definition time in config.py,
-# so these must be in os.environ before any app import triggers Settings().
-os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
-os.environ.setdefault("DATABASE_SYNC_URL", "sqlite:///:memory:")
+os.environ.setdefault(
+    "DATABASE_URL",
+    "postgresql+asyncpg://postgres:password@localhost:5433/commodities_compass_test",
+)
+os.environ.setdefault(
+    "DATABASE_SYNC_URL",
+    "postgresql+psycopg2://postgres:password@localhost:5433/commodities_compass_test",
+)
 os.environ.setdefault("AUTH0_DOMAIN", "test.auth0.com")
 os.environ.setdefault("AUTH0_CLIENT_ID", "test-client-id")
 os.environ.setdefault("AUTH0_API_AUDIENCE", "https://test-api")
@@ -21,7 +29,6 @@ from httpx import ASGITransport, AsyncClient  # noqa: E402
 from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.ext.asyncio import (  # noqa: E402
     AsyncSession,
-    async_sessionmaker,
     create_async_engine,
 )
 from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
@@ -30,36 +37,41 @@ from app.core.database import get_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models.base import Base  # noqa: E402
 
-TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
-TEST_SYNC_DATABASE_URL = "sqlite:///test_seed.db"
-
-test_engine = create_async_engine(TEST_DATABASE_URL, echo=False)
-TestSessionLocal = async_sessionmaker(
-    test_engine, class_=AsyncSession, expire_on_commit=False
+TEST_DATABASE_URL = (
+    "postgresql+asyncpg://postgres:password@localhost:5433/commodities_compass_test"
+)
+TEST_SYNC_DATABASE_URL = (
+    "postgresql+psycopg2://postgres:password@localhost:5433/commodities_compass_test"
 )
 
+# Sync engine — used for table setup/teardown and sync tests.
 test_sync_engine = create_engine(TEST_SYNC_DATABASE_URL, echo=False)
 TestSyncSessionLocal = sessionmaker(test_sync_engine, expire_on_commit=False)
 
 
 @pytest.fixture(scope="session", autouse=True)
-async def setup_database():
+def setup_database():
     """Create all tables before tests, drop after."""
-    async with test_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    Base.metadata.drop_all(test_sync_engine)
+    Base.metadata.create_all(test_sync_engine)
     yield
-    async with test_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-    await test_engine.dispose()
+    Base.metadata.drop_all(test_sync_engine)
 
 
 @pytest.fixture
 async def db_session() -> AsyncGenerator[AsyncSession, None]:
-    """Provide a transactional database session that rolls back after each test."""
-    async with TestSessionLocal() as session:
-        async with session.begin():
-            yield session
-        await session.rollback()
+    """Provide a transactional async session that rolls back after each test.
+
+    Creates a fresh async engine per test to avoid event loop binding issues.
+    """
+    engine = create_async_engine(TEST_DATABASE_URL, echo=False, pool_size=1)
+    async with engine.connect() as conn:
+        trans = await conn.begin()
+        session = AsyncSession(bind=conn, expire_on_commit=False)
+        yield session
+        await session.close()
+        await trans.rollback()
+    await engine.dispose()
 
 
 @pytest.fixture
@@ -82,12 +94,14 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
 
 @pytest.fixture
 def sync_db_session() -> Generator[Session, None, None]:
-    """Provide a sync transactional session for seed script tests."""
-    Base.metadata.create_all(test_sync_engine)
-    with TestSyncSessionLocal() as session:
-        yield session
-        session.rollback()
-    Base.metadata.drop_all(test_sync_engine)
+    """Provide a sync transactional session that rolls back after each test."""
+    conn = test_sync_engine.connect()
+    trans = conn.begin()
+    session = Session(bind=conn)
+    yield session
+    session.close()
+    trans.rollback()
+    conn.close()
 
 
 @pytest.fixture

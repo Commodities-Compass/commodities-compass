@@ -4,6 +4,7 @@ import logging
 import uuid
 from datetime import date
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.audit import AudLlmCall
@@ -17,6 +18,12 @@ class DbWriterError(Exception):
     pass
 
 
+class DuplicateArticleError(DbWriterError):
+    """Raised when an article already exists for this date + provider."""
+
+    pass
+
+
 def write_article(
     session: Session,
     provider: Provider,
@@ -26,6 +33,7 @@ def write_article(
 ) -> uuid.UUID | None:
     """Insert a press review article into pl_fundamental_article.
 
+    Raises DuplicateArticleError if a row already exists for (date, llm_provider).
     Returns the article UUID, or None if dry_run.
     """
     row_date = article_date or date.today()
@@ -38,6 +46,20 @@ def write_article(
             len(parsed.get("resume", "")),
         )
         return None
+
+    existing = session.execute(
+        select(PlFundamentalArticle.id).where(
+            PlFundamentalArticle.date == row_date,
+            PlFundamentalArticle.llm_provider == provider.value,
+        )
+    ).scalar_one_or_none()
+
+    if existing:
+        raise DuplicateArticleError(
+            f"Article already exists for date={row_date}, "
+            f"provider={provider.value} (id={existing}). "
+            f"Pipeline may have run twice today."
+        )
 
     article = PlFundamentalArticle(
         date=row_date,

@@ -622,7 +622,10 @@ async def _pl_get_latest_article(
     db: AsyncSession, target_date: Optional[date]
 ) -> Optional[Dict[str, Any]]:
     """Latest article from pl_fundamental_article."""
-    query = select(PlFundamentalArticle).order_by(desc(PlFundamentalArticle.date))
+    query = select(PlFundamentalArticle).order_by(
+        desc(PlFundamentalArticle.date),
+        desc(PlFundamentalArticle.created_at),
+    )
 
     if target_date:
         query = query.where(PlFundamentalArticle.date == target_date)
@@ -672,7 +675,10 @@ async def _pl_get_latest_weather(
     db: AsyncSession, target_date: Optional[date]
 ) -> Optional[Dict[str, Any]]:
     """Latest observation from pl_weather_observation."""
-    query = select(PlWeatherObservation).order_by(desc(PlWeatherObservation.date))
+    query = select(PlWeatherObservation).order_by(
+        desc(PlWeatherObservation.date),
+        desc(PlWeatherObservation.created_at),
+    )
 
     if target_date:
         query = query.where(PlWeatherObservation.date == target_date)

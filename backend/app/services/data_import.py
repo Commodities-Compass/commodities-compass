@@ -270,24 +270,6 @@ class GoogleSheetsDataImporter:
                         model_data["commodity_symbol"] = "CC"
 
                     if table_model.__name__ == "Indicator":
-                        if (
-                            "close_pivot" not in model_data
-                            or model_data["close_pivot"] is None
-                        ):
-                            model_data["close_pivot"] = Decimal("0.0")
-
-                        if (
-                            "close_pivot_norm" not in model_data
-                            or model_data["close_pivot_norm"] is None
-                        ):
-                            model_data["close_pivot_norm"] = Decimal("0.0")
-
-                        if (
-                            "macroeco_bonus" not in model_data
-                            or model_data["macroeco_bonus"] is None
-                        ):
-                            model_data["macroeco_bonus"] = Decimal("0.0")
-
                         if "eco" not in model_data or model_data["eco"] is None:
                             model_data["eco"] = ""
 

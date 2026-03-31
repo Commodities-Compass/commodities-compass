@@ -21,6 +21,18 @@ from app.utils.converters import to_decimal, to_str
 logger = logging.getLogger(__name__)
 
 
+def _to_nullable_float(val: Any) -> float | None:
+    """Convert a value to float, returning None for missing/NaN.
+
+    NULL means 'not yet computed' — zero does not.
+    """
+    if val is None:
+        return None
+    if isinstance(val, float) and np.isnan(val):
+        return None
+    return float(val)
+
+
 # Columns from the pipeline DataFrame that map to pl_derived_indicators fields.
 _DERIVED_COLS = [
     "pivot",
@@ -158,15 +170,7 @@ def write_indicator_daily(
             values[col] = to_decimal(row.get(col))
 
         values["macroeco_bonus"] = to_decimal(row.get("macroeco_bonus"))
-        values["macroeco_score"] = (
-            to_decimal(1.0 + float(row["macroeco_bonus"]))
-            if row.get("macroeco_bonus") is not None
-            and not (
-                isinstance(row.get("macroeco_bonus"), float)
-                and np.isnan(row["macroeco_bonus"])
-            )
-            else None
-        )
+        values["macroeco_score"] = to_decimal(row.get("macroeco_score"))
         values["decision"] = to_str(row.get("decision"))
 
         session.execute(
@@ -259,11 +263,17 @@ def write_signal_components(
         row_date = row["date"]
 
         for comp_name, raw_col, norm_col, coeff_key, exp_key in _SIGNAL_COMPONENTS:
-            raw_val = float(row.get(raw_col, 0) or 0)
-            norm_val = float(row.get(norm_col, 0) or 0)
+            raw_raw = row.get(raw_col)
+            norm_raw = row.get(norm_col)
+
+            raw_val = _to_nullable_float(raw_raw)
+            norm_val = _to_nullable_float(norm_raw)
+
             coeff = config_params[coeff_key]
             exp = config_params[exp_key]
-            contribution = _power_term(coeff, exp, norm_val)
+            contribution = (
+                _power_term(coeff, exp, norm_val) if norm_val is not None else None
+            )
 
             session.execute(
                 text("""

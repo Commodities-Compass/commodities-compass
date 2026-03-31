@@ -8,7 +8,6 @@ import pytest
 from app.engine.composite import (
     _power_term,
     compute_decision,
-    compute_linear_indicator,
     compute_momentum,
     compute_score,
 )
@@ -114,17 +113,9 @@ class TestComputeMomentum:
     def test_nan(self) -> None:
         assert compute_momentum(float("nan"), 1.0) == 0.0
 
-
-class TestLinearIndicator:
-    def test_all_zeros(self) -> None:
-        result = compute_linear_indicator(0, 0, 0, 0, 0, 0)
-        assert result == pytest.approx(0.519)
-
-    def test_known_coefficients(self) -> None:
-        """Verify hardcoded coefficients match INDICATOR!N formula."""
-        result = compute_linear_indicator(1, 1, 1, 1, 1, 1)
-        expected = -0.79 + 0.49 - 1.16 - 0.11 - 0.82 - 0.52 + 0.519
-        assert result == pytest.approx(expected)
+    def test_custom_threshold(self) -> None:
+        assert compute_momentum(1.5, 1.0, threshold=0.3) == 0.3
+        assert compute_momentum(1.0, 1.5, threshold=0.3) == -0.3
 
 
 class TestAlgorithmConfig:
@@ -154,6 +145,37 @@ class TestAlgorithmConfig:
         assert config.k == -1.2
         assert config.open_threshold == 1.5
         assert config.version_name == "test_v1"
+        assert config.momentum_threshold == 0.2  # default
+        assert config.smoothing_window == 5  # default
+
+    def test_from_db_rows_with_new_params(self) -> None:
+        """New params (momentum_threshold, smoothing_window) loaded from DB."""
+        params = {
+            "k": "-1.2",
+            "a": "-1.3",
+            "b": "1.8",
+            "c": "0.5",
+            "d": "0.7",
+            "e": "-2.5",
+            "f": "1.0",
+            "g": "1.204",
+            "h": "0.5",
+            "i": "-0.4",
+            "j": "1.751",
+            "l": "4.98",
+            "m": "1.2",
+            "n": "-1.3",
+            "o": "0.515",
+            "p": "-0.5",
+            "q": "1.98",
+            "open_threshold": "1.5",
+            "hedge_threshold": "-1.5",
+            "momentum_threshold": "0.3",
+            "smoothing_window": "10",
+        }
+        config = AlgorithmConfig.from_db_rows("test_v2", params)
+        assert config.momentum_threshold == 0.3
+        assert config.smoothing_window == 10
 
     def test_legacy_v1_frozen(self) -> None:
         """AlgorithmConfig should be immutable."""

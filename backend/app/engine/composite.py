@@ -12,16 +12,25 @@ Decision thresholds:
     otherwise               → "MONITOR"
 
 Note: Labels are CORRECT here (fix vs Sheets which swapped MONITOR/HEDGE).
+
+Momentum:
+    Two-pass computation to avoid circularity:
+    1. base_score = power formula with momentum=0 (6 indicators + macroeco)
+    2. momentum[N] = direction(base_score[N] vs base_score[N-1]) → ±threshold
+    3. final_indicator = power formula with real momentum (all 8 inputs)
 """
 
 from __future__ import annotations
 
+import logging
 import math
 
 import numpy as np
 import pandas as pd
 
 from app.engine.types import AlgorithmConfig
+
+logger = logging.getLogger(__name__)
 
 
 def _power_term(coefficient: float, exponent: float, value: float) -> float:
@@ -71,38 +80,31 @@ def compute_decision(score: float, config: AlgorithmConfig) -> str:
     return "MONITOR"
 
 
-def compute_momentum(linear_today: float, linear_yesterday: float) -> float:
-    """Binary momentum: +0.2 if linear increased, -0.2 otherwise.
-
-    Matches current production behavior. Can be swapped for
-    continuous momentum in future algorithm versions.
-    """
-    if math.isnan(linear_today) or math.isnan(linear_yesterday):
-        return 0.0
-    return 0.2 if linear_today > linear_yesterday else -0.2
-
-
-def compute_linear_indicator(
-    rsi_norm: float,
-    macd_norm: float,
-    stoch_norm: float,
-    atr_norm: float,
-    cp_norm: float,
-    voi_norm: float,
+def compute_momentum(
+    score_today: float,
+    score_yesterday: float,
+    threshold: float = 0.2,
 ) -> float:
-    """Linear formula used only as input to MOMENTUM calculation.
+    """Binary momentum: +threshold if score increased, -threshold otherwise.
 
-    Not used for decisions — only to determine momentum direction.
-    Coefficients are the original hardcoded weights from INDICATOR!N.
+    Compares power formula base scores (without momentum) day-over-day.
     """
+    if math.isnan(score_today) or math.isnan(score_yesterday):
+        return 0.0
+    return threshold if score_today > score_yesterday else -threshold
+
+
+def _extract_norm_inputs(
+    row: pd.Series,
+) -> tuple[float, float, float, float, float, float]:
+    """Extract the 6 normalized indicator values from a DataFrame row."""
     return (
-        -0.79 * rsi_norm
-        + 0.49 * macd_norm
-        - 1.16 * stoch_norm
-        - 0.11 * atr_norm
-        - 0.82 * cp_norm
-        - 0.52 * voi_norm
-        + 0.519
+        float(row.get("rsi_norm", np.nan)),
+        float(row.get("macd_norm", np.nan)),
+        float(row.get("stoch_k_norm", np.nan)),
+        float(row.get("atr_norm", np.nan)),
+        float(row.get("close_pivot_norm", np.nan)),
+        float(row.get("vol_oi_norm", np.nan)),
     )
 
 
@@ -113,58 +115,77 @@ def compute_signals(
 ) -> pd.DataFrame:
     """Compute composite scores, momentum, and decisions for all rows.
 
-    Expects DataFrame with norm columns (rsi_norm, macd_norm, etc.)
-    and optionally a macroeco_bonus column.
+    Two-pass approach (no circularity):
+        Pass 1: base_score = power formula with momentum=0
+        Momentum: direction(base_score[N] vs base_score[N-1]) → ±threshold
+        Pass 2: final_indicator = power formula with real momentum
 
     Returns new DataFrame with added columns:
-        indicator_value, momentum, final_indicator, decision
+        indicator_value (base score), momentum, final_indicator, decision
     """
     result = df.copy()
     n = len(result)
 
-    # Compute linear indicator for momentum calculation
-    linear = np.full(n, np.nan)
-    for idx in range(n):
-        row = result.iloc[idx]
-        linear[idx] = compute_linear_indicator(
-            rsi_norm=float(row.get("rsi_norm", np.nan)),
-            macd_norm=float(row.get("macd_norm", np.nan)),
-            stoch_norm=float(row.get("stoch_k_norm", np.nan)),
-            atr_norm=float(row.get("atr_norm", np.nan)),
-            cp_norm=float(row.get("close_pivot_norm", np.nan)),
-            voi_norm=float(row.get("vol_oi_norm", np.nan)),
-        )
-
-    result["indicator_value"] = linear
-
-    # Compute momentum (binary ±0.2)
-    momentum_values = np.full(n, np.nan)
-    for idx in range(1, n):
-        momentum_values[idx] = compute_momentum(linear[idx], linear[idx - 1])
-    result["momentum"] = momentum_values
-
-    # Get macroeco values (default 0 if not present)
+    # Get macroeco values — warn explicitly if missing
     if macroeco_col in result.columns:
+        nan_count = result[macroeco_col].isna().sum()
+        if nan_count > 0:
+            logger.warning(
+                "%s has %d/%d NaN values — treated as 0.0 for composite scoring",
+                macroeco_col,
+                nan_count,
+                n,
+            )
         macroeco = result[macroeco_col].fillna(0.0).to_numpy(dtype=np.float64)
     else:
+        logger.warning(
+            "Column '%s' not found in DataFrame — all macroeco contributions will be 0.0. "
+            "Check that the daily-analysis agent ran before compute-indicators.",
+            macroeco_col,
+        )
         macroeco = np.zeros(n)
 
-    # Compute final composite score and decision
+    # Pass 1: base score = power formula with momentum=0
+    base_score = np.full(n, np.nan)
+    for idx in range(n):
+        rsi, macd, stoch, atr, cp, voi = _extract_norm_inputs(result.iloc[idx])
+        base_score[idx] = compute_score(
+            rsi_norm=rsi,
+            macd_norm=macd,
+            stoch_norm=stoch,
+            atr_norm=atr,
+            cp_norm=cp,
+            voi_norm=voi,
+            momentum=0.0,
+            macroeco=float(macroeco[idx]),
+            config=config,
+        )
+
+    result["indicator_value"] = base_score
+
+    # Momentum: direction change of base_score day-over-day
+    momentum_values = np.full(n, np.nan)
+    for idx in range(1, n):
+        momentum_values[idx] = compute_momentum(
+            base_score[idx], base_score[idx - 1], config.momentum_threshold
+        )
+    result["momentum"] = momentum_values
+
+    # Pass 2: final score = power formula with real momentum
     final = np.full(n, np.nan)
     decisions = ["MONITOR"] * n
 
     for idx in range(n):
-        row = result.iloc[idx]
+        rsi, macd, stoch, atr, cp, voi = _extract_norm_inputs(result.iloc[idx])
+        mom = float(momentum_values[idx]) if not np.isnan(momentum_values[idx]) else 0.0
         score = compute_score(
-            rsi_norm=float(row.get("rsi_norm", np.nan)),
-            macd_norm=float(row.get("macd_norm", np.nan)),
-            stoch_norm=float(row.get("stoch_k_norm", np.nan)),
-            atr_norm=float(row.get("atr_norm", np.nan)),
-            cp_norm=float(row.get("close_pivot_norm", np.nan)),
-            voi_norm=float(row.get("vol_oi_norm", np.nan)),
-            momentum=float(momentum_values[idx])
-            if not np.isnan(momentum_values[idx])
-            else 0.0,
+            rsi_norm=rsi,
+            macd_norm=macd,
+            stoch_norm=stoch,
+            atr_norm=atr,
+            cp_norm=cp,
+            voi_norm=voi,
+            momentum=mom,
             macroeco=float(macroeco[idx]),
             config=config,
         )
@@ -173,5 +194,14 @@ def compute_signals(
 
     result["final_indicator"] = final
     result["decision"] = decisions
+
+    # macroeco_score = 1.0 + macroeco_bonus (computed here, not in writers)
+    result["macroeco_score"] = result.get(
+        macroeco_col, pd.Series(np.nan, index=result.index)
+    ).apply(
+        lambda v: 1.0 + v
+        if not (v is None or (isinstance(v, float) and np.isnan(v)))
+        else np.nan
+    )
 
     return result

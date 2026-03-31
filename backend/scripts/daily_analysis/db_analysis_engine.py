@@ -261,7 +261,9 @@ class DBAnalysisEngine:
             """),
             {
                 "macroeco_bonus": macro.macroeco_bonus,
-                "macroeco_score": 1.0 + macro.macroeco_bonus,
+                "macroeco_score": 1.0 + macro.macroeco_bonus
+                if macro.macroeco_bonus is not None
+                else None,
                 "eco": macro.eco,
                 "final_indicator": final_indicator,
                 "decision": trading.decision,

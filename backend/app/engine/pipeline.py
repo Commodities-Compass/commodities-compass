@@ -70,8 +70,10 @@ class IndicatorPipeline:
         # Step 1: Compute all derived indicators in dependency order
         derived = self._registry.compute_all(raw_df)
 
-        # Step 2: Compute 5-day SMA raw scores
-        scores = compute_raw_scores(derived)
+        # Step 2: Compute SMA raw scores
+        scores = compute_raw_scores(
+            derived, smoothing_window=self.config.smoothing_window
+        )
 
         # Step 3: Rolling z-score normalization
         normalized = normalize_scores(

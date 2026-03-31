@@ -64,9 +64,8 @@ class Indicator(Base):
     )
 
     # === MARKET POSITION SCORES ===
-    close_pivot: Mapped[Decimal] = mapped_column(
+    close_pivot: Mapped[Optional[Decimal]] = mapped_column(
         DECIMAL(15, 6),
-        nullable=False,
         comment="Close/Pivot ratio score - position relative to pivot point",
     )
     volume_oi: Mapped[Optional[Decimal]] = mapped_column(
@@ -87,9 +86,8 @@ class Indicator(Base):
     atr_norm: Mapped[Optional[Decimal]] = mapped_column(
         DECIMAL(15, 6), comment="ATR normalized to 0-1 scale"
     )
-    close_pivot_norm: Mapped[Decimal] = mapped_column(
+    close_pivot_norm: Mapped[Optional[Decimal]] = mapped_column(
         DECIMAL(15, 6),
-        nullable=False,
         comment="Close/Pivot ratio normalized to 0-1 scale",
     )
     vol_oi_norm: Mapped[Optional[Decimal]] = mapped_column(
@@ -105,9 +103,8 @@ class Indicator(Base):
         DECIMAL(15, 6),
         comment="Momentum score - combination of trend-following indicators",
     )
-    macroeco_bonus: Mapped[Decimal] = mapped_column(
+    macroeco_bonus: Mapped[Optional[Decimal]] = mapped_column(
         DECIMAL(15, 6),
-        nullable=False,
         comment="Macroeconomic bonus/penalty applied to technical signals",
     )
     final_indicator: Mapped[Optional[Decimal]] = mapped_column(

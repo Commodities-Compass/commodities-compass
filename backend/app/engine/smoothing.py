@@ -10,8 +10,6 @@ from __future__ import annotations
 
 import pandas as pd
 
-SMOOTHING_WINDOW = 5
-
 # Mapping: score column → source derived column
 _SMOOTHED_SCORES = {
     "rsi_score": "rsi_14d",
@@ -27,7 +25,7 @@ _DIRECT_SCORES = {
 }
 
 
-def compute_raw_scores(df: pd.DataFrame) -> pd.DataFrame:
+def compute_raw_scores(df: pd.DataFrame, smoothing_window: int = 5) -> pd.DataFrame:
     """Compute raw scores from derived indicators.
 
     Returns a new DataFrame with score columns added.
@@ -37,7 +35,7 @@ def compute_raw_scores(df: pd.DataFrame) -> pd.DataFrame:
     for score_col, source_col in _SMOOTHED_SCORES.items():
         result[score_col] = (
             result[source_col]
-            .rolling(window=SMOOTHING_WINDOW, min_periods=SMOOTHING_WINDOW)
+            .rolling(window=smoothing_window, min_periods=smoothing_window)
             .mean()
         )
 

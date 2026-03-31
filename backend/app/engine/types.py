@@ -57,6 +57,12 @@ class AlgorithmConfig:
     open_threshold: float
     hedge_threshold: float
 
+    # Momentum binary threshold (±value)
+    momentum_threshold: float = 0.2
+
+    # Smoothing window for raw scores (SMA period)
+    smoothing_window: int = 5
+
     @staticmethod
     def from_db_rows(version_name: str, params: dict[str, str]) -> AlgorithmConfig:
         """Build from pl_algorithm_config rows (parameter_name → value)."""
@@ -81,6 +87,8 @@ class AlgorithmConfig:
             q=float(params["q"]),
             open_threshold=float(params["open_threshold"]),
             hedge_threshold=float(params["hedge_threshold"]),
+            momentum_threshold=float(params.get("momentum_threshold", "0.2")),
+            smoothing_window=int(params.get("smoothing_window", "5")),
         )
 
 

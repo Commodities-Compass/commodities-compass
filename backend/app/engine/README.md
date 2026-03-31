@@ -139,17 +139,10 @@ Decision thresholds:
 - `SCORE ≤ -1.5` → **HEDGE**
 - Otherwise → **MONITOR**
 
-Momentum is binary ±0.2, derived from the linear indicator direction change.
-
-> **Known limitation — momentum does not follow the standard indicator pipeline.**
-> The 6 core indicators go through: derived → SMA smoothing → rolling z-score → power formula.
-> Momentum skips all three steps: it's a binary ±0.2 derived from the direction change of the
-> linear indicator (itself a weighted sum of the 6 z-scores). It enters the power formula raw,
-> mixing an arbitrary-scale binary value with z-scored continuous inputs. Additionally, it's
-> circular — derived from the same indicators already in the formula, lagged by 1 day.
-> Macroeco has a similar exception (no smoothing, no z-score) but is at least an independent
-> signal (LLM-generated). Future algorithm versions should address this by defining momentum
-> as a continuous derived indicator with proper smoothing and normalization.
+Momentum is computed via a two-pass approach (no circularity):
+1. **base_score** = power formula with momentum=0 (stored as `indicator_value`)
+2. **momentum** = direction(base_score[N] vs base_score[N-1]) → ±threshold (configurable, default 0.2)
+3. **final_indicator** = power formula with real momentum (all 8 inputs)
 
 ## Bugs Fixed vs Google Sheets
 

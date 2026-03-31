@@ -433,8 +433,8 @@ def main() -> None:
                     len(write_signals),
                 )
                 if write_signals.empty:
-                    logger.info("No new rows to write — database is up to date")
-                    return
+                    logger.warning("No new rows to write — database is up to date")
+                    sys.exit(0)
             else:
                 logger.info(
                     "Incremental mode: no existing data, writing full history (%d rows)",

@@ -121,8 +121,8 @@ def _extract_ohlc_from_html(html_content: str) -> dict[str, float | None]:
             m = re.search(pattern, block)
             candidate[field] = float(m.group(1)) if m else None
 
-        vol = candidate.get("volume") or 0.0
-        if vol > best_volume:
+        vol = candidate.get("volume")
+        if vol is not None and vol > best_volume:
             best_volume = vol
             best = candidate
 
@@ -230,8 +230,8 @@ class BarchartScraper:
                 if result is not None:
                     logger.debug(f"XHR match from {response.url}")
                     captured.append(result)
-            except Exception:
-                pass
+            except (ValueError, KeyError, TypeError) as exc:
+                logger.debug("XHR extraction failed for %s: %s", response.url, exc)
 
         self.page.on("response", on_response)
         try:

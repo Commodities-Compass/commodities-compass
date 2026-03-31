@@ -53,24 +53,22 @@ def should_skip_non_trading_day(
     """Return True if today is not a trading day and the job should skip.
 
     Opens its own short-lived session so callers don't need to manage one.
-    If the calendar check fails (e.g. no DB), logs a warning and returns False
-    (fail-open: don't block the pipeline on calendar issues).
+    Fail-closed: if the calendar check fails, the exception propagates and
+    the job fails (exit 1). This prevents unnecessary scrapes, token spend,
+    and stale data on non-trading days.
     """
     if force:
         return False
-    try:
-        from app.utils.trading_calendar import is_trading_day_sync
 
-        check_date = target_date or date.today()
-        with get_session() as session:
-            if not is_trading_day_sync(session, check_date, exchange_code):
-                _logger.info(
-                    "Skipping: %s is not a trading day for %s",
-                    check_date,
-                    exchange_code,
-                )
-                return True
-        return False
-    except Exception as exc:
-        _logger.warning("Trading calendar check failed (continuing): %s", exc)
-        return False
+    from app.utils.trading_calendar import is_trading_day_sync
+
+    check_date = target_date or date.today()
+    with get_session() as session:
+        if not is_trading_day_sync(session, check_date, exchange_code):
+            _logger.info(
+                "Skipping: %s is not a trading day for %s",
+                check_date,
+                exchange_code,
+            )
+            return True
+    return False

@@ -246,15 +246,15 @@ def transform_market_research_to_news(
     if isinstance(market_research, dict):
         return NewsResponse(
             date=format_date_for_display(market_research["date"]),
-            title=market_research.get("impact_synthesis") or "Market Research Update",
-            content=market_research.get("summary") or "No summary available",
-            author=market_research.get("author") or "Market Research Team",
+            title=market_research.get("impact_synthesis"),
+            content=market_research.get("summary"),
+            author=market_research.get("author"),
         )
     return NewsResponse(
         date=format_date_for_display(market_research.date),
-        title=market_research.impact_synthesis or "Market Research Update",
-        content=market_research.summary or "No summary available",
-        author=market_research.author or "Market Research Team",
+        title=market_research.impact_synthesis,
+        content=market_research.summary,
+        author=market_research.author,
     )
 
 
@@ -265,12 +265,11 @@ def transform_weather_data_to_response(
     if isinstance(weather_data, dict):
         return WeatherResponse(
             date=format_date_for_display(weather_data["date"]),
-            description=weather_data.get("text") or "No weather description available",
-            impact=weather_data.get("impact_synthesis")
-            or "No market impact assessment available",
+            description=weather_data.get("text"),
+            impact=weather_data.get("impact_synthesis"),
         )
     return WeatherResponse(
         date=format_date_for_display(weather_data.date),
-        description=weather_data.text or "No weather description available",
-        impact=weather_data.impact_synthesis or "No market impact assessment available",
+        description=weather_data.text,
+        impact=weather_data.impact_synthesis,
     )

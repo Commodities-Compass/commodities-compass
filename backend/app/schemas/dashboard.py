@@ -87,8 +87,8 @@ class NewsResponse(BaseModel):
     """Response schema for news endpoint from market research."""
 
     date: str = Field(..., description="Date of the news article")
-    title: str = Field(..., description="Title from impact_synthesis column")
-    content: str = Field(..., description="Content from summary column")
+    title: Optional[str] = Field(None, description="Title from impact_synthesis column")
+    content: Optional[str] = Field(None, description="Content from summary column")
     author: Optional[str] = Field(None, description="Author information")
 
 
@@ -96,8 +96,12 @@ class WeatherResponse(BaseModel):
     """Response schema for weather endpoint from weather data."""
 
     date: str = Field(..., description="Date of the weather update")
-    description: str = Field(..., description="Weather description from text column")
-    impact: str = Field(..., description="Market impact from impact_synthesis column")
+    description: Optional[str] = Field(
+        None, description="Weather description from text column"
+    )
+    impact: Optional[str] = Field(
+        None, description="Market impact from impact_synthesis column"
+    )
 
 
 class ChartDataPoint(BaseModel):

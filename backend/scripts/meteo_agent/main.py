@@ -109,20 +109,16 @@ def main() -> int:
             )
             return 1
 
-        # Step 4: Write to GCP PostgreSQL (non-blocking)
+        # Step 4: Write to GCP PostgreSQL (mandatory — DB is source of truth)
         logger.info("Step 4: Writing to GCP PostgreSQL...")
-        try:
-            from scripts.db import get_session
-            from scripts.meteo_agent.db_writer import write_llm_call, write_observation
+        from scripts.db import get_session
+        from scripts.meteo_agent.db_writer import write_llm_call, write_observation
 
-            with get_session() as session:
-                write_observation(session, result.parsed, dry_run=args.dry_run)
-                write_llm_call(
-                    session, result.usage, result.latency_ms, dry_run=args.dry_run
-                )
-        except Exception as db_err:
-            logger.error("DB write failed (continuing to Sheets): %s", db_err)
-            sentry_sdk.capture_exception(db_err)
+        with get_session() as session:
+            write_observation(session, result.parsed, dry_run=args.dry_run)
+            write_llm_call(
+                session, result.usage, result.latency_ms, dry_run=args.dry_run
+            )
 
         # Step 5: Write to METEO_ALL
         logger.info("Step 5: Writing to METEO_ALL...")

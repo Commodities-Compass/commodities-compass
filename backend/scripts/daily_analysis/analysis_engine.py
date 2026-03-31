@@ -93,7 +93,15 @@ class AnalysisEngine:
             temperature=self.call1_temperature,
             max_tokens=2048,
         )
-        macro = parse_macro_output(call1_response.raw_text)
+        try:
+            macro = parse_macro_output(call1_response.raw_text)
+        except ValueError as exc:
+            logger.error(
+                "Failed to parse LLM macro output: %s\nRaw text: %s",
+                exc,
+                call1_response.raw_text[:500],
+            )
+            raise
         logger.info(
             "Call #1 result: MACROECO_BONUS=%.2f ECO=%s",
             macro.macroeco_bonus,

@@ -3,6 +3,7 @@ Weather and agricultural conditions model.
 """
 
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy import INTEGER, TEXT, TIMESTAMP, VARCHAR, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -30,20 +31,18 @@ class WeatherData(Base):
         index=True,
         comment="Date of the weather report or agricultural update",
     )
-    text: Mapped[str] = mapped_column(
-        TEXT, nullable=False, comment="Full text of the weather/agricultural report"
+    text: Mapped[Optional[str]] = mapped_column(
+        TEXT, comment="Full text of the weather/agricultural report"
     )
-    summary: Mapped[str] = mapped_column(
-        TEXT, nullable=False, comment="Summary of key weather/agricultural conditions"
+    summary: Mapped[Optional[str]] = mapped_column(
+        TEXT, comment="Summary of key weather/agricultural conditions"
     )
-    keywords: Mapped[str] = mapped_column(
+    keywords: Mapped[Optional[str]] = mapped_column(
         VARCHAR(500),
-        nullable=False,
         comment="Keywords describing weather conditions, crop types, regions affected",
     )
-    impact_synthesis: Mapped[str] = mapped_column(
+    impact_synthesis: Mapped[Optional[str]] = mapped_column(
         TEXT,
-        nullable=False,
         comment="Synthesized market impact - how weather conditions affect commodity prices",
     )
 

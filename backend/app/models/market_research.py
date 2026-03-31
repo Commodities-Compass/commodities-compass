@@ -31,25 +31,22 @@ class MarketResearch(Base):
         index=True,
         comment="Publication or analysis date of the research",
     )
-    author: Mapped[str] = mapped_column(
+    author: Mapped[Optional[str]] = mapped_column(
         VARCHAR(100),
-        nullable=False,
         comment="Author or source of the research/publication",
     )
-    summary: Mapped[str] = mapped_column(
-        TEXT, nullable=False, comment="Summary or abstract of the research content"
+    summary: Mapped[Optional[str]] = mapped_column(
+        TEXT, comment="Summary or abstract of the research content"
     )
     keywords: Mapped[Optional[str]] = mapped_column(
         TEXT, comment="Keywords or tags associated with this research"
     )
-    impact_synthesis: Mapped[str] = mapped_column(
+    impact_synthesis: Mapped[Optional[str]] = mapped_column(
         TEXT,
-        nullable=False,
         comment="Synthesized market impact assessment - how this research affects trading decisions",
     )
-    date_text: Mapped[str] = mapped_column(
+    date_text: Mapped[Optional[str]] = mapped_column(
         VARCHAR(100),
-        nullable=False,
         comment="Date in text format (might include additional context like 'Q1 2024')",
     )
 

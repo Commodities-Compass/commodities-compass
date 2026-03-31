@@ -199,6 +199,7 @@ async def calculate_ytd_performance(
     rows = result.all()
 
     scores: list[float] = []
+    skipped = 0
 
     for i in range(len(rows) - 1):
         current = rows[i]
@@ -209,6 +210,7 @@ async def calculate_ytd_performance(
         close_t1 = next_day.close
 
         if not decision or not close_t or not close_t1:
+            skipped += 1
             continue
 
         decision_upper = decision.strip().upper()
@@ -218,6 +220,13 @@ async def calculate_ytd_performance(
         score = _score_day(decision_upper, close_t_f, close_t1_f)
         if score is not None:
             scores.append(score)
+
+    if skipped:
+        logger.warning(
+            "YTD calculation: skipped %d/%d rows (missing decision or close)",
+            skipped,
+            len(rows) - 1,
+        )
 
     if not scores:
         logger.warning("No scoring data found for YTD calculation")
@@ -272,11 +281,13 @@ async def _pl_calculate_ytd_performance(
     rows = result.all()
 
     scores: list[float] = []
+    skipped = 0
     for i in range(len(rows) - 1):
         current = rows[i]
         next_row = rows[i + 1]
 
         if not current.decision or current.close is None or next_row.close is None:
+            skipped += 1
             continue
 
         score = _score_day(
@@ -286,6 +297,13 @@ async def _pl_calculate_ytd_performance(
         )
         if score is not None:
             scores.append(score)
+
+    if skipped:
+        logger.warning(
+            "YTD calculation (pl_*): skipped %d/%d rows (missing decision or close)",
+            skipped,
+            len(rows) - 1,
+        )
 
     if not scores:
         logger.warning("No scoring data found for YTD calculation (pl_* tables)")

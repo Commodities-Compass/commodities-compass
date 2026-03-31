@@ -51,7 +51,8 @@ class DataTransforms:
 
         try:
             return pd.to_datetime(value)
-        except Exception:
+        except Exception as exc:
+            logger.debug("parse_datetime failed for %r: %s", value, exc)
             return None
 
     @staticmethod
@@ -71,7 +72,8 @@ class DataTransforms:
                 value = value.replace(",", "")
 
             return Decimal(str(value))
-        except Exception:
+        except Exception as exc:
+            logger.debug("parse_decimal failed for %r: %s", value, exc)
             return None
 
     @staticmethod
@@ -95,7 +97,10 @@ class DataTransforms:
             if value.endswith("%"):
                 try:
                     return Decimal(value.rstrip("%")) / 100
-                except Exception:
+                except Exception as exc:
+                    logger.debug(
+                        "parse_decimal_from_string pct failed for %r: %s", value, exc
+                    )
                     return None
 
             # Remove Google Sheets formula markers
@@ -104,8 +109,8 @@ class DataTransforms:
             # Try to parse as number
             try:
                 return Decimal(cleaned)
-            except Exception:
-                # If it contains formula elements, log for manual review
+            except Exception as exc:
+                logger.debug("parse_decimal_from_string failed for %r: %s", value, exc)
                 return None
 
         return None
@@ -122,7 +127,8 @@ class DataTransforms:
                 value = value.replace(",", "")
 
             return int(float(str(value)))
-        except Exception:
+        except Exception as exc:
+            logger.debug("parse_integer failed for %r: %s", value, exc)
             return None
 
 
@@ -269,29 +275,7 @@ class GoogleSheetsDataImporter:
                     ):
                         model_data["commodity_symbol"] = "CC"
 
-                    if table_model.__name__ == "Indicator":
-                        if "eco" not in model_data or model_data["eco"] is None:
-                            model_data["eco"] = ""
-
-                    if table_model.__name__ == "WeatherData":
-                        for field in [
-                            "text",
-                            "summary",
-                            "keywords",
-                            "impact_synthesis",
-                        ]:
-                            if field not in model_data or model_data[field] is None:
-                                model_data[field] = ""
-
-                    if table_model.__name__ == "MarketResearch":
-                        for field in [
-                            "author",
-                            "summary",
-                            "impact_synthesis",
-                            "date_text",
-                        ]:
-                            if field not in model_data or model_data[field] is None:
-                                model_data[field] = ""
+                    # No placeholder substitution — missing data stays NULL
 
                     model_instance = table_model(**model_data)
                     session.add(model_instance)

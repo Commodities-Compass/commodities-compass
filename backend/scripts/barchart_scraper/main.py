@@ -127,20 +127,16 @@ def main() -> int:
             )
             return 1
 
-        # Step 3: Write to GCP PostgreSQL (non-blocking)
+        # Step 3: Write to GCP PostgreSQL (mandatory — DB is source of truth)
         logger.info("Step 3: Writing to GCP PostgreSQL...")
-        try:
-            from scripts.barchart_scraper.config import get_current_contract_code
-            from scripts.barchart_scraper.db_writer import write_ohlcv
-            from scripts.db import get_session
+        from scripts.barchart_scraper.config import get_current_contract_code
+        from scripts.barchart_scraper.db_writer import write_ohlcv
+        from scripts.db import get_session
 
-            with get_session() as session:
-                write_ohlcv(
-                    session, data, get_current_contract_code(), dry_run=args.dry_run
-                )
-        except Exception as db_err:
-            logger.error("DB write failed (continuing to Sheets): %s", db_err)
-            sentry_sdk.capture_exception(db_err)
+        with get_session() as session:
+            write_ohlcv(
+                session, data, get_current_contract_code(), dry_run=args.dry_run
+            )
 
         # Step 4: Write to Sheets
         sheet_name = (

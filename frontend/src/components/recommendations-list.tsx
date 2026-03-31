@@ -16,26 +16,25 @@ export default function RecommendationsList({
   // Fetch recommendations from API
   const { data, isLoading, error } = useRecommendations(targetDate);
 
-  // Show loading state
   if (isLoading) {
     return (
       <Card className={cn("flex items-center justify-center h-[400px]", className)}>
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          <span className="text-sm">Loading recommendations...</span>
+        </div>
       </Card>
     );
   }
 
-  // Show error state
   if (error || !data) {
     return (
       <Card className={cn("flex items-center justify-center h-[400px]", className)}>
-        <div className="text-center space-y-2">
-          <p className="text-sm text-muted-foreground">Unable to load recommendations</p>
-          {error && (
-            <p className="text-xs text-red-500">
-              Error: {error.message || 'Unknown error'}
-            </p>
-          )}
+        <div className="text-center space-y-1">
+          <p className="text-sm text-muted-foreground">No recommendations for this date</p>
+          <p className="text-xs text-muted-foreground/60">
+            Trading signals are generated after daily analysis
+          </p>
         </div>
       </Card>
     );

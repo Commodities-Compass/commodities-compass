@@ -280,7 +280,7 @@ def transform_weather_data_to_response(
 
 
 def transform_to_weather_enriched_response(
-    weather_data: WeatherData,
+    weather_data: Union[WeatherData, Dict[str, Any]],
     campaign: Optional[str],
     campaign_health: Optional[float],
     seasons: list[SeasonStatus],
@@ -288,11 +288,20 @@ def transform_to_weather_enriched_response(
     impact_score: Optional[int],
     harmattan: Optional[HarmattanStatus] = None,
 ) -> WeatherEnrichedResponse:
-    """Transform WeatherData + seasonal data into enriched response."""
+    """Transform WeatherData (ORM or dict) + seasonal data into enriched response."""
+    if isinstance(weather_data, dict):
+        w_date = weather_data.get("date", date.today())
+        w_text = weather_data.get("text", "")
+        w_impact = weather_data.get("impact_synthesis", "")
+    else:
+        w_date = weather_data.date
+        w_text = weather_data.text or ""
+        w_impact = weather_data.impact_synthesis or ""
+
     return WeatherEnrichedResponse(
-        date=format_date_for_display(weather_data.date),
-        description=weather_data.text or "No weather description available",
-        impact=weather_data.impact_synthesis or "No market impact assessment available",
+        date=format_date_for_display(w_date),
+        description=w_text or "No weather description available",
+        impact=w_impact or "No market impact assessment available",
         campaign=campaign,
         campaign_health=campaign_health,
         seasons=seasons,

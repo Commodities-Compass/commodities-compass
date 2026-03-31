@@ -20,7 +20,10 @@ export default function NewsCard({ targetDate, className }: NewsCardProps) {
   if (isLoading) {
     return (
       <Card className={cn("flex items-center justify-center h-[200px]", className)}>
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          <span className="text-sm">Loading press review...</span>
+        </div>
       </Card>
     );
   }
@@ -28,13 +31,9 @@ export default function NewsCard({ targetDate, className }: NewsCardProps) {
   if (error || !news) {
     return (
       <Card className={cn("flex items-center justify-center h-[200px]", className)}>
-        <div className="text-center space-y-2">
-          <p className="text-sm text-muted-foreground">Unable to load news</p>
-          {error && (
-            <p className="text-xs text-red-500">
-              Error: {error.message || 'Unknown error'}
-            </p>
-          )}
+        <div className="text-center space-y-1">
+          <NewspaperIcon className="h-6 w-6 text-muted-foreground/40 mx-auto" />
+          <p className="text-sm text-muted-foreground">No press review for this date</p>
         </div>
       </Card>
     );

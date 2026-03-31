@@ -1,4 +1,3 @@
-import React from "react";
 import { cn } from "@/utils";
 import type { IndicatorRange } from "@/types/dashboard";
 
@@ -211,7 +210,7 @@ export default function GaugeIndicator({
               )}
               fill="currentColor"
             >
-              {value.toFixed(2)}
+              {value != null ? value.toFixed(2) : '—'}
             </text>
           )}
         </svg>

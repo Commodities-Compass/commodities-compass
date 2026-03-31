@@ -384,7 +384,12 @@ async def get_weather(
             logger.warning(f"Seasonal enrichment failed (non-blocking): {e}")
             campaign = None
 
-        impact_score = parse_impact_score(weather_data.impact_synthesis or "")
+        raw_impact = (
+            weather_data.get("impact_synthesis", "")
+            if isinstance(weather_data, dict)
+            else getattr(weather_data, "impact_synthesis", "") or ""
+        )
+        impact_score = parse_impact_score(raw_impact)
 
         return transform_to_weather_enriched_response(
             weather_data=weather_data,

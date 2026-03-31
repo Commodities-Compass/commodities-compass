@@ -98,7 +98,10 @@ export default function PositionStatus({
       <Card
         className={cn('flex items-center justify-center h-[180px]', className)}
       >
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          <span className="text-sm">Loading position...</span>
+        </div>
       </Card>
     );
   }
@@ -108,16 +111,13 @@ export default function PositionStatus({
       <Card
         className={cn('flex items-center justify-center h-[180px]', className)}
       >
-        <div className="text-center space-y-2">
+        <div className="text-center space-y-1">
           <p className="text-sm text-muted-foreground">
-            Unable to load position status
+            No position data for this date
           </p>
-          {error && (
-            <p className="text-xs text-red-500">
-              Unable to fetch data. Please try again later.
-            </p>
-          )}
-          <p className="text-xs text-gray-400">Target date: {targetDate}</p>
+          <p className="text-xs text-muted-foreground/60">
+            The daily analysis may not have run yet
+          </p>
         </div>
       </Card>
     );
@@ -200,17 +200,19 @@ export default function PositionStatus({
 
               <span className="text-sm text-gray-500 dark:text-gray-400 min-w-[80px] text-right flex-shrink-0">
                 {audioError ? (
-                  <span className="text-red-500">Error</span>
+                  <span className="text-muted-foreground text-xs">No bulletin</span>
                 ) : audioLoading ? (
                   'Loading...'
+                ) : !audioData?.url ? (
+                  <span className="text-muted-foreground text-xs">No bulletin</span>
                 ) : (
                   `${formatTime(currentTime)} / ${formatTime(duration)}`
                 )}
               </span>
             </div>
             {audioError && (
-              <p className="text-xs text-red-500 mt-2">
-                Unable to load audio file.
+              <p className="text-xs text-muted-foreground mt-1">
+                No bulletin available for this date
               </p>
             )}
           </div>
@@ -225,7 +227,7 @@ export default function PositionStatus({
         </CardHeader>
         <CardContent className="flex items-center justify-center py-6 flex-grow">
           <div className="text-3xl font-bold">
-            {ytd_performance.toFixed(2)}%
+            {ytd_performance != null ? `${ytd_performance.toFixed(2)}%` : '—'}
           </div>
         </CardContent>
       </div>

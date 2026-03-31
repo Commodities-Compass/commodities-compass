@@ -98,13 +98,18 @@ def _extract_norm_inputs(
     row: pd.Series,
 ) -> tuple[float, float, float, float, float, float]:
     """Extract the 6 normalized indicator values from a DataFrame row."""
+
+    def _val(key: str) -> float:
+        v = row.get(key)
+        return float(v) if v is not None else float(np.nan)
+
     return (
-        float(row.get("rsi_norm", np.nan)),
-        float(row.get("macd_norm", np.nan)),
-        float(row.get("stoch_k_norm", np.nan)),
-        float(row.get("atr_norm", np.nan)),
-        float(row.get("close_pivot_norm", np.nan)),
-        float(row.get("vol_oi_norm", np.nan)),
+        _val("rsi_norm"),
+        _val("macd_norm"),
+        _val("stoch_k_norm"),
+        _val("atr_norm"),
+        _val("close_pivot_norm"),
+        _val("vol_oi_norm"),
     )
 
 
@@ -196,9 +201,10 @@ def compute_signals(
     result["decision"] = decisions
 
     # macroeco_score = 1.0 + macroeco_bonus (computed here, not in writers)
-    result["macroeco_score"] = result.get(
-        macroeco_col, pd.Series(np.nan, index=result.index)
-    ).apply(
+    macroeco_series = result.get(macroeco_col)
+    if macroeco_series is None:
+        macroeco_series = pd.Series(np.nan, index=result.index)
+    result["macroeco_score"] = macroeco_series.apply(
         lambda v: 1.0 + v
         if not (v is None or (isinstance(v, float) and np.isnan(v)))
         else np.nan

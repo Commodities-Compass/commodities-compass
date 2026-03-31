@@ -28,7 +28,7 @@ locals {
     }
     press-review-agent = {
       description = "Generate daily cocoa press review via LLM"
-      schedule    = "0 19 * * 1-5"
+      schedule    = "5 19 * * 1-5"
     }
     meteo-agent = {
       description = "Fetch weather data and generate cocoa impact analysis"

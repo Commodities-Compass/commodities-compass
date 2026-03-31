@@ -254,9 +254,9 @@ Four LLM-powered agents run as Railway cron services, each generating content fo
 
 ```
  7:00 PM UTC  -- Barchart scraper       -> TECHNICALS (CLOSE, HIGH, LOW, VOL, OI, IV)
+ 7:00 PM UTC  -- Meteo agent            -> METEO_ALL (independent — no market data needed)
  7:05 PM UTC  -- ICE stocks + CFTC      -> TECHNICALS (STOCK US, COM NET US)
- 7:00 PM UTC  -- Press review agent     -> BIBLIO_ALL
- 7:00 PM UTC  -- Meteo agent            -> METEO_ALL
+ 7:05 PM UTC  -- Press review agent     -> BIBLIO_ALL (needs CLOSE from Barchart)
  7:20 PM UTC  -- Daily analysis          -> INDICATOR + TECHNICALS (DECISION, SCORE)
  7:30 PM UTC  -- Compass brief          -> Drive (.txt)
  8:15 PM UTC  -- Data import ETL        -> PostgreSQL (full refresh)
@@ -267,7 +267,7 @@ Four LLM-powered agents run as Railway cron services, each generating content fo
 - **Purpose**: Generates daily French-language cocoa press review from 6 news sources
 - **A/B test**: Running 3 providers — Claude (`claude-sonnet-4-5-20250929`), OpenAI (`o4-mini`), Gemini (`gemini-2.5-pro`)
 - **Output**: Appends row to BIBLIO_ALL (DATE, AUTEUR, RESUME, MOTS-CLE, IMPACT SYNTHETIQUES)
-- **Cron**: `10 19 * * 1-5` — **CLI**: `poetry run press-review --sheet production`
+- **Cron**: `5 19 * * 1-5` — **CLI**: `poetry run press-review --sheet production`
 
 ### Meteo Agent (`backend/scripts/meteo_agent/`)
 
@@ -388,10 +388,10 @@ The `PositionStatus` component automatically fetches and plays the audio file:
 
 ```
 19:00  cc-barchart-scraper      → OHLCV + IV (Playwright)
+19:00  cc-meteo-agent           → METEO_ALL + pl_weather_observation
 19:05  cc-ice-stocks-scraper    → STOCK US (after Barchart creates row)
 19:05  cc-cftc-scraper          → COM NET US (after Barchart creates row)
-19:00  cc-press-review-agent    → BIBLIO_ALL + pl_fundamental_article
-19:00  cc-meteo-agent           → METEO_ALL + pl_weather_observation
+19:05  cc-press-review-agent    → BIBLIO_ALL + pl_fundamental_article (needs CLOSE)
 19:15  cc-compute-indicators    → pl_derived + pl_indicator_daily
 19:20  cc-daily-analysis        → decision + score (LLM)
 19:30  cc-compass-brief         → Google Drive (.txt for NotebookLM)

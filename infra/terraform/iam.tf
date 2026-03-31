@@ -75,6 +75,12 @@ resource "google_project_iam_member" "cloud_run_jobs_metric_writer" {
   member  = "serviceAccount:${google_service_account.cloud_run_jobs.email}"
 }
 
+resource "google_project_iam_member" "cloud_run_jobs_run_developer" {
+  project = var.project_id
+  role    = "roles/run.developer"
+  member  = "serviceAccount:${google_service_account.cloud_run_jobs.email}"
+}
+
 # ---- Service Account: GitHub Actions (CI/CD deploy) ----
 
 resource "google_service_account" "github_actions" {

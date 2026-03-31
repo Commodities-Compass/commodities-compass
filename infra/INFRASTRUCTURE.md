@@ -68,8 +68,8 @@ infra/terraform/
 ├── secrets.tf           # Secret Manager (13 secrets)
 ├── iam.tf               # 3 service accounts + IAM bindings
 ├── wif.tf               # Workload Identity Federation (GitHub OIDC)
-├── scheduler.tf         # 8 cron jobs (paused)
-├── monitoring.tf        # Email notification + Cloud SQL alert
+├── scheduler.tf         # 9 cron jobs (active, 19:00-20:15 UTC)
+├── monitoring.tf        # Email alerts: Cloud SQL, Job failures, 5xx, uptime
 ├── outputs.tf           # Key outputs + github_vars map
 └── .terraform.lock.hcl  # Provider pinning (committed)
 ```
@@ -93,7 +93,7 @@ infra/terraform/
 | Instance | `cc-postgres` | PG15, `db-f1-micro`, ZONAL, private + public IP |
 | Database | `commodities_compass` | — |
 | User | `cc_app` | 32-char random password (no special chars) |
-| Public IP | `34.155.163.32` | No authorized networks — proxy-only access |
+| Public IP | `34.155.163.32` | `0.0.0.0/0` still open (Railway transition) — **remove in Phase 5** |
 | Private IP | `10.119.160.3` | Cloud Run connects via VPC connector |
 
 - 10GB SSD, autoresize enabled
@@ -125,7 +125,7 @@ infra/terraform/
 | `AUTH0_ISSUER` | Manual |
 | `GOOGLE_SHEETS_CREDENTIALS_JSON` | Manual |
 | `GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON` | Manual |
-| `GOOGLE_DRIVE_CREDENTIALS_JSON` | Empty (not used yet) |
+| `GOOGLE_DRIVE_CREDENTIALS_JSON` | Manual (same SA as Sheets) |
 | `SENTRY_DSN` | Manual |
 | `ANTHROPIC_API_KEY` | Manual |
 | `OPENAI_API_KEY` | Manual |
@@ -136,7 +136,7 @@ infra/terraform/
 | Service Account | Purpose | Key Roles |
 |----------------|---------|-----------|
 | `cc-cloud-run-api` | Backend + Frontend Cloud Run | secretmanager.secretAccessor, cloudsql.client, logging.logWriter, monitoring.metricWriter |
-| `cc-cloud-run-jobs` | Scrapers, Agents, ETL | Same as API (separate for audit trail) |
+| `cc-cloud-run-jobs` | Scrapers, Agents, ETL | Same as API + **run.developer** (required for Cloud Scheduler to trigger job executions) |
 | `cc-github-actions` | CI/CD deploy | artifactregistry.writer, run.admin, iam.serviceAccountUser, secretmanager.secretAccessor |
 
 ### Workload Identity Federation (`wif.tf`)
@@ -151,39 +151,56 @@ Keyless auth: GitHub OIDC token exchanged for short-lived GCP access token at ea
 
 ### Cloud Scheduler (`scheduler.tf`)
 
-8 cron jobs, all `paused = true` until Phase 4.1.
+9 cron jobs, **all active** since 2026-03-30.
 Region: `europe-west1` (europe-west9 not supported for Scheduler).
+Timezone: UTC. Pipeline starts ~1.5h after ICE Europe close (17:30 London).
 
-| Job | Schedule (UTC) |
-|-----|---------------|
-| `cc-barchart-scraper` | `0 21 * * 1-5` |
-| `cc-ice-stocks-scraper` | `10 21 * * 1-5` |
-| `cc-cftc-scraper` | `10 21 * * 1-5` |
-| `cc-press-review-agent` | `10 21 * * 1-5` |
-| `cc-meteo-agent` | `10 21 * * 1-5` |
-| `cc-daily-analysis` | `20 21 * * 1-5` |
-| `cc-compass-brief` | `30 21 * * 1-5` |
-| `cc-data-import-etl` | `15 22 * * 1-5` |
+| Job | Schedule (UTC) | Stage |
+|-----|---------------|-------|
+| `cc-barchart-scraper` | `0 19 * * 1-5` | 1 — scrapers (parallel) |
+| `cc-ice-stocks-scraper` | `0 19 * * 1-5` | 1 |
+| `cc-cftc-scraper` | `0 19 * * 1-5` | 1 |
+| `cc-press-review-agent` | `0 19 * * 1-5` | 1 — agents (parallel) |
+| `cc-meteo-agent` | `0 19 * * 1-5` | 1 |
+| `cc-compute-indicators` | `15 19 * * 1-5` | 2 — compute (needs scraper data) |
+| `cc-daily-analysis` | `20 19 * * 1-5` | 3 — analysis (needs indicators) |
+| `cc-compass-brief` | `30 19 * * 1-5` | 4 — brief (needs everything) |
+| `cc-data-import-etl` | `15 20 * * 1-5` | 5 — legacy ETL (transition only) |
 
-HTTP targets point to Cloud Run Jobs execution endpoints (placeholders).
+HTTP targets invoke Cloud Run Jobs execution API. OAuth token via `cc-cloud-run-jobs` SA (requires `run.developer` role).
 
 ### Monitoring (`monitoring.tf`)
 
 | Resource | Details |
 |----------|---------|
-| Notification Channel | Email to `hedi@com-compass.com` |
-| Alert Policy | Cloud SQL instance down (`database/up < 1` for 300s) |
+| Notification Channel | Email to CTO |
+| Alert: Cloud SQL Down | Instance `cc-postgres` down > 5 min |
+| Alert: Cloud Run Job Failed | Any job execution failure |
+| Alert: Backend 5xx Errors | > 5 server errors in 5 min |
+| Alert: Backend Uptime | `/health` endpoint unresponsive > 5 min |
+| Uptime Check | HTTPS GET `backend-*.run.app/health` every 5 min |
 
 ## GitHub Repository Variables
 
 Set via `gh variable set`, used by `deploy.yml`:
 
-| Variable | Value |
-|----------|-------|
-| `GCP_PROJECT_ID` | `cacaooo` |
-| `GCP_REGION` | `europe-west9` |
-| `GCP_WIF_PROVIDER` | `projects/229076583962/locations/global/workloadIdentityPools/github-actions/providers/github-oidc` |
-| `GCP_SA_EMAIL` | `cc-github-actions@cacaooo.iam.gserviceaccount.com` |
+| Variable | Used by | Value |
+|----------|---------|-------|
+| `GCP_PROJECT_ID` | Deploy infra | `cacaooo` |
+| `GCP_REGION` | Deploy infra | `europe-west9` |
+| `GCP_WIF_PROVIDER` | Deploy auth | `projects/229076583962/locations/global/...` |
+| `GCP_SA_EMAIL` | Deploy auth | `cc-github-actions@cacaooo.iam.gserviceaccount.com` |
+| `AUTH0_DOMAIN` | Frontend build | `dev-1vqq5xiywmfinkgk.us.auth0.com` |
+| `AUTH0_CLIENT_ID` | Frontend build | SPA client ID |
+| `AUTH0_API_AUDIENCE` | Frontend build | `https://api.commodities-compass.com` |
+| `AUTH0_ISSUER` | Frontend build | `https://dev-1vqq5xiywmfinkgk.us.auth0.com/` |
+| `FRONTEND_URL` | Frontend build (redirect_uri) | `https://frontend-229076583962.europe-west9.run.app` |
+| `API_BASE_URL` | Frontend build (Axios baseURL) | `https://backend-229076583962.europe-west9.run.app/v1` |
+| `SPREADSHEET_ID` | Cloud Run env vars | Google Sheets ID |
+| `GOOGLE_DRIVE_AUDIO_FOLDER_ID` | Cloud Run env vars | Drive folder ID |
+| `GOOGLE_DRIVE_BRIEFS_FOLDER_ID` | Cloud Run env vars | Drive briefs folder ID |
+| `ACTIVE_CONTRACT` | Barchart scraper job | `CAK26` (manual update on contract roll) |
+| `BACKEND_CORS_ORIGINS` | Backend env var | `["https://frontend-*.run.app"]` |
 
 ## Operations
 
@@ -257,24 +274,12 @@ for r in state['resources']:
 
 **Works from any location** — no IP whitelisting. Auth is IAM-based, not network-based.
 
-**Current state:** Database is empty (schema not yet deployed). Tables will appear after Phase 1 commit triggers Railway-style `alembic upgrade head`, or after manual migration against GCP.
+**Current state:** Database has full schema (ref_*, pl_*, aud_* tables) with production data. Dashboard reads from pl_* tables (`USE_NEW_TABLES=true`).
 
-### Railway (current production)
+### Railway (PAUSED — pending Phase 5 kill)
 
-Railway exposes a public PostgreSQL URL. Connection details are in the Railway dashboard:
-**Railway** → Commodities DB → **Connect** button → copy credentials.
-
-**DBeaver connection (Railway):**
-
-| Field | Value |
-|-------|-------|
-| Host | *(from Railway dashboard)* |
-| Port | *(from Railway dashboard)* |
-| Database | `railway` |
-| User | `postgres` |
-| Password | *(from Railway dashboard)* |
-
-This is the database with the live data (5 legacy tables, 6 total with `alembic_version`).
+Railway crons paused since 2026-03-30. Services still running as fallback.
+Will be killed after GCP crons validated for 2-3 days.
 
 ## Cost Estimate
 
@@ -284,9 +289,10 @@ This is the database with the live data (5 legacy tables, 6 total with `alembic_
 | VPC Connector (min throughput) | ~$7 |
 | Artifact Registry | ~$0.50 |
 | Secret Manager (13 secrets) | ~$0.10 |
-| Cloud Scheduler (paused) | $0 |
+| Cloud Scheduler (9 jobs) | ~$0.30 |
+| Cloud Run (backend + frontend + jobs) | ~$5-15 |
 | Monitoring | $0 |
-| **Total** | **~$18/mo** |
+| **Total** | **~$23-33/mo** |
 
 ## Design Decisions
 

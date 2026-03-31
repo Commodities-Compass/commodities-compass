@@ -16,39 +16,39 @@ locals {
   cron_jobs = {
     barchart-scraper = {
       description = "Scrape Barchart OHLCV+IV for active cocoa contract"
-      schedule    = "0 21 * * 1-5"
+      schedule    = "0 19 * * 1-5"
     }
     ice-stocks-scraper = {
       description = "Scrape ICE certified cocoa stock reports"
-      schedule    = "10 21 * * 1-5"
+      schedule    = "0 19 * * 1-5"
     }
     cftc-scraper = {
       description = "Scrape CFTC COT commercial net position"
-      schedule    = "10 21 * * 1-5"
+      schedule    = "0 19 * * 1-5"
     }
     press-review-agent = {
       description = "Generate daily cocoa press review via LLM"
-      schedule    = "10 21 * * 1-5"
+      schedule    = "0 19 * * 1-5"
     }
     meteo-agent = {
       description = "Fetch weather data and generate cocoa impact analysis"
-      schedule    = "10 21 * * 1-5"
-    }
-    daily-analysis = {
-      description = "Run daily trading analysis with LLM scoring"
-      schedule    = "20 21 * * 1-5"
-    }
-    compass-brief = {
-      description = "Generate structured brief and upload to Google Drive"
-      schedule    = "30 21 * * 1-5"
+      schedule    = "0 19 * * 1-5"
     }
     compute-indicators = {
       description = "Compute technical indicators from raw market data"
-      schedule    = "15 21 * * 1-5"
+      schedule    = "15 19 * * 1-5"
+    }
+    daily-analysis = {
+      description = "Run daily trading analysis with LLM scoring"
+      schedule    = "20 19 * * 1-5"
+    }
+    compass-brief = {
+      description = "Generate structured brief and upload to Google Drive"
+      schedule    = "30 19 * * 1-5"
     }
     data-import-etl = {
       description = "Full-refresh ETL from Google Sheets to PostgreSQL"
-      schedule    = "15 22 * * 1-5"
+      schedule    = "15 20 * * 1-5"
     }
   }
 }

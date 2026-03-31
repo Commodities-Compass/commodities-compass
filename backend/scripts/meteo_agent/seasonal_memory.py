@@ -94,17 +94,19 @@ def get_completed_seasons(target_date: date) -> list[SeasonDateRange]:
         # Only include fully completed seasons, or the current in-progress one
         if season_range.end_date <= target_date:
             seasons.append(season_range)
-        elif season_range.start_date <= target_date:
-            # Current season — compute up to yesterday
-            seasons.append(
-                SeasonDateRange(
-                    season=profile,
-                    campaign=campaign,
-                    start_date=season_range.start_date,
-                    end_date=target_date - timedelta(days=1),
-                    months_covered=season_range.months_covered + " (en cours)",
+        elif season_range.start_date < target_date:
+            # Current season — compute up to yesterday (skip if no full day yet)
+            effective_end = target_date - timedelta(days=1)
+            if effective_end >= season_range.start_date:
+                seasons.append(
+                    SeasonDateRange(
+                        season=profile,
+                        campaign=campaign,
+                        start_date=season_range.start_date,
+                        end_date=effective_end,
+                        months_covered=season_range.months_covered + " (en cours)",
+                    )
                 )
-            )
     return seasons
 
 

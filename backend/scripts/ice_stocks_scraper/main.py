@@ -111,8 +111,13 @@ def main() -> int:
         from scripts.db import get_session
         from scripts.ice_stocks_scraper.db_writer import write_stock_us
 
+        from datetime import date as date_type
+
+        db_date = target_date or date_type.today()
         with get_session() as session:
-            write_stock_us(session, stock_us_tonnes, dry_run=args.dry_run)
+            write_stock_us(
+                session, stock_us_tonnes, target_date=db_date, dry_run=args.dry_run
+            )
 
         # Step 4: Write to Sheets (grand total converted to tonnes)
         logger.info(f"Step 4: Writing to Google Sheets ({args.sheet})...")

@@ -178,12 +178,12 @@ class TestIceStocksDbWriter:
         sync_db_session.add(existing)
         sync_db_session.flush()
 
-        write_stock_us(sync_db_session, 150000)
+        write_stock_us(sync_db_session, 150000, target_date=date(2026, 3, 17))
 
         row = sync_db_session.execute(select(PlContractDataDaily)).scalar_one()
         assert row.stock_us == Decimal("150000")
 
-    def test_updates_latest_row(self, sync_db_session, ref_chain_sync):
+    def test_updates_specific_date(self, sync_db_session, ref_chain_sync):
         from scripts.ice_stocks_scraper.db_writer import write_stock_us
 
         contract_id = ref_chain_sync["contract"].id
@@ -199,7 +199,7 @@ class TestIceStocksDbWriter:
         )
         sync_db_session.flush()
 
-        write_stock_us(sync_db_session, 160000)
+        write_stock_us(sync_db_session, 160000, target_date=date(2026, 3, 17))
 
         latest = sync_db_session.execute(
             select(PlContractDataDaily).where(
@@ -218,8 +218,8 @@ class TestIceStocksDbWriter:
     def test_no_existing_row_raises(self, sync_db_session, ref_chain_sync):
         from scripts.ice_stocks_scraper.db_writer import DbWriterError, write_stock_us
 
-        with pytest.raises(DbWriterError, match="No existing row"):
-            write_stock_us(sync_db_session, 150000)
+        with pytest.raises(DbWriterError, match="No row found"):
+            write_stock_us(sync_db_session, 150000, target_date=date(2026, 3, 17))
 
     def test_dry_run_no_write(self, sync_db_session, ref_chain_sync):
         from scripts.ice_stocks_scraper.db_writer import write_stock_us
@@ -232,7 +232,9 @@ class TestIceStocksDbWriter:
         )
         sync_db_session.flush()
 
-        write_stock_us(sync_db_session, 150000, dry_run=True)
+        write_stock_us(
+            sync_db_session, 150000, target_date=date(2026, 3, 17), dry_run=True
+        )
 
         row = sync_db_session.execute(select(PlContractDataDaily)).scalar_one()
         assert row.stock_us is None
@@ -255,7 +257,7 @@ class TestCftcDbWriter:
         )
         sync_db_session.flush()
 
-        write_com_net_us(sync_db_session, -5000.0)
+        write_com_net_us(sync_db_session, -5000.0, target_date=date(2026, 3, 17))
 
         row = sync_db_session.execute(select(PlContractDataDaily)).scalar_one()
         assert row.com_net_us == Decimal("-5000.0")
@@ -263,8 +265,8 @@ class TestCftcDbWriter:
     def test_no_existing_row_raises(self, sync_db_session, ref_chain_sync):
         from scripts.cftc_scraper.db_writer import DbWriterError, write_com_net_us
 
-        with pytest.raises(DbWriterError, match="No existing row"):
-            write_com_net_us(sync_db_session, -5000.0)
+        with pytest.raises(DbWriterError, match="No row found"):
+            write_com_net_us(sync_db_session, -5000.0, target_date=date(2026, 3, 17))
 
     def test_dry_run_no_write(self, sync_db_session, ref_chain_sync):
         from scripts.cftc_scraper.db_writer import write_com_net_us
@@ -277,7 +279,9 @@ class TestCftcDbWriter:
         )
         sync_db_session.flush()
 
-        write_com_net_us(sync_db_session, -5000.0, dry_run=True)
+        write_com_net_us(
+            sync_db_session, -5000.0, target_date=date(2026, 3, 17), dry_run=True
+        )
 
         row = sync_db_session.execute(select(PlContractDataDaily)).scalar_one()
         assert row.com_net_us is None

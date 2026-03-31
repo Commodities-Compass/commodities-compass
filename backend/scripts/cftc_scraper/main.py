@@ -84,8 +84,12 @@ def main() -> int:
         from scripts.cftc_scraper.db_writer import write_com_net_us
         from scripts.db import get_session
 
+        from datetime import date
+
         with get_session() as session:
-            write_com_net_us(session, commercial_net, dry_run=args.dry_run)
+            write_com_net_us(
+                session, commercial_net, target_date=date.today(), dry_run=args.dry_run
+            )
 
         # Step 3: Update Google Sheets
         logger.info("Step 3: Updating Google Sheets...")

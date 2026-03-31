@@ -1,6 +1,7 @@
 """Database writer for ICE stocks data → pl_contract_data_daily.stock_us."""
 
 import logging
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -19,29 +20,34 @@ class DbWriterError(Exception):
 def write_stock_us(
     session: Session,
     stock_us_tonnes: int,
+    target_date: date,
     dry_run: bool = False,
 ) -> None:
-    """Update stock_us on the most recent pl_contract_data_daily row.
+    """Update stock_us on the pl_contract_data_daily row for target_date.
 
-    Finds the latest row for the active contract and updates its stock_us field.
-    Raises DbWriterError if no row exists (Barchart must run first at 9:00 PM).
+    Queries by (date, contract_id). Raises DbWriterError if no row exists
+    for that date (Barchart must have created it).
     """
     contract_id = resolve_active(session)
 
     if dry_run:
-        log.info("[DRY RUN] Would write stock_us=%d", stock_us_tonnes)
+        log.info(
+            "[DRY RUN] Would write stock_us=%d for date=%s",
+            stock_us_tonnes,
+            target_date,
+        )
         return
 
     existing = session.execute(
-        select(PlContractDataDaily)
-        .where(PlContractDataDaily.contract_id == contract_id)
-        .order_by(PlContractDataDaily.date.desc())
-        .limit(1)
+        select(PlContractDataDaily).where(
+            PlContractDataDaily.date == target_date,
+            PlContractDataDaily.contract_id == contract_id,
+        )
     ).scalar_one_or_none()
 
     if existing is None:
         raise DbWriterError(
-            "No existing row found for active contract — "
+            f"No row found for date={target_date}, contract_id={contract_id} — "
             "Barchart scraper must run first to create the row"
         )
 

@@ -18,6 +18,21 @@ jobs:
       run:
         working-directory: backend
 
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: commodities_compass_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@v4
 
@@ -52,8 +67,8 @@ jobs:
       - name: Run tests
         run: poetry run pytest --cov=app --cov-report=xml
         env:
-          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
-          DATABASE_SYNC_URL: "sqlite:///:memory:"
+          DATABASE_URL: "postgresql+asyncpg://postgres:password@localhost:5433/commodities_compass_test"
+          DATABASE_SYNC_URL: "postgresql+psycopg2://postgres:password@localhost:5433/commodities_compass_test"
           AUTH0_DOMAIN: "test.auth0.com"
           AUTH0_CLIENT_ID: "test-client-id"
           AUTH0_API_AUDIENCE: "https://test-api"

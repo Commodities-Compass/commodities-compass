@@ -37,12 +37,8 @@ from app.core.database import get_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models.base import Base  # noqa: E402
 
-TEST_DATABASE_URL = (
-    "postgresql+asyncpg://postgres:password@localhost:5433/commodities_compass_test"
-)
-TEST_SYNC_DATABASE_URL = (
-    "postgresql+psycopg2://postgres:password@localhost:5433/commodities_compass_test"
-)
+TEST_DATABASE_URL = os.environ["DATABASE_URL"]
+TEST_SYNC_DATABASE_URL = os.environ["DATABASE_SYNC_URL"]
 
 # Sync engine — used for table setup/teardown and sync tests.
 test_sync_engine = create_engine(TEST_SYNC_DATABASE_URL, echo=False)

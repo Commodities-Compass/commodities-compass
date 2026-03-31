@@ -36,6 +36,8 @@ MODEL_IDS = {
     Provider.GEMINI: "gemini-2.5-pro",
 }
 
+PRODUCTION_PROVIDER = Provider.OPENAI
+
 AUTHOR_LABELS = {
     Provider.CLAUDE: "LLM Agent (Claude Sonnet 4.5)",
     Provider.OPENAI: "LLM Agent (o4-mini)",

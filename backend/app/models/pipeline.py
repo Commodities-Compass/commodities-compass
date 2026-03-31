@@ -256,6 +256,7 @@ class PlFundamentalArticle(Base):
     sentiment: Mapped[Optional[str]] = mapped_column(VARCHAR(50))
     impact_synthesis: Mapped[Optional[str]] = mapped_column(TEXT)
     llm_provider: Mapped[str] = mapped_column(VARCHAR(50), nullable=False)
+    is_active: Mapped[bool] = mapped_column(default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
 
 

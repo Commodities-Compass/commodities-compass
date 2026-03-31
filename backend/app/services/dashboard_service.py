@@ -639,10 +639,14 @@ async def get_latest_market_research(
 async def _pl_get_latest_article(
     db: AsyncSession, target_date: Optional[date]
 ) -> Optional[Dict[str, Any]]:
-    """Latest article from pl_fundamental_article."""
-    query = select(PlFundamentalArticle).order_by(
-        desc(PlFundamentalArticle.date),
-        desc(PlFundamentalArticle.created_at),
+    """Latest active article from pl_fundamental_article."""
+    query = (
+        select(PlFundamentalArticle)
+        .where(PlFundamentalArticle.is_active.is_(True))
+        .order_by(
+            desc(PlFundamentalArticle.date),
+            desc(PlFundamentalArticle.created_at),
+        )
     )
 
     if target_date:

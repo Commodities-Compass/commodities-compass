@@ -9,7 +9,12 @@ from sqlalchemy.orm import Session
 
 from app.models.audit import AudLlmCall
 from app.models.pipeline import PlFundamentalArticle
-from scripts.press_review_agent.config import AUTHOR_LABELS, MODEL_IDS, Provider
+from scripts.press_review_agent.config import (
+    AUTHOR_LABELS,
+    MODEL_IDS,
+    PRODUCTION_PROVIDER,
+    Provider,
+)
 
 log = logging.getLogger(__name__)
 
@@ -69,6 +74,7 @@ def write_article(
         keywords=parsed.get("mots_cle"),
         impact_synthesis=parsed.get("impact_synthetiques"),
         llm_provider=provider.value,
+        is_active=(provider == PRODUCTION_PROVIDER),
     )
     session.add(article)
     session.flush()

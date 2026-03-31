@@ -225,7 +225,7 @@ Google Sheets TECHNICALS row:
 - **Source**: `https://www.ice.com/publicdocs/futures_us_reports/cocoa/cocoa_cert_stock_YYYYMMDD.xls`
 - **Method**: Pure httpx + pandas (no browser). Downloads public XLS, parses "GRAND TOTAL" row, converts bags → tonnes (`bags × 70 / 1000`).
 - **Fallback**: Walks back through business days (up to 60) until a report is found. Handles `a`-suffix variants.
-- **Cron**: `10 19 * * 1-5` (7:10 PM UTC weekdays)
+- **Cron**: `5 19 * * 1-5` (7:05 PM UTC weekdays — 5 min after Barchart to ensure row exists)
 - **CLI**: `python -m scripts.ice_stocks_scraper.main --sheet production [--dry-run] [--date YYYY-MM-DD]`
 
 ### CFTC Scraper (`backend/scripts/cftc_scraper/`)
@@ -233,7 +233,7 @@ Google Sheets TECHNICALS row:
 - **Data**: COM NET US (column I) — commercial net position from CFTC COT report
 - **Source**: `https://www.cftc.gov/dea/futures/ag_lf.htm`
 - **Method**: Pure httpx + regex (no browser). Parses "COCOA - ICE FUTURES U.S." section, extracts Producer/Merchant Long − Short.
-- **Cron**: `10 19 * * 1-5` (7:10 PM UTC weekdays — idempotent, new data only on Fridays after CFTC publishes ~9:30 PM CET)
+- **Cron**: `5 19 * * 1-5` (7:05 PM UTC weekdays — 5 min after Barchart; idempotent, new data only on Fridays after CFTC publishes ~9:30 PM CET)
 - **CLI**: `python -m scripts.cftc_scraper.main --sheet production [--dry-run]`
 
 ### Known Issues & Lessons (2026-02-18 debugging sessions)
@@ -254,9 +254,9 @@ Four LLM-powered agents run as Railway cron services, each generating content fo
 
 ```
  7:00 PM UTC  -- Barchart scraper       -> TECHNICALS (CLOSE, HIGH, LOW, VOL, OI, IV)
- 7:10 PM UTC  -- ICE stocks + CFTC      -> TECHNICALS (STOCK US, COM NET US)
- 7:10 PM UTC  -- Press review agent     -> BIBLIO_ALL
- 7:10 PM UTC  -- Meteo agent            -> METEO_ALL
+ 7:05 PM UTC  -- ICE stocks + CFTC      -> TECHNICALS (STOCK US, COM NET US)
+ 7:00 PM UTC  -- Press review agent     -> BIBLIO_ALL
+ 7:00 PM UTC  -- Meteo agent            -> METEO_ALL
  7:20 PM UTC  -- Daily analysis          -> INDICATOR + TECHNICALS (DECISION, SCORE)
  7:30 PM UTC  -- Compass brief          -> Drive (.txt)
  8:15 PM UTC  -- Data import ETL        -> PostgreSQL (full refresh)
@@ -388,10 +388,10 @@ The `PositionStatus` component automatically fetches and plays the audio file:
 
 ```
 19:00  cc-barchart-scraper      → OHLCV + IV (Playwright)
-19:10  cc-ice-stocks-scraper    → STOCK US
-19:10  cc-cftc-scraper          → COM NET US
-19:10  cc-press-review-agent    → BIBLIO_ALL + pl_fundamental_article
-19:10  cc-meteo-agent           → METEO_ALL + pl_weather_observation
+19:05  cc-ice-stocks-scraper    → STOCK US (after Barchart creates row)
+19:05  cc-cftc-scraper          → COM NET US (after Barchart creates row)
+19:00  cc-press-review-agent    → BIBLIO_ALL + pl_fundamental_article
+19:00  cc-meteo-agent           → METEO_ALL + pl_weather_observation
 19:15  cc-compute-indicators    → pl_derived + pl_indicator_daily
 19:20  cc-daily-analysis        → decision + score (LLM)
 19:30  cc-compass-brief         → Google Drive (.txt for NotebookLM)

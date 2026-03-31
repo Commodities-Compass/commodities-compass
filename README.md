@@ -210,7 +210,7 @@ Three independent scrapers run on Railway cron jobs to keep market data updated:
 - **Location**: `backend/scripts/barchart_scraper/`
 
 ### ICE Stocks Scraper
-- **Schedule**: Daily at 19:10 UTC
+- **Schedule**: Daily at 19:05 UTC
 - **Source**: ICE public cocoa certified stock reports (XLS)
 - **Method**: httpx + pandas (no browser)
 - **Data**: STOCK US — certified cocoa stocks in ICE US warehouses (bags to tonnes)
@@ -218,7 +218,7 @@ Three independent scrapers run on Railway cron jobs to keep market data updated:
 - **Location**: `backend/scripts/ice_stocks_scraper/`
 
 ### CFTC Scraper
-- **Schedule**: Daily at 19:10 UTC
+- **Schedule**: Daily at 19:05 UTC
 - **Source**: CFTC.gov (Agriculture Disaggregated Futures)
 - **Method**: httpx + regex (no browser)
 - **Data**: COM NET US (Producer/Merchant Long - Short positions)

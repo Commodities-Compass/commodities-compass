@@ -20,11 +20,11 @@ locals {
     }
     ice-stocks-scraper = {
       description = "Scrape ICE certified cocoa stock reports"
-      schedule    = "0 19 * * 1-5"
+      schedule    = "5 19 * * 1-5"
     }
     cftc-scraper = {
       description = "Scrape CFTC COT commercial net position"
-      schedule    = "0 19 * * 1-5"
+      schedule    = "5 19 * * 1-5"
     }
     press-review-agent = {
       description = "Generate daily cocoa press review via LLM"

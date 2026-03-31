@@ -76,8 +76,8 @@ def main() -> int:
     parser.add_argument(
         "--provider",
         choices=["claude", "openai", "gemini", "all"],
-        default="all",
-        help="LLM provider(s) to run (default: all for A/B test)",
+        default="openai",
+        help="LLM provider to run (default: openai/o4-mini for production)",
     )
     parser.add_argument(
         "--force",

@@ -353,11 +353,22 @@ def main() -> None:
         default=None,
         help="Algorithm version (e.g., 1.0.0, 1.0.1)",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Run even on non-trading days (for backfills/debugging)",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
     )
+
+    # Skip on non-trading days unless --force
+    from scripts.db import should_skip_non_trading_day
+
+    if should_skip_non_trading_day(force=args.force):
+        return
 
     db_url = str(settings.DATABASE_SYNC_URL)
     engine = create_engine(db_url)

@@ -58,11 +58,22 @@ def main() -> int:
         action="store_true",
         help="Enable debug logging",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Run even on non-trading days (for backfills/debugging)",
+    )
 
     args = parser.parse_args()
 
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
+
+    # Skip on non-trading days unless --force
+    from scripts.db import should_skip_non_trading_day
+
+    if should_skip_non_trading_day(force=args.force):
+        return 0
 
     logger.info("=" * 60)
     logger.info("Meteo Agent - Cocoa Weather Analysis")

@@ -36,7 +36,8 @@ from app.utils.contract_resolver import (
     get_active_algorithm_version_id,
     get_active_contract_id,
 )
-from app.utils.date_utils import get_business_date, get_year_start_date
+from app.utils.date_utils import get_year_start_date
+from app.utils.trading_calendar import get_latest_trading_day
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +131,7 @@ async def get_position_from_technicals(
     query = select(Technicals).order_by(desc(Technicals.timestamp))
 
     if target_date:
-        business_date = get_business_date(target_date)
+        business_date = await get_latest_trading_day(db, target_date)
         query = query.where(_date_filter(Technicals.timestamp, business_date))
 
     result = await db.execute(query)
@@ -153,7 +154,7 @@ async def _pl_get_position(
     )
 
     if target_date:
-        query = query.where(PlIndicatorDaily.date == get_business_date(target_date))
+        query = query.where(PlIndicatorDaily.date == target_date)
 
     query = query.order_by(desc(PlIndicatorDaily.date)).limit(1)
     result = await db.execute(query)
@@ -315,7 +316,7 @@ async def get_indicators_with_ranges(
     query = select(Indicator).order_by(desc(Indicator.date))
 
     if target_date:
-        business_date = get_business_date(target_date)
+        business_date = await get_latest_trading_day(db, target_date)
         query = query.where(_date_filter(Indicator.date, business_date))
 
     result = await db.execute(query)
@@ -350,7 +351,7 @@ async def _pl_get_indicators_with_ranges(
     )
 
     if target_date:
-        query = query.where(PlIndicatorDaily.date == get_business_date(target_date))
+        query = query.where(PlIndicatorDaily.date == target_date)
 
     query = query.order_by(desc(PlIndicatorDaily.date)).limit(1)
     result = await db.execute(query)
@@ -444,7 +445,7 @@ async def get_latest_technicals(
     query = select(Technicals).order_by(desc(Technicals.timestamp))
 
     if target_date:
-        business_date = get_business_date(target_date)
+        business_date = await get_latest_trading_day(db, target_date)
         query = query.where(_date_filter(Technicals.timestamp, business_date))
 
     result = await db.execute(query)
@@ -481,7 +482,7 @@ async def _pl_get_latest_recommendations(
     )
 
     if target_date:
-        query = query.where(PlIndicatorDaily.date == get_business_date(target_date))
+        query = query.where(PlIndicatorDaily.date == target_date)
 
     query = query.order_by(desc(PlIndicatorDaily.date)).limit(1)
     result = await db.execute(query)
@@ -610,7 +611,7 @@ async def get_latest_market_research(
     query = select(MarketResearch).order_by(desc(MarketResearch.date))
 
     if target_date:
-        business_date = get_business_date(target_date)
+        business_date = await get_latest_trading_day(db, target_date)
         query = query.where(_date_filter(MarketResearch.date, business_date))
 
     result = await db.execute(query)
@@ -624,7 +625,7 @@ async def _pl_get_latest_article(
     query = select(PlFundamentalArticle).order_by(desc(PlFundamentalArticle.date))
 
     if target_date:
-        query = query.where(PlFundamentalArticle.date == get_business_date(target_date))
+        query = query.where(PlFundamentalArticle.date == target_date)
 
     query = query.limit(1)
     result = await db.execute(query)
@@ -660,7 +661,7 @@ async def get_latest_weather_data(
     query = select(WeatherData).order_by(desc(WeatherData.date))
 
     if target_date:
-        business_date = get_business_date(target_date)
+        business_date = await get_latest_trading_day(db, target_date)
         query = query.where(_date_filter(WeatherData.date, business_date))
 
     result = await db.execute(query)
@@ -674,7 +675,7 @@ async def _pl_get_latest_weather(
     query = select(PlWeatherObservation).order_by(desc(PlWeatherObservation.date))
 
     if target_date:
-        query = query.where(PlWeatherObservation.date == get_business_date(target_date))
+        query = query.where(PlWeatherObservation.date == target_date)
 
     query = query.limit(1)
     result = await db.execute(query)

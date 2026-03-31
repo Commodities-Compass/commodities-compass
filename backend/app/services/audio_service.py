@@ -11,7 +11,6 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 from app.core.config import settings
-from app.utils.date_utils import get_business_date
 
 logger = logging.getLogger(__name__)
 
@@ -88,15 +87,7 @@ class AudioService:
         if target_date is None:
             target_date = datetime.now().date()
 
-        business_date = get_business_date(target_date)
-        if business_date != target_date:
-            logger.info(
-                "Weekend date %s converted to %s for audio lookup",
-                target_date,
-                business_date,
-            )
-
-        filename_base = f"{business_date.strftime('%Y%m%d')}-CompassAudio"
+        filename_base = f"{target_date.strftime('%Y%m%d')}-CompassAudio"
 
         try:
             query = (

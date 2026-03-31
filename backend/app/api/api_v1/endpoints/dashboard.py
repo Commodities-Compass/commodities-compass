@@ -41,37 +41,33 @@ from app.services.dashboard_transformers import (
     transform_market_research_to_news,
     transform_weather_data_to_response,
 )
-from app.utils.date_utils import (
-    parse_date_string,
-    get_business_date,
-    log_business_date_conversion,
-)
+from app.utils.date_utils import parse_date_string
+from app.utils.trading_calendar import TradingCalendarError, get_latest_trading_day
 from app.services.audio_service import get_audio_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-def _parse_and_validate_date(date_str: str) -> tuple[date, date]:
-    """
-    Parse and validate date string, converting to business date if needed.
+async def _parse_and_validate_date(date_str: str, db: AsyncSession) -> date:
+    """Parse date string and resolve to the latest trading day.
 
-    Args:
-        date_str: Date string in YYYY-MM-DD format
-
-    Returns:
-        Tuple of (parsed_date, business_date)
+    Returns the most recent trading day on or before the parsed date,
+    using ref_trading_calendar as the single source of truth.
 
     Raises:
-        HTTPException: If date format is invalid
+        HTTPException: If date format is invalid or calendar lookup fails.
     """
     try:
         parsed_date = parse_date_string(date_str)
-        business_date = get_business_date(parsed_date)
-        log_business_date_conversion(parsed_date, business_date)
-        return parsed_date, business_date
+        trading_day = await get_latest_trading_day(db, parsed_date)
+        if trading_day != parsed_date:
+            logger.info("Date %s resolved to trading day %s", parsed_date, trading_day)
+        return trading_day
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except TradingCalendarError as e:
+        raise HTTPException(status_code=503, detail=str(e))
 
 
 @router.get("/position-status", response_model=PositionStatusResponse)
@@ -105,7 +101,7 @@ async def get_position_status(
         # Parse and validate date if provided
         business_date = None
         if target_date:
-            _, business_date = _parse_and_validate_date(target_date)
+            business_date = await _parse_and_validate_date(target_date, db)
 
         # Get position and YTD performance from service layer
         position = await get_position_from_technicals(db, business_date)
@@ -160,7 +156,7 @@ async def get_indicators_grid(
         # Parse and validate date if provided
         business_date = None
         if target_date:
-            _, business_date = _parse_and_validate_date(target_date)
+            business_date = await _parse_and_validate_date(target_date, db)
 
         # Get indicators data from service layer
         indicators_data = await get_indicators_with_ranges(db, business_date)
@@ -217,7 +213,7 @@ async def get_recommendations(
         # Parse and validate date if provided
         business_date = None
         if target_date:
-            _, business_date = _parse_and_validate_date(target_date)
+            business_date = await _parse_and_validate_date(target_date, db)
 
         # Get recommendations from service layer
         recommendations, raw_score, rec_date = await get_latest_recommendations(
@@ -319,7 +315,7 @@ async def get_news(
         # Parse and validate date if provided
         business_date = None
         if target_date:
-            _, business_date = _parse_and_validate_date(target_date)
+            business_date = await _parse_and_validate_date(target_date, db)
 
         # Get market research from service layer
         market_research = await get_latest_market_research(db, business_date)
@@ -369,7 +365,7 @@ async def get_weather(
         # Parse and validate date if provided
         business_date = None
         if target_date:
-            _, business_date = _parse_and_validate_date(target_date)
+            business_date = await _parse_and_validate_date(target_date, db)
 
         # Get weather data from service layer
         weather_data = await get_latest_weather_data(db, business_date)
@@ -396,6 +392,7 @@ async def get_audio(
         default=None, description="Specific date for audio file (YYYY-MM-DD format)"
     ),
     current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> AudioResponse:
     """
     Get publicly playable audio file link from Google Drive.
@@ -414,32 +411,31 @@ async def get_audio(
         HTTPException: If audio file not found or date format invalid
     """
     try:
-        # Parse and validate date if provided
-        parsed_date = None
+        # Parse and resolve to trading day
+        trading_day = None
         if target_date:
-            parsed_date, _ = _parse_and_validate_date(target_date)
+            trading_day = await _parse_and_validate_date(target_date, db)
 
         # Get audio metadata from service
-        audio_metadata = await get_audio_service().get_audio_metadata(parsed_date)
+        audio_metadata = await get_audio_service().get_audio_metadata(trading_day)
 
         if not audio_metadata:
             # Provide helpful error message
             date_str = (
-                parsed_date.strftime("%Y-%m-%d")
-                if parsed_date
+                trading_day.strftime("%Y-%m-%d")
+                if trading_day
                 else datetime.now().strftime("%Y-%m-%d")
             )
-            filename_base = f"{(parsed_date or datetime.now().date()).strftime('%Y%m%d')}-CompassAudio"
+            filename_base = f"{(trading_day or datetime.now().date()).strftime('%Y%m%d')}-CompassAudio"
             raise HTTPException(
                 status_code=404,
                 detail=f"Audio file not found for date {date_str}. Looking for: {filename_base}.wav or {filename_base}.m4a",
             )
 
-        # Return backend streaming URL instead of Google Drive URL
-        # Use relative path that works with frontend's API_BASE_URL
+        # Return backend streaming URL with resolved trading day
         stream_url = "/audio/stream"
-        if target_date:
-            stream_url += f"?target_date={target_date}"
+        if trading_day:
+            stream_url += f"?target_date={trading_day.isoformat()}"
 
         return AudioResponse(
             url=stream_url,  # Backend streaming URL

@@ -118,6 +118,12 @@ def main() -> int:
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
+    # Skip on non-trading days unless --force
+    from scripts.db import should_skip_non_trading_day
+
+    if should_skip_non_trading_day(force=args.force):
+        return 0
+
     target_date = _resolve_date(args.date)
 
     # --- DB-first mode (new pipeline, no Sheets) ---

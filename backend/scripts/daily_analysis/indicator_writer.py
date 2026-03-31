@@ -191,61 +191,42 @@ class IndicatorWriter:
         self,
         sheet_name: str,
         row: int,
-        *,
-        max_retries: int = 3,
-        initial_delay: float = 2.0,
     ) -> ReadBackResult:
-        """Wait for Sheets recalculation then read Q and R values.
+        """Read Q and R values from Sheets. Single attempt — fails fast."""
+        time.sleep(2.0)  # one grace period for Sheets recalculation
 
-        Retries with exponential backoff if values are empty or stale.
-        """
-        delay = initial_delay
+        result = self._get_values(f"{sheet_name}!Q{row}:R{row}")
+        values = result.get("values", [[]])
+        cells = values[0] if values else []
 
-        for attempt in range(1, max_retries + 1):
-            logger.info(
-                "Read-back attempt %d/%d (%.1fs delay) for row %d",
-                attempt,
-                max_retries,
-                delay,
-                row,
+        q_raw = str(cells[0]).strip() if len(cells) > 0 else ""
+        r_raw = str(cells[1]).strip() if len(cells) > 1 else ""
+
+        if not q_raw or not r_raw or "#CALC" in q_raw or "#REF" in q_raw:
+            raise IndicatorWriterError(
+                f"Read-back failed for row {row}: Q={q_raw!r} R={r_raw!r}"
             )
-            time.sleep(delay)
 
-            result = self._get_values(f"{sheet_name}!Q{row}:R{row}")
-            values = result.get("values", [[]])
-            cells = values[0] if values else []
+        try:
+            final_indicator = float(q_raw.replace(",", "."))
+        except (ValueError, TypeError) as exc:
+            raise IndicatorWriterError(
+                f"Cannot parse FINAL INDICATOR: {q_raw!r}"
+            ) from exc
 
-            q_raw = str(cells[0]).strip() if len(cells) > 0 else ""
-            r_raw = str(cells[1]).strip() if len(cells) > 1 else ""
+        conclusion = r_raw.upper()
+        if conclusion not in ("OPEN", "MONITOR", "HEDGE"):
+            raise IndicatorWriterError(f"Invalid CONCLUSION: {r_raw!r} for row {row}")
 
-            if q_raw and r_raw and "#CALC" not in q_raw and "#REF" not in q_raw:
-                try:
-                    final_indicator = float(q_raw.replace(",", "."))
-                except (ValueError, TypeError):
-                    logger.warning("Cannot parse FINAL INDICATOR: %r", q_raw)
-                    delay *= 2
-                    continue
-
-                conclusion = r_raw.upper()
-                if conclusion in ("OPEN", "MONITOR", "HEDGE"):
-                    logger.info(
-                        "Read-back OK: FINAL_INDICATOR=%.4f CONCLUSION=%s",
-                        final_indicator,
-                        conclusion,
-                    )
-                    return ReadBackResult(
-                        final_indicator=final_indicator,
-                        conclusion=conclusion,
-                        row_number=row,
-                    )
-
-            logger.warning(
-                "Read-back attempt %d: Q=%r R=%r — retrying", attempt, q_raw, r_raw
-            )
-            delay *= 2
-
-        raise IndicatorWriterError(
-            f"Read-back failed for row {row} after {max_retries} attempts"
+        logger.info(
+            "Read-back OK: FINAL_INDICATOR=%.4f CONCLUSION=%s",
+            final_indicator,
+            conclusion,
+        )
+        return ReadBackResult(
+            final_indicator=final_indicator,
+            conclusion=conclusion,
+            row_number=row,
         )
 
     def has_indicator_for_date(self, sheet_name: str, date_str: str) -> bool:
@@ -414,30 +395,18 @@ class IndicatorWriter:
         self,
         sheet_name: str,
         row: int,
-        *,
-        max_retries: int = 5,
-        delay: float = 2.0,
     ) -> None:
-        """Wait until formulas in A-O have computed for the given row."""
-        for attempt in range(1, max_retries + 1):
-            time.sleep(delay)
-            result = self._get_values(f"{sheet_name}!A{row}")
-            values = result.get("values", [])
-            cell = str(values[0][0]).strip() if values and values[0] else ""
-            if cell:
-                logger.info("Formulas ready: A%d=%s (attempt %d)", row, cell, attempt)
-                return
-            logger.info(
-                "Waiting for formulas on row %d (attempt %d/%d)",
-                row,
-                attempt,
-                max_retries,
+        """Wait for formulas in A-O to compute. Single check — fails fast."""
+        time.sleep(2.0)  # one grace period for Sheets recalculation
+        result = self._get_values(f"{sheet_name}!A{row}")
+        values = result.get("values", [])
+        cell = str(values[0][0]).strip() if values and values[0] else ""
+        if cell:
+            logger.info("Formulas ready: A%d=%s", row, cell)
+        else:
+            raise IndicatorWriterError(
+                f"Formulas did not compute for row {row} — A{row} is empty"
             )
-        logger.warning(
-            "Formulas did not compute for row %d after %d attempts — proceeding",
-            row,
-            max_retries,
-        )
 
     def _get_values(
         self, range_: str, *, value_render_option: str = "FORMATTED_VALUE"

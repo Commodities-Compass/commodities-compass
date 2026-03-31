@@ -167,7 +167,7 @@ jobs:
           SA="${{ env.SA_JOBS }}"
           VPC="${{ env.VPC_CONNECTOR }}"
 
-          COMMON_FLAGS="--region=${REGION} --service-account=${SA} --vpc-connector=${VPC} --vpc-egress=private-ranges-only --max-retries=1 --task-timeout=900s"
+          COMMON_FLAGS="--region=${REGION} --service-account=${SA} --vpc-connector=${VPC} --vpc-egress=private-ranges-only --max-retries=0 --task-timeout=900s"
 
           SECRETS="--set-secrets=DATABASE_URL=DATABASE_URL:latest,DATABASE_SYNC_URL=DATABASE_SYNC_URL:latest,GOOGLE_SHEETS_CREDENTIALS_JSON=GOOGLE_SHEETS_CREDENTIALS_JSON:latest,GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON=GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON:latest,GOOGLE_DRIVE_CREDENTIALS_JSON=GOOGLE_DRIVE_CREDENTIALS_JSON:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,SENTRY_DSN=SENTRY_DSN:latest"
 

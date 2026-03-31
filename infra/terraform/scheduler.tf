@@ -75,10 +75,7 @@ resource "google_cloud_scheduler_job" "cron_jobs" {
   }
 
   retry_config {
-    retry_count          = 1
-    max_retry_duration   = "300s"
-    min_backoff_duration = "30s"
-    max_backoff_duration = "120s"
+    retry_count = 0
   }
 
   depends_on = [google_project_service.required_apis["cloudscheduler.googleapis.com"]]

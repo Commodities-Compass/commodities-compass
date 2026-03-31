@@ -18,7 +18,7 @@ DEFAULT_MODEL = "gpt-4-turbo"
 
 
 class LLMClientError(Exception):
-    """Raised on LLM call failures after retries."""
+    """Raised on LLM call failure."""
 
 
 @dataclass
@@ -33,7 +33,7 @@ class LLMResponse:
 
 
 class LLMClient:
-    """Synchronous LLM client with retry logic."""
+    """Synchronous LLM client. Fails fast — no retries."""
 
     def __init__(
         self,
@@ -59,44 +59,26 @@ class LLMClient:
         *,
         temperature: float = 0.7,
         max_tokens: int = 2048,
-        max_retries: int = 2,
     ) -> LLMResponse:
-        """Call the LLM with the given prompt. Retries once on failure.
+        """Call the LLM with the given prompt. Fails immediately on error — no retries.
 
         Args:
             prompt: Full prompt text (system + user combined as assistant role,
                     matching the Make.com blueprint behaviour).
             temperature: Sampling temperature.
             max_tokens: Max response tokens.
-            max_retries: Total attempts (1 = no retry).
 
         Returns:
             LLMResponse with raw text and usage stats.
         """
-        last_error: Exception | None = None
-
-        for attempt in range(1, max_retries + 1):
-            try:
-                return self._call_openai(
-                    prompt,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    attempt=attempt,
-                )
-            except (OpenAIError, Exception) as exc:
-                last_error = exc
-                logger.warning(
-                    "LLM call attempt %d/%d failed: %s",
-                    attempt,
-                    max_retries,
-                    exc,
-                )
-                if attempt < max_retries:
-                    time.sleep(2**attempt)
-
-        raise LLMClientError(
-            f"LLM call failed after {max_retries} attempts: {last_error}"
-        ) from last_error
+        try:
+            return self._call_openai(
+                prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+        except (OpenAIError, Exception) as exc:
+            raise LLMClientError(f"LLM call failed: {exc}") from exc
 
     def _call_openai(
         self,
@@ -104,7 +86,6 @@ class LLMClient:
         *,
         temperature: float,
         max_tokens: int,
-        attempt: int,
     ) -> LLMResponse:
         """Execute a single OpenAI API call."""
         start = time.monotonic()
@@ -132,8 +113,7 @@ class LLMClient:
         )
 
         logger.info(
-            "LLM call #%d OK: model=%s tokens=%d+%d latency=%dms",
-            attempt,
+            "LLM call OK: model=%s tokens=%d+%d latency=%dms",
             self.model,
             result.input_tokens,
             result.output_tokens,

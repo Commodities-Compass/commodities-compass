@@ -1,23 +1,53 @@
 """Configuration for Barchart scraper."""
 
+import logging
 import os
 
 # Barchart URLs
 BARCHART_BASE_URL = "https://www.barchart.com/futures/quotes"
 
-# Active contract code (e.g., CAK26) — set via env var, no auto-roll.
-# Delivery months: H(Mar), K(May), N(Jul), U(Sep), Z(Dec)
-ACTIVE_CONTRACT = os.getenv("ACTIVE_CONTRACT", "")
+_logger = logging.getLogger(__name__)
+
+# Cached contract code — resolved once per process.
+_resolved_contract: str | None = None
 
 
 def get_current_contract_code() -> str:
-    """Return the active contract code from ACTIVE_CONTRACT env var."""
-    if not ACTIVE_CONTRACT:
+    """Return the active contract code, resolved from DB or env var fallback.
+
+    Resolution order:
+    1. Database: ref_contract WHERE is_active = true
+    2. Fallback: ACTIVE_CONTRACT env var (graceful degradation if DB unavailable)
+
+    Caches the result for the lifetime of the process.
+    """
+    global _resolved_contract
+    if _resolved_contract is not None:
+        return _resolved_contract
+
+    # Try DB first
+    try:
+        from scripts.contract_resolver import resolve_active_code
+        from scripts.db import get_session
+
+        with get_session() as session:
+            code = resolve_active_code(session)
+        _resolved_contract = code
+        _logger.info("Active contract: %s (source: database)", code)
+        return code
+    except Exception as exc:
+        _logger.warning("DB contract lookup failed (%s), trying env var fallback", exc)
+
+    # Fallback to env var
+    env_code = os.getenv("ACTIVE_CONTRACT", "")
+    if not env_code:
         raise RuntimeError(
-            "ACTIVE_CONTRACT env var not set. "
-            "Set it to the current contract code (e.g., CAK26)."
+            "Cannot resolve active contract: database lookup failed and "
+            "ACTIVE_CONTRACT env var not set."
         )
-    return ACTIVE_CONTRACT
+    _resolved_contract = env_code
+    _logger.info("Active contract: %s (source: env var fallback)", env_code)
+    return env_code
 
 
 def get_prices_url() -> str:

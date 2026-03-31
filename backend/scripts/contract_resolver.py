@@ -39,3 +39,17 @@ def resolve_active(session: Session) -> uuid.UUID:
     if result is None:
         raise ContractResolverError("No active contract found in ref_contract")
     return result.id
+
+
+def resolve_active_code(session: Session) -> str:
+    """Look up the active contract code (e.g., 'CAK26') from ref_contract.
+
+    Used by: Barchart scraper (replaces ACTIVE_CONTRACT env var).
+    Raises ContractResolverError if zero or multiple active contracts.
+    """
+    result = session.execute(
+        select(RefContract).where(RefContract.is_active.is_(True))
+    ).scalar_one_or_none()
+    if result is None:
+        raise ContractResolverError("No active contract found in ref_contract")
+    return result.code

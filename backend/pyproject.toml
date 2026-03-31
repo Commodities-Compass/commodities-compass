@@ -76,6 +76,7 @@ meteo-agent = "scripts.meteo_agent.main:main"
 seed-gcp = "scripts.seed_gcp:main"
 seed-trading-calendar = "scripts.seed_trading_calendar:main"
 compute-indicators = "app.engine.runner:main"
+roll-contract = "scripts.roll_contract:main"
 
 [tool.pyright]
 include = ["app", "tests"]

@@ -16,6 +16,7 @@ from app.models.reference import RefCommodity, RefContract, RefExchange
 from scripts.contract_resolver import (
     ContractResolverError,
     resolve_active,
+    resolve_active_code,
     resolve_by_code,
 )
 
@@ -72,6 +73,14 @@ class TestContractResolver:
     def test_resolve_active_none(self, sync_db_session):
         with pytest.raises(ContractResolverError, match="No active contract"):
             resolve_active(sync_db_session)
+
+    def test_resolve_active_code(self, sync_db_session, ref_chain_sync):
+        code = resolve_active_code(sync_db_session)
+        assert code == "CAK26"
+
+    def test_resolve_active_code_none(self, sync_db_session):
+        with pytest.raises(ContractResolverError, match="No active contract"):
+            resolve_active_code(sync_db_session)
 
 
 # ---------------------------------------------------------------------------

@@ -197,21 +197,9 @@ jobs:
             fi
           }
 
-          # Barchart needs ACTIVE_CONTRACT env var (explicit contract, no auto-roll)
-          BARCHART_ENV="--set-env-vars=SPREADSHEET_ID=${{ vars.SPREADSHEET_ID }},GOOGLE_DRIVE_AUDIO_FOLDER_ID=${{ vars.GOOGLE_DRIVE_AUDIO_FOLDER_ID }},GOOGLE_DRIVE_BRIEFS_FOLDER_ID=${{ vars.GOOGLE_DRIVE_BRIEFS_FOLDER_ID }},ACTIVE_CONTRACT=${{ vars.ACTIVE_CONTRACT }}"
-          deploy_job_custom() {
-            local name=$1
-            local memory=$2
-            shift 2
-            local args="$@"
-            echo "--- Deploying ${name} (${memory}) ---"
-            if gcloud run jobs describe "${name}" --region="${REGION}" --format="value(name)" 2>/dev/null; then
-              gcloud run jobs update "${name}" --image="${IMAGE}" --memory="${memory}" --cpu=1 --args="${args}" ${COMMON_FLAGS} ${SECRETS} ${BARCHART_ENV}
-            else
-              gcloud run jobs create "${name}" --image="${IMAGE}" --memory="${memory}" --cpu=1 --args="${args}" ${COMMON_FLAGS} ${SECRETS} ${BARCHART_ENV}
-            fi
-          }
-          deploy_job_custom cc-barchart-scraper     2Gi  "barchart-scraper,--sheet,production"
+          # Barchart now reads active contract from DB (ref_contract.is_active)
+          # ACTIVE_CONTRACT env var removed — use `poetry run roll-contract <code>` to switch
+          deploy_job cc-barchart-scraper     2Gi  "barchart-scraper,--sheet,production"
           deploy_job cc-ice-stocks-scraper   512Mi "ice-stocks-scraper,--sheet,production"
           deploy_job cc-cftc-scraper         512Mi "cftc-scraper,--sheet,production"
           deploy_job cc-press-review-agent   1Gi  "press-review,--sheet,production"

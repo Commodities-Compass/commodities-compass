@@ -25,6 +25,16 @@ async def get_active_contract_id(db: AsyncSession) -> uuid.UUID:
     return contract_id
 
 
+async def get_active_contract_code(db: AsyncSession) -> str:
+    """Get the active contract code (e.g., 'CAK26') from ref_contract."""
+    query = select(RefContract.code).where(RefContract.is_active.is_(True)).limit(1)
+    result = await db.execute(query)
+    code = result.scalar_one_or_none()
+    if code is None:
+        raise ValueError("No active contract found in ref_contract")
+    return code
+
+
 async def get_active_algorithm_version_id(db: AsyncSession) -> uuid.UUID:
     """Get the active algorithm version ID from pl_algorithm_version."""
     query = (

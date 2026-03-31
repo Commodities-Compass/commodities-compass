@@ -177,7 +177,7 @@ Data flows from Google Sheets to PostgreSQL via ETL. Railway crons are paused; t
 
 ### Active Pipeline (GCP Cloud Run Jobs — LIVE since 2026-03-30)
 
-9 Cloud Run Jobs run on Cloud Scheduler (21:00-22:15 UTC weekdays). Scrapers dual-write to both Google Sheets and `pl_contract_data_daily` (GCP Cloud SQL). The indicator computation engine (`app/engine/`) replaces the Google Sheets formula engine:
+9 Cloud Run Jobs run on Cloud Scheduler (19:00-20:15 UTC weekdays). Scrapers dual-write to both Google Sheets and `pl_contract_data_daily` (GCP Cloud SQL). The indicator computation engine (`app/engine/`) replaces the Google Sheets formula engine:
 
 ```
 Scrapers → pl_contract_data_daily (raw OHLCV)
@@ -216,7 +216,7 @@ Google Sheets TECHNICALS row:
 - **Volume**: Raw contract count (no conversion)
 - **IV conversion**: percentage → decimal (e.g., `55.38` → `0.5538` in Sheets)
 - **Post-write**: Auto-extends CONCLUSION formula in column AS (YTD scoring of INDICATOR decisions vs next-day price moves)
-- **Cron**: `0 21 * * 1-5` (9 PM UTC weekdays only)
+- **Cron**: `0 19 * * 1-5` (7 PM UTC weekdays only)
 - **CLI**: `python -m scripts.barchart_scraper.main --sheet production [--dry-run] [--verbose] [--headful]`
 
 ### ICE Stocks Scraper (`backend/scripts/ice_stocks_scraper/`)
@@ -225,7 +225,7 @@ Google Sheets TECHNICALS row:
 - **Source**: `https://www.ice.com/publicdocs/futures_us_reports/cocoa/cocoa_cert_stock_YYYYMMDD.xls`
 - **Method**: Pure httpx + pandas (no browser). Downloads public XLS, parses "GRAND TOTAL" row, converts bags → tonnes (`bags × 70 / 1000`).
 - **Fallback**: Walks back through business days (up to 60) until a report is found. Handles `a`-suffix variants.
-- **Cron**: `10 21 * * 1-5` (9:10 PM UTC weekdays)
+- **Cron**: `10 19 * * 1-5` (7:10 PM UTC weekdays)
 - **CLI**: `python -m scripts.ice_stocks_scraper.main --sheet production [--dry-run] [--date YYYY-MM-DD]`
 
 ### CFTC Scraper (`backend/scripts/cftc_scraper/`)
@@ -233,7 +233,7 @@ Google Sheets TECHNICALS row:
 - **Data**: COM NET US (column I) — commercial net position from CFTC COT report
 - **Source**: `https://www.cftc.gov/dea/futures/ag_lf.htm`
 - **Method**: Pure httpx + regex (no browser). Parses "COCOA - ICE FUTURES U.S." section, extracts Producer/Merchant Long − Short.
-- **Cron**: `10 21 * * 1-5` (9:10 PM UTC weekdays — idempotent, new data only on Fridays after CFTC publishes ~9:30 PM CET)
+- **Cron**: `10 19 * * 1-5` (7:10 PM UTC weekdays — idempotent, new data only on Fridays after CFTC publishes ~9:30 PM CET)
 - **CLI**: `python -m scripts.cftc_scraper.main --sheet production [--dry-run]`
 
 ### Known Issues & Lessons (2026-02-18 debugging sessions)
@@ -253,13 +253,13 @@ Four LLM-powered agents run as Railway cron services, each generating content fo
 ### Pipeline Schedule
 
 ```
- 9:00 PM UTC  -- Barchart scraper       -> TECHNICALS (CLOSE, HIGH, LOW, VOL, OI, IV)
- 9:10 PM UTC  -- ICE stocks + CFTC      -> TECHNICALS (STOCK US, COM NET US)
- 9:10 PM UTC  -- Press review agent     -> BIBLIO_ALL
- 9:10 PM UTC  -- Meteo agent            -> METEO_ALL
- 9:20 PM UTC  -- Daily analysis          -> INDICATOR + TECHNICALS (DECISION, SCORE)
- 9:30 PM UTC  -- Compass brief          -> Drive (.txt)
-10:15 PM UTC  -- Data import ETL        -> PostgreSQL (full refresh)
+ 7:00 PM UTC  -- Barchart scraper       -> TECHNICALS (CLOSE, HIGH, LOW, VOL, OI, IV)
+ 7:10 PM UTC  -- ICE stocks + CFTC      -> TECHNICALS (STOCK US, COM NET US)
+ 7:10 PM UTC  -- Press review agent     -> BIBLIO_ALL
+ 7:10 PM UTC  -- Meteo agent            -> METEO_ALL
+ 7:20 PM UTC  -- Daily analysis          -> INDICATOR + TECHNICALS (DECISION, SCORE)
+ 7:30 PM UTC  -- Compass brief          -> Drive (.txt)
+ 8:15 PM UTC  -- Data import ETL        -> PostgreSQL (full refresh)
 ```
 
 ### Press Review Agent (`backend/scripts/press_review_agent/`)
@@ -267,26 +267,26 @@ Four LLM-powered agents run as Railway cron services, each generating content fo
 - **Purpose**: Generates daily French-language cocoa press review from 6 news sources
 - **A/B test**: Running 3 providers — Claude (`claude-sonnet-4-5-20250929`), OpenAI (`o4-mini`), Gemini (`gemini-2.5-pro`)
 - **Output**: Appends row to BIBLIO_ALL (DATE, AUTEUR, RESUME, MOTS-CLE, IMPACT SYNTHETIQUES)
-- **Cron**: `10 21 * * 1-5` — **CLI**: `poetry run press-review --sheet production`
+- **Cron**: `10 19 * * 1-5` — **CLI**: `poetry run press-review --sheet production`
 
 ### Meteo Agent (`backend/scripts/meteo_agent/`)
 
 - **Purpose**: Fetches weather data from Open-Meteo for 6 cocoa-growing locations (Ghana + Côte d'Ivoire), calls OpenAI (`gpt-4.1`) for French analysis
 - **Output**: Appends row to METEO_ALL (DATE, TEXTE, RESUME, MOTS-CLE, IMPACT SYNTHETIQUES)
-- **Cron**: `10 21 * * 1-5` — **CLI**: `poetry run meteo-agent --sheet production`
+- **Cron**: `10 19 * * 1-5` — **CLI**: `poetry run meteo-agent --sheet production`
 
 ### Daily Analysis (`backend/scripts/daily_analysis/`)
 
 - **Purpose**: Core AI analysis engine replacing Make.com DAILY BOT AI. Reads 42 variables from TECHNICALS + news + weather, runs 2 LLM calls (`gpt-4-turbo`), writes trading decisions
 - **LLM Call #1**: Macro/weather analysis → MACROECO_BONUS + ECO → writes to INDICATOR sheet with HISTORIQUE row-shift
 - **LLM Call #2**: Trading decision → DECISION/CONFIANCE/DIRECTION/CONCLUSION → writes to TECHNICALS cols AO-AR
-- **Cron**: `20 21 * * 1-5` — **CLI**: `poetry run daily-analysis --sheet production`
+- **Cron**: `20 19 * * 1-5` — **CLI**: `poetry run daily-analysis --sheet production`
 
 ### Compass Brief (`backend/scripts/compass_brief/`)
 
 - **Purpose**: Generates structured `.txt` brief from all 4 sheets, uploads to Google Drive Shared Drive for NotebookLM audio podcast generation
 - **Output**: `YYYYMMDD-CompassBrief.txt` uploaded to Drive (idempotent — updates existing file for same date)
-- **Cron**: `30 21 * * 1-5` — **CLI**: `poetry run compass-brief`
+- **Cron**: `30 19 * * 1-5` — **CLI**: `poetry run compass-brief`
 
 ## Code Quality
 
@@ -378,8 +378,8 @@ The `PositionStatus` component automatically fetches and plays the audio file:
 - **CI/CD**: `.github/workflows/deploy.yml` — push to `main` triggers CI (lint + test) → Deploy (backend + frontend + 9 Cloud Run Jobs).
 - **Backend**: `backend/Dockerfile` (Python 3.11-slim, no Playwright, ~200MB). Alembic migrations on startup via `start.sh`. Cloud Run: 512Mi, 1 CPU, max 2 instances, VPC connector for Cloud SQL.
 - **Frontend**: `frontend/Dockerfile` (Node 18-alpine, serve static). Auth0 vars baked at build time via `--build-arg` from GitHub vars. Cloud Run: 256Mi, 1 CPU, max 2 instances.
-- **Cloud Run Jobs**: `backend/Dockerfile.jobs` (with Playwright, ~1GB). 9 jobs deployed via deploy.yml. `ENTRYPOINT ["poetry", "run"]`, command passed via job args.
-- **Cloud Scheduler**: 9 cron jobs in `europe-west1` (scheduler doesn't support `europe-west9`). Triggers Cloud Run Job execution via HTTP + OAuth. Schedule: 21:00-22:15 UTC weekdays.
+- **Cloud Run Jobs**: `backend/Dockerfile.jobs` (with Playwright, ~1GB). 9 jobs deployed via deploy.yml. `ENTRYPOINT ["poetry", "run"]`, command passed via job args. No retries (--max-retries=0).
+- **Cloud Scheduler**: 9 cron jobs in `europe-west1` (scheduler doesn't support `europe-west9`). Triggers Cloud Run Job execution via HTTP + OAuth. Schedule: 19:00-20:15 UTC weekdays. No retries (retryCount=0).
 - **Secrets**: GCP Secret Manager (14 secrets). Non-sensitive env vars via GitHub Vars → deploy.yml `--set-env-vars`.
 - **Auth**: Workload Identity Federation (keyless GitHub → GCP auth). No SA key files in CI/CD.
 - **Infra as code**: `infra/terraform/` — Cloud SQL, VPC connector, service accounts, schedulers.
@@ -387,15 +387,15 @@ The `PositionStatus` component automatically fetches and plays the audio file:
 ### Nightly Pipeline Schedule (UTC, weekdays)
 
 ```
-21:00  cc-barchart-scraper      → OHLCV + IV (Playwright)
-21:10  cc-ice-stocks-scraper    → STOCK US
-21:10  cc-cftc-scraper          → COM NET US
-21:10  cc-press-review-agent    → BIBLIO_ALL + pl_fundamental_article
-21:10  cc-meteo-agent           → METEO_ALL + pl_weather_observation
-21:15  cc-compute-indicators    → pl_derived + pl_indicator_daily
-21:20  cc-daily-analysis        → decision + score (LLM)
-21:30  cc-compass-brief         → Google Drive (.txt for NotebookLM)
-22:15  cc-data-import-etl       → Sheets → legacy tables (transition only)
+19:00  cc-barchart-scraper      → OHLCV + IV (Playwright)
+19:10  cc-ice-stocks-scraper    → STOCK US
+19:10  cc-cftc-scraper          → COM NET US
+19:10  cc-press-review-agent    → BIBLIO_ALL + pl_fundamental_article
+19:10  cc-meteo-agent           → METEO_ALL + pl_weather_observation
+19:15  cc-compute-indicators    → pl_derived + pl_indicator_daily
+19:20  cc-daily-analysis        → decision + score (LLM)
+19:30  cc-compass-brief         → Google Drive (.txt for NotebookLM)
+20:15  cc-data-import-etl       → Sheets → legacy tables (transition only)
 ```
 
 ## Development Notes

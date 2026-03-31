@@ -202,7 +202,7 @@ The backend follows a clean architecture pattern for maintainability:
 Three independent scrapers run on Railway cron jobs to keep market data updated:
 
 ### Barchart Scraper
-- **Schedule**: Daily at 21:00 UTC
+- **Schedule**: Daily at 19:00 UTC
 - **Source**: Barchart.com (London cocoa front-month)
 - **Method**: Playwright (browser automation)
 - **Data**: Close, High, Low, Volume, Open Interest, Implied Volatility
@@ -210,7 +210,7 @@ Three independent scrapers run on Railway cron jobs to keep market data updated:
 - **Location**: `backend/scripts/barchart_scraper/`
 
 ### ICE Stocks Scraper
-- **Schedule**: Daily at 21:10 UTC
+- **Schedule**: Daily at 19:10 UTC
 - **Source**: ICE public cocoa certified stock reports (XLS)
 - **Method**: httpx + pandas (no browser)
 - **Data**: STOCK US — certified cocoa stocks in ICE US warehouses (bags to tonnes)
@@ -218,7 +218,7 @@ Three independent scrapers run on Railway cron jobs to keep market data updated:
 - **Location**: `backend/scripts/ice_stocks_scraper/`
 
 ### CFTC Scraper
-- **Schedule**: Daily at 21:10 UTC
+- **Schedule**: Daily at 19:10 UTC
 - **Source**: CFTC.gov (Agriculture Disaggregated Futures)
 - **Method**: httpx + regex (no browser)
 - **Data**: COM NET US (Producer/Merchant Long - Short positions)
@@ -237,7 +237,7 @@ All scrapers:
 
 The core AI analysis engine, replacing the Make.com DAILY BOT AI scenario. Reads market data, calls OpenAI twice, writes trading decisions back to Google Sheets.
 
-- **Schedule**: `20 21 * * 1-5` (9:20 PM UTC, weekdays)
+- **Schedule**: `20 19 * * 1-5` (7:20 PM UTC, weekdays)
 - **Location**: `backend/scripts/daily_analysis/`
 - **CLI**: `poetry run daily-analysis --sheet production [--dry-run] [--date YYYY-MM-DD] [--force]`
 
@@ -246,7 +246,7 @@ The core AI analysis engine, replacing the Make.com DAILY BOT AI scenario. Reads
 1. **Read** TECHNICALS (last 2 rows, 42 variables), BIBLIO_ALL (macronews), METEO_ALL (weather)
 2. **LLM Call #1** (gpt-4-turbo, T=1.0) — Macro/weather analysis → MACROECO_BONUS + ECO
 3. **Write to INDICATOR** — Copy formulas A-O (CopyPasteRequest), set date, write P/S/T, write Q/R HISTORIQUE refs
-4. **Read back** FINAL INDICATOR + CONCLUSION (retry with exponential backoff)
+4. **Read back** FINAL INDICATOR + CONCLUSION (single attempt after 2s grace period)
 5. **LLM Call #2** (gpt-4-turbo, T=0.7) — Trading decision → DECISION/CONFIANCE/DIRECTION/CONCLUSION
 6. **Write to TECHNICALS** — Update AO-AR on existing row
 

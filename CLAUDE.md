@@ -75,7 +75,7 @@ The backend follows a clean architecture with separation of concerns:
   - `weather_data.py` - Legacy: weather impact data
   - `test_range.py` - Indicator color ranges (RED/ORANGE/GREEN)
   - `reference.py` - MVP: ref_commodity, ref_exchange, ref_contract, ref_trading_calendar
-  - `pipeline.py` - MVP: pl_contract_data_daily, pl_derived_indicators, pl_indicator_daily, pl_algorithm_version, pl_algorithm_config, pl_fundamental_article, pl_weather_observation
+  - `pipeline.py` - MVP: pl_contract_data_daily, pl_derived_indicators, pl_indicator_daily, pl_algorithm_version, pl_algorithm_config, pl_fundamental_article (`is_active` flag for multi-provider support), pl_weather_observation, pl_seasonal_score
   - `signal.py` - MVP: pl_signal_component (per-indicator contribution decomposition)
 - **`app/schemas/`** - Pydantic request/response models:
   - `dashboard.py` - All dashboard response schemas (PositionStatus, IndicatorsGrid, Recommendations, ChartData, News, Weather, Audio)
@@ -265,8 +265,9 @@ Four LLM-powered agents run as Railway cron services, each generating content fo
 ### Press Review Agent (`backend/scripts/press_review_agent/`)
 
 - **Purpose**: Generates daily French-language cocoa press review from 6 news sources
-- **A/B test**: Running 3 providers — Claude (`claude-sonnet-4-5-20250929`), OpenAI (`o4-mini`), Gemini (`gemini-2.5-pro`)
-- **Output**: Appends row to BIBLIO_ALL (DATE, AUTEUR, RESUME, MOTS-CLE, IMPACT SYNTHETIQUES)
+- **Provider**: OpenAI `o4-mini` (production). Claude and Gemini available via `--provider claude|gemini|all` for testing only.
+- **Active flag**: `pl_fundamental_article.is_active` controls which provider's articles the dashboard reads. Set by `PRODUCTION_PROVIDER` in `config.py`. To switch provider: update `PRODUCTION_PROVIDER` + backfill `UPDATE pl_fundamental_article SET is_active = true WHERE llm_provider = '<new>'`.
+- **Output**: Appends row to BIBLIO_ALL (DATE, AUTEUR, RESUME, MOTS-CLE, IMPACT SYNTHETIQUES) + `pl_fundamental_article` (DB)
 - **Cron**: `5 19 * * 1-5` — **CLI**: `poetry run press-review --sheet production`
 
 ### Meteo Agent (`backend/scripts/meteo_agent/`)
@@ -410,3 +411,4 @@ The `PositionStatus` component automatically fetches and plays the audio file:
 - **Always use pnpm** instead of npm for all JavaScript/TypeScript dependency management and script execution
 - **GCP env var gotcha**: `gcloud run services update --set-env-vars` REPLACES all env vars. Use `--update-env-vars` to add/update without wiping existing vars.
 - **Auth0 + React Router gotcha**: Never use bare `<Navigate>` on the Auth0 callback route. `Navigate` runs in `useLayoutEffect` and strips `?code=` params before Auth0Provider's `useEffect` can read them. Use a wrapper that waits for `isLoading=false`.
+- **DB sync from GCP**: `poetry run python scripts/sync_from_gcp.py` copies all pl_*/ref_*/aud_* tables from GCP Cloud SQL to local. Requires Cloud SQL Auth Proxy running (`cloud-sql-proxy cacaooo:europe-west9:cc-cloud-sql --port 5434`) and `GCP_DATABASE_URL=postgresql+psycopg2://cc_app:<pass>@localhost:5434/commodities_compass`. Use before generating Alembic autogenerate migrations.

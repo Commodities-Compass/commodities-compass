@@ -43,7 +43,9 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    openapi_url=f"{settings.API_V1_STR}/openapi.json" if settings.DEBUG else None,
+    docs_url=f"{settings.API_V1_STR}/docs" if settings.DEBUG else None,
+    redoc_url=f"{settings.API_V1_STR}/redoc" if settings.DEBUG else None,
     lifespan=lifespan,
 )
 
@@ -90,7 +92,6 @@ async def root():
     return {
         "message": f"Welcome to {settings.APP_NAME} API",
         "version": settings.APP_VERSION,
-        "docs": f"{settings.API_V1_STR}/docs",
     }
 
 

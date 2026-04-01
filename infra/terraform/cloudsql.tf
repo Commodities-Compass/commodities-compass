@@ -19,17 +19,10 @@ resource "google_sql_database_instance" "main" {
     disk_autoresize   = true
 
     ip_configuration {
-      ipv4_enabled                                  = true
+      ipv4_enabled                                  = false
       private_network                               = google_compute_network.vpc.id
       enable_private_path_for_google_cloud_services = true
       ssl_mode                                      = "ENCRYPTED_ONLY"
-
-      # TEMPORARY: Allow Railway scrapers to reach Cloud SQL during dual-write phase.
-      # Remove when scrapers migrate to Cloud Run Jobs (Phase 4+).
-      authorized_networks {
-        name  = "railway-temp"
-        value = "0.0.0.0/0"
-      }
     }
 
     backup_configuration {

@@ -60,22 +60,6 @@ def get_volatility_url() -> str:
     return f"{BARCHART_BASE_URL}/{contract}/volatility-greeks?futuresOptionsView=merged"
 
 
-# Google Sheets configuration
-SPREADSHEET_ID = "16VXIrG9ybjjaorTeiR8sh5nrPIj9I7EFGr2iBSAjSSA"
-SHEET_NAME_PRODUCTION = "TECHNICALS"
-SHEET_NAME_STAGING = "TECHNICALS_STAGING"
-
-# Column indices (0-based) in TECHNICALS sheet
-COLUMN_MAPPING = {
-    "timestamp": 0,  # Column A
-    "close": 1,  # Column B
-    "high": 2,  # Column C
-    "low": 3,  # Column D
-    "volume": 4,  # Column E
-    "open_interest": 5,  # Column F
-    "implied_volatility": 6,  # Column G
-}
-
 # Validation ranges
 VALIDATION_RANGES = {
     "close": (1500.0, 20000.0),  # GBP/tonne

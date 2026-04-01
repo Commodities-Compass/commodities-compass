@@ -57,12 +57,6 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = config("REDIS_URL", default="redis://localhost:6379/0", cast=str)
 
-    # Google Sheets
-    GOOGLE_SHEETS_CREDENTIALS_JSON: str = config(
-        "GOOGLE_SHEETS_CREDENTIALS_JSON", default="", cast=str
-    )
-    SPREADSHEET_ID: str = config("SPREADSHEET_ID", default="", cast=str)
-
     # Google Drive
     GOOGLE_DRIVE_CREDENTIALS_JSON: str = config(
         "GOOGLE_DRIVE_CREDENTIALS_JSON",
@@ -72,9 +66,6 @@ class Settings(BaseSettings):
     GOOGLE_DRIVE_AUDIO_FOLDER_ID: str = config(
         "GOOGLE_DRIVE_AUDIO_FOLDER_ID", default="", cast=str
     )
-
-    # Feature flags
-    USE_NEW_TABLES: bool = config("USE_NEW_TABLES", default=False, cast=bool)
 
     # External APIs
     WEATHER_API_KEY: str = config("WEATHER_API_KEY", default="", cast=str)

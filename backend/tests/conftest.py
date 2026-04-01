@@ -19,7 +19,6 @@ os.environ.setdefault("AUTH0_DOMAIN", "test.auth0.com")
 os.environ.setdefault("AUTH0_CLIENT_ID", "test-client-id")
 os.environ.setdefault("AUTH0_API_AUDIENCE", "https://test-api")
 os.environ.setdefault("AUTH0_ISSUER", "https://test.auth0.com/")
-os.environ.setdefault("SPREADSHEET_ID", "test-spreadsheet-id")
 os.environ.setdefault("GOOGLE_DRIVE_AUDIO_FOLDER_ID", "test-folder-id")
 
 from collections.abc import AsyncGenerator, Generator  # noqa: E402

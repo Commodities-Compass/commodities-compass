@@ -199,12 +199,11 @@ jobs:
 
           # Barchart now reads active contract from DB (ref_contract.is_active)
           # ACTIVE_CONTRACT env var removed — use `poetry run roll-contract <code>` to switch
-          deploy_job cc-barchart-scraper     2Gi  "barchart-scraper,--sheet,production"
-          deploy_job cc-ice-stocks-scraper   512Mi "ice-stocks-scraper,--sheet,production"
-          deploy_job cc-cftc-scraper         512Mi "cftc-scraper,--sheet,production"
-          deploy_job cc-press-review-agent   1Gi  "press-review,--sheet,production"
-          deploy_job cc-meteo-agent          1Gi  "meteo-agent,--sheet,production"
+          deploy_job cc-barchart-scraper     2Gi  "barchart-scraper"
+          deploy_job cc-ice-stocks-scraper   512Mi "ice-stocks-scraper"
+          deploy_job cc-cftc-scraper         512Mi "cftc-scraper"
+          deploy_job cc-press-review-agent   1Gi  "press-review"
+          deploy_job cc-meteo-agent          1Gi  "meteo-agent"
           deploy_job cc-compute-indicators   1Gi  "compute-indicators,--all-contracts"
-          deploy_job cc-daily-analysis       1Gi  "daily-analysis,--db"
+          deploy_job cc-daily-analysis       1Gi  "daily-analysis"
           deploy_job cc-compass-brief        1Gi  "compass-brief"
-          deploy_job cc-data-import-etl      1Gi  "import"

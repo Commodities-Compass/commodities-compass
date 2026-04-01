@@ -34,7 +34,6 @@ pydantic-settings = "^2.1.0"
 # Google Sheets API
 google-api-python-client = "^2.118.0"
 google-auth-httplib2 = "^0.2.0"
-google-auth-oauthlib = "^1.2.0"
 
 # Observability
 sentry-sdk = {extras = ["fastapi", "sqlalchemy", "httpx"], version = "^2.0.0"}
@@ -66,7 +65,6 @@ pre-commit = "^3.6.0"
 [tool.poetry.scripts]
 dev = "app.main:main"
 lint = "app.lint:main"
-import = "app.services.data_import:main"
 barchart-scraper = "scripts.barchart_scraper.main:main"
 ice-stocks-scraper = "scripts.ice_stocks_scraper.main:main"
 cftc-scraper = "scripts.cftc_scraper.main:main"

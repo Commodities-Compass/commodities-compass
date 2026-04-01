@@ -1,17 +1,13 @@
 """
 Dashboard data transformers.
 
-Transforms database models and raw data into API response formats.
+Transforms database query results into API response formats.
 Separates data transformation logic from API endpoints.
 """
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 from datetime import date
 
-from app.models.technicals import Technicals
-from app.models.test_range import TestRange
-from app.models.market_research import MarketResearch
-from app.models.weather_data import WeatherData
 from app.schemas.dashboard import (
     PositionStatusResponse,
     CommodityIndicator,
@@ -30,105 +26,12 @@ from app.schemas.dashboard import (
 from app.utils.date_utils import format_date_for_display
 
 
-def create_indicator_for_gauge(
-    indicator_name: str,
-    technicals: Technicals,
-    test_ranges: List[TestRange],
-) -> CommodityIndicator:
-    """
-    Create a gauge indicator from technicals data and test ranges.
-
-    Args:
-        indicator_name: Name of the indicator
-        technicals: Technicals model instance
-        test_ranges: List of test ranges for this indicator
-
-    Returns:
-        CommodityIndicator for gauge display
-
-    Raises:
-        ValueError: If no ranges are defined for the indicator
-    """
-    # Mapping of indicator names to technicals attributes
-    indicator_mappings = {
-        "macroeco": "macroeco",
-        "rsi": "rsi_14d",
-        "macd": "macd",
-        "percent_k": "percent_k",
-        "atr": "atr",
-        "vol_oi": "vol_oi",
-    }
-
-    if indicator_name not in indicator_mappings:
-        raise ValueError(f"Unknown indicator: {indicator_name}")
-
-    # Get the value from technicals
-    attr_name = indicator_mappings[indicator_name]
-    if not hasattr(technicals, attr_name):
-        raise ValueError(f"Technicals object missing attribute: {attr_name}")
-
-    value = getattr(technicals, attr_name)
-    if value is None:
-        raise ValueError(f"No value available for indicator: {indicator_name}")
-
-    if not test_ranges:
-        raise ValueError(
-            f"No ranges defined for indicator '{indicator_name}' in test_range table"
-        )
-
-    # Calculate min and max from ranges
-    all_values = []
-    for r in test_ranges:
-        all_values.extend([r.range_low, r.range_high])
-    min_value = min(all_values)
-    max_value = max(all_values)
-
-    # Convert ranges to IndicatorRange schema
-    ranges = [
-        IndicatorRange(
-            range_low=float(r.range_low),
-            range_high=float(r.range_high),
-            area=r.area,
-        )
-        for r in test_ranges
-    ]
-
-    # Create display label
-    display_names = {
-        "macroeco": "MACROECO",
-        "rsi": "RSI",
-        "macd": "MACD",
-        "percent_k": "%K",
-        "atr": "ATR",
-        "vol_oi": "VOL/OI",
-    }
-
-    return CommodityIndicator(
-        value=float(value),
-        min=min_value,
-        max=max_value,
-        label=display_names[indicator_name],
-        ranges=ranges,
-    )
-
-
 def transform_to_position_status_response(
     position: Optional[str],
     ytd_performance: float,
-    response_date,  # Accept datetime directly from service
+    response_date,
 ) -> PositionStatusResponse:
-    """
-    Transform position data to PositionStatusResponse.
-
-    Args:
-        position: Position of the day ("OPEN", "HEDGE", "MONITOR")
-        ytd_performance: YTD performance percentage
-        response_date: Datetime for the response
-
-    Returns:
-        PositionStatusResponse
-    """
-    # Normalize and default to MONITOR if no valid position found
+    """Transform position data to PositionStatusResponse."""
     if position:
         position = position.strip().upper()
     if not position or position not in ["OPEN", "HEDGE", "MONITOR"]:
@@ -145,16 +48,7 @@ def transform_to_indicators_grid_response(
     indicators_data: Dict[str, Dict[str, Any]],
     response_date: date,
 ) -> IndicatorsGridResponse:
-    """
-    Transform indicators data to IndicatorsGridResponse.
-
-    Args:
-        indicators_data: Dictionary of indicator data
-        response_date: Date for the response
-
-    Returns:
-        IndicatorsGridResponse
-    """
+    """Transform indicators data to IndicatorsGridResponse."""
     indicators = {}
 
     for indicator_name, data in indicators_data.items():
@@ -175,7 +69,6 @@ def transform_to_indicators_grid_response(
             ranges=ranges,
         )
 
-    # Convert date to datetime for schema compatibility
     from datetime import datetime
 
     response_datetime = datetime.combine(response_date, datetime.min.time())
@@ -191,18 +84,7 @@ def transform_to_recommendations_response(
     raw_score: Optional[str],
     response_date: date,
 ) -> RecommendationsResponse:
-    """
-    Transform recommendations data to RecommendationsResponse.
-
-    Args:
-        recommendations: List of parsed recommendations
-        raw_score: Raw score text
-        response_date: Date for the response
-
-    Returns:
-        RecommendationsResponse
-    """
-    # Convert date to datetime for schema compatibility
+    """Transform recommendations data to RecommendationsResponse."""
     from datetime import datetime
 
     response_datetime = datetime.combine(response_date, datetime.min.time())
@@ -217,15 +99,7 @@ def transform_to_recommendations_response(
 def transform_to_chart_data_response(
     chart_data: List[Dict[str, Any]],
 ) -> ChartDataResponse:
-    """
-    Transform chart data to ChartDataResponse.
-
-    Args:
-        chart_data: List of chart data dictionaries
-
-    Returns:
-        ChartDataResponse
-    """
+    """Transform chart data to ChartDataResponse."""
     data_points = [
         ChartDataPoint(
             date=point["date"],
@@ -244,43 +118,30 @@ def transform_to_chart_data_response(
 
 
 def transform_market_research_to_news(
-    market_research: Union[MarketResearch, Dict[str, Any]],
+    market_research: Dict[str, Any],
 ) -> NewsResponse:
-    """Transform MarketResearch ORM or pl_fundamental_article dict to NewsResponse."""
-    if isinstance(market_research, dict):
-        return NewsResponse(
-            date=format_date_for_display(market_research["date"]),
-            title=market_research.get("impact_synthesis"),
-            content=market_research.get("summary"),
-            author=market_research.get("author"),
-        )
+    """Transform pl_fundamental_article dict to NewsResponse."""
     return NewsResponse(
-        date=format_date_for_display(market_research.date),
-        title=market_research.impact_synthesis,
-        content=market_research.summary,
-        author=market_research.author,
+        date=format_date_for_display(market_research["date"]),
+        title=market_research.get("impact_synthesis"),
+        content=market_research.get("summary"),
+        author=market_research.get("author"),
     )
 
 
 def transform_weather_data_to_response(
-    weather_data: Union[WeatherData, Dict[str, Any]],
+    weather_data: Dict[str, Any],
 ) -> WeatherResponse:
-    """Transform WeatherData ORM or pl_weather_observation dict to WeatherResponse."""
-    if isinstance(weather_data, dict):
-        return WeatherResponse(
-            date=format_date_for_display(weather_data["date"]),
-            description=weather_data.get("text"),
-            impact=weather_data.get("impact_synthesis"),
-        )
+    """Transform pl_weather_observation dict to WeatherResponse."""
     return WeatherResponse(
-        date=format_date_for_display(weather_data.date),
-        description=weather_data.text,
-        impact=weather_data.impact_synthesis,
+        date=format_date_for_display(weather_data["date"]),
+        description=weather_data.get("text"),
+        impact=weather_data.get("impact_synthesis"),
     )
 
 
 def transform_to_weather_enriched_response(
-    weather_data: Union[WeatherData, Dict[str, Any]],
+    weather_data: Dict[str, Any],
     campaign: Optional[str],
     campaign_health: Optional[float],
     seasons: list[SeasonStatus],
@@ -288,20 +149,12 @@ def transform_to_weather_enriched_response(
     impact_score: Optional[int],
     harmattan: Optional[HarmattanStatus] = None,
 ) -> WeatherEnrichedResponse:
-    """Transform WeatherData (ORM or dict) + seasonal data into enriched response."""
-    if isinstance(weather_data, dict):
-        w_date = weather_data.get("date", date.today())
-        w_text = weather_data.get("text", "")
-        w_impact = weather_data.get("impact_synthesis", "")
-    else:
-        w_date = weather_data.date
-        w_text = weather_data.text or ""
-        w_impact = weather_data.impact_synthesis or ""
-
+    """Transform weather dict + seasonal data into enriched response."""
     return WeatherEnrichedResponse(
-        date=format_date_for_display(w_date),
-        description=w_text or "No weather description available",
-        impact=w_impact or "No market impact assessment available",
+        date=format_date_for_display(weather_data.get("date", date.today())),
+        description=weather_data.get("text", "") or "No weather description available",
+        impact=weather_data.get("impact_synthesis", "")
+        or "No market impact assessment available",
         campaign=campaign,
         campaign_health=campaign_health,
         seasons=seasons,

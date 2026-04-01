@@ -5,30 +5,12 @@ from enum import Enum
 # Logging
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
-# Google Sheets
-SPREADSHEET_ID = "16VXIrG9ybjjaorTeiR8sh5nrPIj9I7EFGr2iBSAjSSA"
-TECHNICALS_SHEET = "TECHNICALS"
-CLOSE_COLUMN_INDEX = 1  # Column B (0-based)
-
 
 class Provider(str, Enum):
     CLAUDE = "claude"
     OPENAI = "openai"
     GEMINI = "gemini"
 
-
-SHEET_NAMES: dict[str, dict[Provider, str]] = {
-    "staging": {
-        Provider.CLAUDE: "BIBLIO_ALL_STAGING_CLAUDE",
-        Provider.OPENAI: "BIBLIO_ALL_STAGING_OPENAI",
-        Provider.GEMINI: "BIBLIO_ALL_STAGING_GEMINI",
-    },
-    "production": {
-        Provider.CLAUDE: "BIBLIO_ALL_STAGING_CLAUDE",
-        Provider.OPENAI: "BIBLIO_ALL",
-        Provider.GEMINI: "BIBLIO_ALL_STAGING_GEMINI",
-    },
-}
 
 MODEL_IDS = {
     Provider.CLAUDE: "claude-sonnet-4-5-20250929",

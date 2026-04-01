@@ -46,10 +46,6 @@ locals {
       description = "Generate structured brief and upload to Google Drive"
       schedule    = "30 19 * * 1-5"
     }
-    data-import-etl = {
-      description = "Full-refresh ETL from Google Sheets to PostgreSQL"
-      schedule    = "15 20 * * 1-5"
-    }
   }
 }
 

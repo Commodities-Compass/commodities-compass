@@ -1,16 +1,9 @@
 """CLI entry point for the Compass Brief generator.
 
 Usage:
-    # DB mode (new — no Sheets dependency)
-    poetry run compass-brief --db --dry-run
-    poetry run compass-brief --db
-
-    # Legacy Sheets mode
     poetry run compass-brief --dry-run
     poetry run compass-brief
-
-    # Save locally
-    poetry run compass-brief --db --output /tmp/brief.txt
+    poetry run compass-brief --output /tmp/brief.txt
 """
 
 import argparse
@@ -49,11 +42,6 @@ def _parse_args() -> argparse.Namespace:
         description="Commodities Compass — Daily Brief Generator"
     )
     parser.add_argument(
-        "--db",
-        action="store_true",
-        help="Read from pl_* tables instead of Google Sheets",
-    )
-    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Generate brief and print to stdout, no upload",
@@ -77,31 +65,6 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _read_from_db():
-    """Read brief data from database."""
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import Session
-
-    from app.core.config import settings
-    from scripts.compass_brief.db_reader import DBBriefReader
-
-    db_url = str(settings.DATABASE_SYNC_URL)
-    engine = create_engine(db_url)
-
-    with Session(engine) as session:
-        reader = DBBriefReader(session)
-        return reader.read_all()
-
-
-def _read_from_sheets():
-    """Read brief data from Google Sheets (legacy)."""
-    from scripts.compass_brief.sheets_reader import SheetsReader
-
-    creds = get_credentials_json()
-    reader = SheetsReader(creds)
-    return reader.read_all()
-
-
 @monitor(monitor_slug="compass-brief")
 def main() -> int:
     args = _parse_args()
@@ -115,18 +78,25 @@ def main() -> int:
     if should_skip_non_trading_day(force=args.force):
         return 0
 
-    mode = "DB" if args.db else "SHEETS"
     logger.info("=" * 60)
-    logger.info("Compass Brief Generator (%s)", mode)
+    logger.info("Compass Brief Generator")
     logger.info("Mode: %s", "DRY RUN" if args.dry_run else "UPLOAD")
     logger.info("=" * 60)
 
     try:
-        # 1. Read data
-        if args.db:
-            data = _read_from_db()
-        else:
-            data = _read_from_sheets()
+        # 1. Read data from DB
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import Session
+
+        from app.core.config import settings
+        from scripts.compass_brief.db_reader import DBBriefReader
+
+        db_url = str(settings.DATABASE_SYNC_URL)
+        engine = create_engine(db_url)
+
+        with Session(engine) as session:
+            reader = DBBriefReader(session)
+            data = reader.read_all()
 
         # 2. Generate brief text
         brief = generate_brief(data)
@@ -157,7 +127,6 @@ def main() -> int:
         sentry_sdk.set_context(
             "compass_brief",
             {
-                "source": mode,
                 "today": data.today.date,
                 "yesterday": data.yesterday.date,
                 "filename": filename,

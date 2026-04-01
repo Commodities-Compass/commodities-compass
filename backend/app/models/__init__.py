@@ -1,18 +1,14 @@
 """
 Database models for Commodities Compass.
 
-Legacy models (technicals, indicator, market_research, weather_data, test_range)
-remain for backward compatibility. New MVP schema models use prefixed names
-(ref_, pl_, aud_) and UUID primary keys.
+Legacy model files (technicals, indicator, market_research, weather_data)
+are kept for Alembic migration history. They are NOT imported here —
+use pl_* tables for all new code.
 """
 
 from .base import Base
 
-# Legacy models
-from .technicals import Technicals
-from .indicator import Indicator
-from .market_research import MarketResearch
-from .weather_data import WeatherData
+# Legacy — only test_range is still used by dashboard (gauge color zones)
 from .test_range import TestRange
 
 # MVP schema — Reference tables
@@ -38,11 +34,6 @@ from .signal import PlSignalComponent
 
 __all__ = [
     "Base",
-    # Legacy
-    "Technicals",
-    "Indicator",
-    "MarketResearch",
-    "WeatherData",
     "TestRange",
     # Reference
     "RefExchange",

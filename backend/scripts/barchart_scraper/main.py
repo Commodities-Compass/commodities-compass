@@ -2,7 +2,6 @@
 
 import argparse
 import logging
-import os
 import sys
 from pathlib import Path
 
@@ -11,13 +10,8 @@ from dotenv import load_dotenv
 from sentry_sdk.crons import monitor
 
 from app.core.sentry import init_sentry
-from scripts.barchart_scraper.config import (
-    LOG_FORMAT,
-    SHEET_NAME_PRODUCTION,
-    SHEET_NAME_STAGING,
-)
+from scripts.barchart_scraper.config import LOG_FORMAT
 from scripts.barchart_scraper.scraper import BarchartScraper, BarchartScraperError
-from scripts.barchart_scraper.sheets_writer import SheetsWriter, SheetsWriterError
 from scripts.barchart_scraper.validator import DataValidator
 
 logging.basicConfig(
@@ -27,27 +21,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
-def load_credentials() -> str:
-    """
-    Load Google Sheets credentials from environment.
-    Uses GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON (scraper-specific read-write SA).
-
-    Returns:
-        Credentials JSON string
-
-    Raises:
-        RuntimeError: If credentials not found
-    """
-    creds = os.getenv("GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON")
-    if not creds:
-        raise RuntimeError(
-            "GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON environment variable not set. "
-            "See .env.example for setup instructions."
-        )
-    return creds
-
-
 # Load env + init Sentry BEFORE @monitor-decorated function
 load_dotenv(Path(__file__).parent.parent.parent / ".env")
 init_sentry("barchart-scraper")
@@ -55,25 +28,13 @@ init_sentry("barchart-scraper")
 
 @monitor(monitor_slug="barchart-scraper")
 def main() -> int:
-    """
-    Main entry point.
-
-    Returns:
-        Exit code (0 = success, 1 = failure)
-    """
     parser = argparse.ArgumentParser(
         description="Barchart scraper for London cocoa futures"
     )
     parser.add_argument(
-        "--sheet",
-        choices=["staging", "production"],
-        default="staging",
-        help="Target sheet: 'staging' (TECHNICALS_STAGING) or 'production' (TECHNICALS)",
-    )
-    parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Run scraper and validation, but don't write to Sheets (for testing)",
+        help="Run scraper and validation, but don't write to DB",
     )
     parser.add_argument(
         "--verbose",
@@ -105,7 +66,6 @@ def main() -> int:
     logger.info("=" * 60)
     logger.info("Barchart Scraper - London Cocoa #7 (CA*0)")
     logger.info(f"Mode: {'DRY RUN' if args.dry_run else 'LIVE'}")
-    logger.info(f"Target: {args.sheet.upper()}")
     logger.info(f"Browser: {'HEADFUL (visible)' if args.headful else 'HEADLESS'}")
     logger.info("=" * 60)
 
@@ -127,7 +87,7 @@ def main() -> int:
             )
             return 1
 
-        # Step 3: Write to GCP PostgreSQL (mandatory — DB is source of truth)
+        # Step 3: Write to GCP PostgreSQL
         logger.info("Step 3: Writing to GCP PostgreSQL...")
         from scripts.barchart_scraper.config import get_current_contract_code
         from scripts.barchart_scraper.db_writer import write_ohlcv
@@ -138,16 +98,6 @@ def main() -> int:
                 session, data, get_current_contract_code(), dry_run=args.dry_run
             )
 
-        # Step 4: Write to Sheets
-        sheet_name = (
-            SHEET_NAME_STAGING if args.sheet == "staging" else SHEET_NAME_PRODUCTION
-        )
-        logger.info(f"Step 4: Writing to Google Sheets ({sheet_name})...")
-
-        creds = load_credentials()
-        writer = SheetsWriter(creds)
-        writer.append_row(data, sheet_name=sheet_name, dry_run=args.dry_run)
-
         sentry_sdk.set_context(
             "scrape_result",
             {
@@ -157,7 +107,6 @@ def main() -> int:
                 "volume": str(data.get("volume")),
                 "oi": str(data.get("open_interest")),
                 "iv": str(data.get("iv")),
-                "sheet": sheet_name,
                 "dry_run": args.dry_run,
             },
         )
@@ -169,10 +118,6 @@ def main() -> int:
 
     except BarchartScraperError as e:
         logger.error(f"Scraper error: {e}")
-        sentry_sdk.capture_exception(e)
-        return 1
-    except SheetsWriterError as e:
-        logger.error(f"Sheets writer error: {e}")
         sentry_sdk.capture_exception(e)
         return 1
     except Exception as e:

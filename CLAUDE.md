@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Commodities Compass is a Business Intelligence application for commodities trading, providing real-time market insights, technical analysis, and trading signals for cocoa (ICE contracts). This is a monorepo with a FastAPI backend and React frontend, using Auth0 for authentication and PostgreSQL (GCP Cloud SQL) for data storage. Deployed on GCP Cloud Run with 9 automated Cloud Run Jobs (scrapers, agents, compute engine). Dashboard reads from `pl_*` tables (`USE_NEW_TABLES=true`). Railway is paused, pending Phase 5 kill.
+Commodities Compass is a Business Intelligence application for commodities trading, providing real-time market insights, technical analysis, and trading signals for cocoa (ICE contracts). This is a monorepo with a FastAPI backend and React frontend, using Auth0 for authentication and PostgreSQL (GCP Cloud SQL) for data storage. Deployed on GCP Cloud Run with 8 automated Cloud Run Jobs (scrapers, agents, compute engine). Dashboard reads from `pl_*` tables. Google Sheets is no longer used as a data source — all data flows through PostgreSQL. Google Drive is still used for audio (NotebookLM) and brief uploads.
 
 ## Development Commands
 
@@ -26,7 +26,6 @@ Commodities Compass is a Business Intelligence application for commodities tradi
 
 - `poetry run dev` - Start FastAPI development server
 - `poetry run lint` - Run pre-commit hooks (ruff, pyright)
-- `poetry run import` - Run Google Sheets data import
 - `poetry install` - Install Python dependencies
 - `poetry run alembic upgrade head` - Run database migrations
 - `poetry run pytest` - Run backend tests
@@ -54,12 +53,12 @@ The backend follows a clean architecture with separation of concerns:
 
 - **`app/main.py`** - FastAPI application entry point with CORS, rate limiting (slowapi), security headers middleware, request logging, exception handling, and OpenAPI/Auth0 schema configuration
 - **`app/core/`** - Core functionality:
-  - `config.py` - Pydantic settings with environment variable management. Includes `USE_NEW_TABLES` feature flag for pl_* table migration.
+  - `config.py` - Pydantic settings with environment variable management.
   - `auth.py` - Auth0 JWT token verification with JWKS caching (6-hour TTL) and user extraction
   - `security.py` - Password hashing (bcrypt) and token utilities
   - `database.py` - Async SQLAlchemy setup with dual engines (async for app, sync for Alembic)
   - `rate_limit.py` - Shared slowapi limiter instance (extracted to avoid circular imports)
-  - `excel_mappings.py` - Excel/Google Sheets column to database mapping configuration (5 sheets, 100+ column mappings)
+
 - **`app/api/api_v1/`** - API endpoints focused on HTTP concerns:
   - `api.py` - Router aggregator combining all endpoint modules
   - `endpoints/auth.py` - Authentication endpoints (me, verify)
@@ -80,9 +79,8 @@ The backend follows a clean architecture with separation of concerns:
 - **`app/schemas/`** - Pydantic request/response models:
   - `dashboard.py` - All dashboard response schemas (PositionStatus, IndicatorsGrid, Recommendations, ChartData, News, Weather, Audio)
 - **`app/services/`** - Business logic layer (service-oriented architecture):
-  - `data_import.py` - Google Sheets to PostgreSQL ETL pipeline (legacy, kept during transition)
-  - `dashboard_service.py` - Pure business logic for dashboard operations. Feature flag `USE_NEW_TABLES` switches between legacy tables and pl_* tables. Each function has a `_pl_*` variant for contract-centric queries.
-  - `dashboard_transformers.py` - Data transformation between models/dicts and API responses. Accepts both ORM objects (legacy) and dicts (pl_* path).
+  - `dashboard_service.py` - Pure business logic for dashboard operations. All queries read from pl_* tables (contract-centric).
+  - `dashboard_transformers.py` - Data transformation between dicts and API responses.
   - `audio_service.py` - Google Drive audio file integration (singleton service)
 - **`app/utils/`** - Reusable utility functions:
   - `date_utils.py` - Date parsing, validation, business date conversion (weekend to Friday)
@@ -148,7 +146,7 @@ Frontend code uses Auth0 variables (not VITE_ prefixed) exposed via custom Vite 
 - Database URL: `postgresql+asyncpg://postgres:password@localhost:5433/commodities_compass`
 - Async SQLAlchemy with asyncpg driver for app, sync engine for Alembic migrations
 - Multiple migrations exist (idempotent with `_has_column()` checks and `if_not_exists=True` for safe re-application on GCP)
-- **Two database layers coexist**: legacy tables (technicals, indicator, market_research, weather_data) and MVP `pl_*` tables. Dashboard API reads from pl_* tables (`USE_NEW_TABLES=true` since 2026-03-30). Legacy tables kept alive by `data-import-etl` during transition. Legacy tables die in Phase 5.
+- **Legacy tables** (technicals, indicator, market_research, weather_data) still exist in the database but are no longer read by any production code. Dashboard API reads exclusively from `pl_*` tables. Legacy tables will be dropped in a future migration.
 
 ### Authentication Flow
 
@@ -161,23 +159,9 @@ Frontend code uses Auth0 variables (not VITE_ prefixed) exposed via custom Vite 
 
 ## Data Pipeline
 
-### Legacy Pipeline (Railway — PAUSED since 2026-03-30, dies in Phase 5)
+### Pipeline (GCP Cloud Run Jobs)
 
-Data flows from Google Sheets to PostgreSQL via ETL. Railway crons are paused; the `data-import-etl` Cloud Run Job keeps legacy tables in sync during transition:
-
-1. **Google Sheets ETL** implemented in `app/services/data_import.py` (run with `poetry run import`)
-2. **Full refresh strategy**: Each import clears existing table data and re-inserts all rows
-3. **5 sheets imported** with column mappings defined in `app/core/excel_mappings.py`:
-   - **TECHNICALS** → `technicals` table: OHLCV data with 40+ technical indicators
-   - **INDICATOR** → `indicator` table: Normalized indicators, composite scores, macroeconomic analysis
-   - **BIBLIO_ALL** → `market_research` table: Research articles with LLM impact synthesis
-   - **METEO_ALL** → `weather_data` table: Agricultural weather from Ghana & Côte d'Ivoire
-   - **TEST RANGE** → `test_range` table: Color zone thresholds for gauge indicators
-4. **Data transformations**: `parse_datetime`, `parse_decimal`, `parse_decimal_from_string`, `parse_integer` for handling US number formats, percentages, and formulas
-
-### Active Pipeline (GCP Cloud Run Jobs — LIVE since 2026-03-30)
-
-9 Cloud Run Jobs run on Cloud Scheduler (19:00-20:15 UTC weekdays). Scrapers dual-write to both Google Sheets and `pl_contract_data_daily` (GCP Cloud SQL). The indicator computation engine (`app/engine/`) replaces the Google Sheets formula engine:
+8 Cloud Run Jobs run on Cloud Scheduler (19:00-20:15 UTC weekdays). All scrapers write to `pl_contract_data_daily` (GCP Cloud SQL). The indicator computation engine (`app/engine/`) replaces the former Google Sheets formula engine:
 
 ```
 Scrapers → pl_contract_data_daily (raw OHLCV)
@@ -217,7 +201,7 @@ Google Sheets TECHNICALS row:
 - **IV conversion**: percentage → decimal (e.g., `55.38` → `0.5538` in Sheets)
 - **Post-write**: Auto-extends CONCLUSION formula in column AS (YTD scoring of INDICATOR decisions vs next-day price moves)
 - **Cron**: `0 19 * * 1-5` (7 PM UTC weekdays only)
-- **CLI**: `python -m scripts.barchart_scraper.main --sheet production [--dry-run] [--verbose] [--headful]`
+- **CLI**: `poetry run barchart-scraper [--dry-run] [--verbose] [--headful]`
 
 ### ICE Stocks Scraper (`backend/scripts/ice_stocks_scraper/`)
 
@@ -226,7 +210,7 @@ Google Sheets TECHNICALS row:
 - **Method**: Pure httpx + pandas (no browser). Downloads public XLS, parses "GRAND TOTAL" row, converts bags → tonnes (`bags × 70 / 1000`).
 - **Fallback**: Walks back through business days (up to 60) until a report is found. Handles `a`-suffix variants.
 - **Cron**: `5 19 * * 1-5` (7:05 PM UTC weekdays — 5 min after Barchart to ensure row exists)
-- **CLI**: `python -m scripts.ice_stocks_scraper.main --sheet production [--dry-run] [--date YYYY-MM-DD]`
+- **CLI**: `poetry run ice-stocks-scraper [--dry-run] [--date YYYY-MM-DD]`
 
 ### CFTC Scraper (`backend/scripts/cftc_scraper/`)
 
@@ -234,7 +218,7 @@ Google Sheets TECHNICALS row:
 - **Source**: `https://www.cftc.gov/dea/futures/ag_lf.htm`
 - **Method**: Pure httpx + regex (no browser). Parses "COCOA - ICE FUTURES U.S." section, extracts Producer/Merchant Long − Short.
 - **Cron**: `5 19 * * 1-5` (7:05 PM UTC weekdays — 5 min after Barchart; idempotent, new data only on Fridays after CFTC publishes ~9:30 PM CET)
-- **CLI**: `python -m scripts.cftc_scraper.main --sheet production [--dry-run]`
+- **CLI**: `poetry run cftc-scraper [--dry-run]`
 
 ### Known Issues & Lessons (2026-02-18 debugging sessions)
 
@@ -268,20 +252,20 @@ Four LLM-powered agents run as Railway cron services, each generating content fo
 - **Provider**: OpenAI `o4-mini` (production). Claude and Gemini available via `--provider claude|gemini|all` for testing only.
 - **Active flag**: `pl_fundamental_article.is_active` controls which provider's articles the dashboard reads. Set by `PRODUCTION_PROVIDER` in `config.py`. To switch provider: update `PRODUCTION_PROVIDER` + backfill `UPDATE pl_fundamental_article SET is_active = true WHERE llm_provider = '<new>'`.
 - **Output**: Appends row to BIBLIO_ALL (DATE, AUTEUR, RESUME, MOTS-CLE, IMPACT SYNTHETIQUES) + `pl_fundamental_article` (DB)
-- **Cron**: `5 19 * * 1-5` — **CLI**: `poetry run press-review --sheet production`
+- **Cron**: `5 19 * * 1-5` — **CLI**: `poetry run press-review [--dry-run]`
 
 ### Meteo Agent (`backend/scripts/meteo_agent/`)
 
 - **Purpose**: Fetches weather data from Open-Meteo for 6 cocoa-growing locations (Ghana + Côte d'Ivoire), calls OpenAI (`gpt-4.1`) for French analysis
 - **Output**: Appends row to METEO_ALL (DATE, TEXTE, RESUME, MOTS-CLE, IMPACT SYNTHETIQUES)
-- **Cron**: `10 19 * * 1-5` — **CLI**: `poetry run meteo-agent --sheet production`
+- **Cron**: `10 19 * * 1-5` — **CLI**: `poetry run meteo-agent [--dry-run]`
 
 ### Daily Analysis (`backend/scripts/daily_analysis/`)
 
 - **Purpose**: Core AI analysis engine replacing Make.com DAILY BOT AI. Reads 42 variables from TECHNICALS + news + weather, runs 2 LLM calls (`gpt-4-turbo`), writes trading decisions
 - **LLM Call #1**: Macro/weather analysis → MACROECO_BONUS + ECO → writes to INDICATOR sheet with HISTORIQUE row-shift
 - **LLM Call #2**: Trading decision → DECISION/CONFIANCE/DIRECTION/CONCLUSION → writes to TECHNICALS cols AO-AR
-- **Cron**: `20 19 * * 1-5` — **CLI**: `poetry run daily-analysis --sheet production`
+- **Cron**: `20 19 * * 1-5` — **CLI**: `poetry run daily-analysis [--dry-run]`
 
 ### Compass Brief (`backend/scripts/compass_brief/`)
 
@@ -379,8 +363,8 @@ The `PositionStatus` component automatically fetches and plays the audio file:
 - **CI/CD**: `.github/workflows/deploy.yml` — push to `main` triggers CI (lint + test) → Deploy (backend + frontend + 9 Cloud Run Jobs).
 - **Backend**: `backend/Dockerfile` (Python 3.11-slim, no Playwright, ~200MB). Alembic migrations on startup via `start.sh`. Cloud Run: 512Mi, 1 CPU, max 2 instances, VPC connector for Cloud SQL.
 - **Frontend**: `frontend/Dockerfile` (Node 18-alpine, serve static). Auth0 vars baked at build time via `--build-arg` from GitHub vars. Cloud Run: 256Mi, 1 CPU, max 2 instances.
-- **Cloud Run Jobs**: `backend/Dockerfile.jobs` (with Playwright, ~1GB). 9 jobs deployed via deploy.yml. `ENTRYPOINT ["poetry", "run"]`, command passed via job args. No retries (--max-retries=0).
-- **Cloud Scheduler**: 9 cron jobs in `europe-west1` (scheduler doesn't support `europe-west9`). Triggers Cloud Run Job execution via HTTP + OAuth. Schedule: 19:00-20:15 UTC weekdays. No retries (retryCount=0).
+- **Cloud Run Jobs**: `backend/Dockerfile.jobs` (with Playwright, ~1GB). 8 jobs deployed via deploy.yml. `ENTRYPOINT ["poetry", "run"]`, command passed via job args. No retries (--max-retries=0).
+- **Cloud Scheduler**: 8 cron jobs in `europe-west1` (scheduler doesn't support `europe-west9`). Triggers Cloud Run Job execution via HTTP + OAuth. Schedule: 19:00-20:15 UTC weekdays. No retries (retryCount=0).
 - **Secrets**: GCP Secret Manager (14 secrets). Non-sensitive env vars via GitHub Vars → deploy.yml `--set-env-vars`.
 - **Auth**: Workload Identity Federation (keyless GitHub → GCP auth). No SA key files in CI/CD.
 - **Infra as code**: `infra/terraform/` — Cloud SQL, VPC connector, service accounts, schedulers.
@@ -396,12 +380,11 @@ The `PositionStatus` component automatically fetches and plays the audio file:
 19:15  cc-compute-indicators    → pl_derived + pl_indicator_daily
 19:20  cc-daily-analysis        → decision + score (LLM)
 19:30  cc-compass-brief         → Google Drive (.txt for NotebookLM)
-20:15  cc-data-import-etl       → Sheets → legacy tables (transition only)
 ```
 
 ## Development Notes
 
-- Backend uses Poetry scripts: `poetry run dev`, `poetry run lint`, `poetry run import`, `poetry run daily-analysis`, `poetry run meteo-agent`, `poetry run compass-brief`, `poetry run press-review`, `poetry run barchart-scraper`, `poetry run ice-stocks-scraper`, `poetry run cftc-scraper`, `poetry run compute-indicators`, `poetry run seed-gcp`, `poetry run seed-trading-calendar`
+- Backend uses Poetry scripts: `poetry run dev`, `poetry run lint`, `poetry run daily-analysis`, `poetry run meteo-agent`, `poetry run compass-brief`, `poetry run press-review`, `poetry run barchart-scraper`, `poetry run ice-stocks-scraper`, `poetry run cftc-scraper`, `poetry run compute-indicators`, `poetry run seed-gcp`, `poetry run seed-trading-calendar`
 - Frontend environment variables exposed via custom Vite `define` config (no VITE_ prefix needed)
 - Database migrations managed via Alembic (migrations are idempotent for safe GCP re-application)
 - Pre-commit hooks run via Husky (backend: ruff + pyright, frontend: eslint fix)

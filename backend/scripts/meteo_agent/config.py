@@ -5,10 +5,6 @@ from dataclasses import dataclass
 # Logging
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
-# Google Sheets
-SPREADSHEET_ID = "16VXIrG9ybjjaorTeiR8sh5nrPIj9I7EFGr2iBSAjSSA"
-SHEET_NAME = "METEO_ALL"
-
 # LLM
 MODEL_ID = "gpt-4.1"
 MAX_TOKENS = 4096

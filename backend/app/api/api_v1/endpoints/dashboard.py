@@ -117,7 +117,7 @@ async def get_position_status(
         ytd_performance = await calculate_ytd_performance(db, business_date)
 
         # Use business_date for response, or current date if not provided
-        response_date = business_date or datetime.now().date()
+        response_date = business_date or datetime.now(timezone.utc).date()
 
         return transform_to_position_status_response(
             position=position,
@@ -174,7 +174,7 @@ async def get_indicators_grid(
             raise HTTPException(status_code=404, detail="No indicators data found")
 
         # Use business_date for response, or current date if not provided
-        response_date = business_date or datetime.now().date()
+        response_date = business_date or datetime.now(timezone.utc).date()
 
         return transform_to_indicators_grid_response(
             indicators_data=indicators_data,
@@ -233,7 +233,7 @@ async def get_recommendations(
             raise HTTPException(status_code=404, detail="No recommendations data found")
 
         # Use actual date from data, or business_date, or current date
-        response_date = rec_date or business_date or datetime.now().date()
+        response_date = rec_date or business_date or datetime.now(timezone.utc).date()
 
         return transform_to_recommendations_response(
             recommendations=recommendations,
@@ -450,9 +450,9 @@ async def get_audio(
             date_str = (
                 trading_day.strftime("%Y-%m-%d")
                 if trading_day
-                else datetime.now().strftime("%Y-%m-%d")
+                else datetime.now(timezone.utc).strftime("%Y-%m-%d")
             )
-            filename_base = f"{(trading_day or datetime.now().date()).strftime('%Y%m%d')}-CompassAudio"
+            filename_base = f"{(trading_day or datetime.now(timezone.utc).date()).strftime('%Y%m%d')}-CompassAudio"
             raise HTTPException(
                 status_code=404,
                 detail=f"Audio file not found for date {date_str}. Looking for: {filename_base}.wav or {filename_base}.m4a",

@@ -56,6 +56,13 @@ function impactBarColor(score: number): string {
   return "bg-red-500";
 }
 
+function scoreBarColor(score: number | null | undefined): string {
+  if (score == null) return "bg-muted-foreground";
+  if (score >= 3.5) return "bg-emerald-500";
+  if (score >= 2.5) return "bg-amber-500";
+  return "bg-red-500";
+}
+
 function seasonStatusIcon(status: string): string {
   if (status === "completed") return "bg-foreground/20";
   if (status === "in_progress") return "bg-primary";
@@ -107,17 +114,7 @@ function CampaignHeader({
                             "h-full rounded-full transition-all duration-700",
                             season.status === "in_progress"
                               ? "bg-primary animate-pulse"
-                              : scoreColor(season.score)
-                                  .replace("text-emerald-800", "")
-                                  .replace("text-amber-800", "")
-                                  .replace("text-red-800", "")
-                                  .includes("emerald")
-                                ? "bg-emerald-500"
-                                : scoreColor(season.score).includes("amber")
-                                  ? "bg-amber-500"
-                                  : scoreColor(season.score).includes("red")
-                                    ? "bg-red-500"
-                                    : "bg-muted-foreground"
+                              : scoreBarColor(season.score)
                           )}
                           style={{ width: `${(season.score / 5) * 100}%` }}
                         />

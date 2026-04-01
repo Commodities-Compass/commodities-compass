@@ -2,7 +2,7 @@
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
@@ -50,7 +50,7 @@ class SheetsWriter:
         Columns: DATE | AUTEUR | RESUME | MOTS-CLE | IMPACT SYNTHETIQUES | DATE TEXT
         """
         sheet_name = SHEET_NAMES[sheet_mode][provider]
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
 
         row = [
             now.strftime("%m/%d/%Y"),

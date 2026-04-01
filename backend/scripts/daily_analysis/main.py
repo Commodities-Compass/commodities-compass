@@ -21,7 +21,7 @@ Usage:
 import argparse
 import logging
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import sentry_sdk
@@ -108,7 +108,7 @@ def _parse_args() -> argparse.Namespace:
 def _resolve_date(date_str: str | None) -> datetime:
     if date_str:
         return datetime.strptime(date_str, "%Y-%m-%d")
-    return datetime.now()
+    return datetime.now(timezone.utc)
 
 
 @monitor(monitor_slug="daily-analysis")

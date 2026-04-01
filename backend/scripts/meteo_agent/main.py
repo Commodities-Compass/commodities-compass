@@ -103,7 +103,7 @@ def main() -> int:
 
         # Step 2: Build campaign memory + Harmattan context from DB
         logger.info("Step 2: Loading campaign memory...")
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         from scripts.meteo_agent.seasonal_memory import (
             build_campaign_memory,
@@ -119,10 +119,10 @@ def main() -> int:
 
             with get_session() as session:
                 campaign_memory = build_campaign_memory(session)
-                current_campaign = get_campaign(datetime.now().date())
+                current_campaign = get_campaign(datetime.now(timezone.utc).date())
                 harmattan_days = get_campaign_harmattan_days(session, current_campaign)
                 harmattan_context = build_harmattan_context(
-                    harmattan_days, datetime.now().month
+                    harmattan_days, datetime.now(timezone.utc).month
                 )
             if campaign_memory:
                 logger.info("Campaign memory: %d chars", len(campaign_memory))
@@ -135,7 +135,7 @@ def main() -> int:
 
         # Step 3: Build prompt and call LLM
         logger.info("Step 3: Calling OpenAI for analysis...")
-        current_month = datetime.now().month
+        current_month = datetime.now(timezone.utc).month
         seasonal_context = build_seasonal_context(current_month)
         system_prompt = SYSTEM_PROMPT_TEMPLATE.format(seasonal_context=seasonal_context)
         memory_block = f"\n\n{campaign_memory}" if campaign_memory else ""

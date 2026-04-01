@@ -4,7 +4,7 @@ import json
 import logging
 import re
 from typing import Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
@@ -80,7 +80,7 @@ class SheetsWriter:
             List of 7 values: [timestamp, close, high, low, volume, oi, iv]
         """
         # Format timestamp as MM/DD/YYYY (matches Google Form output)
-        timestamp = data.get("timestamp", datetime.now())
+        timestamp = data.get("timestamp", datetime.now(timezone.utc))
         timestamp_str = timestamp.strftime("%m/%d/%Y")
 
         # Format IV as decimal for percentage display (48.99% → 0.4899)

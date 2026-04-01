@@ -52,6 +52,7 @@ xlrd = "^2.0.1"
 anthropic = "^0.45.0"
 openai = "^1.60.0"
 google-genai = "^1.0.0"
+cachetools = "^7.0.5"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"

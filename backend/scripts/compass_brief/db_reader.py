@@ -264,7 +264,7 @@ class DBBriefReader:
         result = self._session.execute(
             text("""
                 SELECT summary FROM pl_fundamental_article
-                WHERE date = :target_date AND summary IS NOT NULL
+                WHERE date = :target_date AND is_active = true AND summary IS NOT NULL
                 ORDER BY created_at DESC
             """),
             {"target_date": target_date},

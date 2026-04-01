@@ -12,7 +12,7 @@ import html
 import logging
 import platform
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from playwright.sync_api import Response, sync_playwright
@@ -324,6 +324,6 @@ class BarchartScraper:
         logger.info(f"Starting Barchart scrape for London cocoa #7 ({contract})")
         data = self.scrape_prices()
         data["implied_volatility"] = self.scrape_implied_volatility()
-        data["timestamp"] = datetime.now()
+        data["timestamp"] = datetime.now(timezone.utc)
         logger.info(f"Scrape complete: {data}")
         return data

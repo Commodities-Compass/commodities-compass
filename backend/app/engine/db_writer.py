@@ -13,6 +13,8 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+
+from app.engine.types import DERIVED_COLS
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -34,34 +36,8 @@ def _to_nullable_float(val: Any) -> float | None:
 
 
 # Columns from the pipeline DataFrame that map to pl_derived_indicators fields.
-_DERIVED_COLS = [
-    "pivot",
-    "r1",
-    "r2",
-    "r3",
-    "s1",
-    "s2",
-    "s3",
-    "ema12",
-    "ema26",
-    "macd",
-    "macd_signal",
-    "rsi_14d",
-    "stochastic_k_14",
-    "stochastic_d_14",
-    "atr",
-    "atr_14d",
-    "bollinger",
-    "bollinger_upper",
-    "bollinger_lower",
-    "bollinger_width",
-    "close_pivot_ratio",
-    "volume_oi_ratio",
-    "gain_14d",
-    "loss_14d",
-    "rs",
-    "daily_return",
-]
+# Single source of truth: imported from app.engine.types.DERIVED_COLS
+_DERIVED_COLS = DERIVED_COLS
 
 # Columns for pl_indicator_daily.
 _INDICATOR_SCORE_COLS = [

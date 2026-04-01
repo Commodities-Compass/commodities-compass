@@ -3,7 +3,7 @@
 import asyncio
 import json
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Optional
 
 from google.oauth2 import service_account
@@ -64,7 +64,7 @@ class AudioService:
         if not result:
             return None
 
-        display_date = target_date if target_date else datetime.now().date()
+        display_date = target_date if target_date else datetime.now(timezone.utc).date()
 
         return {
             "url": result["url"],
@@ -85,7 +85,7 @@ class AudioService:
             return None
 
         if target_date is None:
-            target_date = datetime.now().date()
+            target_date = datetime.now(timezone.utc).date()
 
         filename_base = f"{target_date.strftime('%Y%m%d')}-CompassAudio"
 

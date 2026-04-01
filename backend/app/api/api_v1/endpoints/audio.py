@@ -1,7 +1,7 @@
 """Audio API endpoints for streaming Google Drive audio files."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 import httpx
@@ -43,10 +43,10 @@ async def stream_audio(
             date_str = (
                 parsed_date.strftime("%Y-%m-%d")
                 if parsed_date
-                else datetime.now().strftime("%Y-%m-%d")
+                else datetime.now(timezone.utc).strftime("%Y-%m-%d")
             )
             filename_base = (
-                f"{(parsed_date or datetime.now().date()).strftime('%Y%m%d')}"
+                f"{(parsed_date or datetime.now(timezone.utc).date()).strftime('%Y%m%d')}"
                 "-CompassAudio"
             )
             raise HTTPException(
@@ -151,10 +151,10 @@ async def get_audio_info(
             date_str = (
                 parsed_date.strftime("%Y-%m-%d")
                 if parsed_date
-                else datetime.now().strftime("%Y-%m-%d")
+                else datetime.now(timezone.utc).strftime("%Y-%m-%d")
             )
             filename_base = (
-                f"{(parsed_date or datetime.now().date()).strftime('%Y%m%d')}"
+                f"{(parsed_date or datetime.now(timezone.utc).date()).strftime('%Y%m%d')}"
                 "-CompassAudio"
             )
             raise HTTPException(

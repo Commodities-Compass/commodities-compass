@@ -90,11 +90,9 @@ class LLMClient:
         """Execute a single OpenAI API call."""
         start = time.monotonic()
 
-        # Make.com blueprint uses role=assistant for the prompt (Module 19 & 6).
-        # We replicate this exactly for output parity.
         response = self._openai.chat.completions.create(
             model=self.model,
-            messages=[{"role": "assistant", "content": prompt}],
+            messages=[{"role": "user", "content": prompt}],
             temperature=temperature,
             max_tokens=max_tokens,
             top_p=1,

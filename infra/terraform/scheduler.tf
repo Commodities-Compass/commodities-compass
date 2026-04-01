@@ -1,10 +1,8 @@
 # ==============================================================================
-# Cloud Scheduler — Cron jobs (all paused until Phase 4.1)
+# Cloud Scheduler — Cron jobs
 # ==============================================================================
 #
-# All jobs are created with paused=true. They target Cloud Run Jobs execution
-# endpoints (placeholders). Activated when Cloud Run Jobs are deployed in
-# Phase 4.1 by setting paused=false and updating the URI if needed.
+# All jobs target Cloud Run Jobs execution endpoints.
 #
 # NOTE: Cloud Scheduler does not support europe-west9 (Paris). Jobs are
 # created in europe-west1 (Belgium, EU/GDPR). The scheduler location only
@@ -58,7 +56,7 @@ resource "google_cloud_scheduler_job" "cron_jobs" {
   time_zone   = "UTC"
   region      = var.scheduler_region
 
-  paused = true
+  paused = false
 
   http_target {
     uri         = "https://${var.region}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${var.project_id}/jobs/cc-${each.key}:run"

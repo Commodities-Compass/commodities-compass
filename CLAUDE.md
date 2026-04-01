@@ -68,8 +68,8 @@ The backend follows a clean architecture with separation of concerns:
   - `endpoints/historical.py` - Historical data endpoints (stub/mock data, TODO)
 - **`app/models/`** - SQLAlchemy database models split by domain:
   - `base.py` - DeclarativeBase class
-  - `technicals.py` - Legacy: OHLCV data with 40+ technical indicators (Railway, read by dashboard)
-  - `indicator.py` - Legacy: normalized indicators and trading signals (Railway, read by dashboard)
+  - `technicals.py` - Legacy: OHLCV data with 40+ technical indicators (unused, pending drop)
+  - `indicator.py` - Legacy: normalized indicators and trading signals (unused, pending drop)
   - `market_research.py` - Legacy: market research articles
   - `weather_data.py` - Legacy: weather impact data
   - `test_range.py` - Indicator color ranges (RED/ORANGE/GREEN)
@@ -134,7 +134,7 @@ The frontend uses modern React patterns:
 
 Environment variables are organized in two levels:
 
-- **Backend `.env`** - Backend-specific (database, APIs, Google Sheets/Drive, Auth0, AWS)
+- **Backend `.env`** - Backend-specific (database, APIs, Google Drive, Auth0, AWS)
 - **Frontend `.env`** - Frontend-specific (Auth0, redirect URIs, API base URL)
 
 Frontend code uses Auth0 variables (not VITE_ prefixed) exposed via custom Vite `define` configuration in `vite.config.ts`.
@@ -180,15 +180,15 @@ Scrapers → pl_contract_data_daily (raw OHLCV)
 
 ## Scrapers
 
-Three automated scrapers feed columns A–I of the TECHNICALS Google Sheet. Each runs as a GCP Cloud Run Job using `backend/Dockerfile.jobs` (with Playwright). Previously Railway cron services.
+Three automated scrapers feed `pl_contract_data_daily`. Each runs as a GCP Cloud Run Job using `backend/Dockerfile.jobs` (with Playwright).
 
 ### Architecture
 
 ```
-Google Sheets TECHNICALS row:
-  A: Date | B: Close | C: High | D: Low | E: Volume | F: OI | G: IV | H: Stock US | I: Com NET US
-  ──────── barchart-scraper (appends row A-G) ────────  ──ice──  ──cftc──
-                                                        (update H) (update I)
+pl_contract_data_daily row:
+  date | close | high | low | volume | oi | iv | stock_us | com_net_us
+  ──── barchart-scraper (inserts OHLCV+IV) ────  ──ice──   ──cftc──
+                                                (update)  (update)
 ```
 
 ### Barchart Scraper (`backend/scripts/barchart_scraper/`)
@@ -198,7 +198,7 @@ Google Sheets TECHNICALS row:
 - **Source**: `https://www.barchart.com/futures/quotes/{contract}/overview` (OHLCV+OI) + `/{contract}/volatility-greeks` (IV)
 - **Method**: Playwright browser → extracts OHLCV+OI from server-rendered inline JSON raw blocks (max-volume heuristic to pick the correct block among 4+). XHR API response used as backup for C/H/L/V (API omits OI). IV via XHR interception or HTML regex fallback.
 - **Volume**: Raw contract count (no conversion)
-- **IV conversion**: percentage → decimal (e.g., `55.38` → `0.5538` in Sheets)
+- **IV conversion**: percentage → decimal (e.g., `55.38` → `0.5538`)
 - **Post-write**: Auto-extends CONCLUSION formula in column AS (YTD scoring of INDICATOR decisions vs next-day price moves)
 - **Cron**: `0 19 * * 1-5` (7 PM UTC weekdays only)
 - **CLI**: `poetry run barchart-scraper [--dry-run] [--verbose] [--headful]`
@@ -232,18 +232,18 @@ Google Sheets TECHNICALS row:
 
 ## AI Agents
 
-Four LLM-powered agents run as Railway cron services, each generating content for Google Sheets or Google Drive. All share the same `backend/Dockerfile`.
+Four LLM-powered agents run as GCP Cloud Run Jobs, each generating content for PostgreSQL and/or Google Drive. All share the same `backend/Dockerfile`.
 
 ### Pipeline Schedule
 
 ```
- 7:00 PM UTC  -- Barchart scraper       -> TECHNICALS (CLOSE, HIGH, LOW, VOL, OI, IV)
- 7:00 PM UTC  -- Meteo agent            -> METEO_ALL (independent — no market data needed)
- 7:05 PM UTC  -- ICE stocks + CFTC      -> TECHNICALS (STOCK US, COM NET US)
- 7:05 PM UTC  -- Press review agent     -> BIBLIO_ALL (needs CLOSE from Barchart)
- 7:20 PM UTC  -- Daily analysis          -> INDICATOR + TECHNICALS (DECISION, SCORE)
- 7:30 PM UTC  -- Compass brief          -> Drive (.txt)
- 8:15 PM UTC  -- Data import ETL        -> PostgreSQL (full refresh)
+ 7:00 PM UTC  -- Barchart scraper       -> pl_contract_data_daily (OHLCV + IV)
+ 7:00 PM UTC  -- Meteo agent            -> pl_weather_observation (independent)
+ 7:05 PM UTC  -- ICE stocks + CFTC      -> pl_contract_data_daily (STOCK US, COM NET US)
+ 7:05 PM UTC  -- Press review agent     -> pl_fundamental_article (needs CLOSE)
+ 7:15 PM UTC  -- Compute indicators     -> pl_derived_indicators + pl_indicator_daily
+ 7:20 PM UTC  -- Daily analysis          -> pl_indicator_daily (LLM decision + score)
+ 7:30 PM UTC  -- Compass brief          -> Google Drive (.txt for NotebookLM)
 ```
 
 ### Press Review Agent (`backend/scripts/press_review_agent/`)
@@ -251,25 +251,25 @@ Four LLM-powered agents run as Railway cron services, each generating content fo
 - **Purpose**: Generates daily French-language cocoa press review from 6 news sources
 - **Provider**: OpenAI `o4-mini` (production). Claude and Gemini available via `--provider claude|gemini|all` for testing only.
 - **Active flag**: `pl_fundamental_article.is_active` controls which provider's articles the dashboard reads. Set by `PRODUCTION_PROVIDER` in `config.py`. To switch provider: update `PRODUCTION_PROVIDER` + backfill `UPDATE pl_fundamental_article SET is_active = true WHERE llm_provider = '<new>'`.
-- **Output**: Appends row to BIBLIO_ALL (DATE, AUTEUR, RESUME, MOTS-CLE, IMPACT SYNTHETIQUES) + `pl_fundamental_article` (DB)
+- **Output**: `pl_fundamental_article` (DB)
 - **Cron**: `5 19 * * 1-5` — **CLI**: `poetry run press-review [--dry-run]`
 
 ### Meteo Agent (`backend/scripts/meteo_agent/`)
 
 - **Purpose**: Fetches weather data from Open-Meteo for 6 cocoa-growing locations (Ghana + Côte d'Ivoire), calls OpenAI (`gpt-4.1`) for French analysis
-- **Output**: Appends row to METEO_ALL (DATE, TEXTE, RESUME, MOTS-CLE, IMPACT SYNTHETIQUES)
+- **Output**: `pl_weather_observation` (DB)
 - **Cron**: `10 19 * * 1-5` — **CLI**: `poetry run meteo-agent [--dry-run]`
 
 ### Daily Analysis (`backend/scripts/daily_analysis/`)
 
 - **Purpose**: Core AI analysis engine replacing Make.com DAILY BOT AI. Reads 42 variables from TECHNICALS + news + weather, runs 2 LLM calls (`gpt-4-turbo`), writes trading decisions
-- **LLM Call #1**: Macro/weather analysis → MACROECO_BONUS + ECO → writes to INDICATOR sheet with HISTORIQUE row-shift
-- **LLM Call #2**: Trading decision → DECISION/CONFIANCE/DIRECTION/CONCLUSION → writes to TECHNICALS cols AO-AR
+- **LLM Call #1**: Macro/weather analysis → MACROECO_BONUS + ECO → writes to `pl_indicator_daily`
+- **LLM Call #2**: Trading decision → DECISION/CONFIANCE/DIRECTION/CONCLUSION → writes to `pl_indicator_daily`
 - **Cron**: `20 19 * * 1-5` — **CLI**: `poetry run daily-analysis [--dry-run]`
 
 ### Compass Brief (`backend/scripts/compass_brief/`)
 
-- **Purpose**: Generates structured `.txt` brief from all 4 sheets, uploads to Google Drive Shared Drive for NotebookLM audio podcast generation
+- **Purpose**: Generates structured `.txt` brief from pl_* tables, uploads to Google Drive Shared Drive for NotebookLM audio podcast generation
 - **Output**: `YYYYMMDD-CompassBrief.txt` uploaded to Drive (idempotent — updates existing file for same date)
 - **Cron**: `30 19 * * 1-5` — **CLI**: `poetry run compass-brief`
 
@@ -332,8 +332,8 @@ The application integrates with Google Drive to fetch daily audio bulletins for 
    # Required: Google Drive folder ID containing audio files
    GOOGLE_DRIVE_AUDIO_FOLDER_ID="1A2B3C4D5E6F7G8H9I0J"
 
-   # Optional: Separate Google Drive credentials (defaults to Google Sheets credentials)
-   GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON='{...}'
+   # Google Drive credentials (service account with Drive API access)
+   GOOGLE_DRIVE_CREDENTIALS_JSON='{...}'
    ```
 
 3. **Google Drive API permissions**:
@@ -359,7 +359,7 @@ The `PositionStatus` component automatically fetches and plays the audio file:
 
 ## Deployment
 
-- **Platform**: GCP Cloud Run (primary). Railway paused (Phase 5 kill pending).
+- **Platform**: GCP Cloud Run.
 - **CI/CD**: `.github/workflows/deploy.yml` — push to `main` triggers CI (lint + test) → Deploy (backend + frontend + 9 Cloud Run Jobs).
 - **Backend**: `backend/Dockerfile` (Python 3.11-slim, no Playwright, ~200MB). Alembic migrations on startup via `start.sh`. Cloud Run: 512Mi, 1 CPU, max 2 instances, VPC connector for Cloud SQL.
 - **Frontend**: `frontend/Dockerfile` (Node 18-alpine, serve static). Auth0 vars baked at build time via `--build-arg` from GitHub vars. Cloud Run: 256Mi, 1 CPU, max 2 instances.
@@ -372,13 +372,13 @@ The `PositionStatus` component automatically fetches and plays the audio file:
 ### Nightly Pipeline Schedule (UTC, weekdays)
 
 ```
-19:00  cc-barchart-scraper      → OHLCV + IV (Playwright)
-19:00  cc-meteo-agent           → METEO_ALL + pl_weather_observation
-19:05  cc-ice-stocks-scraper    → STOCK US (after Barchart creates row)
-19:05  cc-cftc-scraper          → COM NET US (after Barchart creates row)
-19:05  cc-press-review-agent    → BIBLIO_ALL + pl_fundamental_article (needs CLOSE)
-19:15  cc-compute-indicators    → pl_derived + pl_indicator_daily
-19:20  cc-daily-analysis        → decision + score (LLM)
+19:00  cc-barchart-scraper      → pl_contract_data_daily (OHLCV + IV)
+19:00  cc-meteo-agent           → pl_weather_observation
+19:05  cc-ice-stocks-scraper    → pl_contract_data_daily (STOCK US)
+19:05  cc-cftc-scraper          → pl_contract_data_daily (COM NET US)
+19:05  cc-press-review-agent    → pl_fundamental_article
+19:15  cc-compute-indicators    → pl_derived_indicators + pl_indicator_daily
+19:20  cc-daily-analysis        → pl_indicator_daily (LLM decision + score)
 19:30  cc-compass-brief         → Google Drive (.txt for NotebookLM)
 ```
 

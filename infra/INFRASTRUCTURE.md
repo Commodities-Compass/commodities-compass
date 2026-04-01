@@ -125,7 +125,7 @@ infra/terraform/
 | `AUTH0_ISSUER` | Manual |
 | `GOOGLE_SHEETS_CREDENTIALS_JSON` | Manual |
 | `GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON` | Manual |
-| `GOOGLE_DRIVE_CREDENTIALS_JSON` | Manual (same SA as Sheets) |
+| `GOOGLE_DRIVE_CREDENTIALS_JSON` | Manual (SA for Drive audio + brief upload) |
 | `SENTRY_DSN` | Manual |
 | `ANTHROPIC_API_KEY` | Manual |
 | `OPENAI_API_KEY` | Manual |
@@ -136,7 +136,7 @@ infra/terraform/
 | Service Account | Purpose | Key Roles |
 |----------------|---------|-----------|
 | `cc-cloud-run-api` | Backend + Frontend Cloud Run | secretmanager.secretAccessor, cloudsql.client, logging.logWriter, monitoring.metricWriter |
-| `cc-cloud-run-jobs` | Scrapers, Agents, ETL | Same as API + **run.developer** (required for Cloud Scheduler to trigger job executions) |
+| `cc-cloud-run-jobs` | Scrapers, Agents | Same as API + **run.developer** (required for Cloud Scheduler to trigger job executions) |
 | `cc-github-actions` | CI/CD deploy | artifactregistry.writer, run.admin, iam.serviceAccountUser, secretmanager.secretAccessor |
 
 ### Workload Identity Federation (`wif.tf`)
@@ -165,7 +165,6 @@ Timezone: UTC. Pipeline starts ~1.5h after ICE Europe close (17:30 London).
 | `cc-compute-indicators` | `15 19 * * 1-5` | 2 — compute (needs scraper data) |
 | `cc-daily-analysis` | `20 19 * * 1-5` | 3 — analysis (needs indicators) |
 | `cc-compass-brief` | `30 19 * * 1-5` | 4 — brief (needs everything) |
-| `cc-data-import-etl` | `15 20 * * 1-5` | 5 — legacy ETL (transition only) |
 
 HTTP targets invoke Cloud Run Jobs execution API. OAuth token via `cc-cloud-run-jobs` SA (requires `run.developer` role).
 
@@ -196,10 +195,8 @@ Set via `gh variable set`, used by `deploy.yml`:
 | `AUTH0_ISSUER` | Frontend build | `https://dev-1vqq5xiywmfinkgk.us.auth0.com/` |
 | `FRONTEND_URL` | Frontend build (redirect_uri) | `https://frontend-229076583962.europe-west9.run.app` |
 | `API_BASE_URL` | Frontend build (Axios baseURL) | `https://backend-229076583962.europe-west9.run.app/v1` |
-| `SPREADSHEET_ID` | Cloud Run env vars | Google Sheets ID |
 | `GOOGLE_DRIVE_AUDIO_FOLDER_ID` | Cloud Run env vars | Drive folder ID |
 | `GOOGLE_DRIVE_BRIEFS_FOLDER_ID` | Cloud Run env vars | Drive briefs folder ID |
-| `ACTIVE_CONTRACT` | Barchart scraper job | `CAK26` (manual update on contract roll) |
 | `BACKEND_CORS_ORIGINS` | Backend env var | `["https://frontend-*.run.app"]` |
 
 ## Operations
@@ -274,12 +271,11 @@ for r in state['resources']:
 
 **Works from any location** — no IP whitelisting. Auth is IAM-based, not network-based.
 
-**Current state:** Database has full schema (ref_*, pl_*, aud_* tables) with production data. Dashboard reads from pl_* tables (`USE_NEW_TABLES=true`).
+**Current state:** Database has full schema (ref_*, pl_*, aud_* tables) with production data. Dashboard reads exclusively from pl_* tables. Legacy tables (technicals, indicator, market_research, weather_data) still exist but are no longer read by any production code.
 
-### Railway (PAUSED — pending Phase 5 kill)
+### Railway (DECOMMISSIONED)
 
-Railway crons paused since 2026-03-30. Services still running as fallback.
-Will be killed after GCP crons validated for 2-3 days.
+Railway crons paused since 2026-03-30. Google Sheets ETL removed. All data flows through GCP Cloud Run Jobs → PostgreSQL.
 
 ## Cost Estimate
 

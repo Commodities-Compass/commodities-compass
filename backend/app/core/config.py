@@ -57,11 +57,9 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = config("REDIS_URL", default="redis://localhost:6379/0", cast=str)
 
-    # Google Drive
+    # Google Drive (audio streaming + compass brief upload)
     GOOGLE_DRIVE_CREDENTIALS_JSON: str = config(
-        "GOOGLE_DRIVE_CREDENTIALS_JSON",
-        default=config("GOOGLE_SHEETS_CREDENTIALS_JSON", default="", cast=str),
-        cast=str,
+        "GOOGLE_DRIVE_CREDENTIALS_JSON", default="", cast=str
     )
     GOOGLE_DRIVE_AUDIO_FOLDER_ID: str = config(
         "GOOGLE_DRIVE_AUDIO_FOLDER_ID", default="", cast=str

@@ -61,6 +61,9 @@ export const useAudio = (targetDate?: string) => {
   return useQuery<AudioResponse>({
     queryKey: ['audio', targetDate],
     queryFn: () => dashboardApi.getAudio(targetDate),
-    ...DAILY_QUERY_OPTIONS,
+    staleTime: 5 * 60 * 1000, // 5 min — audio availability can change (pipeline timing)
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+    retry: 2,
   });
 };

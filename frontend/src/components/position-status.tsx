@@ -54,13 +54,16 @@ export default function PositionStatus({
     if (audioRef.current) {
       if (isPlaying) {
         audioRef.current.pause();
+        setIsPlaying(false);
       } else {
-        audioRef.current.play().catch((err: unknown) => {
-          const message = err instanceof Error ? err.message : 'Unknown error';
-          console.error('Audio play failed:', message);
-        });
+        audioRef.current.play()
+          .then(() => setIsPlaying(true))
+          .catch((err: unknown) => {
+            setIsPlaying(false);
+            const message = err instanceof Error ? err.message : 'Unknown error';
+            console.error('Audio play failed:', message);
+          });
       }
-      setIsPlaying(!isPlaying);
     }
   }, [isPlaying]);
 
@@ -77,6 +80,10 @@ export default function PositionStatus({
   }, []);
 
   const handleEnded = useCallback(() => {
+    setIsPlaying(false);
+  }, []);
+
+  const handleAudioError = useCallback(() => {
     setIsPlaying(false);
   }, []);
 
@@ -168,6 +175,7 @@ export default function PositionStatus({
               onTimeUpdate={handleTimeUpdate}
               onLoadedMetadata={handleLoadedMetadata}
               onEnded={handleEnded}
+              onError={handleAudioError}
             />
 
             <div className="flex items-center gap-3">

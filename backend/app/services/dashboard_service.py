@@ -11,7 +11,7 @@ import re
 from datetime import date
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import and_, asc, desc, join, select
+from sqlalchemy import and_, asc, desc, join, outerjoin, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.pipeline import (
@@ -341,22 +341,30 @@ async def get_latest_recommendations(
 
 
 async def get_chart_data(db: AsyncSession, days: int = 30) -> List[Dict[str, Any]]:
-    """Get historical chart data for the specified number of days."""
+    """Get historical chart data for the specified number of days.
+
+    Queries the active contract first. If fewer rows than requested (contract
+    rolled recently), falls back to a cross-contract query ordered by date so
+    the chart always has enough history.
+    """
     contract_id = await get_active_contract_id(db)
 
+    base_cols = (
+        PlContractDataDaily.date,
+        PlContractDataDaily.close,
+        PlContractDataDaily.volume,
+        PlContractDataDaily.oi,
+        PlDerivedIndicators.rsi_14d,
+        PlDerivedIndicators.macd,
+        PlContractDataDaily.stock_us,
+        PlContractDataDaily.com_net_us,
+    )
+
+    # Try active contract first
     query = (
-        select(
-            PlContractDataDaily.date,
-            PlContractDataDaily.close,
-            PlContractDataDaily.volume,
-            PlContractDataDaily.oi,
-            PlDerivedIndicators.rsi_14d,
-            PlDerivedIndicators.macd,
-            PlContractDataDaily.stock_us,
-            PlContractDataDaily.com_net_us,
-        )
+        select(*base_cols)
         .select_from(
-            join(
+            outerjoin(
                 PlContractDataDaily,
                 PlDerivedIndicators,
                 and_(
@@ -372,6 +380,27 @@ async def get_chart_data(db: AsyncSession, days: int = 30) -> List[Dict[str, Any
 
     result = await db.execute(query)
     rows = result.all()
+
+    # Fallback: active contract has fewer rows than requested (recent roll)
+    if len(rows) < days:
+        fallback_query = (
+            select(*base_cols)
+            .select_from(
+                outerjoin(
+                    PlContractDataDaily,
+                    PlDerivedIndicators,
+                    and_(
+                        PlContractDataDaily.date == PlDerivedIndicators.date,
+                        PlContractDataDaily.contract_id
+                        == PlDerivedIndicators.contract_id,
+                    ),
+                )
+            )
+            .order_by(desc(PlContractDataDaily.date))
+            .limit(days)
+        )
+        result = await db.execute(fallback_query)
+        rows = result.all()
 
     return [
         {

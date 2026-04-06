@@ -544,12 +544,16 @@ async def get_non_trading_days(
         result = await db.execute(query.order_by(RefTradingCalendar.date))
         non_trading_dates = [row[0].isoformat() for row in result.all()]
 
-        # Return the latest display_date from actual data (not calendar).
-        # This is the most recent date users should see on the dashboard.
+        # Return the latest display_date that is not in the future.
+        # On April 6 (Easter Monday), MAX(display_date) = April 7 but we
+        # shouldn't show a future date — cap at today.
         from sqlalchemy import func as sa_func
 
+        today = date.today()
         latest_result = await db.execute(
-            select(sa_func.max(PlContractDataDaily.display_date))
+            select(sa_func.max(PlContractDataDaily.display_date)).where(
+                PlContractDataDaily.display_date <= today
+            )
         )
         latest_display = latest_result.scalar_one_or_none()
 

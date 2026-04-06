@@ -261,7 +261,7 @@ def compute_harmattan_days(
 
     A Harmattan day requires:
     - Daily dominant wind direction in NE/N quadrant (315°-360° or 0°-90°)
-    - Daily minimum RH < HARMATTAN_RH_THRESHOLD (40%)
+    - Daily minimum RH < HARMATTAN_RH_THRESHOLD (55%)
     - Date within Nov-Mar window
 
     Returns cumulative count of qualifying days.

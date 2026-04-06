@@ -39,7 +39,7 @@ DAILY_PARAMS = [
 
 # Harmattan detection thresholds (literature: ICCO, CRIG, WMO West Africa)
 # Harmattan = dry NE trade wind from Sahara, Nov–Mar, West Africa cocoa belt
-HARMATTAN_RH_THRESHOLD = 40.0  # daily min RH < 40% = Harmattan signature
+HARMATTAN_RH_THRESHOLD = 55.0  # daily min RH < 55% = Harmattan influence (40% was too strict for forest zone)
 HARMATTAN_WIND_DIR_MIN = 315.0  # NE/N quadrant: 315°→360° and 0°→90°
 HARMATTAN_WIND_DIR_MAX = 90.0
 HARMATTAN_IMPACT_DAYS = 24  # cumulative days > 24 → quality risk

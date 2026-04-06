@@ -91,11 +91,18 @@ def main() -> int:
         logger.info("Step 3: Writing to GCP PostgreSQL...")
         from scripts.barchart_scraper.config import get_current_contract_code
         from scripts.barchart_scraper.db_writer import write_ohlcv
-        from scripts.db import get_session
+        from scripts.db import get_display_date, get_session
+
+        display_date = get_display_date()
+        logger.info("Display date (next trading day): %s", display_date)
 
         with get_session() as session:
             write_ohlcv(
-                session, data, get_current_contract_code(), dry_run=args.dry_run
+                session,
+                data,
+                get_current_contract_code(),
+                dry_run=args.dry_run,
+                display_date=display_date,
             )
 
         sentry_sdk.set_context(

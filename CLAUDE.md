@@ -120,7 +120,7 @@ The frontend uses modern React patterns:
   - `NewsCard` - Latest market research display
   - `WeatherUpdateCard` - Weather conditions and market impact
   - `DashboardLayout` - Sidebar navigation, theme toggle, user profile dropdown
-  - `DateSelector` - Business day navigation with Ant Design DatePicker (disables weekends/future)
+  - `DateSelector` - Trading day navigation with calendar picker (disables weekends, exchange holidays, and future dates via `/non-trading-days` API)
   - `DatePickerWithRange` - Date range picker with two-month calendar view
   - `LoadingSpinner` - Full-screen centered spinner
 - **Custom Hooks**:
@@ -186,10 +186,20 @@ Three automated scrapers feed `pl_contract_data_daily`. Each runs as a GCP Cloud
 
 ```
 pl_contract_data_daily row:
-  date | close | high | low | volume | oi | iv | stock_us | com_net_us
-  ──── barchart-scraper (inserts OHLCV+IV) ────  ──ice──   ──cftc──
-                                                (update)  (update)
+  date | display_date | close | high | low | volume | oi | iv | stock_us | com_net_us
+  ──── barchart-scraper (inserts OHLCV+IV+display_date) ─  ──ice──   ──cftc──
+                                                          (update)  (update)
 ```
+
+### Date Semantics (display_date)
+
+`pl_contract_data_daily` has two date columns:
+- **`date`** = session date (when trading happened). Immutable truth. Used by the indicator engine for computation (rolling z-scores, momentum).
+- **`display_date`** = `next_trading_day(date)`. When users first see this data on the dashboard. Set by the barchart scraper via `get_display_date()`.
+
+All other tables (`pl_indicator_daily`, `pl_derived_indicators`, `pl_signal_component`, `pl_fundamental_article`, `pl_weather_observation`) use `date` = session date only. The dashboard resolves `display_date → session_date` in a single lookup (`_parse_and_validate_date`), then queries all tables by session date.
+
+The frontend calendar shows `display_date` values. Non-trading days (weekends + exchange holidays) are greyed out. The `-1 day` offset that was previously applied in the frontend (`getYesterdayISO`) has been removed — the backend handles the full date resolution.
 
 ### Barchart Scraper (`backend/scripts/barchart_scraper/`)
 
@@ -302,6 +312,8 @@ All API endpoints are prefixed with `/v1` and include:
 - `/audio/*` - Audio streaming:
   - `GET /audio/stream` - Stream audio from Google Drive (no auth, for HTML audio element)
   - `GET /audio/info` - Audio metadata (requires auth)
+- `/dashboard/non-trading-days` - Exchange holidays + latest display_date for calendar:
+  - `GET /dashboard/non-trading-days?year=2026` - Returns non-trading weekday dates and `latest_trading_day` (= `MAX(display_date)` from actual data)
 - `/commodities/*` - Commodity information (stub/mock data, TODO)
 - `/historical/*` - Historical data and indicators (stub/mock data, TODO)
 

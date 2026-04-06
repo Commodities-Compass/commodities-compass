@@ -60,11 +60,16 @@ class PlContractDataDaily(Base):
     stock_us: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
     com_net_us: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
 
+    # Display date = next trading day after session date.
+    # Dashboard queries filter by this column. NULL for pre-calendar historical data.
+    display_date: Mapped[Optional[date]] = mapped_column(DATE)
+
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
 
     __table_args__ = (
         UniqueConstraint("date", "contract_id", name="uq_contract_data_daily"),
         Index("ix_contract_data_daily_date", "date"),
+        Index("ix_contract_data_daily_display_date", "display_date"),
     )
 
 

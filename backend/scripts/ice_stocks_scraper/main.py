@@ -3,7 +3,7 @@
 import argparse
 import logging
 import sys
-from datetime import date as date_type, datetime
+from datetime import datetime
 from pathlib import Path
 
 import sentry_sdk
@@ -100,6 +100,8 @@ def main() -> int:
         logger.info("Step 3: Writing to GCP PostgreSQL...")
         from scripts.db import get_session
         from scripts.ice_stocks_scraper.db_writer import write_stock_us
+
+        from datetime import date as date_type
 
         db_date = target_date or date_type.today()
         with get_session() as session:

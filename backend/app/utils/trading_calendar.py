@@ -117,6 +117,36 @@ async def get_previous_trading_day(
     return trading_day
 
 
+async def get_next_trading_day(
+    db: AsyncSession,
+    target_date: Optional[date] = None,
+    exchange_code: str = "IFEU",
+) -> date:
+    """First trading day strictly after target_date.
+
+    Raises TradingCalendarError if no future trading day is found.
+    """
+    if target_date is None:
+        target_date = date.today()
+    exchange_id = await _resolve_exchange_id(db, exchange_code)
+    result = await db.execute(
+        select(RefTradingCalendar.date)
+        .where(
+            RefTradingCalendar.exchange_id == exchange_id,
+            RefTradingCalendar.date > target_date,
+            RefTradingCalendar.is_trading_day.is_(True),
+        )
+        .order_by(RefTradingCalendar.date.asc())
+        .limit(1)
+    )
+    trading_day = result.scalar_one_or_none()
+    if trading_day is None:
+        raise TradingCalendarError(
+            f"No trading day found after {target_date} for {exchange_code}"
+        )
+    return trading_day
+
+
 async def is_trading_day(
     db: AsyncSession,
     target_date: Optional[date] = None,
@@ -165,6 +195,33 @@ def get_latest_trading_day_sync(
     if trading_day is None:
         raise TradingCalendarError(
             f"No trading day found on or before {target_date} for {exchange_code}"
+        )
+    return trading_day
+
+
+def get_next_trading_day_sync(
+    session: Session,
+    target_date: Optional[date] = None,
+    exchange_code: str = "IFEU",
+) -> date:
+    """Sync variant of get_next_trading_day for scraper scripts."""
+    if target_date is None:
+        target_date = date.today()
+    exchange_id = _resolve_exchange_id_sync(session, exchange_code)
+    result = session.execute(
+        select(RefTradingCalendar.date)
+        .where(
+            RefTradingCalendar.exchange_id == exchange_id,
+            RefTradingCalendar.date > target_date,
+            RefTradingCalendar.is_trading_day.is_(True),
+        )
+        .order_by(RefTradingCalendar.date.asc())
+        .limit(1)
+    )
+    trading_day = result.scalar_one_or_none()
+    if trading_day is None:
+        raise TradingCalendarError(
+            f"No trading day found after {target_date} for {exchange_code}"
         )
     return trading_day
 

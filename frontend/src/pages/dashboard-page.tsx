@@ -9,12 +9,6 @@ import { DashboardErrorBoundary } from '@/components/DashboardErrorBoundary';
 import { METRIC_OPTIONS } from '@/data/commodities-data';
 import { useNonTradingDays } from '@/hooks/useDashboard';
 import { useState, useMemo, useEffect } from 'react';
-import { format, subDays } from 'date-fns';
-
-const getYesterdayISO = (isoDate: string): string => {
-  const date = new Date(isoDate + 'T12:00:00');
-  return format(subDays(date, 1), 'yyyy-MM-dd');
-};
 
 export default function DashboardPage() {
   const currentYear = new Date().getFullYear();
@@ -25,7 +19,7 @@ export default function DashboardPage() {
   const [currentDate, setCurrentDate] = useState<string | null>(null);
   const [selectedMetric, setSelectedMetric] = useState('close');
 
-  // Set initial date to latest trading day once loaded
+  // Set initial date to latest display date from backend
   useEffect(() => {
     if (latestTradingDay && currentDate === null) {
       setCurrentDate(latestTradingDay);
@@ -41,12 +35,10 @@ export default function DashboardPage() {
     METRIC_OPTIONS.find((option) => option.value === selectedMetric) ||
     METRIC_OPTIONS[0];
 
-  // Show nothing until we know the latest trading day
+  // Show nothing until we know the latest date
   if (currentDate === null) {
     return null;
   }
-
-  const yesterdayDate = getYesterdayISO(currentDate);
 
   return (
     <div className="space-y-6">
@@ -62,20 +54,20 @@ export default function DashboardPage() {
 
       <DashboardErrorBoundary>
         <PositionStatus
-          targetDate={yesterdayDate}
-          audioDate={yesterdayDate}
+          targetDate={currentDate}
+          audioDate={currentDate}
         />
       </DashboardErrorBoundary>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         <div className="lg:col-span-2">
           <DashboardErrorBoundary>
-            <IndicatorsGrid targetDate={yesterdayDate} />
+            <IndicatorsGrid targetDate={currentDate} />
           </DashboardErrorBoundary>
         </div>
         <div className="lg:col-span-3">
           <DashboardErrorBoundary>
-            <RecommendationsList targetDate={yesterdayDate} />
+            <RecommendationsList targetDate={currentDate} />
           </DashboardErrorBoundary>
         </div>
       </div>
@@ -91,11 +83,11 @@ export default function DashboardPage() {
       </div>
 
       <DashboardErrorBoundary>
-        <NewsCard targetDate={yesterdayDate} />
+        <NewsCard targetDate={currentDate} />
       </DashboardErrorBoundary>
 
       <DashboardErrorBoundary>
-        <WeatherUpdateCard targetDate={yesterdayDate} />
+        <WeatherUpdateCard targetDate={currentDate} />
       </DashboardErrorBoundary>
     </div>
   );

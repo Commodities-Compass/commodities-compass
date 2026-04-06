@@ -24,6 +24,7 @@ def write_ohlcv(
     data: dict[str, Any],
     contract_code: str,
     dry_run: bool = False,
+    display_date: date | None = None,
 ) -> None:
     """Insert or update a row in pl_contract_data_daily.
 
@@ -35,6 +36,7 @@ def write_ohlcv(
               volume, open_interest, implied_volatility.
         contract_code: Contract code from ACTIVE_CONTRACT env var (e.g., "CAK26").
         dry_run: Log only, don't write.
+        display_date: Next trading day — when users will see this data on the dashboard.
     """
     contract_id = resolve_by_code(session, contract_code)
     ts = data["timestamp"]
@@ -46,8 +48,9 @@ def write_ohlcv(
     if dry_run:
         log.info(
             "[DRY RUN] Would write to pl_contract_data_daily: "
-            "date=%s, contract=%s, close=%s, volume=%s, oi=%s, iv=%s",
+            "date=%s, display_date=%s, contract=%s, close=%s, volume=%s, oi=%s, iv=%s",
             row_date,
+            display_date,
             contract_code,
             data.get("close"),
             data.get("volume"),
@@ -70,7 +73,13 @@ def write_ohlcv(
         existing.volume = to_int(data.get("volume"))
         existing.oi = to_int(data.get("open_interest"))
         existing.implied_volatility = iv_decimal
-        log.info("Updated existing row: date=%s, contract=%s", row_date, contract_code)
+        existing.display_date = display_date
+        log.info(
+            "Updated existing row: date=%s, display_date=%s, contract=%s",
+            row_date,
+            display_date,
+            contract_code,
+        )
     else:
         row = PlContractDataDaily(
             date=row_date,
@@ -81,8 +90,14 @@ def write_ohlcv(
             volume=to_int(data.get("volume")),
             oi=to_int(data.get("open_interest")),
             implied_volatility=iv_decimal,
+            display_date=display_date,
         )
         session.add(row)
-        log.info("Inserted new row: date=%s, contract=%s", row_date, contract_code)
+        log.info(
+            "Inserted new row: date=%s, display_date=%s, contract=%s",
+            row_date,
+            display_date,
+            contract_code,
+        )
 
     session.flush()

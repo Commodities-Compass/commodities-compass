@@ -3,7 +3,6 @@
 import argparse
 import logging
 import sys
-from datetime import date
 from pathlib import Path
 
 import sentry_sdk
@@ -66,6 +65,8 @@ def main() -> int:
         logger.info("Step 2: Writing to GCP PostgreSQL...")
         from scripts.cftc_scraper.db_writer import write_com_net_us
         from scripts.db import get_session
+
+        from datetime import date
 
         with get_session() as session:
             write_com_net_us(

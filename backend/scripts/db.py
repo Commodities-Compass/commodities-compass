@@ -45,6 +45,25 @@ def get_session(url: str | None = None) -> Generator[Session, None, None]:
             raise
 
 
+def get_display_date(
+    target_date: date | None = None,
+    exchange_code: str = "IFEU",
+) -> date:
+    """Return the next trading day after target_date (default: today).
+
+    This is the date that will be stored in the database — it represents
+    when users will first see this data on the dashboard.
+
+    Opens its own short-lived session. Fail-closed: if the calendar lookup
+    fails, the exception propagates and the job fails (exit 1).
+    """
+    from app.utils.trading_calendar import get_next_trading_day_sync
+
+    check_date = target_date or date.today()
+    with get_session() as session:
+        return get_next_trading_day_sync(session, check_date, exchange_code)
+
+
 def should_skip_non_trading_day(
     force: bool = False,
     target_date: date | None = None,

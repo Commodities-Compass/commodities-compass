@@ -51,6 +51,7 @@ from app.services.weather_service import (
     build_location_diagnostics,
     parse_impact_score,
 )
+from app.models.pipeline import PlContractDataDaily
 from app.models.reference import RefExchange, RefTradingCalendar
 from app.utils.date_utils import parse_date_string
 from app.utils.trading_calendar import TradingCalendarError, get_latest_trading_day
@@ -61,16 +62,36 @@ logger = logging.getLogger(__name__)
 
 
 async def _parse_and_validate_date(date_str: str, db: AsyncSession) -> date:
-    """Parse date string and resolve to the latest trading day.
+    """Parse display date and resolve to the session date for DB queries.
 
-    Returns the most recent trading day on or before the parsed date,
-    using ref_trading_calendar as the single source of truth.
+    The frontend sends a display_date (next trading day after the session).
+    This function looks up the corresponding session date in pl_contract_data_daily.
+    Falls back to trading calendar resolution if no display_date match exists.
 
     Raises:
         HTTPException: If date format is invalid or calendar lookup fails.
     """
     try:
         parsed_date = parse_date_string(date_str)
+
+        # Try display_date lookup first (new behavior)
+        result = await db.execute(
+            select(PlContractDataDaily.date)
+            .where(PlContractDataDaily.display_date == parsed_date)
+            .order_by(PlContractDataDaily.date.desc())
+            .limit(1)
+        )
+        session_date = result.scalar_one_or_none()
+        if session_date is not None:
+            if session_date != parsed_date:
+                logger.info(
+                    "Display date %s resolved to session date %s",
+                    parsed_date,
+                    session_date,
+                )
+            return session_date
+
+        # Fallback: trading calendar resolution (pre-migration data, direct date query)
         trading_day = await get_latest_trading_day(db, parsed_date)
         if trading_day != parsed_date:
             logger.info("Date %s resolved to trading day %s", parsed_date, trading_day)
@@ -523,11 +544,23 @@ async def get_non_trading_days(
         result = await db.execute(query.order_by(RefTradingCalendar.date))
         non_trading_dates = [row[0].isoformat() for row in result.all()]
 
-        latest = await get_latest_trading_day(db)
+        # Return the latest display_date from actual data (not calendar).
+        # This is the most recent date users should see on the dashboard.
+        from sqlalchemy import func as sa_func
+
+        latest_result = await db.execute(
+            select(sa_func.max(PlContractDataDaily.display_date))
+        )
+        latest_display = latest_result.scalar_one_or_none()
+
+        # Fallback to trading calendar if no display_date populated yet
+        if latest_display is None:
+            latest_td = await get_latest_trading_day(db)
+            latest_display = latest_td
 
         return {
             "dates": non_trading_dates,
-            "latest_trading_day": latest.isoformat(),
+            "latest_trading_day": latest_display.isoformat(),
         }
     except TradingCalendarError:
         return {"dates": [], "latest_trading_day": None}

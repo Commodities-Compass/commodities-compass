@@ -58,6 +58,7 @@ resource "google_project_service" "required_apis" {
     "servicenetworking.googleapis.com",
     "cloudscheduler.googleapis.com",
     "iam.googleapis.com",
+    "iap.googleapis.com",
     "iamcredentials.googleapis.com",
     "cloudresourcemanager.googleapis.com",
     "sts.googleapis.com",

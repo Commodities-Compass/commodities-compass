@@ -46,12 +46,18 @@
               ┌───────▼────────┐
               │  Cloud SQL     │
               │  cc-postgres   │
-              │  PG15 priv+pub │
+              │  PG15 priv only│
               └───────┬────────┘
-                      │ Cloud SQL Auth Proxy (public IP, no authorized networks)
+                      │ private IP (10.119.160.3)
+              ┌───────▼────────┐
+              │  cc-bastion    │
+              │  e2-micro      │
+              │  (no public IP)│
+              └───────┬────────┘
+                      │ IAP TCP tunnel (SSH)
               ┌───────▼────────┐
               │  Local Dev     │
-              │  (DBeaver)     │
+              │ (psql/DBeaver) │
               └────────────────┘
 ```
 
@@ -59,16 +65,17 @@
 
 ```
 infra/terraform/
-├── main.tf              # Provider, backend, 13 API enablements
+├── main.tf              # Provider, backend, 14 API enablements
 ├── variables.tf         # All variable declarations
 ├── terraform.tfvars     # Non-sensitive values (committed)
 ├── vpc.tf               # VPC, subnet, PSA, VPC connector
 ├── cloudsql.tf          # Cloud SQL PG15, database, user
+├── bastion.tf           # IAP bastion VM (e2-micro) + firewall rule
 ├── artifact_registry.tf # Docker repo + cleanup policies
 ├── secrets.tf           # Secret Manager (13 secrets)
 ├── iam.tf               # 3 service accounts + IAM bindings
 ├── wif.tf               # Workload Identity Federation (GitHub OIDC)
-├── scheduler.tf         # 9 cron jobs (active, 19:00-20:15 UTC)
+├── scheduler.tf         # 8 cron jobs (active, 19:00-19:30 UTC)
 ├── monitoring.tf        # Email alerts: Cloud SQL, Job failures, 5xx, uptime
 ├── outputs.tf           # Key outputs + github_vars map
 └── .terraform.lock.hcl  # Provider pinning (committed)
@@ -90,11 +97,20 @@ infra/terraform/
 
 | Resource | Name | Details |
 |----------|------|---------|
-| Instance | `cc-postgres` | PG15, `db-f1-micro`, ZONAL, private + public IP |
+| Instance | `cc-postgres` | PG15, `db-f1-micro`, ZONAL, **private IP only** |
 | Database | `commodities_compass` | — |
 | User | `cc_app` | 32-char random password (no special chars) |
-| Public IP | `34.155.163.32` | `0.0.0.0/0` still open (Railway transition) — **remove in Phase 5** |
-| Private IP | `10.119.160.3` | Cloud Run connects via VPC connector |
+| Private IP | `10.119.160.3` | Cloud Run connects via VPC connector, local dev via bastion |
+
+### Bastion (`bastion.tf`)
+
+| Resource | Name | Details |
+|----------|------|---------|
+| VM | `cc-bastion` | e2-micro (free tier), COS-stable, no public IP, shielded |
+| SA | `cc-bastion` | Logging only — no DB or secret access |
+| Firewall | `cc-allow-iap-ssh` | IAP range `35.235.240.0/20` → port 22, bastion tag |
+
+The bastion provides a secure tunnel from developer machines to the private Cloud SQL instance via IAP. See [Local Development Access](#local-development-access) for usage.
 
 - 10GB SSD, autoresize enabled
 - SSL: `ENCRYPTED_ONLY` (all connections must use TLS)
@@ -138,6 +154,7 @@ infra/terraform/
 | `cc-cloud-run-api` | Backend + Frontend Cloud Run | secretmanager.secretAccessor, cloudsql.client, logging.logWriter, monitoring.metricWriter |
 | `cc-cloud-run-jobs` | Scrapers, Agents | Same as API + **run.developer** (required for Cloud Scheduler to trigger job executions) |
 | `cc-github-actions` | CI/CD deploy | artifactregistry.writer, run.admin, iam.serviceAccountUser, secretmanager.secretAccessor |
+| `cc-bastion` | IAP bastion VM | logging.logWriter (minimal — tunnel only, no DB creds) |
 
 ### Workload Identity Federation (`wif.tf`)
 
@@ -231,22 +248,29 @@ gcloud scheduler jobs list --location=europe-west1
 
 ## Local Development Access
 
-### Cloud SQL (GCP — future production)
+### Cloud SQL (production — private IP only)
 
-The instance has a public IP but **zero authorized networks** — no direct TCP connections are possible. Access requires the Cloud SQL Auth Proxy, which authenticates via your IAM identity.
+The instance has **no public IP** — all access is via the private VPC. Developer machines reach it through an IAP TCP tunnel via the `cc-bastion` VM.
 
-**Prerequisites:**
+**Prerequisites (one-time):**
 ```bash
-brew install cloud-sql-proxy       # one-time
-gcloud auth application-default login  # one-time (or when token expires)
+gcloud auth application-default login
 ```
 
-**Start the proxy:**
+**Step 1 — Start the IAP tunnel (in a dedicated terminal):**
 ```bash
-cloud-sql-proxy cacaooo:europe-west9:cc-postgres --port 5434
+gcloud compute ssh cc-bastion --zone europe-west9-a --tunnel-through-iap \
+  --project cacaooo -- -N -L 5434:10.119.160.3:5432
 ```
 
-**DBeaver connection (GCP):**
+This forwards `localhost:5434` → Cloud SQL private IP via the bastion. Keep this terminal open.
+
+**Step 2 — Connect via psql:**
+```bash
+psql -h 127.0.0.1 -p 5434 -U cc_app -d commodities_compass
+```
+
+**DBeaver / GUI client:**
 
 | Field | Value |
 |-------|-------|
@@ -255,6 +279,7 @@ cloud-sql-proxy cacaooo:europe-west9:cc-postgres --port 5434
 | Database | `commodities_compass` |
 | User | `cc_app` |
 | Password | *(in Terraform state — see below)* |
+| SSL | Disabled (tunnel handles encryption) |
 
 **Retrieve password:**
 ```bash
@@ -269,9 +294,23 @@ for r in state['resources']:
 "
 ```
 
-**Works from any location** — no IP whitelisting. Auth is IAM-based, not network-based.
+**Sync GCP to local DB:**
+```bash
+# With IAP tunnel running on port 5434:
+GCP_DATABASE_URL=postgresql+psycopg2://cc_app:<password>@localhost:5434/commodities_compass \
+  poetry run python scripts/sync_from_gcp.py
+```
 
-**Current state:** Database has full schema (ref_*, pl_*, aud_* tables) with production data. Dashboard reads exclusively from pl_* tables. Legacy tables (technicals, indicator, market_research, weather_data) still exist but are no longer read by any production code.
+**How it works:**
+- `cc-bastion` is an e2-micro VM (free tier) inside `cc-vpc` with no public IP
+- IAP authenticates with your Google account (IAM-based, no SSH keys to manage)
+- The bastion simply forwards TCP — it has no database credentials
+- Firewall rule `cc-allow-iap-ssh` only allows traffic from IAP's IP range (`35.235.240.0/20`)
+
+**Troubleshooting:**
+- `invalid_grant` / `invalid_rapt` → re-run `gcloud auth application-default login`
+- `address already in use` on port 5434 → `kill $(lsof -i :5434 -t)` then retry
+- First connection may be slow (SSH key generation + metadata propagation)
 
 ### Railway (DECOMMISSIONED)
 
@@ -283,9 +322,10 @@ Railway crons paused since 2026-03-30. Google Sheets ETL removed. All data flows
 |----------|------|
 | Cloud SQL db-f1-micro + 10GB SSD + backups | ~$10 |
 | VPC Connector (min throughput) | ~$7 |
+| Bastion e2-micro (free tier eligible) | ~$0 |
 | Artifact Registry | ~$0.50 |
 | Secret Manager (13 secrets) | ~$0.10 |
-| Cloud Scheduler (9 jobs) | ~$0.30 |
+| Cloud Scheduler (8 jobs) | ~$0.30 |
 | Cloud Run (backend + frontend + jobs) | ~$5-15 |
 | Monitoring | $0 |
 | **Total** | **~$23-33/mo** |
@@ -297,7 +337,8 @@ Railway crons paused since 2026-03-30. Google Sheets ETL removed. All data flows
 | Flat files, no modules | Single env, single region | Modules add indirection unjustified at this stage |
 | Cloud SQL `db-f1-micro` | 353 rows, 1 user | Upgrade via `db_tier` variable |
 | Cloud SQL ZONAL | No HA | Doubles cost, no business justification yet |
-| Cloud SQL public IP + no authorized networks | Public IP enabled for Auth Proxy, zero direct connections allowed | Cloud Run uses private IP via VPC; local dev uses Auth Proxy via public IP |
+| Cloud SQL private IP only | No public IP — hardened in Phase 5 | Cloud Run uses VPC connector; local dev uses IAP bastion tunnel |
+| IAP bastion (e2-micro) | Zero-cost secure access to private DB | IAM-authenticated, no public IP on bastion, no SSH keys to rotate |
 | 2 runtime SAs | `cc-api` + `cc-jobs` | Audit separation, future per-secret scoping |
 | Cloud Run outside TF | GitHub Actions deploys | Intentional boundary — TF owns platform, GHA owns app |
 | `disable_on_destroy = false` | All API enablements | Prevents accidental API disable breaking other services |

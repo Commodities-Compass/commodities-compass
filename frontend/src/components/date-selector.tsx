@@ -8,59 +8,65 @@ import {
 } from '@/components/ui/popover';
 import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
 import { format, parseISO, addDays, subDays, isWeekend, isFuture, startOfDay } from 'date-fns';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 
 interface DateSelectorProps {
   currentDate: string;
   onDateChange: (date: string) => void;
+  nonTradingDays?: Set<string>;
   className?: string;
 }
 
 export default function DateSelector({
   currentDate,
   onDateChange,
+  nonTradingDays,
   className,
 }: DateSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   const selectedDate = parseISO(currentDate);
 
-  const getNextBusinessDay = (date: Date, direction: 'forward' | 'backward'): Date => {
+  const isNonTradingDay = useMemo(() => {
+    return (d: Date) => {
+      if (isWeekend(d)) return true;
+      if (!nonTradingDays || nonTradingDays.size === 0) return false;
+      return nonTradingDays.has(format(d, 'yyyy-MM-dd'));
+    };
+  }, [nonTradingDays]);
+
+  const getNextTradingDay = (date: Date, direction: 'forward' | 'backward'): Date => {
     const step = direction === 'forward' ? addDays : subDays;
     let next = step(date, 1);
-    while (isWeekend(next)) {
+    // Safety limit to avoid infinite loops (max 30 days skip)
+    let guard = 0;
+    while (isNonTradingDay(next) && guard < 30) {
       next = step(next, 1);
+      guard++;
     }
     return next;
   };
 
   const handlePrevious = () => {
-    const previousBusinessDay = getNextBusinessDay(selectedDate, 'backward');
-    onDateChange(format(previousBusinessDay, 'yyyy-MM-dd'));
+    const previousTradingDay = getNextTradingDay(selectedDate, 'backward');
+    onDateChange(format(previousTradingDay, 'yyyy-MM-dd'));
   };
 
   const handleNext = () => {
-    const nextBusinessDay = getNextBusinessDay(selectedDate, 'forward');
+    const nextTradingDay = getNextTradingDay(selectedDate, 'forward');
     const today = startOfDay(new Date());
-    if (nextBusinessDay <= today) {
-      onDateChange(format(nextBusinessDay, 'yyyy-MM-dd'));
-    }
-  };
-
-  const handleCalendarSelect = (date: Date | undefined) => {
-    if (date) {
-      onDateChange(format(date, 'yyyy-MM-dd'));
-      setIsOpen(false);
+    if (nextTradingDay <= today) {
+      onDateChange(format(nextTradingDay, 'yyyy-MM-dd'));
     }
   };
 
   const isNextDisabled = () => {
-    const nextBusinessDay = getNextBusinessDay(selectedDate, 'forward');
-    return isFuture(nextBusinessDay);
+    const nextTradingDay = getNextTradingDay(selectedDate, 'forward');
+    return isFuture(nextTradingDay);
   };
 
   const disableDate = (date: Date) => {
-    return isWeekend(date) || isFuture(date);
+    return isNonTradingDay(date) || isFuture(date);
   };
 
   return (
@@ -71,7 +77,7 @@ export default function DateSelector({
             variant="outline"
             size="icon"
             onClick={handlePrevious}
-            aria-label="Previous business day"
+            aria-label="Previous trading day"
           >
             <ChevronLeftIcon className="h-4 w-4" />
           </Button>
@@ -104,7 +110,7 @@ export default function DateSelector({
             size="icon"
             onClick={handleNext}
             disabled={isNextDisabled()}
-            aria-label="Next business day"
+            aria-label="Next trading day"
           >
             <ChevronRightIcon className="h-4 w-4" />
           </Button>
@@ -112,4 +118,11 @@ export default function DateSelector({
       </CardContent>
     </Card>
   );
+
+  function handleCalendarSelect(date: Date | undefined) {
+    if (date) {
+      onDateChange(format(date, 'yyyy-MM-dd'));
+      setIsOpen(false);
+    }
+  }
 }

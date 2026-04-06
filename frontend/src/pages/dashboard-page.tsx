@@ -7,7 +7,8 @@ import RecommendationsList from '@/components/recommendations-list';
 import WeatherUpdateCard from '@/components/weather-update-card';
 import { DashboardErrorBoundary } from '@/components/DashboardErrorBoundary';
 import { METRIC_OPTIONS } from '@/data/commodities-data';
-import { useState } from 'react';
+import { useNonTradingDays } from '@/hooks/useDashboard';
+import { useState, useMemo, useEffect } from 'react';
 import { format, subDays } from 'date-fns';
 
 const getYesterdayISO = (isoDate: string): string => {
@@ -16,13 +17,34 @@ const getYesterdayISO = (isoDate: string): string => {
 };
 
 export default function DashboardPage() {
-  const today = format(new Date(), 'yyyy-MM-dd');
-  const [currentDate, setCurrentDate] = useState(today);
+  const currentYear = new Date().getFullYear();
+  const { data: tradingCalendar } = useNonTradingDays(currentYear);
+
+  const latestTradingDay = tradingCalendar?.latest_trading_day ?? null;
+
+  const [currentDate, setCurrentDate] = useState<string | null>(null);
   const [selectedMetric, setSelectedMetric] = useState('close');
+
+  // Set initial date to latest trading day once loaded
+  useEffect(() => {
+    if (latestTradingDay && currentDate === null) {
+      setCurrentDate(latestTradingDay);
+    }
+  }, [latestTradingDay, currentDate]);
+
+  const nonTradingDaysSet = useMemo(() => {
+    if (!tradingCalendar?.dates) return new Set<string>();
+    return new Set(tradingCalendar.dates);
+  }, [tradingCalendar?.dates]);
 
   const metricConfig =
     METRIC_OPTIONS.find((option) => option.value === selectedMetric) ||
     METRIC_OPTIONS[0];
+
+  // Show nothing until we know the latest trading day
+  if (currentDate === null) {
+    return null;
+  }
 
   const yesterdayDate = getYesterdayISO(currentDate);
 
@@ -33,6 +55,7 @@ export default function DashboardPage() {
         <DateSelector
           currentDate={currentDate}
           onDateChange={setCurrentDate}
+          nonTradingDays={nonTradingDaysSet}
           className="w-full md:w-auto"
         />
       </div>
@@ -67,15 +90,13 @@ export default function DashboardPage() {
         </DashboardErrorBoundary>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <DashboardErrorBoundary>
-          <NewsCard targetDate={yesterdayDate} />
-        </DashboardErrorBoundary>
+      <DashboardErrorBoundary>
+        <NewsCard targetDate={yesterdayDate} />
+      </DashboardErrorBoundary>
 
-        <DashboardErrorBoundary>
-          <WeatherUpdateCard targetDate={yesterdayDate} />
-        </DashboardErrorBoundary>
-      </div>
+      <DashboardErrorBoundary>
+        <WeatherUpdateCard targetDate={yesterdayDate} />
+      </DashboardErrorBoundary>
     </div>
   );
 }

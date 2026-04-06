@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { PositionStatusResponse, IndicatorsGridResponse, RecommendationsResponse, ChartDataResponse, NewsResponse, WeatherResponse, AudioResponse } from '@/types/dashboard';
+import type { PositionStatusResponse, IndicatorsGridResponse, RecommendationsResponse, ChartDataResponse, NewsResponse, WeatherResponse, AudioResponse, NonTradingDaysResponse } from '@/types/dashboard';
 
 export type { PositionStatusResponse };
 
@@ -42,6 +42,13 @@ export const dashboardApi = {
   getAudio: async (targetDate?: string): Promise<AudioResponse> => {
     const params = targetDate ? { target_date: targetDate } : {};
     const response = await apiClient.get<AudioResponse>('/dashboard/audio', { params });
+    return response.data;
+  },
+
+  getNonTradingDays: async (year: number, month?: number): Promise<NonTradingDaysResponse> => {
+    const params: Record<string, number> = { year };
+    if (month !== undefined) params.month = month;
+    const response = await apiClient.get<NonTradingDaysResponse>('/dashboard/non-trading-days', { params });
     return response.data;
   },
 };

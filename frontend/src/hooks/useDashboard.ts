@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { dashboardApi, PositionStatusResponse } from '@/api/dashboard';
-import type { IndicatorsGridResponse, RecommendationsResponse, ChartDataResponse, NewsResponse, WeatherResponse, AudioResponse } from '@/types/dashboard';
+import type { IndicatorsGridResponse, RecommendationsResponse, ChartDataResponse, NewsResponse, WeatherResponse, AudioResponse, NonTradingDaysResponse } from '@/types/dashboard';
 
 const DAILY_QUERY_OPTIONS = {
   staleTime: 24 * 60 * 60 * 1000,
@@ -65,5 +65,13 @@ export const useAudio = (targetDate?: string) => {
     refetchOnMount: true,
     refetchOnWindowFocus: false,
     retry: 2,
+  });
+};
+
+export const useNonTradingDays = (year: number) => {
+  return useQuery<NonTradingDaysResponse>({
+    queryKey: ['non-trading-days', year],
+    queryFn: () => dashboardApi.getNonTradingDays(year),
+    ...DAILY_QUERY_OPTIONS,
   });
 };

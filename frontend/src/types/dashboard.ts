@@ -50,6 +50,7 @@ export interface NewsResponse {
   date: string;
   title: string;
   content: string;
+  keywords: string | null;
   author: string | null;
 }
 
@@ -93,4 +94,9 @@ export interface AudioResponse {
   title: string;
   date: string;
   filename: string;
+}
+
+export interface NonTradingDaysResponse {
+  dates: string[];
+  latest_trading_day: string | null;
 }

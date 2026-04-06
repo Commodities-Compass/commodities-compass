@@ -8,6 +8,7 @@ and response formatting. Business logic is delegated to service layer.
 from datetime import date, datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, Query, HTTPException, Request
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 
@@ -50,6 +51,7 @@ from app.services.weather_service import (
     build_location_diagnostics,
     parse_impact_score,
 )
+from app.models.reference import RefExchange, RefTradingCalendar
 from app.utils.date_utils import parse_date_string
 from app.utils.trading_calendar import TradingCalendarError, get_latest_trading_day
 from app.services.audio_service import get_audio_service
@@ -476,6 +478,61 @@ async def get_audio(
         raise
     except Exception as e:
         logger.error(f"Error getting audio file: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/non-trading-days")
+@limiter.limit("10/minute")
+async def get_non_trading_days(
+    request: Request,
+    year: int = Query(description="Year to fetch non-trading days for"),
+    month: Optional[int] = Query(default=None, ge=1, le=12, description="Month (1-12)"),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Return non-trading weekday dates (exchange holidays) for the calendar.
+
+    Weekends are already handled client-side. This endpoint only returns
+    weekdays that are non-trading (holidays, closures).
+    """
+    try:
+        exchange_result = await db.execute(
+            select(RefExchange.id).where(RefExchange.code == "IFEU")
+        )
+        exchange_id = exchange_result.scalar_one_or_none()
+        if exchange_id is None:
+            return {"dates": [], "latest_trading_day": None}
+
+        query = select(RefTradingCalendar.date).where(
+            RefTradingCalendar.exchange_id == exchange_id,
+            RefTradingCalendar.is_trading_day.is_(False),
+        )
+        if month is not None:
+            start = date(year, month, 1)
+            end = date(year, month + 1, 1) if month < 12 else date(year + 1, 1, 1)
+            query = query.where(
+                RefTradingCalendar.date >= start,
+                RefTradingCalendar.date < end,
+            )
+        else:
+            query = query.where(
+                RefTradingCalendar.date >= date(year, 1, 1),
+                RefTradingCalendar.date < date(year + 1, 1, 1),
+            )
+
+        result = await db.execute(query.order_by(RefTradingCalendar.date))
+        non_trading_dates = [row[0].isoformat() for row in result.all()]
+
+        latest = await get_latest_trading_day(db)
+
+        return {
+            "dates": non_trading_dates,
+            "latest_trading_day": latest.isoformat(),
+        }
+    except TradingCalendarError:
+        return {"dates": [], "latest_trading_day": None}
+    except Exception as e:
+        logger.error("Error fetching non-trading days: %s", e)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

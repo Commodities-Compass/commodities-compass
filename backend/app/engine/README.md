@@ -23,6 +23,8 @@ pl_contract_data_daily (raw OHLCV)
 
 All functions are **pure** (no I/O, no DB, no side effects) and operate on pandas DataFrames. The DB layer (`db_writer.py`, `runner.py`) is separate.
 
+**Date semantics**: The engine reads and writes using `date` (session date — the real trading day). It does NOT use `display_date` (which is a frontend/dashboard concern stored only on `pl_contract_data_daily`). Rolling z-scores, momentum, and all computations use session dates in chronological order.
+
 ## File Structure
 
 ```

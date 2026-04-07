@@ -9,6 +9,7 @@ Usage:
 import argparse
 import logging
 import sys
+from datetime import date as date_type
 from datetime import datetime
 from pathlib import Path
 
@@ -108,6 +109,19 @@ def main() -> int:
         logger.info("Generated brief: %s (%d chars)", filename, len(brief))
         logger.info("Today: %s | Yesterday: %s", data.today.date, data.yesterday.date)
 
+        # 3b. Stale-data guard: don't overwrite existing briefs with old data
+        data_date = dt.date()
+        today = date_type.today()
+        skip_upload = False
+        if data_date < today and not args.force:
+            logger.warning(
+                "Brief data date %s is older than today %s — skipping upload "
+                "to avoid overwriting existing brief. Use --force to override.",
+                data_date,
+                today,
+            )
+            skip_upload = True
+
         # 4. Save locally if requested
         if args.output:
             Path(args.output).write_text(brief, encoding="utf-8")
@@ -118,7 +132,13 @@ def main() -> int:
             print("\n" + brief)
             return 0
 
-        # 6. Upload to Drive
+        # 6. Upload to Drive (skip if stale data would overwrite a good brief)
+        if skip_upload:
+            logger.info("=" * 60)
+            logger.info("SKIPPED — upload skipped (stale data for %s)", data_date)
+            logger.info("=" * 60)
+            return 0
+
         creds = get_credentials_json()
         uploader = DriveUploader(creds)
         folder_id = get_drive_briefs_folder_id()

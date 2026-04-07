@@ -64,6 +64,27 @@ def get_display_date(
         return get_next_trading_day_sync(session, check_date, exchange_code)
 
 
+def has_contract_data_for_date(target_date: date) -> bool:
+    """Return True if pl_contract_data_daily has a row for target_date (active contract).
+
+    Opens its own short-lived session. Used by downstream jobs (daily-analysis,
+    compass-brief) to avoid running when upstream scrapers haven't created data.
+    """
+    from sqlalchemy import text
+
+    with get_session() as session:
+        row = session.execute(
+            text(
+                "SELECT 1 FROM pl_contract_data_daily d "
+                "JOIN ref_contract c ON d.contract_id = c.id "
+                "WHERE d.date = :dt AND c.is_active = true "
+                "LIMIT 1"
+            ),
+            {"dt": target_date},
+        ).fetchone()
+        return row is not None
+
+
 def should_skip_non_trading_day(
     force: bool = False,
     target_date: date | None = None,

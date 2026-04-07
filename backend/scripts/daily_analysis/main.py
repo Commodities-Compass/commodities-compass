@@ -77,6 +77,26 @@ def main() -> int:
 
     target_date = _resolve_date(args.date)
 
+    # Pre-flight: verify upstream data exists before making LLM calls
+    from scripts.db import has_contract_data_for_date
+
+    check_date = (
+        target_date.date() if isinstance(target_date, datetime) else target_date
+    )
+    if not has_contract_data_for_date(check_date):
+        if args.force:
+            logger.warning(
+                "No data in pl_contract_data_daily for %s — continuing anyway (--force)",
+                check_date,
+            )
+        else:
+            logger.warning(
+                "No data in pl_contract_data_daily for %s — skipping analysis "
+                "(upstream scraper may not have run). Use --force to override.",
+                check_date,
+            )
+            return 0
+
     return _run_db_pipeline(
         target_date=target_date,
         contract_code=args.contract,

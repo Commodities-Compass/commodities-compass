@@ -127,6 +127,11 @@ def _extract_ohlc_from_html(html_content: str) -> dict[str, float | None]:
             best = candidate
 
     if best:
+        if best_volume == 0:
+            logger.warning(
+                "All %d raw blocks have volume=0 — Barchart page may not have updated yet",
+                len(raw_blocks),
+            )
         logger.info(
             f"HTML fallback (best of {len(raw_blocks)} blocks): "
             f"C={best.get('close')} V={best.get('volume')} OI={best.get('open_interest')}"

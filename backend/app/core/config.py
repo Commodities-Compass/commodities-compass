@@ -11,6 +11,10 @@ class Settings(BaseSettings):
         case_sensitive=True,
         env_file=".env",
         extra="ignore",
+        # All values are read via python-decouple (class-level defaults).
+        # Disable pydantic-settings env parsing to prevent JSON decode errors
+        # on non-JSON env vars like BACKEND_CORS_ORIGINS and AUTH0_ALGORITHMS.
+        env_parse_none_str=None,
     )
 
     # Application
@@ -24,34 +28,15 @@ class Settings(BaseSettings):
     AUTH0_DOMAIN: str = config("AUTH0_DOMAIN", default="", cast=str)
     AUTH0_CLIENT_ID: str = config("AUTH0_CLIENT_ID", default="", cast=str)
     AUTH0_API_AUDIENCE: str = config("AUTH0_API_AUDIENCE", default="", cast=str)
-    AUTH0_ALGORITHMS: List[str] = config(
-        "AUTH0_ALGORITHMS", default="RS256", cast=str
-    ).split(",")
+    AUTH0_ALGORITHMS: str = config("AUTH0_ALGORITHMS", default="RS256", cast=str)
     AUTH0_ISSUER: str = config("AUTH0_ISSUER", default="", cast=str)
 
-    # CORS — stored as str to prevent pydantic-settings from JSON-parsing the env var.
-    # Parsed in __init__ to List[str] (supports JSON array or comma-separated).
-    BACKEND_CORS_ORIGINS: str = ""
-
-    _cors_origins_list: List[str] = []
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        raw = self.BACKEND_CORS_ORIGINS or config(
-            "BACKEND_CORS_ORIGINS",
-            default="http://localhost:5173,http://localhost:3000",
-            cast=str,
-        )
-        try:
-            self._cors_origins_list = json.loads(raw)
-        except (json.JSONDecodeError, TypeError):
-            self._cors_origins_list = [
-                origin.strip() for origin in raw.split(",") if origin.strip()
-            ]
-
-    @property
-    def cors_origins(self) -> List[str]:
-        return self._cors_origins_list
+    # CORS
+    BACKEND_CORS_ORIGINS: str = config(
+        "BACKEND_CORS_ORIGINS",
+        default="http://localhost:5173,http://localhost:3000",
+        cast=str,
+    )
 
     # Database
     DATABASE_URL: str = config("DATABASE_URL", default="", cast=str)
@@ -77,6 +62,18 @@ class Settings(BaseSettings):
     AWS_SECRET_ACCESS_KEY: str = config("AWS_SECRET_ACCESS_KEY", default="", cast=str)
     AWS_REGION: str = config("AWS_REGION", default="us-east-1", cast=str)
     S3_BUCKET_NAME: str = config("S3_BUCKET_NAME", default="", cast=str)
+
+    @property
+    def auth0_algorithms_list(self) -> List[str]:
+        return [a.strip() for a in self.AUTH0_ALGORITHMS.split(",")]
+
+    @property
+    def cors_origins(self) -> List[str]:
+        raw = self.BACKEND_CORS_ORIGINS
+        try:
+            return json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return [o.strip() for o in raw.split(",") if o.strip()]
 
 
 settings = Settings()

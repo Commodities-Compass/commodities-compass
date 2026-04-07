@@ -29,26 +29,29 @@ class Settings(BaseSettings):
     ).split(",")
     AUTH0_ISSUER: str = config("AUTH0_ISSUER", default="", cast=str)
 
-    # CORS
-    BACKEND_CORS_ORIGINS: List[str] = []
+    # CORS — stored as str to prevent pydantic-settings from JSON-parsing the env var.
+    # Parsed in __init__ to List[str] (supports JSON array or comma-separated).
+    BACKEND_CORS_ORIGINS: str = ""
+
+    _cors_origins_list: List[str] = []
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        # Handle CORS origins from environment
-        cors_origins = config(
+        raw = self.BACKEND_CORS_ORIGINS or config(
             "BACKEND_CORS_ORIGINS",
-            default='["http://localhost:5173", "http://localhost:3000"]',
+            default="http://localhost:5173,http://localhost:3000",
             cast=str,
         )
-        if isinstance(cors_origins, str):
-            try:
-                # Try to parse as JSON array first
-                self.BACKEND_CORS_ORIGINS = json.loads(cors_origins)
-            except json.JSONDecodeError:
-                # Fall back to comma-separated string
-                self.BACKEND_CORS_ORIGINS = [
-                    origin.strip() for origin in cors_origins.split(",")
-                ]
+        try:
+            self._cors_origins_list = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            self._cors_origins_list = [
+                origin.strip() for origin in raw.split(",") if origin.strip()
+            ]
+
+    @property
+    def cors_origins(self) -> List[str]:
+        return self._cors_origins_list
 
     # Database
     DATABASE_URL: str = config("DATABASE_URL", default="", cast=str)

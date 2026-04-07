@@ -54,7 +54,7 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
 # CORS
-origins = settings.BACKEND_CORS_ORIGINS
+origins = settings.cors_origins
 logger.info("CORS origins configured: %s", origins)
 
 app.add_middleware(

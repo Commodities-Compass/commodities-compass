@@ -101,7 +101,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                     )}
                   />
 
-                  {!sidebarCollapsed && <span>Dashboard</span>}
+                  {!sidebarCollapsed && <span>Cacao</span>}
                 </Link>
               </Button>
               {/* <Button
@@ -154,7 +154,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" side="right">
-                <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                <DropdownMenuLabel>Mon Compte</DropdownMenuLabel>
                 <DropdownMenuSeparator />
 
                 <DropdownMenuItem onClick={toggleTheme}>
@@ -163,13 +163,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   ) : (
                     <SunIcon className="mr-2 h-4 w-4" />
                   )}
-                  {theme === 'light' ? 'Dark Mode' : 'Light Mode'}
+                  {theme === 'light' ? 'Mode Sombre' : 'Mode Clair'}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
 
                 <DropdownMenuItem onClick={logout}>
                   <LogOutIcon className="mr-2 h-4 w-4" />
-                  Log out
+                  Déconnexion
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

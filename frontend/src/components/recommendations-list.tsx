@@ -21,7 +21,7 @@ export default function RecommendationsList({
       <Card className={cn("flex items-center justify-center h-[400px]", className)}>
         <div className="flex items-center gap-2 text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin" />
-          <span className="text-sm">Loading recommendations...</span>
+          <span className="text-sm">Chargement des recommandations...</span>
         </div>
       </Card>
     );
@@ -31,9 +31,9 @@ export default function RecommendationsList({
     return (
       <Card className={cn("flex items-center justify-center h-[400px]", className)}>
         <div className="text-center space-y-1">
-          <p className="text-sm text-muted-foreground">No recommendations for this date</p>
+          <p className="text-sm text-muted-foreground">Aucune recommandation pour cette date</p>
           <p className="text-xs text-muted-foreground/60">
-            Trading signals are generated after daily analysis
+            Les signaux de trading sont générés après l'analyse quotidienne
           </p>
         </div>
       </Card>
@@ -47,7 +47,7 @@ export default function RecommendationsList({
       <CardHeader className="pb-2">
         <CardTitle className="text-lg font-medium flex items-center gap-2">
           <TrendingUpIcon className="h-5 w-5 text-primary" />
-          Recommendations of the Day
+          Recommandations du Jour
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -63,7 +63,7 @@ export default function RecommendationsList({
             </ul>
           ) : (
             <div className="flex items-center justify-center h-full">
-              <p className="text-sm text-muted-foreground">No recommendations available</p>
+              <p className="text-sm text-muted-foreground">Aucune recommandation disponible</p>
             </div>
           )}
         </ScrollArea>

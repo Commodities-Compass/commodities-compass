@@ -255,7 +255,7 @@ export default function WeatherUpdateCard({
       <Card className={cn("flex items-center justify-center h-[200px]", className)}>
         <div className="flex items-center gap-2 text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin" />
-          <span className="text-sm">Loading weather report...</span>
+          <span className="text-sm">Chargement du rapport météo...</span>
         </div>
       </Card>
     );
@@ -266,7 +266,7 @@ export default function WeatherUpdateCard({
       <Card className={cn("flex items-center justify-center h-[200px]", className)}>
         <div className="text-center space-y-1">
           <CloudRainIcon className="h-6 w-6 text-muted-foreground/40 mx-auto" />
-          <p className="text-sm text-muted-foreground">No weather report for this date</p>
+          <p className="text-sm text-muted-foreground">Aucun rapport météo pour cette date</p>
         </div>
       </Card>
     );
@@ -313,7 +313,7 @@ export default function WeatherUpdateCard({
           </Collapsible>
         ) : (
           <div>
-            <h3 className="text-sm font-semibold mb-1">Conditions</h3>
+            <h3 className="text-sm font-semibold mb-1">Conditions Météo</h3>
             <p className="text-sm text-muted-foreground whitespace-pre-line leading-relaxed">
               {weather.description}
             </p>
@@ -334,7 +334,7 @@ export default function WeatherUpdateCard({
           <ImpactBar score={weather.impact_score} text={weather.impact} />
         ) : (
           <div>
-            <h3 className="text-sm font-semibold mb-1">Market Impact</h3>
+            <h3 className="text-sm font-semibold mb-1">Impact Marché</h3>
             <p className="text-sm text-muted-foreground">{weather.impact}</p>
           </div>
         )}

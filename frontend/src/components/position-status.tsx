@@ -107,7 +107,7 @@ export default function PositionStatus({
       >
         <div className="flex items-center gap-2 text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin" />
-          <span className="text-sm">Loading position...</span>
+          <span className="text-sm">Chargement de la position...</span>
         </div>
       </Card>
     );
@@ -120,10 +120,10 @@ export default function PositionStatus({
       >
         <div className="text-center space-y-1">
           <p className="text-sm text-muted-foreground">
-            No position data for this date
+            Aucune donnée de position pour cette date
           </p>
           <p className="text-xs text-muted-foreground/60">
-            The daily analysis may not have run yet
+            L'analyse quotidienne n'a peut-être pas encore été exécutée
           </p>
         </div>
       </Card>
@@ -150,7 +150,7 @@ export default function PositionStatus({
       <div className="flex-1 border-b md:border-b-0 md:border-r border-border flex flex-col justify-between">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium text-gray-500 dark:text-gray-400">
-            Position of the Day
+            Position du Jour
           </CardTitle>
         </CardHeader>
         <CardContent className="flex items-center justify-center py-6 flex-grow">
@@ -165,7 +165,7 @@ export default function PositionStatus({
       <div className="flex-1 border-b md:border-b-0 md:border-r border-border flex flex-col justify-between">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium text-gray-500 dark:text-gray-400">
-            {audioData?.title || 'Compass Bulletin'}
+            {audioData?.title || 'Bulletin Compass'}
           </CardTitle>
         </CardHeader>
         <CardContent className="flex items-center py-4 flex-grow">
@@ -208,11 +208,11 @@ export default function PositionStatus({
 
               <span className="text-sm text-gray-500 dark:text-gray-400 min-w-[80px] text-right flex-shrink-0">
                 {audioError ? (
-                  <span className="text-muted-foreground text-xs">No bulletin</span>
+                  <span className="text-muted-foreground text-xs">Pas de bulletin</span>
                 ) : audioLoading ? (
-                  'Loading...'
+                  'Chargement...'
                 ) : !audioData?.url ? (
-                  <span className="text-muted-foreground text-xs">No bulletin</span>
+                  <span className="text-muted-foreground text-xs">Pas de bulletin</span>
                 ) : (
                   `${formatTime(currentTime)} / ${formatTime(duration)}`
                 )}
@@ -220,7 +220,7 @@ export default function PositionStatus({
             </div>
             {audioError && (
               <p className="text-xs text-muted-foreground mt-1">
-                No bulletin available for this date
+                Aucun bulletin disponible pour cette date
               </p>
             )}
           </div>
@@ -230,7 +230,7 @@ export default function PositionStatus({
       <div className="flex-1 flex flex-col justify-between">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium text-gray-500 dark:text-gray-400">
-            YTD Performance
+            Performance YTD
           </CardTitle>
         </CardHeader>
         <CardContent className="flex items-center justify-center py-6 flex-grow">

@@ -125,6 +125,7 @@ def transform_market_research_to_news(
         date=format_date_for_display(market_research["date"]),
         title=market_research.get("impact_synthesis"),
         content=market_research.get("summary"),
+        keywords=market_research.get("keywords"),
         author=market_research.get("author"),
     )
 

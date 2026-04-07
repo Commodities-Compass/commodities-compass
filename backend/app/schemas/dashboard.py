@@ -89,6 +89,9 @@ class NewsResponse(BaseModel):
     date: str = Field(..., description="Date of the news article")
     title: Optional[str] = Field(None, description="Title from impact_synthesis column")
     content: Optional[str] = Field(None, description="Content from summary column")
+    keywords: Optional[str] = Field(
+        None, description="Semicolon-separated keywords from the article"
+    )
     author: Optional[str] = Field(None, description="Author information")
 
 

@@ -22,8 +22,10 @@ export const dashboardApi = {
     return response.data;
   },
 
-  getChartData: async (days: number = 30): Promise<ChartDataResponse> => {
-    const response = await apiClient.get<ChartDataResponse>('/dashboard/chart-data', { params: { days } });
+  getChartData: async (days: number = 30, targetDate?: string): Promise<ChartDataResponse> => {
+    const params: Record<string, string | number> = { days };
+    if (targetDate) params.target_date = targetDate;
+    const response = await apiClient.get<ChartDataResponse>('/dashboard/chart-data', { params });
     return response.data;
   },
 

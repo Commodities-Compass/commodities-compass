@@ -280,6 +280,10 @@ async def get_chart_data_endpoint(
     days: int = Query(
         default=30, ge=1, le=365, description="Number of days of historical data"
     ),
+    target_date: Optional[str] = Query(
+        default=None,
+        description="Cap chart data at this display date (YYYY-MM-DD format)",
+    ),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ChartDataResponse:
@@ -301,8 +305,11 @@ async def get_chart_data_endpoint(
         HTTPException: If data not found or parameters invalid
     """
     try:
-        # Get chart data from service layer
-        chart_data = await get_chart_data(db, days)
+        end_date = None
+        if target_date:
+            end_date = await _parse_and_validate_date(target_date, db)
+
+        chart_data = await get_chart_data(db, days, end_date=end_date)
 
         if not chart_data:
             raise HTTPException(status_code=404, detail="No chart data found")

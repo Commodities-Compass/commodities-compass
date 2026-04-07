@@ -7,66 +7,42 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
-import { format, parseISO, addDays, subDays, isWeekend, isFuture, startOfDay } from 'date-fns';
-import { useState, useMemo } from 'react';
+import { format, parseISO, addDays, subDays, isFuture, startOfDay } from 'date-fns';
+import { fr } from 'date-fns/locale';
+import { useState } from 'react';
 
 interface DateSelectorProps {
   currentDate: string;
   onDateChange: (date: string) => void;
-  nonTradingDays?: Set<string>;
+  sessionDate?: string;
   className?: string;
 }
 
 export default function DateSelector({
   currentDate,
   onDateChange,
-  nonTradingDays,
+  sessionDate,
   className,
 }: DateSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   const selectedDate = parseISO(currentDate);
 
-  const isNonTradingDay = useMemo(() => {
-    return (d: Date) => {
-      if (isWeekend(d)) return true;
-      if (!nonTradingDays || nonTradingDays.size === 0) return false;
-      return nonTradingDays.has(format(d, 'yyyy-MM-dd'));
-    };
-  }, [nonTradingDays]);
-
-  const getNextTradingDay = (date: Date, direction: 'forward' | 'backward'): Date => {
-    const step = direction === 'forward' ? addDays : subDays;
-    let next = step(date, 1);
-    // Safety limit to avoid infinite loops (max 30 days skip)
-    let guard = 0;
-    while (isNonTradingDay(next) && guard < 30) {
-      next = step(next, 1);
-      guard++;
-    }
-    return next;
-  };
-
   const handlePrevious = () => {
-    const previousTradingDay = getNextTradingDay(selectedDate, 'backward');
-    onDateChange(format(previousTradingDay, 'yyyy-MM-dd'));
+    const previous = subDays(selectedDate, 1);
+    onDateChange(format(previous, 'yyyy-MM-dd'));
   };
 
   const handleNext = () => {
-    const nextTradingDay = getNextTradingDay(selectedDate, 'forward');
+    const next = addDays(selectedDate, 1);
     const today = startOfDay(new Date());
-    if (nextTradingDay <= today) {
-      onDateChange(format(nextTradingDay, 'yyyy-MM-dd'));
+    if (next <= today) {
+      onDateChange(format(next, 'yyyy-MM-dd'));
     }
   };
 
   const isNextDisabled = () => {
-    const nextTradingDay = getNextTradingDay(selectedDate, 'forward');
-    return isFuture(nextTradingDay);
-  };
-
-  const disableDate = (date: Date) => {
-    return isNonTradingDay(date) || isFuture(date);
+    return isFuture(addDays(selectedDate, 1));
   };
 
   return (
@@ -77,7 +53,7 @@ export default function DateSelector({
             variant="outline"
             size="icon"
             onClick={handlePrevious}
-            aria-label="Previous trading day"
+            aria-label="Previous day"
           >
             <ChevronLeftIcon className="h-4 w-4" />
           </Button>
@@ -86,12 +62,19 @@ export default function DateSelector({
             <PopoverTrigger asChild>
               <Button
                 variant="ghost"
-                className="min-w-[280px] justify-center font-medium hover:bg-accent h-10 px-4 flex items-center gap-2"
+                className="min-w-[280px] justify-center font-medium hover:bg-accent h-auto px-4 py-1 flex flex-col items-center gap-0"
               >
-                <CalendarIcon className="h-5 w-5 text-gray-500" />
-                <span>
-                  {format(selectedDate, 'EEEE, MMMM d, yyyy')}
-                </span>
+                <div className="flex items-center gap-2">
+                  <CalendarIcon className="h-5 w-5 text-gray-500" />
+                  <span>
+                    {format(selectedDate, 'EEEE d MMMM yyyy', { locale: fr })}
+                  </span>
+                </div>
+                {sessionDate && sessionDate.slice(0, 10) !== currentDate && (
+                  <span className="text-[11px] text-muted-foreground font-normal">
+                    Session du {format(parseISO(sessionDate), 'd MMMM yyyy', { locale: fr })}
+                  </span>
+                )}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0" align="center">
@@ -99,7 +82,7 @@ export default function DateSelector({
                 mode="single"
                 selected={selectedDate}
                 onSelect={handleCalendarSelect}
-                disabled={disableDate}
+                disabled={(date) => isFuture(date)}
                 defaultMonth={selectedDate}
               />
             </PopoverContent>
@@ -110,7 +93,7 @@ export default function DateSelector({
             size="icon"
             onClick={handleNext}
             disabled={isNextDisabled()}
-            aria-label="Next trading day"
+            aria-label="Next day"
           >
             <ChevronRightIcon className="h-4 w-4" />
           </Button>

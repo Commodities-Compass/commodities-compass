@@ -33,10 +33,10 @@ export const useRecommendations = (targetDate?: string) => {
   });
 };
 
-export const useChartData = (days: number = 30) => {
+export const useChartData = (days: number = 30, targetDate?: string) => {
   return useQuery<ChartDataResponse>({
-    queryKey: ['chart-data', days],
-    queryFn: () => dashboardApi.getChartData(days),
+    queryKey: ['chart-data', days, targetDate],
+    queryFn: () => dashboardApi.getChartData(days, targetDate),
     ...DAILY_QUERY_OPTIONS,
   });
 };

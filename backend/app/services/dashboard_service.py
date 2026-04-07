@@ -340,7 +340,9 @@ async def get_latest_recommendations(
 # ---------------------------------------------------------------------------
 
 
-async def get_chart_data(db: AsyncSession, days: int = 30) -> List[Dict[str, Any]]:
+async def get_chart_data(
+    db: AsyncSession, days: int = 30, *, end_date: Optional[date] = None
+) -> List[Dict[str, Any]]:
     """Get historical chart data for the specified number of days.
 
     Queries the active contract first. If fewer rows than requested (contract
@@ -361,6 +363,10 @@ async def get_chart_data(db: AsyncSession, days: int = 30) -> List[Dict[str, Any
     )
 
     # Try active contract first
+    date_filter = [PlContractDataDaily.contract_id == contract_id]
+    if end_date is not None:
+        date_filter.append(PlContractDataDaily.date <= end_date)
+
     query = (
         select(*base_cols)
         .select_from(
@@ -373,7 +379,7 @@ async def get_chart_data(db: AsyncSession, days: int = 30) -> List[Dict[str, Any
                 ),
             )
         )
-        .where(PlContractDataDaily.contract_id == contract_id)
+        .where(and_(*date_filter))
         .order_by(desc(PlContractDataDaily.date))
         .limit(days)
     )
@@ -383,21 +389,24 @@ async def get_chart_data(db: AsyncSession, days: int = 30) -> List[Dict[str, Any
 
     # Fallback: active contract has fewer rows than requested (recent roll)
     if len(rows) < days:
-        fallback_query = (
-            select(*base_cols)
-            .select_from(
-                outerjoin(
-                    PlContractDataDaily,
-                    PlDerivedIndicators,
-                    and_(
-                        PlContractDataDaily.date == PlDerivedIndicators.date,
-                        PlContractDataDaily.contract_id
-                        == PlDerivedIndicators.contract_id,
-                    ),
-                )
+        fallback_filter = []
+        if end_date is not None:
+            fallback_filter.append(PlContractDataDaily.date <= end_date)
+
+        fallback_query = select(*base_cols).select_from(
+            outerjoin(
+                PlContractDataDaily,
+                PlDerivedIndicators,
+                and_(
+                    PlContractDataDaily.date == PlDerivedIndicators.date,
+                    PlContractDataDaily.contract_id == PlDerivedIndicators.contract_id,
+                ),
             )
-            .order_by(desc(PlContractDataDaily.date))
-            .limit(days)
+        )
+        if fallback_filter:
+            fallback_query = fallback_query.where(and_(*fallback_filter))
+        fallback_query = fallback_query.order_by(desc(PlContractDataDaily.date)).limit(
+            days
         )
         result = await db.execute(fallback_query)
         rows = result.all()
@@ -451,6 +460,7 @@ async def get_latest_market_research(
         "date": article.date,
         "impact_synthesis": article.impact_synthesis,
         "summary": article.summary,
+        "keywords": article.keywords,
         "author": article.source or article.llm_provider,
     }
 

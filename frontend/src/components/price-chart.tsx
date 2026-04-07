@@ -5,8 +5,7 @@ import {
 } from '@/components/ui/chart';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
-import { Button } from '@/components/ui/button';
-import { ZoomInIcon, ZoomOutIcon, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import {
   Select,
@@ -23,20 +22,21 @@ interface PriceChartProps {
   title?: string;
   selectedMetric?: string;
   onMetricChange?: (metric: string) => void;
+  targetDate?: string;
   className?: string;
 }
 
 export default function PriceChart({
-  title = 'Price Chart',
+  title = 'Évolution des Prix',
   selectedMetric = 'close',
   onMetricChange,
+  targetDate,
   className,
 }: PriceChartProps) {
-  const [zoomLevel, setZoomLevel] = useState(1);
   const [days, setDays] = useState(30);
 
   // Fetch chart data from API
-  const { data: chartResponse, isLoading, error } = useChartData(days);
+  const { data: chartResponse, isLoading, error } = useChartData(days, targetDate);
 
   // Find the selected metric configuration - must be called before any conditional returns
   const metricConfig = useMemo(() => {
@@ -46,19 +46,7 @@ export default function PriceChart({
     );
   }, [selectedMetric]);
 
-  // Adjust data points based on zoom level - must be called before any conditional returns
-  const visibleData = useMemo(() => {
-    if (!chartResponse?.data) return [];
-
-    const data = chartResponse.data;
-    if (zoomLevel === 1) return data;
-
-    const dataLength = data.length;
-    const visiblePoints = Math.ceil(dataLength / zoomLevel);
-    const startIndex = Math.max(0, dataLength - visiblePoints);
-
-    return data.slice(startIndex);
-  }, [chartResponse?.data, zoomLevel]);
+  const visibleData = chartResponse?.data ?? [];
 
   // Tight Y-axis domain for CLOSE and STOCK US to make variations visible
   const yAxisDomain = useMemo<[number | string, number | string]>(() => {
@@ -81,7 +69,7 @@ export default function PriceChart({
       <Card className={cn("flex items-center justify-center h-[400px]", className)}>
         <div className="flex items-center gap-2 text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin" />
-          <span className="text-sm">Loading chart...</span>
+          <span className="text-sm">Chargement du graphique...</span>
         </div>
       </Card>
     );
@@ -91,9 +79,9 @@ export default function PriceChart({
     return (
       <Card className={cn("flex items-center justify-center h-[400px]", className)}>
         <div className="text-center space-y-1">
-          <p className="text-sm text-muted-foreground">No price data available</p>
+          <p className="text-sm text-muted-foreground">Aucune donnée de prix disponible</p>
           <p className="text-xs text-muted-foreground/60">
-            Market data may not have been imported yet
+            Les données de marché n'ont peut-être pas encore été importées
           </p>
         </div>
       </Card>
@@ -130,7 +118,7 @@ export default function PriceChart({
             defaultValue="close"
           >
             <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Select metric" />
+              <SelectValue placeholder="Métrique" />
             </SelectTrigger>
             <SelectContent>
               {METRIC_OPTIONS.map((metric) => (
@@ -146,38 +134,16 @@ export default function PriceChart({
             onValueChange={handleDaysChange}
           >
             <SelectTrigger className="w-[120px]">
-              <SelectValue placeholder="Days" />
+              <SelectValue placeholder="Période" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="7">7 days</SelectItem>
-              <SelectItem value="30">30 days</SelectItem>
-              <SelectItem value="90">90 days</SelectItem>
-              <SelectItem value="180">180 days</SelectItem>
-              <SelectItem value="365">1 year</SelectItem>
+              <SelectItem value="7">7 jours</SelectItem>
+              <SelectItem value="30">30 jours</SelectItem>
+              <SelectItem value="90">90 jours</SelectItem>
+              <SelectItem value="180">180 jours</SelectItem>
+              <SelectItem value="365">1 an</SelectItem>
             </SelectContent>
           </Select>
-
-          <div className="flex items-center gap-2">
-
-            <div className="flex items-center gap-1">
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => setZoomLevel((prev) => Math.max(1, prev - 1))}
-                disabled={zoomLevel === 1}
-              >
-                <ZoomOutIcon className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => setZoomLevel((prev) => Math.min(4, prev + 1))}
-                disabled={zoomLevel === 4}
-              >
-                <ZoomInIcon className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
         </div>
       </CardHeader>
 

@@ -68,6 +68,13 @@ output "wif_provider_name" {
   value       = google_iam_workload_identity_pool_provider.github.name
 }
 
+# ---- Load Balancer ----
+
+output "lb_ip_address" {
+  description = "Global Load Balancer static IP (set A records for app. and api. subdomains)"
+  value       = google_compute_global_address.lb.address
+}
+
 # ---- GitHub Variables (copy into GitHub Settings → Variables) ----
 
 output "github_vars" {

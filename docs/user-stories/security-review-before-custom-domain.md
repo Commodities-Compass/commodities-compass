@@ -130,9 +130,10 @@ Walk through each US acceptance criteria manually. Faster but less thorough.
 | Step | When | Blocker for domain? | Status |
 |------|------|---------------------|--------|
 | Phase 5 (kill Railway) | — | Yes | **DONE** (2026-04-01) |
+| Security blockers (C-1, H-1) | — | Yes | **DONE** (2026-04-01) |
+| Custom domain setup (US-5) | — | — | **DONE** (2026-04-07) — `app.com-compass.com` + `api.com-compass.com` live |
 | Dependency major upgrades | Next sprint | No (dev-only CVEs) | Planned — see `dependency-major-upgrades.md` |
-| Security review (US-1 to US-4) | Next | Yes — must pass before DNS cutover | **READY TO START** |
-| Custom domain setup (US-5) | After security review passes | — | Blocked |
+| Post-launch security hardening | Next sprint | No | Planned — see `security-hardening-post-launch.md` |
 
 ---
 

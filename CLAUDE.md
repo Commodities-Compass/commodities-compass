@@ -371,15 +371,18 @@ The `PositionStatus` component automatically fetches and plays the audio file:
 
 ## Deployment
 
-- **Platform**: GCP Cloud Run.
-- **CI/CD**: `.github/workflows/deploy.yml` — push to `main` triggers CI (lint + test) → Deploy (backend + frontend + 9 Cloud Run Jobs).
+- **Custom domain**: `app.com-compass.com` (frontend), `api.com-compass.com` (backend). Routed via Global HTTPS Load Balancer (static IP `34.36.87.103`) with Google-managed SSL certificates. Old `*.run.app` URLs still work in parallel.
+- **Platform**: GCP Cloud Run (region `europe-west9`).
+- **Load Balancer**: Global HTTPS LB with serverless NEGs. Required because Cloud Run domain mappings are not supported in `europe-west9`. Terraform-managed in `infra/terraform/loadbalancer.tf`. HTTP→HTTPS redirect included.
+- **CI/CD**: `.github/workflows/deploy.yml` — push to `main` triggers CI (lint + test) → Deploy (backend + frontend + 8 Cloud Run Jobs).
 - **Backend**: `backend/Dockerfile` (Python 3.11-slim, no Playwright, ~200MB). Alembic migrations on startup via `start.sh`. Cloud Run: 512Mi, 1 CPU, max 2 instances, VPC connector for Cloud SQL.
-- **Frontend**: `frontend/Dockerfile` (Node 18-alpine, serve static). Auth0 vars baked at build time via `--build-arg` from GitHub vars. Cloud Run: 256Mi, 1 CPU, max 2 instances.
+- **Frontend**: `frontend/Dockerfile` (Node 18-alpine, serve static). Auth0 vars baked at build time via `--build-arg` from GitHub vars. Cloud Run: 256Mi, 1 CPU, max 2 instances. CSP in `index.html` whitelists `*.com-compass.com`, `*.auth0.com`, `*.sentry.io`.
 - **Cloud Run Jobs**: `backend/Dockerfile.jobs` (with Playwright, ~1GB). 8 jobs deployed via deploy.yml. `ENTRYPOINT ["poetry", "run"]`, command passed via job args. No retries (--max-retries=0).
 - **Cloud Scheduler**: 8 cron jobs in `europe-west1` (scheduler doesn't support `europe-west9`). Triggers Cloud Run Job execution via HTTP + OAuth. Schedule: 19:00-20:15 UTC weekdays. No retries (retryCount=0).
-- **Secrets**: GCP Secret Manager (14 secrets). Non-sensitive env vars via GitHub Vars → deploy.yml `--set-env-vars`.
+- **Secrets**: GCP Secret Manager (13 secrets). Non-sensitive env vars via GitHub Vars → deploy.yml `--set-env-vars`.
 - **Auth**: Workload Identity Federation (keyless GitHub → GCP auth). No SA key files in CI/CD.
-- **Infra as code**: `infra/terraform/` — Cloud SQL, VPC connector, service accounts, schedulers.
+- **Infra as code**: `infra/terraform/` — Cloud SQL, VPC connector, service accounts, schedulers, load balancer.
+- **DNS**: Managed via Squarespace Domains (registered under Google Workspace). A records for `app` and `api` subdomains point to LB static IP. Domain root (`com-compass.com`) unchanged (Squarespace site).
 
 ### Nightly Pipeline Schedule (UTC, weekdays)
 

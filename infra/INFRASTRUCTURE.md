@@ -166,9 +166,25 @@ The bastion provides a secure tunnel from developer machines to the private Clou
 
 Keyless auth: GitHub OIDC token exchanged for short-lived GCP access token at each workflow run.
 
+### Load Balancer (`loadbalancer.tf`)
+
+Global HTTPS LB routing custom domains to Cloud Run services. Required because Cloud Run domain mappings are not supported in `europe-west9`.
+
+| Resource | Value |
+|----------|-------|
+| Static IP | `34.36.87.103` (`cc-lb-ip`) |
+| SSL certs | `cc-ssl-app` (app.com-compass.com), `cc-ssl-api` (api.com-compass.com) — Google-managed, auto-renew |
+| Frontend NEG | `cc-neg-frontend` → Cloud Run `frontend` |
+| Backend NEG | `cc-neg-backend` → Cloud Run `backend` |
+| URL map | Host-based: `app.*` → frontend, `api.*` → backend |
+| HTTP redirect | Port 80 → 301 → HTTPS (port 443) |
+| Cost | ~$18/mo (forwarding rule) |
+
+DNS (Squarespace Domains): A records `app` and `api` → `34.36.87.103`.
+
 ### Cloud Scheduler (`scheduler.tf`)
 
-9 cron jobs, **all active** since 2026-03-30.
+8 cron jobs, **all active** since 2026-03-30.
 Region: `europe-west1` (europe-west9 not supported for Scheduler).
 Timezone: UTC. Pipeline starts ~1.5h after ICE Europe close (17:30 London).
 
@@ -210,11 +226,11 @@ Set via `gh variable set`, used by `deploy.yml`:
 | `AUTH0_CLIENT_ID` | Frontend build | SPA client ID |
 | `AUTH0_API_AUDIENCE` | Frontend build | `https://api.commodities-compass.com` |
 | `AUTH0_ISSUER` | Frontend build | `https://dev-1vqq5xiywmfinkgk.us.auth0.com/` |
-| `FRONTEND_URL` | Frontend build (redirect_uri) | `https://frontend-229076583962.europe-west9.run.app` |
-| `API_BASE_URL` | Frontend build (Axios baseURL) | `https://backend-229076583962.europe-west9.run.app/v1` |
+| `FRONTEND_URL` | Frontend build (redirect_uri) | `https://app.com-compass.com` |
+| `API_BASE_URL` | Frontend build (Axios baseURL) | `https://api.com-compass.com/v1` |
 | `GOOGLE_DRIVE_AUDIO_FOLDER_ID` | Cloud Run env vars | Drive folder ID |
 | `GOOGLE_DRIVE_BRIEFS_FOLDER_ID` | Cloud Run env vars | Drive briefs folder ID |
-| `BACKEND_CORS_ORIGINS` | Backend env var | `["https://frontend-*.run.app"]` |
+| `BACKEND_CORS_ORIGINS` | Backend env var | `https://app.com-compass.com` |
 
 ## Operations
 

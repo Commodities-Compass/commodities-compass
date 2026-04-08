@@ -275,12 +275,9 @@ export default function WeatherUpdateCard({
   return (
     <Card className={className}>
       <CardHeader className="pb-2">
-        <div className="flex items-center gap-2 mb-2">
-          <CloudRainIcon className="h-5 w-5 text-primary" />
-          <CardTitle className="text-lg font-medium">
-            Agro-Météo Intelligence
-          </CardTitle>
-        </div>
+        <CardTitle className="text-lg font-semibold tracking-tight">
+          Agro-Météo Intelligence
+        </CardTitle>
       </CardHeader>
 
       <CardContent className="space-y-4">

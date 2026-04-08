@@ -1,9 +1,8 @@
 import DateSelector from '@/components/date-selector';
-import IndicatorsGrid from '@/components/indicators-grid';
+import MarketAnalysis from '@/components/market-analysis';
 import NewsCard from '@/components/news-card';
 import PositionStatus from '@/components/position-status';
 import PriceChart from '@/components/price-chart';
-import RecommendationsList from '@/components/recommendations-list';
 import WeatherUpdateCard from '@/components/weather-update-card';
 import { DashboardErrorBoundary } from '@/components/DashboardErrorBoundary';
 import { METRIC_OPTIONS } from '@/data/commodities-data';
@@ -45,18 +44,9 @@ export default function DashboardPage() {
         />
       </DashboardErrorBoundary>
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        <div className="lg:col-span-2">
-          <DashboardErrorBoundary>
-            <IndicatorsGrid targetDate={currentDate} />
-          </DashboardErrorBoundary>
-        </div>
-        <div className="lg:col-span-3">
-          <DashboardErrorBoundary>
-            <RecommendationsList targetDate={currentDate} />
-          </DashboardErrorBoundary>
-        </div>
-      </div>
+      <DashboardErrorBoundary>
+        <MarketAnalysis targetDate={currentDate} />
+      </DashboardErrorBoundary>
 
       <div>
         <DashboardErrorBoundary>

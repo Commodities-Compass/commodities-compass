@@ -11,9 +11,6 @@ import {
   NewspaperIcon,
   UserIcon,
   Loader2,
-  TrendingUp,
-  BarChart3,
-  Compass,
 } from "lucide-react";
 import { useNews } from "@/hooks/useDashboard";
 import { cn } from "@/utils";
@@ -205,11 +202,15 @@ function parseSections(content: string, synthesis: string | null): ParsedSection
   return sections;
 }
 
+function normalizeTerm(text: string): string {
+  return text.replace(/\bpâtes?\b/gi, "masse");
+}
+
 function parseKeywords(raw: string | null): string[] {
   if (!raw) return [];
   return raw
     .split(";")
-    .map((k) => k.trim())
+    .map((k) => normalizeTerm(k.trim()))
     .filter(Boolean)
     .slice(0, 8);
 }
@@ -223,7 +224,7 @@ function SectionContent({ text }: { text: string }) {
     );
   }
 
-  const paragraphs = text
+  const paragraphs = normalizeTerm(text)
     .split(/\n{2,}/)
     .map((p) => p.trim())
     .filter(Boolean);
@@ -243,27 +244,9 @@ function SectionContent({ text }: { text: string }) {
 }
 
 const TAB_CONFIG = [
-  {
-    value: "technicals",
-    label: "Technique",
-    icon: TrendingUp,
-    accent: "bg-amber-500/80",
-    accentLight: "text-amber-600 dark:text-amber-400",
-  },
-  {
-    value: "fundamentals",
-    label: "Fondamentaux",
-    icon: BarChart3,
-    accent: "bg-emerald-500/80",
-    accentLight: "text-emerald-600 dark:text-emerald-400",
-  },
-  {
-    value: "overall",
-    label: "Synthèse",
-    icon: Compass,
-    accent: "bg-blue-500/80",
-    accentLight: "text-blue-600 dark:text-blue-400",
-  },
+  { value: "technicals", label: "Technique", accent: "bg-amber-500/80" },
+  { value: "fundamentals", label: "Fondamentaux", accent: "bg-emerald-500/80" },
+  { value: "overall", label: "Synthèse", accent: "bg-blue-500/80" },
 ] as const;
 
 export default function NewsCard({ targetDate, className }: NewsCardProps) {
@@ -298,29 +281,22 @@ export default function NewsCard({ targetDate, className }: NewsCardProps) {
     <Card className={cn("overflow-hidden", className)}>
       {/* Header */}
       <CardHeader className="pb-3">
-        <div className="flex items-center gap-2">
-          <NewspaperIcon className="h-5 w-5 text-primary" />
-          <h2 className="text-lg font-semibold tracking-tight">Revue de Presse</h2>
-        </div>
+        <h2 className="text-lg font-semibold tracking-tight">Revue de Presse</h2>
       </CardHeader>
 
       {/* Tabbed content */}
       <CardContent className="pt-0">
         <Tabs defaultValue="technicals" className="w-full">
           <TabsList className="w-full grid grid-cols-3 mb-4">
-            {TAB_CONFIG.map((tab) => {
-              const Icon = tab.icon;
-              return (
-                <TabsTrigger
-                  key={tab.value}
-                  value={tab.value}
-                  className="gap-1.5 text-xs sm:text-sm"
-                >
-                  <Icon className="h-3.5 w-3.5 hidden sm:block" />
-                  {tab.label}
-                </TabsTrigger>
-              );
-            })}
+            {TAB_CONFIG.map((tab) => (
+              <TabsTrigger
+                key={tab.value}
+                value={tab.value}
+                className="text-xs sm:text-sm"
+              >
+                {tab.label}
+              </TabsTrigger>
+            ))}
           </TabsList>
 
           {TAB_CONFIG.map((tab) => (

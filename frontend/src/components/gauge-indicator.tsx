@@ -1,5 +1,86 @@
 import { cn } from "@/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type { IndicatorRange } from "@/types/dashboard";
+
+// ---------------------------------------------------------------------------
+// Indicator metadata — static, never changes, no need to store in DB
+// ---------------------------------------------------------------------------
+
+interface IndicatorMeta {
+  fullName: string;
+  description: string;
+  zones: { RED: string; ORANGE: string; GREEN: string };
+}
+
+const INDICATOR_META: Record<string, IndicatorMeta> = {
+  MACROECO: {
+    fullName: "Macro-Économique",
+    description:
+      "Score macro issu de l'analyse LLM (météo, fondamentaux, contexte global)",
+    zones: {
+      RED: "Contexte défavorable",
+      ORANGE: "Contexte neutre",
+      GREEN: "Contexte porteur",
+    },
+  },
+  RSI: {
+    fullName: "Relative Strength Index",
+    description:
+      "Vitesse et amplitude des mouvements de prix sur 14 jours",
+    zones: {
+      RED: "Survendu — pression vendeuse",
+      ORANGE: "Zone neutre",
+      GREEN: "Momentum haussier",
+    },
+  },
+  MACD: {
+    fullName: "MACD",
+    description:
+      "Changements de tendance via croisement de moyennes mobiles",
+    zones: {
+      RED: "Signal baissier",
+      ORANGE: "Pas de signal clair",
+      GREEN: "Signal haussier",
+    },
+  },
+  "%K": {
+    fullName: "Stochastique %K",
+    description:
+      "Cours de clôture vs fourchette haute-basse",
+    zones: {
+      RED: "Survendu (<20%)",
+      ORANGE: "Zone neutre",
+      GREEN: "Momentum fort (>80%)",
+    },
+  },
+  ATR: {
+    fullName: "Average True Range",
+    description: "Volatilité moyenne du marché (Wilder, 14j)",
+    zones: {
+      RED: "Volatilité faible",
+      ORANGE: "Volatilité normale",
+      GREEN: "Volatilité élevée",
+    },
+  },
+  "VOL/OI": {
+    fullName: "Volume / Open Interest",
+    description: "Ratio volume de trading / positions ouvertes",
+    zones: {
+      RED: "Activité faible",
+      ORANGE: "Activité normale",
+      GREEN: "Conviction forte",
+    },
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 interface GaugeIndicatorProps {
   value: number;
@@ -24,206 +105,232 @@ export default function GaugeIndicator({
   showLabel = true,
   className,
 }: GaugeIndicatorProps) {
-  // Calculate the percentage for the gauge position
   const percentage = Math.max(
     0,
-    Math.min(100, ((value - min) / (max - min)) * 100)
+    Math.min(100, ((value - min) / (max - min)) * 100),
   );
 
-  // Determine color based on ranges or fallback to percentage
-  const getColor = () => {
-    if (ranges && ranges.length > 0) {
-      // Find which range the current value falls into
-      for (const range of ranges) {
-        // Handle both normal and inverted ranges
-        const rangeMin = Math.min(range.range_low, range.range_high);
-        const rangeMax = Math.max(range.range_low, range.range_high);
-        
-        if (value >= rangeMin && value <= rangeMax) {
-          switch (range.area) {
-            case 'RED': return "text-red-500";
-            case 'ORANGE': return "text-yellow-500";
-            case 'GREEN': return "text-green-500";
-            default: return "text-gray-500";
-          }
-        }
-      }
-      // If no range matches, use default color
-      return "text-gray-500";
-    }
-    
-    // Fallback to old percentage-based logic if no ranges provided
-    if (percentage <= 33) return "text-red-500";
-    if (percentage <= 66) return "text-yellow-500";
-    return "text-green-500";
-  };
+  const meta = INDICATOR_META[label];
+  const zone = getCurrentZone(value, percentage, ranges);
+  const colorSections = generateColorSections(ranges, min, max);
 
-  // Generate color sections based on ranges
-  const generateColorSections = () => {
-    if (!ranges || ranges.length === 0) {
-      // Fallback to equal sections
-      return [
-        { startAngle: Math.PI, endAngle: Math.PI * 2/3, color: "text-red-500" },
-        { startAngle: Math.PI * 2/3, endAngle: Math.PI * 1/3, color: "text-yellow-500" },
-        { startAngle: Math.PI * 1/3, endAngle: 0, color: "text-green-500" }
-      ];
-    }
-    
+  // SVG geometry
+  const cx = 60;
+  const cy = 55;
+  const r = 46;
 
-    // Sort ranges by their position on the scale
-    const sortedRanges = [...ranges].sort((a, b) => {
-      const aMid = (a.range_low + a.range_high) / 2;
-      const bMid = (b.range_low + b.range_high) / 2;
-      return aMid - bMid;
-    });
+  const angle = Math.PI - (percentage / 100) * Math.PI;
+  const mx = cx + r * Math.cos(angle);
+  const my = cy - r * Math.abs(Math.sin(angle));
 
-    // Convert ranges to angle sections
-    return sortedRanges.map(range => {
-      // For inverted ranges, we need to use the original values
-      // to determine which is the start and which is the end
-      let startValue, endValue;
-      
-      if (range.range_low <= range.range_high) {
-        // Normal range
-        startValue = range.range_low;
-        endValue = range.range_high;
-      } else {
-        // Inverted range - swap them
-        startValue = range.range_high;
-        endValue = range.range_low;
-      }
-      
-      // Calculate percentages
-      const startPercent = ((startValue - min) / (max - min)) * 100;
-      const endPercent = ((endValue - min) / (max - min)) * 100;
-      
-      // Clamp percentages to 0-100 range
-      const clampedStartPercent = Math.max(0, Math.min(100, startPercent));
-      const clampedEndPercent = Math.max(0, Math.min(100, endPercent));
-      
-      // Convert percentages to angles (180° to 0° semicircle)
-      // For the gauge: 180° (left) = 0%, 0° (right) = 100%
-      const startAngle = Math.PI - (clampedStartPercent / 100) * Math.PI;
-      const endAngle = Math.PI - (clampedEndPercent / 100) * Math.PI;
-      
-      const colorClass = range.area === 'RED' ? "text-red-500" : 
-                        range.area === 'ORANGE' ? "text-yellow-500" : 
-                        "text-green-500";
-      
-      return { startAngle, endAngle, color: colorClass };
-    });
-  };
-
-  // Size classes
   const sizeClasses = {
     sm: "w-20 h-12",
     md: "w-28 h-18",
     lg: "w-36 h-22",
   };
 
-  // Font size classes based on gauge size
-  const fontSizeClasses = {
-    sm: "text-xl",
-    md: "text-2xl",
-    lg: "text-3xl",
-  };
-
-  // Calculate marker position on the perimeter
-  // Arc goes from (10,60) to (110,60) - this is a semicircle with center at (60,60)
-  // For the top semicircle, angles go from π (180°) to 0 (0°)
-  const arcStartAngle = Math.PI; // 180° - leftmost point (10,60)
-  const currentAngle = arcStartAngle - (percentage / 100) * Math.PI; // Interpolate along the arc
-  
-  const centerX = 60;
-  const centerY = 60; 
-  const radius = 50;
-  
-  // For the TOP semicircle, y coordinates should be LESS than centerY
-  const markerX = centerX + radius * Math.cos(currentAngle);
-  const markerY = centerY - radius * Math.abs(Math.sin(currentAngle)); // Use negative to go upward
-
-  // Get the color sections based on ranges
-  const colorSections = generateColorSections();
-  
-  // Helper function to create SVG path for arc section
-  const createArcPath = (startAngle: number, endAngle: number) => {
-    const startX = centerX + radius * Math.cos(startAngle);
-    const startY = centerY - radius * Math.abs(Math.sin(startAngle));
-    const endX = centerX + radius * Math.cos(endAngle);
-    const endY = centerY - radius * Math.abs(Math.sin(endAngle));
-    
-    const largeArcFlag = Math.abs(startAngle - endAngle) > Math.PI ? 1 : 0;
-    
-    return `M${startX},${startY} A${radius},${radius} 0 ${largeArcFlag},1 ${endX},${endY}`;
-  };
-
-  return (
-    <div className={cn("flex flex-col items-center", className)}>
+  const gauge = (
+    <div
+      className={cn(
+        "flex flex-col items-center rounded-md px-1 py-2 transition-colors duration-150",
+        "hover:bg-muted/40 cursor-default",
+        className,
+      )}
+    >
       <div className={cn("relative", sizeClasses[size])}>
-        {/* Gauge background */}
         <svg
           className="w-full h-full"
-          viewBox="0 0 120 80"
+          viewBox="0 0 120 68"
           xmlns="http://www.w3.org/2000/svg"
         >
-          {/* Gauge background arc */}
+          {/* Background arc */}
           <path
-            d="M10,60 A50,50 0 0,1 110,60"
+            d={`M${cx - r},${cy} A${r},${r} 0 0,1 ${cx + r},${cy}`}
             fill="none"
             stroke="currentColor"
-            strokeWidth="8"
-            className="text-gray-200 dark:text-gray-700"
+            strokeWidth="4"
+            strokeLinecap="round"
+            className="text-muted/50"
           />
 
-          {/* Dynamic colored sections based on ranges */}
-          {colorSections.map((section, index) => (
+          {/* Colored zone arcs */}
+          {colorSections.map((section, i) => (
             <path
-              key={index}
-              d={createArcPath(section.startAngle, section.endAngle)}
+              key={i}
+              d={createArcPath(cx, cy, r, section.startAngle, section.endAngle)}
               fill="none"
               stroke="currentColor"
-              strokeWidth="8"
-              className={section.color}
+              strokeWidth="4"
+              strokeLinecap="round"
+              className={cn(section.color, "opacity-75")}
             />
           ))}
 
-          {/* Marker on the perimeter */}
-          <circle
-            cx={markerX}
-            cy={markerY}
-            r="4"
-            fill="currentColor"
-            className="text-gray-800 dark:text-gray-200"
+          {/* Needle */}
+          <line
+            x1={cx}
+            y1={cy}
+            x2={mx}
+            y2={my}
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            className="text-foreground/60"
           />
+          <circle cx={cx} cy={cy} r="2" fill="currentColor" className="text-foreground/40" />
 
-          {/* Value display in the center */}
-          {showValue && (
-            <text
-              x="60"
-              y="65"
-              textAnchor="middle"
-              dominantBaseline="middle"
-              className={cn(
-                "font-mono font-bold",
-                fontSizeClasses[size],
-                getColor()
-              )}
-              fill="currentColor"
-            >
-              {value != null ? value.toFixed(2) : '—'}
-            </text>
-          )}
+          {/* Marker dot */}
+          <circle cx={mx} cy={my} r="3.5" fill="currentColor" className={zone.color} />
+          <circle cx={mx} cy={my} r="1.8" fill="white" className="dark:fill-gray-900" />
+
+          {/* Min / Max labels */}
+          <text
+            x={cx - r + 2}
+            y={cy + 9}
+            textAnchor="start"
+            className="fill-muted-foreground"
+            fontSize="9"
+            fontFamily="system-ui"
+          >
+            {min.toFixed(1)}
+          </text>
+          <text
+            x={cx + r - 2}
+            y={cy + 9}
+            textAnchor="end"
+            className="fill-muted-foreground"
+            fontSize="9"
+            fontFamily="system-ui"
+          >
+            {max.toFixed(1)}
+          </text>
         </svg>
       </div>
 
-      {/* Label - only show if showLabel is true */}
-      {showLabel && (
-        <div className="mt-2 text-center">
-          <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
-            {label}
-          </span>
+      {/* Value + label */}
+      {(showValue || showLabel) && (
+        <div className="flex flex-col items-center gap-0 -mt-0.5">
+          {showValue && (
+            <span
+              className={cn(
+                "text-sm font-bold tabular-nums leading-tight",
+                zone.color,
+              )}
+            >
+              {value != null ? value.toFixed(2) : "—"}
+            </span>
+          )}
+          {showLabel && (
+            <span className="text-[10px] font-medium text-muted-foreground tracking-wider uppercase">
+              {label}
+            </span>
+          )}
         </div>
       )}
     </div>
   );
+
+  if (!meta) return gauge;
+
+  return (
+    <TooltipProvider delayDuration={150}>
+      <Tooltip>
+        <TooltipTrigger asChild>{gauge}</TooltipTrigger>
+        <TooltipContent side="top" className="max-w-[220px] px-3 py-2 space-y-1.5">
+          <p className="text-xs font-semibold">{meta.fullName}</p>
+          <p className="text-[11px] text-gray-400 leading-snug">
+            {meta.description}
+          </p>
+          <div className="flex items-center gap-1.5 pt-0.5">
+            <div className={cn("h-1.5 w-1.5 rounded-full", zoneDotColor(zone.area))} />
+            <span className="text-[11px] font-medium">{meta.zones[zone.area]}</span>
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const ZONE_COLORS = {
+  RED: "text-red-500",
+  ORANGE: "text-amber-500",
+  GREEN: "text-emerald-500",
+} as const;
+
+function zoneDotColor(area: "RED" | "ORANGE" | "GREEN"): string {
+  if (area === "RED") return "bg-red-500";
+  if (area === "ORANGE") return "bg-amber-500";
+  return "bg-emerald-500";
+}
+
+function getCurrentZone(
+  value: number,
+  percentage: number,
+  ranges: IndicatorRange[] | undefined,
+): { area: "RED" | "ORANGE" | "GREEN"; color: string } {
+  if (ranges && ranges.length > 0) {
+    for (const range of ranges) {
+      const lo = Math.min(range.range_low, range.range_high);
+      const hi = Math.max(range.range_low, range.range_high);
+      if (value >= lo && value <= hi) {
+        return { area: range.area, color: ZONE_COLORS[range.area] };
+      }
+    }
+  }
+  if (percentage <= 33) return { area: "RED", color: ZONE_COLORS.RED };
+  if (percentage <= 66) return { area: "ORANGE", color: ZONE_COLORS.ORANGE };
+  return { area: "GREEN", color: ZONE_COLORS.GREEN };
+}
+
+function createArcPath(
+  cx: number,
+  cy: number,
+  r: number,
+  startAngle: number,
+  endAngle: number,
+): string {
+  const sx = cx + r * Math.cos(startAngle);
+  const sy = cy - r * Math.abs(Math.sin(startAngle));
+  const ex = cx + r * Math.cos(endAngle);
+  const ey = cy - r * Math.abs(Math.sin(endAngle));
+  const largeArc = Math.abs(startAngle - endAngle) > Math.PI ? 1 : 0;
+  return `M${sx},${sy} A${r},${r} 0 ${largeArc},1 ${ex},${ey}`;
+}
+
+function generateColorSections(
+  ranges: IndicatorRange[] | undefined,
+  min: number,
+  max: number,
+) {
+  if (!ranges || ranges.length === 0) {
+    return [
+      { startAngle: Math.PI, endAngle: (Math.PI * 2) / 3, color: "text-red-500" },
+      { startAngle: (Math.PI * 2) / 3, endAngle: Math.PI / 3, color: "text-amber-500" },
+      { startAngle: Math.PI / 3, endAngle: 0, color: "text-emerald-500" },
+    ];
+  }
+
+  const sorted = [...ranges].sort(
+    (a, b) => (a.range_low + a.range_high) / 2 - (b.range_low + b.range_high) / 2,
+  );
+
+  return sorted.map((range) => {
+    const lo = Math.min(range.range_low, range.range_high);
+    const hi = Math.max(range.range_low, range.range_high);
+    const startPct = Math.max(0, Math.min(100, ((lo - min) / (max - min)) * 100));
+    const endPct = Math.max(0, Math.min(100, ((hi - min) / (max - min)) * 100));
+    const startAngle = Math.PI - (startPct / 100) * Math.PI;
+    const endAngle = Math.PI - (endPct / 100) * Math.PI;
+    const color =
+      range.area === "RED"
+        ? "text-red-500"
+        : range.area === "ORANGE"
+          ? "text-amber-500"
+          : "text-emerald-500";
+    return { startAngle, endAngle, color };
+  });
 }

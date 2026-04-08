@@ -314,3 +314,55 @@ class PlSeasonalScore(Base):
         ),
         Index("ix_seasonal_score_campaign", "campaign"),
     )
+
+
+class PlArticleSegment(Base):
+    """Structured segment extracted from a press review article.
+
+    MODEL-ONLY — the extraction pipeline and API endpoints live on
+    feat/pattern-extractor. This model is on main solely because the
+    migration was applied to prod before the branch was merged. The table
+    and its data exist in GCP; this model lets Alembic and SQLAlchemy
+    stay in sync. If the branch is never merged, the model and migration
+    can be dropped together with a down-migration.
+
+    Each row represents one zone x theme segment. An article can produce
+    0-8 segments (2 zones x 4 themes). Segments are immutable — re-extraction
+    with a new prompt creates rows with a different extraction_version.
+    """
+
+    __tablename__ = "pl_article_segment"
+    __table_args__ = (
+        UniqueConstraint(
+            "article_id",
+            "zone",
+            "theme",
+            "extraction_version",
+            name="uq_article_segment",
+        ),
+        Index("ix_article_segment_zone_theme", "zone", "theme"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    article_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("pl_fundamental_article.id"), nullable=False, index=True
+    )
+    article_date: Mapped[date] = mapped_column(DATE, nullable=False, index=True)
+    zone: Mapped[str] = mapped_column(VARCHAR(30), nullable=False)
+    theme: Mapped[str] = mapped_column(VARCHAR(30), nullable=False)
+
+    # Extracted content
+    facts: Mapped[Optional[str]] = mapped_column(TEXT)
+    causal_chains: Mapped[Optional[str]] = mapped_column(TEXT)
+    sentiment: Mapped[Optional[str]] = mapped_column(VARCHAR(20))
+    sentiment_score: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(3, 2))
+    entities: Mapped[Optional[str]] = mapped_column(TEXT)
+    confidence: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(3, 2))
+
+    # Metadata
+    llm_provider: Mapped[str] = mapped_column(VARCHAR(50), nullable=False)
+    llm_model: Mapped[str] = mapped_column(VARCHAR(100), nullable=False)
+    extraction_version: Mapped[str] = mapped_column(
+        VARCHAR(20), nullable=False, default="v1"
+    )
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())

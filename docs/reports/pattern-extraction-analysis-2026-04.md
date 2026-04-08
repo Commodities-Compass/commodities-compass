@@ -7,7 +7,90 @@
 
 ---
 
-## 1. Matrice de couverture zone x theme
+## 1. Methodologie
+
+### Principe
+
+Chaque article de press review quotidien est passe dans un LLM (OpenAI o4-mini) qui le decompose en **segments structures** selon une grille 2 zones x 4 themes. Le LLM extrait pour chaque segment : les faits cles, les chaines causales, le sentiment, et les entites nommees.
+
+### Exemple concret
+
+**Article du 2 juin 2025** (extrait) :
+
+> Les contrats cacao ont atteint un plus bas de six mois a Londres, les cours passant sous les 2 500 GBP/t sous l'effet de la pression vendeuse des fonds. En Cote d'Ivoire, les arrivages aux ports restent dynamiques a 1,85 Mt, en hausse de 3,2% par rapport a la campagne precedente. Les broyages europeens du T2 sont attendus en baisse de 8% selon Barry Callebaut, refletant une demande industrielle en retrait.
+
+**Extraction LLM :**
+
+```
+Article
+  |
+  v  LLM (o4-mini)
+  |
+  +-- Segment 1 : zone=monde, theme=economie
+  |     facts: "Cours sous 2 500 GBP/t, plus bas de 6 mois a Londres"
+  |     causal_chains: [{cause: "pression vendeuse des fonds",
+  |                       effect: "cours au plus bas de 6 mois",
+  |                       direction: "baissier"}]
+  |     sentiment: baissier (-0.65)
+  |     entities: [Londres, 2 500 GBP/t]
+  |
+  +-- Segment 2 : zone=afrique_ouest, theme=production
+  |     facts: "Arrivages CI 1,85 Mt (+3,2% y/y)"
+  |     causal_chains: [{cause: "arrivages dynamiques",
+  |                       effect: "offre abondante",
+  |                       direction: "baissier"}]
+  |     sentiment: neutre (+0.05)
+  |     entities: [Cote d'Ivoire, 1,85 Mt]
+  |
+  +-- Segment 3 : zone=monde, theme=transformation
+        facts: "Broyages europeens T2 attendus en baisse de 8%"
+        causal_chains: [{cause: "demande industrielle en retrait",
+                          effect: "baisse des broyages",
+                          direction: "baissier"}]
+        sentiment: baissier (-0.50)
+        entities: [Barry Callebaut, Europe, -8%]
+```
+
+### Pipeline technique
+
+```
+243 articles (pl_fundamental_article)
+    |
+    v  Pour chaque article : 1 appel LLM (o4-mini, ~25s)
+    |
+    v  Validation Pydantic (zone, theme, sentiment, entities)
+    |
+    v  Merge des segments dupliques (meme zone x theme)
+    |
+    v  Ecriture en base (pl_article_segment) + audit (aud_llm_call)
+    |
+    = 672 segments structures
+```
+
+### Parametres
+
+| Parametre | Valeur |
+|---|---|
+| Modele | OpenAI o4-mini (reasoning_effort=medium) |
+| Schema | Pydantic strict — 2 zones, 4 themes, 3 sentiments + score [-1, +1] |
+| Normalisation | Aliases pour zones, themes, types d'entites, directions |
+| Cout total | ~$3.50 pour 243 articles |
+| Taux de succes | 75% (182/243) |
+| Echecs | Empty responses o4-mini (50%), types d'entites non normalises (50%) |
+| Stockage | table `pl_article_segment`, branche `feat/pattern-extractor` |
+
+### Grille de segmentation (taxonomie metier)
+
+|  | Afrique de l'Ouest | Monde |
+|---|---|---|
+| **Production** | Recolte, arrivages, meteo, maladies, stocks certifies | Production mondiale, rendements, surfaces |
+| **Transformation** | Broyage local, politique valeur ajoutee | Grindings (Europe, Asie, US), capacites usines |
+| **Chocolat** | Consommation locale (emergente) | Demande consommateur, saisonnalite, reformulation |
+| **Economie** | Prix bord champ, politique commerciale | Futures ICE, devises, speculation, reglementation |
+
+---
+
+## 2. Matrice de couverture zone x theme
 
 |  | Production | Transformation | Chocolat | Economie | **Total** |
 |---|---:|---:|---:|---:|---:|
@@ -30,7 +113,7 @@
 
 ---
 
-## 2. Sentiment global
+## 3. Sentiment global
 
 | Zone | Haussier | Baissier | Neutre | Score moyen |
 |---|---:|---:|---:|---:|
@@ -45,7 +128,7 @@ Cote monde, **3.2x plus de segments baissiers que haussiers** — les articles m
 
 ---
 
-## 3. Sentiment par theme (score moyen)
+## 4. Sentiment par theme (score moyen)
 
 | Theme | Score | Interpretation |
 |---|---:|---|
@@ -58,7 +141,7 @@ Le theme **transformation** est le plus baissier (-0.35) — signal coherent ave
 
 ---
 
-## 4. Evolution temporelle du sentiment
+## 5. Evolution temporelle du sentiment
 
 ### Afrique de l'Ouest / Production
 
@@ -95,7 +178,7 @@ La transformation est le theme ou le basculement est le plus brutal : de neutre 
 
 ---
 
-## 5. Chaines causales — patterns recurrents
+## 6. Chaines causales — patterns recurrents
 
 ### Top categories de causes (1137 chaines extraites)
 
@@ -136,7 +219,7 @@ Note : la plupart des chaines sont uniques (occurrences = 1) car le LLM les form
 
 ---
 
-## 6. Entites les plus mentionnees
+## 7. Entites les plus mentionnees
 
 ### Lieux
 
@@ -173,31 +256,31 @@ Note : la plupart des chaines sont uniques (occurrences = 1) car le LLM les form
 
 ---
 
-## 7. Findings cles
+## 8. Findings cles
 
-### 7.1 Le recit dominant : baisse de la demande, pas hausse de l'offre
+### 8.1 Le recit dominant : baisse de la demande, pas hausse de l'offre
 
 Contrairement au narratif "crise de l'offre cacao", les articles de la periode pointent principalement vers une **faiblesse de la demande** comme driver principal du marche baissier. La categorie DEMANDE est la plus directionnellement baissiere (rapport 9:1).
 
-### 7.2 La transformation est le signal le plus precoce
+### 8.2 La transformation est le signal le plus precoce
 
 Le theme `monde/transformation` passe de neutre a tres baissier en juillet 2025 — **3 mois avant** le retournement du theme `monde/economie`. Les broyages sont un leading indicator du sentiment global.
 
-### 7.3 Le sentiment Afrique est deconnecte du sentiment Monde
+### 8.3 Le sentiment Afrique est deconnecte du sentiment Monde
 
 Score moyen Afrique = -0.07 vs Monde = -0.23. La production ouest-africaine est percue comme resiliente malgre les risques meteo. Le marche est tire vers le bas par la demande, pas par l'offre.
 
-### 7.4 Angle mort : transformation locale Afrique
+### 8.4 Angle mort : transformation locale Afrique
 
 22 segments sur `afrique_ouest/transformation` vs 0 sur `afrique_ouest/chocolat`. La strategie de montee en gamme (broyage local, valeur ajoutee) est un sujet politique majeur mais quasi absent des sources news trader-centric.
 
-### 7.5 Les chaines causales sont trop fragmentees pour du pattern matching direct
+### 8.5 Les chaines causales sont trop fragmentees pour du pattern matching direct
 
 La plupart des chaines sont a occurrence unique. L'agregation par categorie est efficace, mais pour du vrai pattern matching, il faudra soit normaliser les chaines (embeddings + clustering), soit augmenter le corpus.
 
 ---
 
-## 8. Recommandations
+## 9. Recommandations
 
 ### Sources a ajouter au press review agent
 - **ICCO Quarterly Bulletin** — couverture transformation/grinding globale
@@ -215,14 +298,3 @@ La plupart des chaines sont a occurrence unique. L'agregation par categorie est 
 - Augmenter le `max_completion_tokens` pour les articles longs (>2000 chars)
 - Retraiter les 61 articles en echec apres les fixes
 
----
-
-## 9. Methodologie
-
-- **Extraction** : OpenAI o4-mini (reasoning_effort=medium, max_tokens=4096)
-- **Schema** : Pydantic strict — zone (2 valeurs), theme (4 valeurs), sentiment (3 valeurs + score numerique), causal chains, entities
-- **Normalisation** : aliases pour zones, themes, types d'entites, directions de causalite
-- **Merge** : segments dupliques (meme zone x theme) fusionnes avant ecriture
-- **Cout total** : ~$3.50 pour 243 articles
-- **Taux de succes** : 75% (182/243). Echecs principalement dus a des empty responses (o4-mini) et des types d'entites non normalises
-- **Stockage** : table `pl_article_segment` sur PostgreSQL local (branche `feat/pattern-extractor`)

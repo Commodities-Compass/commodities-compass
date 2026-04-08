@@ -77,6 +77,7 @@ seed-trading-calendar = "scripts.seed_trading_calendar:main"
 seed-historical-csv = "scripts.seed_historical_csv:main"
 compute-indicators = "app.engine.runner:main"
 roll-contract = "scripts.roll_contract:main"
+extract-patterns = "scripts.pattern_extractor.main:main"
 
 [tool.pyright]
 include = ["app", "tests"]

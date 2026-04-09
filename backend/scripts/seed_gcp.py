@@ -106,6 +106,34 @@ LEGACY_PARAMS = {
     "hedge_threshold": "-1.5",
 }
 
+# power10years v2.0.0 — champion from V8.2-MULTIRUN optimization (2026-04-01)
+# Source: compass_v82_multirun_20260401_1843.json
+POWER10YR_NAME = "power10years"
+POWER10YR_VERSION = "2.0.0"
+POWER10YR_PARAMS = {
+    "k": "1.5",
+    "a": "0.5",
+    "b": "0.685",
+    "c": "-2.3",
+    "d": "1.726",
+    "e": "-0.125",
+    "f": "1.395",
+    "g": "0.0",  # ATR disabled by optimizer
+    "h": "1.0",
+    "i": "0.0",  # Close/Pivot disabled by optimizer
+    "j": "1.0",
+    "l": "1.8",
+    "m": "0.7",
+    "n": "-1.4",
+    "o": "0.622",
+    "p": "-4.8",  # Macroeco 10x weight increase
+    "q": "1.363",
+    "open_threshold": "2.2",
+    "hedge_threshold": "0.0",
+    "momentum_threshold": "0.2",
+    "smoothing_window": "5",
+}
+
 # Normalized/composite fields explicitly set to None on GCP
 NORM_FIELDS = (
     "rsi_norm",
@@ -233,6 +261,7 @@ def seed_algorithm_legacy(session: Session) -> uuid.UUID:
             version=LEGACY_ALGO_VERSION,
             horizon="short_term",
             is_active=True,
+            compute_enabled=True,
             description="Legacy power formula params from CONFIG col G",
         )
         session.add(algo)
@@ -259,6 +288,44 @@ def seed_algorithm_legacy(session: Session) -> uuid.UUID:
             LEGACY_ALGO_NAME,
             LEGACY_ALGO_VERSION,
         )
+
+    return algo.id
+
+
+def seed_algorithm_power10years(session: Session) -> uuid.UUID:
+    """Insert power10years v2.0.0 and 21 config params (champion from V8.2-MULTIRUN)."""
+    algo = session.execute(
+        select(PlAlgorithmVersion).where(
+            PlAlgorithmVersion.name == POWER10YR_NAME,
+            PlAlgorithmVersion.version == POWER10YR_VERSION,
+        )
+    ).scalar_one_or_none()
+
+    if algo is None:
+        algo = PlAlgorithmVersion(
+            name=POWER10YR_NAME,
+            version=POWER10YR_VERSION,
+            horizon="short_term",
+            is_active=False,
+            compute_enabled=True,
+            description="V8.2-MULTIRUN champion (2026-04-01): 0.9039 score, 88.6% success, 88% coverage",
+        )
+        session.add(algo)
+        session.flush()
+        log.info("Created algorithm: %s v%s", POWER10YR_NAME, POWER10YR_VERSION)
+
+        for param_name, value in POWER10YR_PARAMS.items():
+            session.add(
+                PlAlgorithmConfig(
+                    algorithm_version_id=algo.id,
+                    parameter_name=param_name,
+                    value=value,
+                )
+            )
+        session.flush()
+        log.info("Inserted %d algorithm config params", len(POWER10YR_PARAMS))
+    else:
+        log.info("Algorithm already exists: %s v%s", POWER10YR_NAME, POWER10YR_VERSION)
 
     return algo.id
 
@@ -737,6 +804,9 @@ def run(
 
         log.info("=== Seeding legacy algorithm config ===")
         algo_id = seed_algorithm_legacy(tgt)
+
+        log.info("=== Seeding power10years v2.0.0 algorithm config ===")
+        seed_algorithm_power10years(tgt)
 
         log.info("=== Migrating raw market data ===")
         cd_count = migrate_raw_market_data(src, tgt, contract_lookup)

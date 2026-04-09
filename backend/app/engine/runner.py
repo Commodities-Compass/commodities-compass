@@ -5,6 +5,9 @@ Usage:
     poetry run compute-indicators --all-contracts
     poetry run compute-indicators --all-contracts --dry-run
 
+    # All compute-enabled versions (nightly cron mode)
+    poetry run compute-indicators --all-contracts --all-versions
+
     # Full rewrite — recompute and overwrite all rows (for version switches, backfills)
     poetry run compute-indicators --all-contracts --full
 
@@ -16,6 +19,10 @@ Usage:
 
 Reads from pl_contract_data_daily, computes all indicators, and writes to
 pl_derived_indicators + pl_indicator_daily + pl_signal_component.
+
+--all-versions: Queries pl_algorithm_version WHERE compute_enabled=True and
+runs the pipeline once per version. Market data is loaded once and shared.
+Adding a new algorithm version is a DB INSERT, not a code deploy.
 
 Incremental mode (default): Computes on the full price series (required for
 recursive indicators like EMA/RSI/ATR), but only writes rows with dates
@@ -107,6 +114,22 @@ def load_algorithm_version_id(
         )
     row = result.fetchone()
     return row[0] if row else None
+
+
+def load_compute_enabled_versions(
+    session: Session,
+) -> list[tuple[uuid.UUID, str, str]]:
+    """Load all algorithm versions with compute_enabled=True.
+
+    Returns list of (id, name, version) tuples.
+    """
+    result = session.execute(
+        text(
+            "SELECT id, name, version FROM pl_algorithm_version "
+            "WHERE compute_enabled = true ORDER BY name, version"
+        )
+    )
+    return [(row[0], row[1], row[2]) for row in result]
 
 
 def load_contract_id(session: Session, contract_code: str) -> uuid.UUID | None:
@@ -324,6 +347,85 @@ def _write_results_per_contract(
     return totals
 
 
+def _run_for_version(
+    session: Session,
+    df: pd.DataFrame,
+    algo_version_id: uuid.UUID,
+    algo_name: str,
+    algo_version: str,
+    args: argparse.Namespace,
+) -> None:
+    """Compute and write indicators for a single algorithm version."""
+    logger.info("=== Processing algorithm: %s v%s ===", algo_name, algo_version)
+    config = load_algorithm_config(session, algo_name, algo_version)
+
+    pipeline = IndicatorPipeline(config=config, normalization_window=args.window)
+    result = pipeline.run(df)
+    signals = result.signals
+
+    _print_summary(signals)
+
+    # Incremental mode: filter to only new rows
+    write_signals = signals
+    if not args.full:
+        last_date = _get_last_computed_date(session, algo_version_id)
+        if last_date is not None:
+            write_signals = _filter_new_rows(signals, last_date)
+            logger.info(
+                "Incremental mode: last computed date=%s, %d new rows to write",
+                last_date.date(),
+                len(write_signals),
+            )
+            if write_signals.empty:
+                logger.info(
+                    "%s v%s — already up to date, skipping",
+                    algo_name,
+                    algo_version,
+                )
+                return
+        else:
+            logger.info(
+                "Incremental mode: no existing data, writing full history (%d rows)",
+                len(write_signals),
+            )
+    else:
+        logger.info("Full mode: writing all %d rows (upsert)", len(write_signals))
+
+    if args.dry_run:
+        logger.info("Dry run — skipping DB write")
+        _print_tail(write_signals, n=10)
+        return
+
+    if args.all_contracts:
+        logger.info("Writing results to database (per contract)...")
+        totals = _write_results_per_contract(
+            session, write_signals, algo_version_id, config
+        )
+    else:
+        contract_id = load_contract_id(session, args.contract)
+        if contract_id is None:
+            logger.error("Contract %s not found in ref_contract", args.contract)
+            return
+
+        logger.info("Writing results to database...")
+        totals = write_pipeline_results(
+            session=session,
+            signals_df=write_signals,
+            contract_id=contract_id,
+            algorithm_version_id=algo_version_id,
+            config=config,
+        )
+
+    logger.info(
+        "Done (%s v%s): %d derived, %d indicator_daily, %d signal_components",
+        algo_name,
+        algo_version,
+        totals["pl_derived_indicators"],
+        totals["pl_indicator_daily"],
+        totals["pl_signal_component"],
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Compute indicators for a contract")
     group = parser.add_mutually_exclusive_group(required=True)
@@ -354,11 +456,20 @@ def main() -> None:
         help="Algorithm version (e.g., 1.0.0, 1.0.1)",
     )
     parser.add_argument(
+        "--all-versions",
+        action="store_true",
+        help="Run on all algorithm versions with compute_enabled=True",
+    )
+    parser.add_argument(
         "--force",
         action="store_true",
         help="Run even on non-trading days (for backfills/debugging)",
     )
     args = parser.parse_args()
+
+    if args.all_versions and args.algorithm_version:
+        logger.error("--all-versions and --algorithm-version are mutually exclusive")
+        sys.exit(1)
 
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
@@ -374,27 +485,8 @@ def main() -> None:
     engine = create_engine(db_url)
 
     with Session(engine) as session:
-        # Validate algorithm version exists BEFORE loading config or computing.
-        # Fail fast — don't waste time computing with a fallback config.
-        algo_version_id = load_algorithm_version_id(
-            session, args.algorithm, args.algorithm_version
-        )
-        if algo_version_id is None:
-            logger.error(
-                "Algorithm version '%s' version=%s not found or not active",
-                args.algorithm,
-                args.algorithm_version or "active",
-            )
-            sys.exit(1)
-
-        logger.info(
-            "Loading algorithm config: %s version=%s",
-            args.algorithm,
-            args.algorithm_version or "active",
-        )
-        config = load_algorithm_config(session, args.algorithm, args.algorithm_version)
-
-        # Load data
+        # Load market data once (shared across all versions — derived indicators
+        # are version-agnostic, only the power formula differs)
         if args.all_contracts:
             logger.info("Loading full market data across all contracts")
             df = load_all_market_data(session)
@@ -414,68 +506,34 @@ def main() -> None:
             for code, count in contracts.items():
                 logger.info("  %s: %d rows", code, count)
 
-        # Run pipeline on the full series
-        pipeline = IndicatorPipeline(config=config, normalization_window=args.window)
-        result = pipeline.run(df)
-        signals = result.signals
-
-        _print_summary(signals)
-
-        # Incremental mode: filter to only new rows
-        write_signals = signals
-        if not args.full:
-            last_date = _get_last_computed_date(session, algo_version_id)
-            if last_date is not None:
-                write_signals = _filter_new_rows(signals, last_date)
-                logger.info(
-                    "Incremental mode: last computed date=%s, %d new rows to write",
-                    last_date.date(),
-                    len(write_signals),
-                )
-                if write_signals.empty:
-                    logger.warning("No new rows to write — database is up to date")
-                    sys.exit(0)
-            else:
-                logger.info(
-                    "Incremental mode: no existing data, writing full history (%d rows)",
-                    len(write_signals),
-                )
-        else:
-            logger.info("Full mode: writing all %d rows (upsert)", len(write_signals))
-
-        if args.dry_run:
-            logger.info("Dry run — skipping DB write")
-            _print_tail(write_signals, n=10)
-            return
-
-        if args.all_contracts:
-            # Write results per contract (each row tagged with its contract_id)
-            logger.info("Writing results to database (per contract)...")
-            totals = _write_results_per_contract(
-                session, write_signals, algo_version_id, config
-            )
-        else:
-            # Single contract
-            contract_id = load_contract_id(session, args.contract)
-            if contract_id is None:
-                logger.error("Contract %s not found in ref_contract", args.contract)
+        # Resolve which versions to run
+        if args.all_versions:
+            versions = load_compute_enabled_versions(session)
+            if not versions:
+                logger.error("No algorithm versions with compute_enabled=True found")
                 sys.exit(1)
-
-            logger.info("Writing results to database...")
-            totals = write_pipeline_results(
-                session=session,
-                signals_df=write_signals,
-                contract_id=contract_id,
-                algorithm_version_id=algo_version_id,
-                config=config,
+            logger.info(
+                "Running %d compute-enabled versions: %s",
+                len(versions),
+                ", ".join(f"{n} v{v}" for _, n, v in versions),
             )
+        else:
+            algo_version_id = load_algorithm_version_id(
+                session, args.algorithm, args.algorithm_version
+            )
+            if algo_version_id is None:
+                logger.error(
+                    "Algorithm version '%s' version=%s not found or not active",
+                    args.algorithm,
+                    args.algorithm_version or "active",
+                )
+                sys.exit(1)
+            versions = [
+                (algo_version_id, args.algorithm, args.algorithm_version or "active")
+            ]
 
-        logger.info(
-            "Done: %d derived, %d indicator_daily, %d signal_components",
-            totals["pl_derived_indicators"],
-            totals["pl_indicator_daily"],
-            totals["pl_signal_component"],
-        )
+        for vid, name, ver in versions:
+            _run_for_version(session, df, vid, name, ver, args)
 
 
 if __name__ == "__main__":

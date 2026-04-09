@@ -203,6 +203,6 @@ jobs:
           deploy_job cc-cftc-scraper         512Mi "cftc-scraper"
           deploy_job cc-press-review-agent   1Gi  "press-review"
           deploy_job cc-meteo-agent          1Gi  "meteo-agent"
-          deploy_job cc-compute-indicators   1Gi  "compute-indicators,--all-contracts"
+          deploy_job cc-compute-indicators   1Gi  "compute-indicators,--all-contracts,--all-versions"
           deploy_job cc-daily-analysis       1Gi  "daily-analysis"
           deploy_job cc-compass-brief        1Gi  "compass-brief"

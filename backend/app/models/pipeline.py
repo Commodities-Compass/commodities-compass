@@ -150,6 +150,9 @@ class PlAlgorithmVersion(Base):
         VARCHAR(50), nullable=False, default="short_term"
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    compute_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     description: Mapped[Optional[str]] = mapped_column(TEXT)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
 

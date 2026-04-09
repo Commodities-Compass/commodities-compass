@@ -33,7 +33,7 @@ locals {
       schedule    = "0 19 * * 1-5"
     }
     compute-indicators = {
-      description = "Compute technical indicators from raw market data"
+      description = "Compute technical indicators for all enabled algorithm versions"
       schedule    = "15 19 * * 1-5"
     }
     daily-analysis = {

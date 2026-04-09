@@ -67,7 +67,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         <aside
           className={cn(
             'flex flex-col h-full bg-background border-r transition-all duration-300 ease-in-out z-30',
-            sidebarCollapsed ? 'w-16' : 'w-64'
+            sidebarCollapsed ? 'hidden md:flex md:w-16' : 'w-64'
           )}
         >
           {/* Logo and App Name */}

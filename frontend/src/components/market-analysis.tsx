@@ -237,7 +237,7 @@ export default function MarketAnalysis({
 
             {/* Watchlist */}
             {parsed.watchlist.length > 0 && (
-              <div className="rounded-lg border border-border/60 bg-muted/30 px-4 py-3 space-y-2.5 h-fit">
+              <div className="rounded-lg border border-border/60 bg-muted/30 px-4 py-3 space-y-2.5 h-fit overflow-hidden">
                 <h3 className="text-sm font-semibold tracking-tight">
                   À surveiller
                 </h3>
@@ -245,12 +245,14 @@ export default function MarketAnalysis({
                   {parsed.watchlist.map((item, i) => (
                     <li
                       key={i}
-                      className="flex items-start gap-2.5 text-sm leading-relaxed text-foreground/85"
+                      className="flex items-start gap-2.5 text-sm leading-relaxed text-foreground/85 min-w-0"
                     >
                       <span className="text-muted-foreground mt-1 shrink-0">
                         •
                       </span>
-                      {formatRecoText(item)}
+                      <span className="break-words min-w-0">
+                        {formatRecoText(item)}
+                      </span>
                     </li>
                   ))}
                 </ul>

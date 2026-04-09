@@ -7,6 +7,15 @@ export default {
   ],
   theme: {
   	extend: {
+  		keyframes: {
+  			'bar-dance': {
+  				'0%, 100%': { transform: 'scaleY(1)' },
+  				'50%': { transform: 'scaleY(1.3)' },
+  			},
+  		},
+  		animation: {
+  			'bar-dance': 'bar-dance 0.8s ease-in-out infinite',
+  		},
   		borderRadius: {
   			lg: 'var(--radius)',
   			md: 'calc(var(--radius) - 2px)',

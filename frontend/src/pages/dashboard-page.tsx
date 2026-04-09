@@ -1,7 +1,8 @@
 import DateSelector from '@/components/date-selector';
 import MarketAnalysis from '@/components/market-analysis';
 import NewsCard from '@/components/news-card';
-import PositionStatus from '@/components/position-status';
+import SignalHero from '@/components/signal-hero';
+import PodcastPlayer from '@/components/podcast-player';
 import PriceChart from '@/components/price-chart';
 import WeatherUpdateCard from '@/components/weather-update-card';
 import { DashboardErrorBoundary } from '@/components/DashboardErrorBoundary';
@@ -37,12 +38,15 @@ export default function DashboardPage() {
         />
       </div>
 
-      <DashboardErrorBoundary>
-        <PositionStatus
-          targetDate={currentDate}
-          audioDate={currentDate}
-        />
-      </DashboardErrorBoundary>
+      {/* Hero row: Signal + Podcast */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <DashboardErrorBoundary>
+          <SignalHero targetDate={currentDate} />
+        </DashboardErrorBoundary>
+        <DashboardErrorBoundary>
+          <PodcastPlayer audioDate={currentDate} />
+        </DashboardErrorBoundary>
+      </div>
 
       <DashboardErrorBoundary>
         <MarketAnalysis targetDate={currentDate} />

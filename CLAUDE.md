@@ -112,17 +112,20 @@ The frontend uses modern React patterns:
   - `/dashboard/historical` - Historical data view (protected)
 - **UI Components** - Shadcn/ui (new-york style) with Radix UI primitives in `src/components/ui/`
 - **Dashboard Components**:
-  - `PositionStatus` - Position badge (OPEN/HEDGE/MONITOR), audio player, YTD performance
-  - `IndicatorsGrid` - Grouped gauge indicators (Tendances: Macroeco/MACD/Vol-OI, Volatilité: RSI/%K/ATR)
-  - `GaugeIndicator` - SVG semi-circular gauge with color ranges
-  - `RecommendationsList` - Scrollable trading recommendations
+  - `SignalHero` - Hero panel for trading signal (OPEN/HEDGE/MONITOR) as a pill badge with colored ring + dot, plus YTD performance. Replaces the old `PositionStatus` component.
+  - `PodcastPlayer` - Audio player with SoundCloud-style waveform bars (48 bars, click-to-seek, progress coloring). Uses `<audio preload="metadata">` for instant load — waveform is cosmetic (deterministic pseudo-random bars), not computed from audio data. Replaces the old audio player from `PositionStatus`.
+  - `MarketAnalysis` - Unified card: 6 gauge indicators (MACROECO/MACD/VOL-OI/RSI/%K/ATR) + analysis bullets with direction dots + "À surveiller" watchlist box
+  - `GaugeIndicator` - SVG semi-circular gauge with color zones (RED/ORANGE/GREEN), tooltip with indicator metadata
   - `PriceChart` - Recharts area chart with metric/days selector and zoom controls
-  - `NewsCard` - Latest market research display
-  - `WeatherUpdateCard` - Weather conditions and market impact
-  - `DashboardLayout` - Sidebar navigation, theme toggle, user profile dropdown
+  - `NewsCard` - Tabbed press review (Technique/Fondamentaux/Synthèse) with inline formatting for financial text
+  - `WeatherUpdateCard` - Campaign health bars, location diagnostics grid, market impact bar
+  - `DashboardLayout` - Desktop: collapsible sidebar with logo, nav, user profile dropdown. Mobile (<768px): sidebar hidden, replaced by slim top bar with hamburger menu (theme toggle, logout)
   - `DateSelector` - Trading day navigation with calendar picker (disables weekends, exchange holidays, and future dates via `/non-trading-days` API)
   - `DatePickerWithRange` - Date range picker with two-month calendar view
   - `LoadingSpinner` - Full-screen centered spinner
+- **Dashboard Layout**:
+  - Hero row: 50/50 grid (`grid-cols-2`) — `SignalHero` (left) + `PodcastPlayer` (right). Stacks vertically on mobile.
+  - Below: `MarketAnalysis` → `PriceChart` → `NewsCard` → `WeatherUpdateCard` in vertical stack
 - **Custom Hooks**:
   - `useAuth.ts` - Auth0 token management wrapper
   - `useDashboard.ts` - React Query hooks for all dashboard endpoints (24h stale time, no auto-refetch)

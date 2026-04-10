@@ -1,7 +1,7 @@
 """Audio API endpoints for streaming Google Drive audio files."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Optional
 
 import httpx
@@ -14,7 +14,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-def _resolve_date(target_date: Optional[str]) -> Optional["datetime.date"]:
+def _resolve_date(target_date: Optional[str]) -> Optional[date]:
     if not target_date:
         return None
     try:
@@ -42,7 +42,7 @@ def _content_type(filename: str) -> str:
     return "audio/mpeg"
 
 
-async def _fetch_audio_info(parsed_date: Optional["datetime.date"]) -> dict:
+async def _fetch_audio_info(parsed_date: Optional[date]) -> dict:
     service = get_audio_service()
     result = await service.get_audio_file_info(parsed_date)
     if not result:

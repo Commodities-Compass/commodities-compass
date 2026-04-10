@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Link } from 'react-router-dom';
 import logo from '@/assets/COMPASS-logo.svg';
+import logoIcon from '@/assets/compass-icon.svg';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -154,7 +155,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           {/* Mobile top bar */}
           {isMobile && (
             <header className="flex items-center justify-between px-4 py-3 border-b bg-background">
-              <img src={logo} alt="Compass" className="h-8 w-8 object-contain" />
+              <img src={logoIcon} alt="Compass" className="h-8 w-8 object-contain" />
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

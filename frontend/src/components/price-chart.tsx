@@ -108,42 +108,44 @@ export default function PriceChart({
 
   return (
     <Card className={cn("w-full", className)}>
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-lg font-medium">{title}</CardTitle>
+      <CardHeader className="pb-2 space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="text-lg font-medium">{title}</CardTitle>
 
-        <div className="flex items-center gap-4">
-          <Select
-            value={selectedMetric}
-            onValueChange={handleMetricChange}
-            defaultValue="close"
-          >
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Métrique" />
-            </SelectTrigger>
-            <SelectContent>
-              {METRIC_OPTIONS.map((metric) => (
-                <SelectItem key={metric.value} value={metric.value}>
-                  {metric.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            <Select
+              value={selectedMetric}
+              onValueChange={handleMetricChange}
+              defaultValue="close"
+            >
+              <SelectTrigger className="w-[140px] sm:w-[180px]">
+                <SelectValue placeholder="Métrique" />
+              </SelectTrigger>
+              <SelectContent>
+                {METRIC_OPTIONS.map((metric) => (
+                  <SelectItem key={metric.value} value={metric.value}>
+                    {metric.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-          <Select
-            value={days.toString()}
-            onValueChange={handleDaysChange}
-          >
-            <SelectTrigger className="w-[120px]">
-              <SelectValue placeholder="Période" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="7">7 jours</SelectItem>
-              <SelectItem value="30">30 jours</SelectItem>
-              <SelectItem value="90">90 jours</SelectItem>
-              <SelectItem value="180">180 jours</SelectItem>
-              <SelectItem value="365">1 an</SelectItem>
-            </SelectContent>
-          </Select>
+            <Select
+              value={days.toString()}
+              onValueChange={handleDaysChange}
+            >
+              <SelectTrigger className="w-[100px] sm:w-[120px]">
+                <SelectValue placeholder="Période" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7">7 jours</SelectItem>
+                <SelectItem value="30">30 jours</SelectItem>
+                <SelectItem value="90">90 jours</SelectItem>
+                <SelectItem value="180">180 jours</SelectItem>
+                <SelectItem value="365">1 an</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </CardHeader>
 

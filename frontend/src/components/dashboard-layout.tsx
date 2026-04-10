@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Link } from 'react-router-dom';
 import logo from '@/assets/COMPASS-logo.svg';
-import logoIcon from '@/assets/compass-icon.svg';
+import logoIcon from '@/assets/compass-icon.png';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;

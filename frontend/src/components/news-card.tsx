@@ -156,16 +156,16 @@ function parseSections(content: string, synthesis: string | null): ParsedSection
   // Section headers — must be on their own line (^) or at string start.
   // SENTIMENT MARCHE must be checked BEFORE bare MARCHE to avoid partial match.
   const sectionMap: { pattern: RegExp; target: keyof ParsedSections }[] = [
-    { pattern: /^#{0,3}\s*\**SENTIMENT\s+MARCH[EÉ]\**\.?\s*$/im, target: "overall" },
-    { pattern: /^#{0,3}\s*\**MARCH[EÉ]\**\.?\s*$/im, target: "technicals" },
-    { pattern: /^#{0,3}\s*\**FONDAMENTAUX\**\.?\s*$/im, target: "fundamentals" },
-    { pattern: /^#{0,3}\s*\**OFFRE\**\.?\s*$/im, target: "fundamentals" },
+    { pattern: /^#{0,3}\s*\**SENTIMENT\s+MARCH[EÉ]\**[.:]?\s*$/im, target: "overall" },
+    { pattern: /^#{0,3}\s*\**MARCH[EÉ]\**[.:]?\s*$/im, target: "technicals" },
+    { pattern: /^#{0,3}\s*\**FONDAMENTAUX\**[.:]?\s*$/im, target: "fundamentals" },
+    { pattern: /^#{0,3}\s*\**OFFRE\**[.:]?\s*$/im, target: "fundamentals" },
   ];
 
   // Build a single multiline regex that matches any header line.
   // SENTIMENT MARCHÉ must come first so it's not eaten by bare MARCHÉ.
   const headerLine =
-    /^#{0,3}\s*\**(?:SENTIMENT\s+MARCH[EÉ]|MARCH[EÉ]|FONDAMENTAUX|OFFRE)\**\.?\s*$/gim;
+    /^#{0,3}\s*\**(?:SENTIMENT\s+MARCH[EÉ]|MARCH[EÉ]|FONDAMENTAUX|OFFRE)\**[.:]?\s*$/gim;
 
   const parts = content.split(headerLine).filter((p) => p.trim());
 

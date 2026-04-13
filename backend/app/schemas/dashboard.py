@@ -93,6 +93,12 @@ class NewsResponse(BaseModel):
         None, description="Semicolon-separated keywords from the article"
     )
     author: Optional[str] = Field(None, description="Author information")
+    source_count: Optional[int] = Field(
+        None, description="Number of sources successfully scraped"
+    )
+    total_sources: Optional[int] = Field(
+        None, description="Total number of configured sources"
+    )
 
 
 class WeatherResponse(BaseModel):

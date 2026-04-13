@@ -50,6 +50,7 @@ SYNC_TABLES = [
     "pl_indicator_daily",
     "pl_signal_component",
     "pl_fundamental_article",
+    "pl_article_segment",
     "pl_weather_observation",
     # Audit tables
     "aud_pipeline_run",

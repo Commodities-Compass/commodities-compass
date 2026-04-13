@@ -11,10 +11,11 @@ import {
   NewspaperIcon,
   UserIcon,
   Loader2,
+  TrendingUpIcon,
 } from "lucide-react";
 import { useNews } from "@/hooks/useDashboard";
 import { cn } from "@/utils";
-import type { ReactNode } from "react";
+import { formatFinancialText } from "@/utils/format-financial-text";
 
 interface NewsCardProps {
   targetDate?: string;
@@ -27,126 +28,7 @@ interface ParsedSections {
   overall: string;
 }
 
-// ---------------------------------------------------------------------------
-// Inline formatter — regex-based styling for financial text
-// ---------------------------------------------------------------------------
-
-interface FormatRule {
-  pattern: RegExp;
-  render: (match: string, ...groups: string[]) => ReactNode;
-}
-
-const FORMAT_RULES: FormatRule[] = [
-  // Percentages with sign: +2,30%, -0,06%, (-0,30%)
-  {
-    pattern: /[(\s]?[+-]\s?\d[\d\s]*,?\d*\s?%\s?\)?/g,
-    render: (m) => {
-      const isNeg = m.includes("-");
-      return (
-        <span
-          className={cn(
-            "font-semibold tabular-nums",
-            isNeg && "text-amber-500/80 dark:text-amber-400/70",
-          )}
-        >
-          {m}
-        </span>
-      );
-    },
-  },
-  // Prices with units: 2 358 GBP/t, 10 $, 3 160 $/t
-  {
-    pattern: /\d[\d\s]*(?:,\d+)?\s?(?:GBP|USD|\$|€|£)(?:\/t(?:onne)?)?/g,
-    render: (m) => <span className="font-semibold tabular-nums">{m}</span>,
-  },
-  // Standalone numbers with thousands separator or decimals (e.g. 6 757, 100)
-  // Only when followed by a unit-like word (contrats, tonnes, mm, jours, bags, pts)
-  {
-    pattern: /\d[\d\s]*(?:,\d+)?\s?(?:contrats?|tonnes?|pts?|points?|mm|jours?|bags?|lots?)/gi,
-    render: (m) => <span className="font-semibold tabular-nums">{m}</span>,
-  },
-  // Contract codes: CAK26, CCK26, CAN26, etc.
-  {
-    pattern: /\b(?:CA|CC)[HKNUZ]\d{2}\b/g,
-    render: (m) => (
-      <span className="font-mono font-semibold text-primary/90">{m}</span>
-    ),
-  },
-  // Market venues / institutions
-  {
-    pattern: /\b(?:ICE|CFTC|CRA|ICCO|NYSE|CME)\b/g,
-    render: (m) => <span className="font-semibold">{m}</span>,
-  },
-  // Directional signals (bearish + bullish) — bold only, no color
-  {
-    pattern:
-      /\b(?:en repli|baissière?s?|recul|chute|pression vendeuse|liquidation|décote|vulnérable|en hausse|haussière?s?|rebond|reprise|soutien|support)\b/gi,
-    render: (m) => <span className="font-semibold">{m}</span>,
-  },
-  // Temporal markers: À court terme, À moyen terme
-  {
-    pattern: /[ÀA]\s(?:court|moyen|long)\s+terme/gi,
-    render: (m) => <span className="font-semibold italic">{m}</span>,
-  },
-];
-
-/**
- * Apply formatting rules to a plain-text string.
- * Rules are matched left-to-right, first-match-wins (no overlaps).
- */
-function formatText(text: string): ReactNode[] {
-  // Collect all matches with their positions and rule
-  const allMatches: { start: number; end: number; match: string; rule: FormatRule }[] =
-    [];
-
-  for (const rule of FORMAT_RULES) {
-    // Reset lastIndex for global regexes
-    rule.pattern.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = rule.pattern.exec(text)) !== null) {
-      allMatches.push({
-        start: m.index,
-        end: m.index + m[0].length,
-        match: m[0],
-        rule,
-      });
-    }
-  }
-
-  // Sort by start position, longer matches first for ties
-  allMatches.sort((a, b) => a.start - b.start || b.match.length - a.match.length);
-
-  // Remove overlaps (first-match-wins)
-  const filtered: typeof allMatches = [];
-  let lastEnd = 0;
-  for (const m of allMatches) {
-    if (m.start >= lastEnd) {
-      filtered.push(m);
-      lastEnd = m.end;
-    }
-  }
-
-  // Build React nodes
-  const nodes: ReactNode[] = [];
-  let cursor = 0;
-
-  for (let i = 0; i < filtered.length; i++) {
-    const { start, end, match, rule } = filtered[i];
-    if (start > cursor) {
-      nodes.push(text.slice(cursor, start));
-    }
-    nodes.push(<span key={`fmt-${i}`}>{rule.render(match)}</span>);
-    cursor = end;
-  }
-
-  if (cursor < text.length) {
-    nodes.push(text.slice(cursor));
-  }
-
-  return nodes;
-}
-
-function parseSections(content: string, synthesis: string | null): ParsedSections {
+function parseSections(content: string): ParsedSections {
   const sections: ParsedSections = {
     technicals: "",
     fundamentals: "",
@@ -173,13 +55,9 @@ function parseSections(content: string, synthesis: string | null): ParsedSection
   );
 
   const parts = content.split(headerLine).filter((p) => p.trim());
-
-  // Also extract the headers in order so we can pair them with parts
   const headers = [...content.matchAll(headerLine)].map((m) => m[0].trim());
 
-  // parts[0] is text before the first header (if any), then parts[i+1] follows headers[i]
   if (parts.length > headers.length) {
-    // Text before the first header → technicals
     sections.technicals = parts[0].trim();
   }
 
@@ -191,17 +69,12 @@ function parseSections(content: string, synthesis: string | null): ParsedSection
     sections[target] += (sections[target] ? "\n\n" : "") + body;
   }
 
-  // Append impact_synthesis to the overall tab
-  if (synthesis) {
-    sections.overall += (sections.overall ? "\n\n" : "") + synthesis;
-  }
+  // Impact synthesis goes into overall — but NOT appended here.
+  // It's rendered separately as a top banner in the card layout.
 
   // Fallback: if parsing found nothing, dump everything in technicals
   if (!sections.technicals && !sections.fundamentals && !sections.overall) {
     sections.technicals = content;
-    if (synthesis) {
-      sections.overall = synthesis;
-    }
   }
 
   return sections;
@@ -220,11 +93,49 @@ function parseKeywords(raw: string | null): string[] {
     .slice(0, 8);
 }
 
+// ---------------------------------------------------------------------------
+// Keyword chip — detects numeric data points and styles value vs. label
+// ---------------------------------------------------------------------------
+
+function KeywordChip({ text }: { text: string }) {
+  // Try to find a leading numeric value (e.g. "2 750 GBP/t", "-7%", "surplus 287 kt")
+  const numMatch = text.match(
+    /^(.*?)(\d[\d\s]*(?:,\d+)?\s?(?:GBP|USD|\$|€|£|%|kt|Mt|t)(?:\/t(?:onne)?)?)(.*?)$/,
+  );
+
+  if (numMatch) {
+    const [, before, value, after] = numMatch;
+    return (
+      <Badge
+        variant="secondary"
+        className="text-[10px] px-2 py-0.5 font-normal"
+      >
+        {before && <span className="text-muted-foreground">{before}</span>}
+        <span className="font-semibold tabular-nums">{value}</span>
+        {after && <span className="text-muted-foreground">{after}</span>}
+      </Badge>
+    );
+  }
+
+  return (
+    <Badge
+      variant="secondary"
+      className="text-[10px] font-normal px-2 py-0.5"
+    >
+      {text}
+    </Badge>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Section content renderer
+// ---------------------------------------------------------------------------
+
 function SectionContent({ text }: { text: string }) {
   if (!text) {
     return (
       <p className="text-sm text-muted-foreground italic py-4">
-        Pas d'information disponible pour cette section.
+        Pas d&apos;information disponible pour cette section.
       </p>
     );
   }
@@ -241,18 +152,57 @@ function SectionContent({ text }: { text: string }) {
           key={i}
           className="text-sm leading-relaxed text-foreground/85"
         >
-          {formatText(paragraph)}
+          {formatFinancialText(paragraph)}
         </p>
       ))}
     </div>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Impact synthesis banner — the most actionable piece, shown above tabs
+// ---------------------------------------------------------------------------
+
+function ImpactBanner({ text }: { text: string }) {
+  if (!text) return null;
+
+  const normalized = normalizeTerm(text);
+  // Truncate to ~2 sentences for the banner preview
+  const preview =
+    normalized.length > 300
+      ? normalized.slice(0, normalized.indexOf(".", 250) + 1) || normalized.slice(0, 300) + "…"
+      : normalized;
+
+  return (
+    <div className="mx-6 mb-4 rounded-lg border border-blue-500/20 bg-blue-500/5 dark:bg-blue-500/10 px-4 py-3">
+      <div className="flex items-start gap-2.5">
+        <TrendingUpIcon className="h-4 w-4 text-blue-500/70 mt-0.5 shrink-0" />
+        <div className="min-w-0">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-blue-500/70 mb-1">
+            Impact marché
+          </p>
+          <p className="text-sm leading-relaxed text-foreground/85">
+            {formatFinancialText(preview)}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tab configuration
+// ---------------------------------------------------------------------------
+
 const TAB_CONFIG = [
-  { value: "technicals", label: "Technique", accent: "bg-amber-500/80" },
+  { value: "technicals", label: "Marché", accent: "bg-amber-500/80" },
   { value: "fundamentals", label: "Fondamentaux", accent: "bg-emerald-500/80" },
-  { value: "overall", label: "Synthèse", accent: "bg-blue-500/80" },
+  { value: "overall", label: "Sentiment", accent: "bg-violet-500/80" },
 ] as const;
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
 
 export default function NewsCard({ targetDate, className }: NewsCardProps) {
   const { data: news, isLoading, error } = useNews(targetDate);
@@ -279,15 +229,25 @@ export default function NewsCard({ targetDate, className }: NewsCardProps) {
     );
   }
 
-  const sections = parseSections(news.content || "", news.title);
+  const sections = parseSections(news.content || "");
   const keywords = parseKeywords(news.keywords);
 
   return (
     <Card className={cn("overflow-hidden", className)}>
       {/* Header */}
       <CardHeader className="pb-3">
-        <h2 className="text-lg font-semibold tracking-tight">Revue de Presse</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold tracking-tight">Revue de Presse</h2>
+          {news.source_count != null && news.total_sources != null && (
+            <Badge variant="outline" className="text-[10px] font-normal px-1.5 py-0 h-5">
+              {news.source_count}/{news.total_sources} sources
+            </Badge>
+          )}
+        </div>
       </CardHeader>
+
+      {/* Impact synthesis banner — always visible above tabs */}
+      <ImpactBanner text={news.title || ""} />
 
       {/* Tabbed content */}
       <CardContent className="pt-0">
@@ -323,13 +283,7 @@ export default function NewsCard({ targetDate, className }: NewsCardProps) {
         {keywords.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {keywords.map((kw) => (
-              <Badge
-                key={kw}
-                variant="secondary"
-                className="text-[10px] font-normal px-2 py-0.5"
-              >
-                {kw}
-              </Badge>
+              <KeywordChip key={kw} text={kw} />
             ))}
           </div>
         )}

@@ -52,6 +52,8 @@ export interface NewsResponse {
   content: string;
   keywords: string | null;
   author: string | null;
+  source_count: number | null;
+  total_sources: number | null;
 }
 
 export interface SeasonStatus {

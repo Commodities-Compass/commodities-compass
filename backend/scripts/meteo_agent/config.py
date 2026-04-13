@@ -272,7 +272,9 @@ PAS une liste par localité. Regrouper les zones par situation similaire, compar
 Utiliser des connecteurs ("tandis que", "en revanche", "spatialement"). \
 Le texte doit être compréhensible par un trader non météorologue. \
 Terminer par la conséquence marché calibrée. Ne pas utiliser de superlatifs sans données \
-les justifiant.
+les justifiant. \
+FORMATAGE HUMIDITÉ DU SOL : exprimer UNIQUEMENT en pourcentage (ex: "25%"), \
+jamais en m³/m³. Ne pas écrire les deux formats — le % suffit.
 
 - "resume": Diagnostic principal + localités concernées + impact prix calibré (2-3 phrases max)
 

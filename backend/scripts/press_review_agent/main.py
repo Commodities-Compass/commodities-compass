@@ -159,6 +159,8 @@ def main() -> int:
                     result.provider,
                     result.parsed,
                     dry_run=args.dry_run,
+                    source_count=successful_sources,
+                    total_sources=len(news_results),
                 )
                 write_llm_call(
                     session,

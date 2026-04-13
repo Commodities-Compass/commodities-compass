@@ -127,6 +127,8 @@ def transform_market_research_to_news(
         content=market_research.get("summary"),
         keywords=market_research.get("keywords"),
         author=market_research.get("author"),
+        source_count=market_research.get("source_count"),
+        total_sources=market_research.get("total_sources"),
     )
 
 

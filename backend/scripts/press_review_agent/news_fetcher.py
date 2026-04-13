@@ -1,4 +1,9 @@
-"""Multi-source news fetcher for cocoa market data."""
+"""Multi-source news fetcher for cocoa market data.
+
+Supports two fetch methods:
+- httpx (default): fast, lightweight HTTP client for SSR sites
+- playwright: headless browser for JS-rendered / Cloudflare-protected sites
+"""
 
 import logging
 from dataclasses import dataclass
@@ -15,6 +20,9 @@ from scripts.press_review_agent.config import (
 )
 
 logger = logging.getLogger(__name__)
+
+PLAYWRIGHT_TIMEOUT_MS = 15_000
+PLAYWRIGHT_WAIT_MS = 3_000
 
 
 @dataclass
@@ -52,16 +60,88 @@ def _extract_text(html: str, selectors: list[str]) -> str:
     return text[:MAX_CHARS_PER_SOURCE]
 
 
+def _fetch_playwright_sources(
+    sources: list[dict[str, object]],
+) -> list[NewsResult]:
+    """Fetch sources that require a headless browser (JS-rendered / Cloudflare).
+
+    Launches a single browser instance, visits each source sequentially,
+    then closes the browser.
+    """
+    if not sources:
+        return []
+
+    results: list[NewsResult] = []
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        logger.warning("Playwright not installed — skipping browser sources")
+        return [
+            NewsResult(
+                name=str(s["name"]),
+                text="",
+                success=False,
+                error="Playwright not installed",
+            )
+            for s in sources
+        ]
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        page = browser.new_page(user_agent=USER_AGENT)
+
+        for source in sources:
+            name = str(source["name"])
+            url = str(source["url"])
+            selectors: list[str] = source.get("selectors", [])  # type: ignore[assignment]
+            try:
+                logger.info(f"Fetching {name} (playwright)...")
+                page.goto(
+                    url, wait_until="domcontentloaded", timeout=PLAYWRIGHT_TIMEOUT_MS
+                )
+                page.wait_for_timeout(PLAYWRIGHT_WAIT_MS)
+
+                html = page.content()
+                text = _extract_text(html, selectors)
+
+                if len(text) < 50:
+                    logger.warning(f"{name}: content too short ({len(text)} chars)")
+                    results.append(
+                        NewsResult(
+                            name=name, text="", success=False, error="Content too short"
+                        )
+                    )
+                    continue
+
+                logger.info(f"{name}: extracted {len(text)} chars")
+                results.append(NewsResult(name=name, text=text, success=True))
+
+            except Exception as e:
+                logger.warning(f"{name}: {e}")
+                results.append(
+                    NewsResult(name=name, text="", success=False, error=str(e))
+                )
+
+        browser.close()
+
+    return results
+
+
 def fetch_all_sources() -> list[NewsResult]:
     """Fetch news from all configured sources with graceful degradation.
 
-    Returns list of NewsResult (both successes and failures for logging).
+    httpx sources are fetched first, then Playwright sources (if any)
+    are fetched in a single browser session.
     """
     results: list[NewsResult] = []
     headers = {"User-Agent": USER_AGENT}
 
+    httpx_sources = [s for s in NEWS_SOURCES if s.get("method", "httpx") == "httpx"]
+    pw_sources = [s for s in NEWS_SOURCES if s.get("method") == "playwright"]
+
+    # --- httpx sources ---
     with httpx.Client(timeout=HTTP_TIMEOUT, follow_redirects=True) as client:
-        for source in NEWS_SOURCES:
+        for source in httpx_sources:
             name = source["name"]
             url = source["url"]
             try:
@@ -105,6 +185,9 @@ def fetch_all_sources() -> list[NewsResult]:
                 results.append(
                     NewsResult(name=name, text="", success=False, error=str(e))
                 )
+
+    # --- Playwright sources (lazy — only if configured) ---
+    results.extend(_fetch_playwright_sources(pw_sources))
 
     successful = [r for r in results if r.success]
     logger.info(f"Fetched {len(successful)}/{len(NEWS_SOURCES)} sources successfully")

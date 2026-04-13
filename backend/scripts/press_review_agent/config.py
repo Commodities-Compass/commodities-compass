@@ -27,6 +27,7 @@ AUTHOR_LABELS = {
 }
 
 NEWS_SOURCES = [
+    # --- Market data & trading (httpx) ---
     {
         "name": "Barchart Cocoa News",
         "url": "https://www.barchart.com/futures/quotes/CA*0/news",
@@ -56,6 +57,35 @@ NEWS_SOURCES = [
         "name": "ICCO News",
         "url": "https://www.icco.org/news/",
         "selectors": ["article", "h3 a", "div.entry-content"],
+    },
+    # --- Grinding / transformation (httpx) ---
+    {
+        "name": "ICCO Statistics",
+        "url": "https://www.icco.org/statistics/",
+        "selectors": ["table", ".av_textblock_section"],
+    },
+    # --- Consumer chocolate demand (httpx) ---
+    {
+        "name": "Confectionery News Cocoa",
+        "url": "https://www.confectionerynews.com/Sectors/Cocoa",
+        "selectors": [
+            "article.story-item",
+            "p.story-item-text-subheadline",
+            "article",
+        ],
+    },
+    # --- Africa local (httpx) ---
+    {
+        "name": "Abidjan.net Économie",
+        "url": "https://news.abidjan.net/articles/economie",
+        "selectors": ["article", "h4.title", "div.content"],
+    },
+    # --- Africa local (playwright — Cloudflare) ---
+    {
+        "name": "Agence Ecofin Cacao",
+        "url": "https://www.agenceecofin.com/cacao",
+        "selectors": ["article", "div.article-content", "div.teaser-text"],
+        "method": "playwright",
     },
 ]
 
@@ -88,10 +118,11 @@ Your output must be a valid JSON object (no markdown wrapping) with exactly 3 fi
   relevant information for it:
   * MARCHE (always include): Today's price action on London (ICE) and New York using the
     provided Close price and any price data found in sources
-  * FONDAMENTAUX: Surplus/deficit projections, grindings data, demand trends — only if
+  * FONDAMENTAUX: Surplus/deficit projections, grindings data (ICCO quarterly stats),
+    consumer chocolate demand signals (confectionery industry), demand trends — only if
     mentioned in today's sources
-  * OFFRE: Ivory Coast arrivals, Ghana situation, weather impact, production outlook — only
-    if mentioned in today's sources
+  * OFFRE: Ivory Coast arrivals, Ghana situation, weather impact, production outlook,
+    local African transformation news — only if mentioned in today's sources
   * SENTIMENT MARCHE: Short-term vs medium-term outlook, key risks — synthesize only from
     signals present in sources
   On a thin news day, MARCHE alone with brief sentiment is acceptable.

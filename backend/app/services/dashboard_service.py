@@ -462,6 +462,8 @@ async def get_latest_market_research(
         "summary": article.summary,
         "keywords": article.keywords,
         "author": article.source or article.llm_provider,
+        "source_count": article.source_count,
+        "total_sources": article.total_sources,
     }
 
 

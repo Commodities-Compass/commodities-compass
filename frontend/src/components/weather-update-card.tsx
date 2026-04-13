@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { useWeather } from "@/hooks/useDashboard";
 import { cn } from "@/utils";
+import { formatFinancialText } from "@/utils/format-financial-text";
 import type { SeasonStatus, LocationDiagnostic } from "@/types/dashboard";
 
 // --- Helpers ---
@@ -303,17 +304,25 @@ export default function WeatherUpdateCard({
               />
             </CollapsibleTrigger>
             <CollapsibleContent>
-              <p className="text-sm text-muted-foreground mt-2 whitespace-pre-line leading-relaxed">
-                {weather.description}
-              </p>
+              <div className="mt-2 space-y-2">
+                {weather.description.split(/\n{2,}/).filter(Boolean).map((p, i) => (
+                  <p key={i} className="text-sm text-foreground/85 leading-relaxed">
+                    {formatFinancialText(p.trim())}
+                  </p>
+                ))}
+              </div>
             </CollapsibleContent>
           </Collapsible>
         ) : (
           <div>
             <h3 className="text-sm font-semibold mb-1">Conditions Météo</h3>
-            <p className="text-sm text-muted-foreground whitespace-pre-line leading-relaxed">
-              {weather.description}
-            </p>
+            <div className="space-y-2">
+              {weather.description.split(/\n{2,}/).filter(Boolean).map((p, i) => (
+                <p key={i} className="text-sm text-foreground/85 leading-relaxed">
+                  {formatFinancialText(p.trim())}
+                </p>
+              ))}
+            </div>
           </div>
         )}
 

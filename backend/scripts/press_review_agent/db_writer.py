@@ -35,6 +35,8 @@ def write_article(
     parsed: dict[str, str],
     article_date: date | None = None,
     dry_run: bool = False,
+    source_count: int | None = None,
+    total_sources: int | None = None,
 ) -> uuid.UUID | None:
     """Insert a press review article into pl_fundamental_article.
 
@@ -75,6 +77,8 @@ def write_article(
         impact_synthesis=parsed.get("impact_synthetiques"),
         llm_provider=provider.value,
         is_active=(provider == PRODUCTION_PROVIDER),
+        source_count=source_count,
+        total_sources=total_sources,
     )
     session.add(article)
     session.flush()

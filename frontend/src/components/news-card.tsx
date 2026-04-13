@@ -153,19 +153,24 @@ function parseSections(content: string, synthesis: string | null): ParsedSection
     overall: "",
   };
 
-  // Section headers — must be on their own line (^) or at string start.
-  // SENTIMENT MARCHE must be checked BEFORE bare MARCHE to avoid partial match.
+  // Section headers — standalone line, optional markdown/bold/trailing punctuation.
+  // Tolerates: "MARCHE", "**MARCHÉ**", "## MARCHE :", "FONDAMENTAUX.", etc.
+  // SENTIMENT MARCHÉ must be checked BEFORE bare MARCHÉ to avoid partial match.
+  const PRE = String.raw`^#{0,3}\s*\**`;
+  const POST = String.raw`\**\s*[.:;]?\s*$`;
+
   const sectionMap: { pattern: RegExp; target: keyof ParsedSections }[] = [
-    { pattern: /^#{0,3}\s*\**SENTIMENT\s+MARCH[EÉ]\**[.:]?\s*$/im, target: "overall" },
-    { pattern: /^#{0,3}\s*\**MARCH[EÉ]\**[.:]?\s*$/im, target: "technicals" },
-    { pattern: /^#{0,3}\s*\**FONDAMENTAUX\**[.:]?\s*$/im, target: "fundamentals" },
-    { pattern: /^#{0,3}\s*\**OFFRE\**[.:]?\s*$/im, target: "fundamentals" },
+    { pattern: new RegExp(`${PRE}SENTIMENT\\s+MARCH[EÉ]${POST}`, "im"), target: "overall" },
+    { pattern: new RegExp(`${PRE}MARCH[EÉ]${POST}`, "im"), target: "technicals" },
+    { pattern: new RegExp(`${PRE}FONDAMENTAUX${POST}`, "im"), target: "fundamentals" },
+    { pattern: new RegExp(`${PRE}OFFRE${POST}`, "im"), target: "fundamentals" },
   ];
 
-  // Build a single multiline regex that matches any header line.
-  // SENTIMENT MARCHÉ must come first so it's not eaten by bare MARCHÉ.
-  const headerLine =
-    /^#{0,3}\s*\**(?:SENTIMENT\s+MARCH[EÉ]|MARCH[EÉ]|FONDAMENTAUX|OFFRE)\**[.:]?\s*$/gim;
+  // Combined regex for splitting — order matters (SENTIMENT MARCHÉ before bare MARCHÉ).
+  const headerLine = new RegExp(
+    `${PRE}(?:SENTIMENT\\s+MARCH[EÉ]|MARCH[EÉ]|FONDAMENTAUX|OFFRE)${POST}`,
+    "gim",
+  );
 
   const parts = content.split(headerLine).filter((p) => p.trim());
 

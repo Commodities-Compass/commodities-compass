@@ -154,10 +154,13 @@ Rules:
 - Output ONLY the JSON object, no markdown fences, no commentary"""
 
 USER_PROMPT_TEMPLATE = """Date: {date}
+Active contract: {contract_code} ({contract_month})
 London Cocoa Close: {close} GBP/t
 
 Sources available today ({source_count} sources scraped):
 {sources_text}
 
-Generate the daily cocoa press review. Calibrate depth and length to the richness of the
-sources above — do not pad with unverifiable information."""
+Generate the daily cocoa press review. When referencing the front-month contract, use the
+active contract above (e.g. "{contract_code}"), NOT a different delivery month.
+Calibrate depth and length to the richness of the sources above — do not pad with
+unverifiable information."""

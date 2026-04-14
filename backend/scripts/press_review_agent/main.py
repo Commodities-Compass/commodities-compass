@@ -95,8 +95,12 @@ def main() -> int:
         from scripts.press_review_agent.db_reader import read_latest_close
 
         with get_session() as session:
-            close_price, date_str = read_latest_close(session)
-        logger.info(f"CLOSE={close_price}, DATE={date_str}")
+            close_price, date_str, contract_code, contract_month = read_latest_close(
+                session
+            )
+        logger.info(
+            f"CLOSE={close_price}, DATE={date_str}, CONTRACT={contract_code} ({contract_month})"
+        )
 
         # Step 2: Fetch news sources
         logger.info("Step 2: Fetching news sources...")
@@ -108,6 +112,8 @@ def main() -> int:
         user_prompt = USER_PROMPT_TEMPLATE.format(
             date=date_str,
             close=close_price,
+            contract_code=contract_code,
+            contract_month=contract_month,
             source_count=successful_sources,
             sources_text=sources_text,
         )

@@ -146,13 +146,9 @@ function ZoneRow({
             {statusLabel(zone.current_status)}
           </span>
           <MiniTimeline history={zone.history} />
-          <span className="flex-1" />
           {harmattanDays != null && harmattanDays > 0 && (
-            <span className="shrink-0 flex items-center gap-1 text-[10px] text-muted-foreground/60">
-              <span className="rounded px-1 py-0 font-semibold tabular-nums bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">
-                {harmattanDays}j
-              </span>
-              harmattan
+            <span className="shrink-0 rounded px-1 py-0 text-[10px] font-semibold tabular-nums bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 ml-auto">
+              {harmattanDays}j
             </span>
           )}
         </div>

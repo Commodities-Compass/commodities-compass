@@ -207,7 +207,7 @@ The frontend calendar shows `display_date` values. Non-trading days (weekends + 
 ### Barchart Scraper (`backend/scripts/barchart_scraper/`)
 
 - **Data**: C, H, L, V, OI, IV for London cocoa #7 (ICE Europe, GBP/tonne)
-- **Contract selection**: Explicit `ACTIVE_CONTRACT` env var (e.g., `CAK26`). No automatic roll logic — contract switches are manual. Delivery months: H(Mar), K(May), N(Jul), U(Sep), Z(Dec). CA\*0 is NOT used because Barchart rolls it on their own schedule (volume-based), which doesn't match our timing.
+- **Contract selection**: Resolved from DB (`ref_contract.is_active`). `ACTIVE_CONTRACT` env var is a fallback only if DB lookup fails. Delivery months: H(Mar), K(May), N(Jul), U(Sep), Z(Dec). CA\*0 is NOT used because Barchart rolls it on their own schedule (volume-based), which doesn't match our timing. To roll contracts: `poetry run roll-contract CAN26` (deactivates old, activates new — all scrapers auto-detect on next run).
 - **Source**: `https://www.barchart.com/futures/quotes/{contract}/overview` (OHLCV+OI) + `/{contract}/volatility-greeks` (IV)
 - **Method**: Playwright browser → extracts OHLCV+OI from server-rendered inline JSON raw blocks (max-volume heuristic to pick the correct block among 4+). XHR API response used as backup for C/H/L/V (API omits OI). IV via XHR interception or HTML regex fallback.
 - **Volume**: Raw contract count (no conversion)
@@ -243,6 +243,22 @@ The frontend calendar shows `display_date` values. Non-trading days (weekends + 
 
 **Barchart page structure**: Angular SPA. XHR API (`/proxies/core-api/v1/quotes/get`) returns C/H/L/V as formatted strings (commas) but **omits OI**. Server-rendered inline JSON contains all 5 fields with raw numeric values. `networkidle` never fires (analytics polling) — use `wait_until="load"` + fixed 5s wait.
 
+### Contract Roll Procedure
+
+Rolling the active contract (e.g., CAK26 → CAN26) when OI shifts to the next delivery month:
+
+1. **Backfill** (optional but recommended): Insert 5-10 days of the new contract's OHLCV+OI into `pl_contract_data_daily` from Barchart charts. Copy `stock_us`/`com_net_us` from the old contract's rows (commodity-level, same values). This smooths the price transition — the compute engine's `DISTINCT ON (date) ORDER BY oi DESC` picks the front-month automatically at the OI crossover.
+2. **Roll**: `poetry run roll-contract CAN26` (or direct SQL: `UPDATE ref_contract SET is_active = false WHERE is_active = true; UPDATE ref_contract SET is_active = true WHERE code = 'CAN26';`). Run against GCP prod via bastion — the CLI uses the local `.env` DATABASE_URL.
+3. **Deploy** code if any fixes were made, then **recompute**: `gcloud run jobs execute cc-compute-indicators --args="compute-indicators,--all-contracts,--all-versions,--full" --region=europe-west9 --project=cacaooo`
+4. **Verify**: Check `pl_indicator_daily` has rows for the new contract, check dashboard shows new contract data.
+
+**Bugs fixed during CAK26→CAN26 roll (2026-04-14):**
+- Daily analysis had hardcoded `--contract CAK26` default — now resolves from DB via `resolve_active_code()`
+- Daily analysis `_read_technicals()` SQL had no contract filter — now filters by active contract with cross-contract fallback for transition days
+- Compass brief queries had no contract filter — now all queries filter by `ref_contract.is_active = true`
+- Compute engine `load_all_market_data()` could interleave overlapping contract data — now uses `DISTINCT ON (date) ORDER BY oi DESC` to pick front-month per date
+- Press review prompt didn't include active contract info — LLM guessed "mai" from news sources instead of "juillet". Now injects `contract_code` and `contract_month` into the prompt template
+
 ## AI Agents
 
 Four LLM-powered agents run as GCP Cloud Run Jobs, each generating content for PostgreSQL and/or Google Drive. All share the same `backend/Dockerfile`.
@@ -264,6 +280,7 @@ Four LLM-powered agents run as GCP Cloud Run Jobs, each generating content for P
 - **Purpose**: Generates daily French-language cocoa press review from 6 news sources
 - **Provider**: OpenAI `o4-mini` (production). Claude and Gemini available via `--provider claude|gemini|all` for testing only.
 - **Active flag**: `pl_fundamental_article.is_active` controls which provider's articles the dashboard reads. Set by `PRODUCTION_PROVIDER` in `config.py`. To switch provider: update `PRODUCTION_PROVIDER` + backfill `UPDATE pl_fundamental_article SET is_active = true WHERE llm_provider = '<new>'`.
+- **Contract context**: The prompt injects the active contract code and delivery month (e.g., `CAN26`, `2026-07`) so the LLM references the correct contract — not what news sources mention (which may lag behind a roll).
 - **Output**: `pl_fundamental_article` (DB)
 - **Cron**: `5 19 * * 1-5` — **CLI**: `poetry run press-review [--dry-run]`
 
@@ -276,6 +293,8 @@ Four LLM-powered agents run as GCP Cloud Run Jobs, each generating content for P
 ### Daily Analysis (`backend/scripts/daily_analysis/`)
 
 - **Purpose**: Core AI analysis engine replacing Make.com DAILY BOT AI. Reads 42 variables from TECHNICALS + news + weather, runs 2 LLM calls (`gpt-4-turbo`), writes trading decisions
+- **Contract resolution**: `--contract` flag defaults to active contract from DB (`resolve_active_code()`). Never hardcoded.
+- **Transition fallback**: `_read_technicals()` filters by active contract. If < 2 rows found (first days after a roll), falls back to cross-contract read for continuity.
 - **LLM Call #1**: Macro/weather analysis → MACROECO_BONUS + ECO → writes to `pl_indicator_daily`
 - **LLM Call #2**: Trading decision → DECISION/CONFIANCE/DIRECTION/CONCLUSION → writes to `pl_indicator_daily`
 - **Cron**: `20 19 * * 1-5` — **CLI**: `poetry run daily-analysis [--dry-run]`

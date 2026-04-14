@@ -179,8 +179,8 @@ function ZoneList({
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-0">
-        <div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 md:gap-y-0">
+        <div className="min-w-0">
           <p className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider mb-1">
             {countryFlag("CIV")} Côte d&apos;Ivoire
           </p>
@@ -192,7 +192,7 @@ function ZoneList({
             />
           ))}
         </div>
-        <div>
+        <div className="min-w-0">
           <p className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider mb-1">
             {countryFlag("GHA")} Ghana
           </p>
@@ -343,11 +343,7 @@ export default function WeatherUpdateCard({
   const hasStressHistory = !!(
     weather?.stress_history && weather.stress_history.length > 0
   );
-  const hasAnyStress =
-    hasStressHistory &&
-    weather!.stress_history!.some((z) => z.current_status !== "normal");
-
-  const [analysisOpen, setAnalysisOpen] = useState(hasAnyStress);
+  const [analysisOpen, setAnalysisOpen] = useState(true);
 
   if (isLoading) {
     return (

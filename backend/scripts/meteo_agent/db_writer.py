@@ -63,6 +63,7 @@ def write_observation(
         summary=parsed["resume"],
         keywords=parsed.get("mots_cle"),
         impact_assessment=parsed.get("impact_synthetiques"),
+        diagnostics=parsed.get("diagnostics"),
     )
     session.add(obs)
     session.flush()

@@ -56,6 +56,23 @@ def validate_output(result: dict[str, str]) -> list[str]:
         if len(impact) > VALIDATION["impact_max_chars"]:
             errors.append(f"impact_synthetiques too long ({len(impact)} chars)")
 
+    # Diagnostics validation — not in REQUIRED_FIELDS (backward compat),
+    # but invalid format is a real error (LLM output is broken).
+    diag = result.get("diagnostics")
+    if diag is not None:
+        if not isinstance(diag, dict):
+            errors.append(f"'diagnostics' is {type(diag).__name__}, expected dict")
+        else:
+            valid_statuses = {"normal", "degraded", "stress"}
+            for loc, status in diag.items():
+                if status not in valid_statuses:
+                    errors.append(
+                        f"diagnostics[{loc}] = {status!r} — "
+                        f"expected one of {valid_statuses}"
+                    )
+    else:
+        logger.warning("diagnostics field missing from LLM output")
+
     if errors:
         for e in errors:
             logger.warning("Validation: %s", e)

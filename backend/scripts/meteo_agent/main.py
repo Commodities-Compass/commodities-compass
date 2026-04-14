@@ -97,13 +97,13 @@ def main() -> int:
 
         campaign_memory = ""
         harmattan_context = ""
+        campaign = get_campaign(datetime.now(timezone.utc).date())
         try:
             from scripts.db import get_session
 
             with get_session() as session:
                 campaign_memory = build_campaign_memory(session)
-                current_campaign = get_campaign(datetime.now(timezone.utc).date())
-                harmattan_days = get_campaign_harmattan_days(session, current_campaign)
+                harmattan_days = get_campaign_harmattan_days(session, campaign)
                 harmattan_context = build_harmattan_context(
                     harmattan_days, datetime.now(timezone.utc).month
                 )
@@ -160,6 +160,21 @@ def main() -> int:
             write_llm_call(
                 session, result.usage, result.latency_ms, dry_run=args.dry_run
             )
+
+        # Step 6: Daily Harmattan check (increment per-location counter)
+        logger.info("Step 6: Checking Harmattan conditions...")
+        from scripts.meteo_agent.seasonal_memory import check_daily_harmattan
+
+        with get_session() as session:
+            harmattan_results = check_daily_harmattan(
+                weather_data,
+                session,
+                campaign,
+                dry_run=args.dry_run,
+            )
+            if any(harmattan_results.values()):
+                detected = [n for n, h in harmattan_results.items() if h]
+                logger.info("Harmattan detected at: %s", ", ".join(detected))
 
         if args.dry_run:
             logger.info("[DRY RUN] Output preview:")

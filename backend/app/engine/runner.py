@@ -206,22 +206,33 @@ def load_market_data(session: Session, contract_code: str) -> pd.DataFrame:
 def load_all_market_data(session: Session) -> pd.DataFrame:
     """Load full price history across all contracts as one continuous series.
 
-    Sorted by date — the pipeline sees it as one price stream,
-    but each row retains its original contract_id for DB writes.
+    Uses DISTINCT ON (date) to pick one contract per date (highest OI =
+    front-month). This handles overlapping data from contract transitions
+    without interleaving prices from different contracts on the same date.
+
+    Each row retains its original contract_id for per-contract DB writes.
     """
     result = session.execute(
         text("""
+            WITH market AS (
+                SELECT DISTINCT ON (d.date)
+                    d.date, d.close, d.high, d.low, d.volume, d.oi,
+                    d.implied_volatility, d.stock_us, d.com_net_us,
+                    d.contract_id,
+                    c.code AS contract_code
+                FROM pl_contract_data_daily d
+                JOIN ref_contract c ON d.contract_id = c.id
+                ORDER BY d.date, d.oi DESC NULLS LAST
+            )
             SELECT
-                d.date, d.close, d.high, d.low, d.volume, d.oi,
-                d.implied_volatility, d.stock_us, d.com_net_us,
-                d.contract_id,
-                c.code as contract_code,
+                m.date, m.close, m.high, m.low, m.volume, m.oi,
+                m.implied_volatility, m.stock_us, m.com_net_us,
+                m.contract_id, m.contract_code,
                 i.macroeco_bonus
-            FROM pl_contract_data_daily d
-            JOIN ref_contract c ON d.contract_id = c.id
+            FROM market m
             LEFT JOIN pl_indicator_daily i
-                ON d.date = i.date AND d.contract_id = i.contract_id
-            ORDER BY d.date ASC
+                ON m.date = i.date AND m.contract_id = i.contract_id
+            ORDER BY m.date ASC
         """),
     )
     rows = result.fetchall()

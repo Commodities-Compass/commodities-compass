@@ -83,9 +83,7 @@ class DBReader:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def read_all(
-        self, target_date: date, contract_code: str = "CAK26"
-    ) -> PipelineInputs:
+    def read_all(self, target_date: date, contract_code: str) -> PipelineInputs:
         """Read all inputs for the daily analysis pipeline.
 
         Args:
@@ -102,31 +100,53 @@ class DBReader:
 
     def _read_technicals(self, target_date: date, contract_code: str) -> TechnicalsData:
         """Read last 2 days of technicals + derived indicators from DB."""
+        _technicals_sql = """
+            SELECT
+                d.date,
+                d.close, d.high, d.low, d.volume, d.oi,
+                d.implied_volatility, d.stock_us, d.com_net_us,
+                di.r1, di.pivot, di.s1,
+                di.ema12, di.ema26,
+                di.macd, di.macd_signal,
+                di.rsi_14d,
+                di.stochastic_k_14, di.stochastic_d_14,
+                di.atr_14d,
+                di.bollinger_upper, di.bollinger_lower
+            FROM pl_contract_data_daily d
+            JOIN ref_contract c ON d.contract_id = c.id
+            LEFT JOIN pl_derived_indicators di
+                ON d.date = di.date AND d.contract_id = di.contract_id
+        """
+        # Primary: filter by active contract
         result = self._session.execute(
-            text("""
-                SELECT
-                    d.date,
-                    d.close, d.high, d.low, d.volume, d.oi,
-                    d.implied_volatility, d.stock_us, d.com_net_us,
-                    di.r1, di.pivot, di.s1,
-                    di.ema12, di.ema26,
-                    di.macd, di.macd_signal,
-                    di.rsi_14d,
-                    di.stochastic_k_14, di.stochastic_d_14,
-                    di.atr_14d,
-                    di.bollinger_upper, di.bollinger_lower
-                FROM pl_contract_data_daily d
-                JOIN ref_contract c ON d.contract_id = c.id
-                LEFT JOIN pl_derived_indicators di
-                    ON d.date = di.date AND d.contract_id = di.contract_id
-                WHERE d.date <= :target_date
-                ORDER BY d.date DESC
-                LIMIT 2
-            """),
-            {"target_date": target_date},
+            text(
+                _technicals_sql
+                + " WHERE d.date <= :target_date AND c.code = :contract_code"
+                " ORDER BY d.date DESC LIMIT 2"
+            ),
+            {"target_date": target_date, "contract_code": contract_code},
         )
         rows = result.fetchall()
         columns = result.keys()
+
+        # Fallback for contract transition: if active contract has < 2 rows,
+        # read cross-contract to bridge the gap (first days after a roll)
+        if len(rows) < 2:
+            logger.info(
+                "Only %d rows for %s before %s — falling back to cross-contract read",
+                len(rows),
+                contract_code,
+                target_date,
+            )
+            result = self._session.execute(
+                text(
+                    _technicals_sql + " WHERE d.date <= :target_date"
+                    " ORDER BY d.date DESC LIMIT 2"
+                ),
+                {"target_date": target_date},
+            )
+            rows = result.fetchall()
+            columns = result.keys()
 
         if len(rows) < 2:
             logger.warning("Not enough data: found %d rows, need 2", len(rows))

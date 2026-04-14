@@ -92,6 +92,7 @@ _INDICATOR_MAP: dict[str, tuple[str, str]] = {
 
 _INDICATOR_DAILY_FILTER = """
     JOIN pl_algorithm_version av ON i.algorithm_version_id = av.id AND av.is_active = true
+    JOIN ref_contract rc ON i.contract_id = rc.id AND rc.is_active = true
 """
 
 
@@ -116,11 +117,14 @@ class DBBriefReader:
         return BriefData(today=today, yesterday=yesterday)
 
     def _get_last_two_dates(self) -> list[date]:
-        """Get the last 2 distinct dates from pl_contract_data_daily."""
+        """Get the last 2 distinct dates from pl_contract_data_daily for the active contract."""
         result = self._session.execute(
             text("""
-                SELECT DISTINCT date FROM pl_contract_data_daily
-                ORDER BY date DESC LIMIT 2
+                SELECT DISTINCT d.date
+                FROM pl_contract_data_daily d
+                JOIN ref_contract c ON d.contract_id = c.id
+                WHERE c.is_active = true
+                ORDER BY d.date DESC LIMIT 2
             """),
         )
         return [row[0] for row in result]
@@ -146,7 +150,7 @@ class DBBriefReader:
         )
 
     def _read_technicals(self, target_date: date) -> dict[str, str]:
-        """Read raw market data + derived indicators for a date."""
+        """Read raw market data + derived indicators for a date (active contract)."""
         result = self._session.execute(
             text("""
                 SELECT
@@ -160,9 +164,10 @@ class DBBriefReader:
                     di.atr_14d,
                     di.bollinger_upper, di.bollinger_lower
                 FROM pl_contract_data_daily d
+                JOIN ref_contract c ON d.contract_id = c.id
                 LEFT JOIN pl_derived_indicators di
                     ON d.date = di.date AND d.contract_id = di.contract_id
-                WHERE d.date = :target_date
+                WHERE d.date = :target_date AND c.is_active = true
                 ORDER BY d.date DESC
                 LIMIT 1
             """),

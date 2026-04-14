@@ -36,8 +36,8 @@ def _parse_args() -> argparse.Namespace:
 
     parser.add_argument(
         "--contract",
-        default="CAK26",
-        help="Active contract code (default: CAK26)",
+        default=None,
+        help="Contract code (default: active contract from DB)",
     )
     parser.add_argument(
         "--date",
@@ -77,6 +77,16 @@ def main() -> int:
 
     target_date = _resolve_date(args.date)
 
+    # Resolve contract: explicit CLI arg or active contract from DB
+    contract_code: str = args.contract
+    if contract_code is None:
+        from scripts.contract_resolver import resolve_active_code
+        from scripts.db import get_session
+
+        with get_session() as session:
+            contract_code = resolve_active_code(session)
+        logger.info("Resolved active contract from DB: %s", contract_code)
+
     # Pre-flight: verify upstream data exists before making LLM calls
     from scripts.db import has_contract_data_for_date
 
@@ -99,7 +109,7 @@ def main() -> int:
 
     return _run_db_pipeline(
         target_date=target_date,
-        contract_code=args.contract,
+        contract_code=contract_code,
         llm_provider=args.llm_provider,
         llm_model=args.llm_model,
         dry_run=args.dry_run,

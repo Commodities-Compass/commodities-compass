@@ -73,7 +73,7 @@ class DBAnalysisEngine:
     def run(
         self,
         target_date: date,
-        contract_code: str = "CAK26",
+        contract_code: str,
         *,
         dry_run: bool = False,
     ) -> AnalysisResult:

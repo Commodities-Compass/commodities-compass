@@ -40,7 +40,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     const check = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
-      if (mobile) setSidebarCollapsed(true);
+      setSidebarCollapsed(mobile);
     };
     check();
     window.addEventListener('resize', check);

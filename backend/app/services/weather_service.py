@@ -217,6 +217,60 @@ async def get_harmattan_status(
     )
 
 
+# Fuzzy-match LLM location names to canonical names
+_LOCATION_ALIASES: dict[str, str] = {
+    "san-pedro": "San-Pédro",
+    "san-pédro": "San-Pédro",
+    "san pedro": "San-Pédro",
+    "soubre": "Soubré",
+    "soubré": "Soubré",
+    "daloa": "Daloa",
+    "kumasi": "Kumasi",
+    "takoradi": "Takoradi",
+    "goaso": "Goaso",
+}
+
+
+def _normalize_location(name: str) -> str | None:
+    """Resolve an LLM location name to the canonical form."""
+    lower = name.strip().lower()
+    if lower in _LOCATION_ALIASES:
+        return _LOCATION_ALIASES[lower]
+    # Direct match (already canonical)
+    if name.strip() in LOCATION_COUNTRIES:
+        return name.strip()
+    return None
+
+
+def build_daily_diagnostics(
+    diagnostics_json: dict | None,
+) -> list[LocationDiagnostic]:
+    """Convert LLM diagnostics dict to LocationDiagnostic list.
+
+    Input: {"Daloa": "normal", "San-Pédro": "degraded", ...}
+    Falls back to "normal" for missing locations.
+    """
+    if not diagnostics_json or not isinstance(diagnostics_json, dict):
+        return []
+
+    resolved: dict[str, str] = {}
+    for raw_name, status in diagnostics_json.items():
+        canonical = _normalize_location(raw_name)
+        if canonical and status in ("normal", "degraded", "stress"):
+            resolved[canonical] = status
+
+    return [
+        LocationDiagnostic(
+            location_name=loc,
+            country=LOCATION_COUNTRIES[loc],
+            score=None,
+            status=resolved.get(loc, "normal"),
+            harmattan_days=None,
+        )
+        for loc in LOCATION_COUNTRIES
+    ]
+
+
 def parse_impact_score(impact_text: str) -> Optional[int]:
     """Extract numeric impact score from text like '4/10; justification...'."""
     match = re.match(r"(\d{1,2})/10", impact_text.strip())

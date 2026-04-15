@@ -303,6 +303,136 @@ def compute_harmattan_days(
     return harmattan_count
 
 
+def check_daily_harmattan(
+    weather_json: str,
+    session: Session,
+    campaign: str,
+    target_date: date | None = None,
+    dry_run: bool = False,
+) -> dict[str, bool]:
+    """Check yesterday's weather for Harmattan conditions per location.
+
+    For each location where conditions are met (RH < 55% + NE wind),
+    increments harmattan_days in pl_seasonal_score for the current saison_seche.
+
+    Returns dict of {location_name: True if Harmattan day detected}.
+    Only runs during Nov-Mar (Harmattan season).
+    """
+    import json as _json
+
+    ref = target_date or date.today()
+    if ref.month not in HARMATTAN_SEASON_MONTHS:
+        logger.info("Harmattan check skipped — not in season (month %d)", ref.month)
+        return {}
+
+    # Parse the weather JSON (same data the LLM received)
+    try:
+        data = _json.loads(weather_json)
+    except (ValueError, TypeError):
+        logger.error("Failed to parse weather JSON for Harmattan check")
+        return {}
+
+    if not isinstance(data, list):
+        data = [data]
+
+    results: dict[str, bool] = {}
+
+    for i, loc in enumerate(LOCATIONS):
+        if i >= len(data):
+            break
+
+        entry = data[i]
+        daily = entry.get("daily", {})
+        hourly = entry.get("hourly", {})
+
+        wind_dirs = daily.get("winddirection_10m_dominant", [])
+        rh_hourly = hourly.get("relative_humidity_2m", [])
+        time_daily = daily.get("time", [])
+
+        if not wind_dirs or not rh_hourly:
+            results[loc.name] = False
+            continue
+
+        # Find yesterday's index in the daily arrays
+        yesterday = (ref - timedelta(days=1)).isoformat()
+        day_idx = None
+        for idx, t in enumerate(time_daily):
+            if t == yesterday:
+                day_idx = idx
+                break
+
+        if day_idx is None:
+            results[loc.name] = False
+            continue
+
+        wind_dir = wind_dirs[day_idx]
+        if wind_dir is None:
+            results[loc.name] = False
+            continue
+
+        # Compute min RH for that day from hourly data
+        start_h = day_idx * 24
+        end_h = start_h + 24
+        day_rh = [v for v in rh_hourly[start_h:end_h] if v is not None]
+        rh_min = min(day_rh) if day_rh else 100.0
+
+        is_harmattan = (
+            _is_harmattan_direction(float(wind_dir)) and rh_min < HARMATTAN_RH_THRESHOLD
+        )
+        results[loc.name] = is_harmattan
+
+        if is_harmattan:
+            logger.info(
+                "Harmattan detected: %s — wind=%.0f°, RH_min=%.1f%%",
+                loc.name,
+                wind_dir,
+                rh_min,
+            )
+
+    # Increment DB counters for detected locations
+    detected = [name for name, is_h in results.items() if is_h]
+    if not detected:
+        logger.info("No Harmattan conditions detected for any location")
+        return results
+
+    if dry_run:
+        logger.info(
+            "[DRY RUN] Would increment harmattan_days for: %s",
+            ", ".join(detected),
+        )
+        return results
+
+    for loc_name in detected:
+        row = session.execute(
+            text("""
+                UPDATE pl_seasonal_score
+                SET harmattan_days = COALESCE(harmattan_days, 0) + 1,
+                    computed_at = NOW()
+                WHERE campaign = :campaign
+                  AND season_name = 'saison_seche'
+                  AND location_name = :loc
+                RETURNING harmattan_days
+            """),
+            {"campaign": campaign, "loc": loc_name},
+        ).fetchone()
+
+        if row:
+            logger.info(
+                "Incremented harmattan_days for %s → %d",
+                loc_name,
+                row[0],
+            )
+        else:
+            logger.warning(
+                "No pl_seasonal_score row for %s/%s/saison_seche — "
+                "run --bootstrap-memory first",
+                campaign,
+                loc_name,
+            )
+
+    return results
+
+
 def get_campaign_harmattan_days(session: Session, campaign: str) -> int:
     """Sum harmattan_days across all saison_seche rows for the campaign.
 

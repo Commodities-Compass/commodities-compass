@@ -42,9 +42,6 @@ class Settings(BaseSettings):
     DATABASE_URL: str = config("DATABASE_URL", default="", cast=str)
     DATABASE_SYNC_URL: str = config("DATABASE_SYNC_URL", cast=str)
 
-    # Redis
-    REDIS_URL: str = config("REDIS_URL", default="redis://localhost:6379/0", cast=str)
-
     # Google Drive (audio streaming + compass brief upload)
     GOOGLE_DRIVE_CREDENTIALS_JSON: str = config(
         "GOOGLE_DRIVE_CREDENTIALS_JSON", default="", cast=str

@@ -151,8 +151,12 @@ def transform_to_weather_enriched_response(
     diagnostics: list[LocationDiagnostic],
     impact_score: Optional[int],
     harmattan: Optional[HarmattanStatus] = None,
+    daily_diagnostics: Optional[list[LocationDiagnostic]] = None,
+    stress_history: Optional[list] = None,
 ) -> WeatherEnrichedResponse:
     """Transform weather dict + seasonal data into enriched response."""
+    from app.schemas.dashboard import LocationStressHistory
+
     return WeatherEnrichedResponse(
         date=format_date_for_display(weather_data.get("date", date.today())),
         description=weather_data.get("text", "") or "No weather description available",
@@ -162,6 +166,8 @@ def transform_to_weather_enriched_response(
         campaign_health=campaign_health,
         seasons=seasons,
         diagnostics=diagnostics,
+        daily_diagnostics=daily_diagnostics or [],
+        stress_history=[LocationStressHistory(**h) for h in (stress_history or [])],
         impact_score=impact_score,
         harmattan=harmattan,
     )

@@ -49,6 +49,7 @@ from app.services.weather_service import (
     compute_campaign_health,
     build_season_statuses,
     build_location_diagnostics,
+    build_daily_diagnostics,
     parse_impact_score,
 )
 from app.models.pipeline import PlContractDataDaily
@@ -399,6 +400,8 @@ async def get_weather(
         campaign_health = None
         seasons: list = []
         diagnostics: list = []
+        daily_diag: list = []
+        stress_hist: list = []
         harmattan = None
 
         try:
@@ -414,6 +417,23 @@ async def get_weather(
             logger.warning(f"Seasonal enrichment failed (non-blocking): {e}")
             campaign = None
 
+        # Daily diagnostics from LLM
+        raw_diag = (
+            weather_data.get("diagnostics") if isinstance(weather_data, dict) else None
+        )
+        daily_diag = build_daily_diagnostics(raw_diag)
+        if not daily_diag and diagnostics:
+            logger.warning(
+                "No daily diagnostics in pl_weather_observation — "
+                "falling back to seasonal diagnostics"
+            )
+            daily_diag = diagnostics
+
+        # Stress history (7-day lookback)
+        from app.services.dashboard_service import get_stress_history
+
+        stress_hist = await get_stress_history(db, days=7, target_date=business_date)
+
         raw_impact = (
             weather_data.get("impact_synthesis", "")
             if isinstance(weather_data, dict)
@@ -427,6 +447,8 @@ async def get_weather(
             campaign_health=campaign_health,
             seasons=seasons,
             diagnostics=diagnostics,
+            daily_diagnostics=daily_diag,
+            stress_history=stress_hist,
             impact_score=impact_score,
             harmattan=harmattan,
         )

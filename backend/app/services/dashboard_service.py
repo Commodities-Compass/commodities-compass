@@ -495,4 +495,94 @@ async def get_latest_weather_data(
         "date": obs.date,
         "text": obs.observation,
         "impact_synthesis": obs.impact_assessment,
+        "diagnostics": obs.diagnostics,
     }
+
+
+# ---------------------------------------------------------------------------
+# 7b. Stress History (7-day lookback)
+# ---------------------------------------------------------------------------
+
+CANONICAL_LOCATIONS = ("Daloa", "San-Pédro", "Soubré", "Kumasi", "Takoradi", "Goaso")
+LOCATION_COUNTRY_MAP = {
+    "Daloa": "CIV",
+    "San-Pédro": "CIV",
+    "Soubré": "CIV",
+    "Kumasi": "GHA",
+    "Takoradi": "GHA",
+    "Goaso": "GHA",
+}
+
+
+async def get_stress_history(
+    db: AsyncSession,
+    days: int = 7,
+    target_date: Optional[date] = None,
+) -> List[Dict[str, Any]]:
+    """Build per-location stress history from the last N weather observations.
+
+    Returns a list of dicts with: location_name, country, current_status,
+    streak_days, trend, history (list of statuses oldest→newest).
+    """
+    ref = target_date or date.today()
+    query = (
+        select(PlWeatherObservation.date, PlWeatherObservation.diagnostics)
+        .where(
+            PlWeatherObservation.date <= ref,
+            PlWeatherObservation.diagnostics.is_not(None),
+        )
+        .order_by(desc(PlWeatherObservation.date))
+        .limit(days)
+    )
+    result = await db.execute(query)
+    rows = result.fetchall()
+
+    if not rows:
+        return []
+
+    # Build per-location timeline (oldest first)
+    location_history: Dict[str, List[str]] = {loc: [] for loc in CANONICAL_LOCATIONS}
+    for row in reversed(rows):  # oldest first
+        diag = row[1] or {}
+        for loc in CANONICAL_LOCATIONS:
+            # Fuzzy: try canonical name, lowercase, with/without accent
+            status = diag.get(loc) or diag.get(loc.lower()) or "normal"
+            if status not in ("normal", "degraded", "stress"):
+                status = "normal"
+            location_history[loc].append(status)
+
+    histories: List[Dict[str, Any]] = []
+    for loc in CANONICAL_LOCATIONS:
+        timeline = location_history[loc]
+        current = timeline[-1] if timeline else "normal"
+
+        # Compute streak: how many consecutive days at current status (from end)
+        streak = 0
+        for s in reversed(timeline):
+            if s == current:
+                streak += 1
+            else:
+                break
+
+        # Trend: compare current to previous status
+        prev = timeline[-streak - 1] if len(timeline) > streak else current
+        severity = {"normal": 0, "degraded": 1, "stress": 2}
+        if severity.get(current, 0) > severity.get(prev, 0):
+            trend = "worsening"
+        elif severity.get(current, 0) < severity.get(prev, 0):
+            trend = "improving"
+        else:
+            trend = "stable"
+
+        histories.append(
+            {
+                "location_name": loc,
+                "country": LOCATION_COUNTRY_MAP[loc],
+                "current_status": current,
+                "streak_days": streak,
+                "trend": trend,
+                "history": timeline,
+            }
+        )
+
+    return histories

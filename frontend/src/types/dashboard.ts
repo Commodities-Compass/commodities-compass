@@ -79,6 +79,15 @@ export interface HarmattanStatus {
   in_season: boolean;
 }
 
+export interface LocationStressHistory {
+  location_name: string;
+  country: "CIV" | "GHA";
+  current_status: "normal" | "degraded" | "stress";
+  streak_days: number;
+  trend: "stable" | "improving" | "worsening";
+  history: ("normal" | "degraded" | "stress")[];
+}
+
 export interface WeatherResponse {
   date: string;
   description: string;
@@ -87,6 +96,8 @@ export interface WeatherResponse {
   campaign_health?: number | null;
   seasons?: SeasonStatus[];
   diagnostics?: LocationDiagnostic[];
+  daily_diagnostics?: LocationDiagnostic[];
+  stress_history?: LocationStressHistory[];
   impact_score?: number | null;
   harmattan?: HarmattanStatus | null;
 }

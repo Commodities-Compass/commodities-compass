@@ -150,6 +150,19 @@ class HarmattanStatus(BaseModel):
     )
 
 
+class LocationStressHistory(BaseModel):
+    """Per-location stress history over the last N days."""
+
+    location_name: str = Field(..., description="Location name (e.g. Daloa)")
+    country: str = Field(..., description="CIV or GHA")
+    current_status: str = Field(..., description="normal, degraded, or stress")
+    streak_days: int = Field(..., description="Consecutive days at current status")
+    trend: str = Field(..., description="stable, improving, or worsening")
+    history: List[str] = Field(
+        default_factory=list, description="Status per day, oldest first"
+    )
+
+
 class WeatherEnrichedResponse(WeatherResponse):
     """Enriched weather response with seasonal campaign data."""
 
@@ -163,7 +176,13 @@ class WeatherEnrichedResponse(WeatherResponse):
         default_factory=list, description="Season statuses"
     )
     diagnostics: List[LocationDiagnostic] = Field(
-        default_factory=list, description="Per-location diagnostics"
+        default_factory=list, description="Per-location diagnostics (seasonal)"
+    )
+    daily_diagnostics: List[LocationDiagnostic] = Field(
+        default_factory=list, description="Per-location diagnostics from today's LLM"
+    )
+    stress_history: List[LocationStressHistory] = Field(
+        default_factory=list, description="Per-location stress history (last 7 days)"
     )
     impact_score: Optional[int] = Field(None, description="Parsed impact score (1-10)")
     harmattan: Optional[HarmattanStatus] = Field(

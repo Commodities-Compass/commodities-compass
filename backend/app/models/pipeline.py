@@ -27,6 +27,7 @@ from sqlalchemy import (
     Uuid,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
@@ -283,6 +284,7 @@ class PlWeatherObservation(Base):
     summary: Mapped[Optional[str]] = mapped_column(TEXT)
     keywords: Mapped[Optional[str]] = mapped_column(TEXT)
     impact_assessment: Mapped[Optional[str]] = mapped_column(TEXT)
+    diagnostics: Mapped[Optional[dict]] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
 
 

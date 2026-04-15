@@ -44,12 +44,6 @@ function scoreColor(score: number | null | undefined): string {
   return "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300";
 }
 
-function statusDotColor(status: string): string {
-  if (status === "normal") return "bg-emerald-500";
-  if (status === "degraded") return "bg-amber-500";
-  return "bg-red-500";
-}
-
 function statusLabel(status: string): string {
   if (status === "normal") return "normal";
   if (status === "degraded") return "dégradé";
@@ -97,12 +91,12 @@ function InfoHint({ children }: { children: string }) {
 
 function MiniTimeline({ history }: { history: string[] }) {
   return (
-    <div className="flex items-center gap-0.5">
+    <div className="flex items-center gap-1">
       {history.map((status, i) => (
         <div
           key={i}
           className={cn(
-            "h-1.5 w-1.5 rounded-full",
+            "h-2 w-2 rounded-full",
             timelineDotColor(status),
           )}
         />
@@ -115,42 +109,28 @@ function MiniTimeline({ history }: { history: string[] }) {
 // ZoneList — per-location rows with timeline + streak
 // ---------------------------------------------------------------------------
 
-function ZoneRow({
-  zone,
-  harmattanDays,
-}: {
-  zone: LocationStressHistory;
-  harmattanDays?: number | null;
-}) {
+function ZoneRow({ zone }: { zone: LocationStressHistory }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <div className="flex items-center gap-2 py-1 text-xs">
-          <div
-            className={cn(
-              "h-2 w-2 rounded-full shrink-0",
-              statusDotColor(zone.current_status),
-            )}
-          />
-          <span className="w-[72px] shrink-0 font-medium">
+        <div className="flex items-center gap-2.5 py-1.5 text-sm">
+          <span className="w-[80px] shrink-0 font-medium">
             {zone.location_name}
           </span>
+          <MiniTimeline history={zone.history} />
+          <span className="w-3" />
           <span
             className={cn(
-              "w-[52px] shrink-0",
+              "shrink-0 text-xs",
               zone.current_status === "normal"
                 ? "text-muted-foreground"
-                : "font-medium",
+                : zone.current_status === "degraded"
+                  ? "font-medium text-amber-600 dark:text-amber-400"
+                  : "font-medium text-red-600 dark:text-red-400",
             )}
           >
             {statusLabel(zone.current_status)}
           </span>
-          <MiniTimeline history={zone.history} />
-          {harmattanDays != null && harmattanDays > 0 && (
-            <span className="shrink-0 rounded px-1 py-0 text-[10px] font-semibold tabular-nums bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 ml-auto">
-              {harmattanDays}j
-            </span>
-          )}
         </div>
       </TooltipTrigger>
       <TooltipContent side="top">
@@ -159,53 +139,70 @@ function ZoneRow({
           {zone.streak_days > 1 && ` depuis ${zone.streak_days} jours`}
           {zone.trend !== "stable" &&
             ` (${zone.trend === "worsening" ? "en dégradation" : "en amélioration"})`}
-          {harmattanDays != null && harmattanDays > 0 &&
-            ` — Harmattan: ${harmattanDays}j`}
         </p>
       </TooltipContent>
     </Tooltip>
   );
 }
 
-function ZoneList({
-  history,
-  harmattanByLocation,
-}: {
-  history: LocationStressHistory[];
-  harmattanByLocation: Record<string, number>;
-}) {
+function ZoneList({ history }: { history: LocationStressHistory[] }) {
   const civZones = history.filter((z) => z.country === "CIV");
   const ghaZones = history.filter((z) => z.country === "GHA");
 
   return (
     <TooltipProvider delayDuration={200}>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 md:gap-y-0">
-        <div className="min-w-0">
+        <div>
           <p className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider mb-1">
             {countryFlag("CIV")} Côte d&apos;Ivoire
           </p>
           {civZones.map((zone) => (
-            <ZoneRow
-              key={zone.location_name}
-              zone={zone}
-              harmattanDays={harmattanByLocation[zone.location_name]}
-            />
+            <ZoneRow key={zone.location_name} zone={zone} />
           ))}
         </div>
-        <div className="min-w-0">
+        <div>
           <p className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider mb-1">
             {countryFlag("GHA")} Ghana
           </p>
           {ghaZones.map((zone) => (
-            <ZoneRow
-              key={zone.location_name}
-              zone={zone}
-              harmattanDays={harmattanByLocation[zone.location_name]}
-            />
+            <ZoneRow key={zone.location_name} zone={zone} />
           ))}
         </div>
       </div>
     </TooltipProvider>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// HarmattanSection — dedicated block for cumulative Harmattan days
+// ---------------------------------------------------------------------------
+
+function HarmattanSection({
+  diagnostics,
+}: {
+  diagnostics: LocationDiagnostic[];
+}) {
+  const affected = diagnostics.filter(
+    (d) => d.harmattan_days != null && d.harmattan_days > 0,
+  );
+  if (affected.length === 0) return null;
+
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs font-medium text-muted-foreground">Harmattan</span>
+      <p className="text-xs text-muted-foreground">
+        {affected.map((loc, i) => (
+          <span key={loc.location_name}>
+            {i > 0 && <span className="mx-1.5">·</span>}
+            <span>{loc.location_name}</span>{" "}
+            <span className="font-semibold tabular-nums text-foreground">
+              {loc.harmattan_days}
+            </span>
+          </span>
+        ))}
+      </p>
+      <InfoHint>Jours cumulés de vent sec depuis nov. (seuil critique : 24j)</InfoHint>
+    </div>
   );
 }
 
@@ -387,19 +384,14 @@ export default function WeatherUpdateCard({
         </div>
         <InfoHint>Diagnostic basé sur l&apos;analyse météo du jour</InfoHint>
         {hasStressHistory ? (
-          <ZoneList
-            history={weather.stress_history!}
-            harmattanByLocation={
-              (weather.diagnostics ?? []).reduce<Record<string, number>>((acc, d) => {
-                if (d.harmattan_days != null && d.harmattan_days > 0) {
-                  acc[d.location_name] = d.harmattan_days;
-                }
-                return acc;
-              }, {})
-            }
-          />
+          <ZoneList history={weather.stress_history!} />
         ) : (
           <ZonePlaceholder />
+        )}
+
+        {/* Harmattan section (separate from diagnostic) */}
+        {weather.diagnostics && weather.diagnostics.length > 0 && (
+          <HarmattanSection diagnostics={weather.diagnostics} />
         )}
 
         {/* Section 2: Daily Analysis (collapsible) */}
@@ -423,7 +415,7 @@ export default function WeatherUpdateCard({
                   .map((p, i) => (
                     <p
                       key={i}
-                      className="text-sm text-foreground/85 leading-relaxed"
+                      className="text-xs text-foreground/85 leading-relaxed"
                     >
                       {formatFinancialText(p.trim())}
                     </p>

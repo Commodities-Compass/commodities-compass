@@ -1,4 +1,4 @@
-FROM node:18-alpine as builder
+FROM node:22-alpine as builder
 
 # Set working directory
 WORKDIR /app
@@ -35,7 +35,7 @@ ENV AUTH0_ISSUER=$AUTH0_ISSUER
 RUN pnpm run build
 
 # Production stage
-FROM node:18-alpine
+FROM node:22-alpine
 
 WORKDIR /app
 

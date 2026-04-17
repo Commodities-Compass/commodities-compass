@@ -59,7 +59,7 @@ export default function PodcastPlayer({ audioDate, className }: PodcastPlayerPro
       : audioData.url;
     audioRef.current.src = absoluteUrl;
     audioRef.current.load();
-    setIsPlaying(false);
+    setIsPlaying(false); // eslint-disable-line react-hooks/set-state-in-effect -- reset player state on source change
     setCurrentTime(0);
     setDuration(0);
   }, [audioData?.url]);

@@ -14,11 +14,19 @@ export default defineConfig(({ mode }) => {
       sourcemap: 'hidden',
       rollupOptions: {
         output: {
-          manualChunks: {
-            vendor: ['react', 'react-dom', 'react-router-dom'],
-            auth: ['@auth0/auth0-react'],
-            charts: ['recharts'],
-            query: ['@tanstack/react-query'],
+          manualChunks(id: string) {
+            if (id.includes('react-dom') || id.includes('react-router-dom') || id.includes('/react/')) {
+              return 'vendor';
+            }
+            if (id.includes('@auth0/auth0-react')) {
+              return 'auth';
+            }
+            if (id.includes('recharts')) {
+              return 'charts';
+            }
+            if (id.includes('@tanstack/react-query')) {
+              return 'query';
+            }
           },
         },
       },

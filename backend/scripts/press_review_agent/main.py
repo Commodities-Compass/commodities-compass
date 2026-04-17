@@ -118,7 +118,7 @@ def main() -> int:
             sources_text=sources_text,
         )
         logger.info(
-            f"Prompt built: {len(user_prompt)} chars, " f"{successful_sources} sources"
+            f"Prompt built: {len(user_prompt)} chars, {successful_sources} sources"
         )
 
         # Step 4: Call LLM providers in parallel

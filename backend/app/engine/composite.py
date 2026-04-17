@@ -205,9 +205,11 @@ def compute_signals(
     if macroeco_series is None:
         macroeco_series = pd.Series(np.nan, index=result.index)
     result["macroeco_score"] = macroeco_series.apply(
-        lambda v: 1.0 + v
-        if not (v is None or (isinstance(v, float) and np.isnan(v)))
-        else np.nan
+        lambda v: (
+            1.0 + v
+            if not (v is None or (isinstance(v, float) and np.isnan(v)))
+            else np.nan
+        )
     )
 
     return result

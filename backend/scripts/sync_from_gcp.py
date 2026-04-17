@@ -26,6 +26,7 @@ import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
+from psycopg2.extras import Json
 from sqlalchemy import create_engine, inspect, text
 
 load_dotenv(Path(__file__).parent.parent / ".env")
@@ -41,6 +42,7 @@ SYNC_TABLES = [
     "ref_commodity",
     "ref_contract",
     "ref_trading_calendar",
+    "test_range",
     # Algorithm config (ref_contract FK)
     "pl_algorithm_version",
     "pl_algorithm_config",
@@ -52,6 +54,7 @@ SYNC_TABLES = [
     "pl_fundamental_article",
     "pl_article_segment",
     "pl_weather_observation",
+    "pl_seasonal_score",
     # Audit tables
     "aud_pipeline_run",
     "aud_data_quality_check",
@@ -187,7 +190,13 @@ def main() -> int:
                     insert_sql = (
                         f"INSERT INTO {table} ({col_list}) VALUES ({placeholders})"
                     )
-                    row_dicts = [dict(zip(columns, row)) for row in rows]
+                    row_dicts = [
+                        {
+                            k: Json(v) if isinstance(v, (dict, list)) else v
+                            for k, v in zip(columns, row)
+                        }
+                        for row in rows
+                    ]
                     lc.execute(text(insert_sql), row_dicts)
 
             logger.info("  %s: %d rows", table, len(rows))

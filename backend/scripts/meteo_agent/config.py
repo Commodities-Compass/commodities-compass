@@ -217,7 +217,7 @@ def get_seasonal_profile(month: int) -> SeasonalProfile:
 def build_seasonal_context(month: int) -> str:
     """Build the seasonal context block for the system prompt."""
     p = get_seasonal_profile(month)
-    return f"""CONTEXTE SAISONNIER — {p.name.upper().replace('_', ' ')} ({p.description})
+    return f"""CONTEXTE SAISONNIER — {p.name.upper().replace("_", " ")} ({p.description})
 Stade phénologique : {p.phenology}
 Note de base : {p.baseline_note}
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, Suspense } from 'react';
+import React, { useEffect, useRef, useState, Suspense } from 'react';
 import {
   BrowserRouter as Router,
   Routes,
@@ -14,10 +14,10 @@ const LoginPage = React.lazy(() => import('@/pages/login-page-auth0'));
 const DashboardPage = React.lazy(() => import('@/pages/dashboard-page'));
 const HistoricalPage = React.lazy(() => import('@/pages/historical-page'));
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
+function ProtectedRoute({ children, isLoggingOut }: { children: React.ReactNode; isLoggingOut: boolean }) {
   const { isAuthenticated, isLoading } = useAuth0();
 
-  if (isLoading) {
+  if (isLoading || isLoggingOut) {
     return <LoadingSpinner />;
   }
 
@@ -58,6 +58,7 @@ function NotFoundPage() {
 
 export default function App() {
   const { isAuthenticated, logout } = useAuth0();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const logoutInProgressRef = useRef(false);
 
   // Initialize token getter via useAuth hook
@@ -68,6 +69,7 @@ export default function App() {
     const handleTokenExpired = () => {
       if (isAuthenticated && !logoutInProgressRef.current) {
         logoutInProgressRef.current = true;
+        setIsLoggingOut(true);
         logout({
           logoutParams: {
             returnTo: window.location.origin + '/login',
@@ -100,7 +102,7 @@ export default function App() {
           <Route
             path="/dashboard"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute isLoggingOut={isLoggingOut}>
                 <DashboardLayout>
                   <DashboardPage />
                 </DashboardLayout>
@@ -111,7 +113,7 @@ export default function App() {
           <Route
             path="/dashboard/historical"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute isLoggingOut={isLoggingOut}>
                 <DashboardLayout>
                   <HistoricalPage />
                 </DashboardLayout>

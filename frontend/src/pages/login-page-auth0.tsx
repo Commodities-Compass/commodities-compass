@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth0 } from '@auth0/auth0-react';
 import { Button } from '@/components/ui/button';
@@ -22,6 +22,11 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const { loginWithRedirect, isAuthenticated, isLoading, error, logout } = useAuth0();
   const logoutTriggeredRef = useRef(false);
+  const [sessionExpired] = useState(() => {
+    const was401 = sessionStorage.getItem('auth_401_error') === 'true';
+    if (was401) sessionStorage.removeItem('auth_401_error');
+    return was401;
+  });
 
   useEffect(() => {
     // Detect and break redirect loops
@@ -137,6 +142,14 @@ export default function LoginPage() {
                 </span>
               </div>
             </div>
+
+            {sessionExpired && (
+              <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+                <p className="text-sm text-amber-700 dark:text-amber-300 text-center">
+                  Your session has expired. Please sign in again.
+                </p>
+              </div>
+            )}
 
             {error && (
               <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-4">

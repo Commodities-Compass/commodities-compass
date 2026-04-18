@@ -81,7 +81,7 @@ The backend follows a clean architecture with separation of concerns:
 - **`app/services/`** - Business logic layer (service-oriented architecture):
   - `dashboard_service.py` - Pure business logic for dashboard operations. All queries read from pl_* tables (contract-centric).
   - `dashboard_transformers.py` - Data transformation between dicts and API responses.
-  - `audio_service.py` - Google Drive audio file integration (singleton service)
+  - `audio_service.py` - Google Drive audio file integration (singleton service). In-memory cache on file lookups (1h TTL for hits, 5min for misses) eliminates redundant Drive API calls.
 - **`app/utils/`** - Reusable utility functions:
   - `date_utils.py` - Date parsing, validation, business date conversion (weekend to Friday)
   - `contract_resolver.py` - Active contract and algorithm version resolution from ref_contract/pl_algorithm_version tables. Bridges commodity-centric to contract-centric queries.
@@ -113,7 +113,7 @@ The frontend uses modern React patterns:
 - **UI Components** - Shadcn/ui (new-york style) with Radix UI primitives in `src/components/ui/`
 - **Dashboard Components**:
   - `SignalHero` - Hero panel for trading signal (OPEN/HEDGE/MONITOR) as a pill badge with colored ring + dot, plus YTD performance. Replaces the old `PositionStatus` component.
-  - `PodcastPlayer` - Audio player with SoundCloud-style waveform bars (48 bars, click-to-seek, progress coloring). Uses `<audio preload="metadata">` for instant load — waveform is cosmetic (deterministic pseudo-random bars), not computed from audio data. Replaces the old audio player from `PositionStatus`.
+  - `PodcastPlayer` - Audio player with SoundCloud-style waveform bars (48 bars, click-to-seek, progress coloring). Uses `<audio preload="auto">` to buffer audio on page load — play is near-instant. Shows a loading spinner until `canplay` fires, then during mid-playback buffering stalls. Waveform is cosmetic (deterministic pseudo-random bars), not computed from audio data. Replaces the old audio player from `PositionStatus`.
   - `MarketAnalysis` - Unified card: 6 gauge indicators (MACROECO/MACD/VOL-OI/RSI/%K/ATR) + analysis bullets with direction dots + "À surveiller" watchlist box
   - `GaugeIndicator` - SVG semi-circular gauge with color zones (RED/ORANGE/GREEN), tooltip with indicator metadata
   - `PriceChart` - Recharts area chart with metric/days selector and zoom controls

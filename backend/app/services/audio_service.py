@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import time
 from datetime import date, datetime, timezone
 from typing import Optional
 
@@ -15,12 +16,17 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 
+_FILE_CACHE_TTL = 3600  # 1 hour — audio for a given date doesn't change once uploaded
+_MISS_CACHE_TTL = 300  # 5 min — file may not be uploaded yet (pipeline timing)
+
+
 class AudioService:
     """Service for handling audio files from Google Drive."""
 
     def __init__(self):
         """Initialize Google Drive service."""
         self.drive_service = None
+        self._file_cache: dict[str, tuple[Optional[dict], float]] = {}
         self._initialize_drive_service()
 
     def _initialize_drive_service(self):
@@ -87,6 +93,15 @@ class AudioService:
         if target_date is None:
             target_date = datetime.now(timezone.utc).date()
 
+        cache_key = target_date.isoformat()
+        cached = self._file_cache.get(cache_key)
+        if cached is not None:
+            result, cached_at = cached
+            ttl = _FILE_CACHE_TTL if result is not None else _MISS_CACHE_TTL
+            if time.monotonic() - cached_at < ttl:
+                return result
+            del self._file_cache[cache_key]
+
         filename_base = f"{target_date.strftime('%Y%m%d')}-CompassAudio"
 
         try:
@@ -115,6 +130,7 @@ class AudioService:
                     filename_base,
                     filename_base,
                 )
+                self._file_cache[cache_key] = (None, time.monotonic())
                 return None
 
             file = files[0]
@@ -124,8 +140,10 @@ class AudioService:
             logger.info("Found audio file: %s", actual_filename)
 
             audio_url = f"https://drive.google.com/uc?id={file_id}&export=download"
+            result = {"url": audio_url, "filename": actual_filename}
+            self._file_cache[cache_key] = (result, time.monotonic())
 
-            return {"url": audio_url, "filename": actual_filename}
+            return result
 
         except HttpError as e:
             logger.error("Google Drive API error: %s", e)

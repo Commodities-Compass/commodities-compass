@@ -33,6 +33,8 @@ function formatTime(time: number): string {
 
 export default function PodcastPlayer({ audioDate, className }: PodcastPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
+  const [isAudioReady, setIsAudioReady] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -60,6 +62,8 @@ export default function PodcastPlayer({ audioDate, className }: PodcastPlayerPro
     audioRef.current.src = absoluteUrl;
     audioRef.current.load();
     setIsPlaying(false); // eslint-disable-line react-hooks/set-state-in-effect -- reset player state on source change
+    setIsBuffering(false);
+    setIsAudioReady(false);
     setCurrentTime(0);
     setDuration(0);
   }, [audioData?.url]);
@@ -85,7 +89,11 @@ export default function PodcastPlayer({ audioDate, className }: PodcastPlayerPro
   }, []);
 
   const handleEnded = useCallback(() => setIsPlaying(false), []);
-  const handleAudioError = useCallback(() => setIsPlaying(false), []);
+  const handleAudioError = useCallback(() => { setIsPlaying(false); setIsBuffering(false); }, []);
+  const handleWaiting = useCallback(() => {
+    if (isPlaying) setIsBuffering(true);
+  }, [isPlaying]);
+  const handleCanPlay = useCallback(() => { setIsBuffering(false); setIsAudioReady(true); }, []);
 
   const handleWaveformClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
@@ -110,7 +118,9 @@ export default function PodcastPlayer({ audioDate, className }: PodcastPlayerPro
           onLoadedMetadata={handleLoadedMetadata}
           onEnded={handleEnded}
           onError={handleAudioError}
-          preload="metadata"
+          onWaiting={handleWaiting}
+          onCanPlay={handleCanPlay}
+          preload="auto"
         />
 
         {/* Header */}
@@ -128,7 +138,7 @@ export default function PodcastPlayer({ audioDate, className }: PodcastPlayerPro
             disabled={isLoading || !hasAudio}
             aria-label={isPlaying ? 'Pause audio' : 'Play audio'}
           >
-            {isLoading ? (
+            {isLoading || isBuffering || (hasAudio && !isAudioReady) ? (
               <Loader2 className="h-5 w-5 animate-spin" />
             ) : isPlaying ? (
               <PauseIcon className="h-5 w-5" />

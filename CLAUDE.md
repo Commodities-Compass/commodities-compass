@@ -110,6 +110,7 @@ The frontend uses modern React patterns:
   - `/login` - Auth0 login page with redirect loop detection and error display
   - `/dashboard` - Main trading dashboard (protected)
   - `/dashboard/historical` - Historical data view (protected)
+- **Favicon** - `frontend/public/favicon-32x32.png` (transparent background, circle only) + `frontend/public/apple-touch-icon.png` (180x180, white background for mobile dark mode). Generated from `src/assets/compass-icon.png`.
 - **UI Components** - Shadcn/ui (new-york style) with Radix UI primitives in `src/components/ui/`
 - **Dashboard Components**:
   - `SignalHero` - Hero panel for trading signal (OPEN/HEDGE/MONITOR) as a pill badge with colored ring + dot, plus YTD performance. Replaces the old `PositionStatus` component.
@@ -119,7 +120,7 @@ The frontend uses modern React patterns:
   - `PriceChart` - Recharts area chart with metric/days selector and zoom controls
   - `NewsCard` - Tabbed press review (Technique/Fondamentaux/Synthèse) with inline formatting for financial text
   - `WeatherUpdateCard` - Campaign health bars, location diagnostics grid, market impact bar
-  - `DashboardLayout` - Desktop: collapsible sidebar with logo, nav, user profile dropdown. Mobile (<768px): sidebar hidden, replaced by slim top bar with hamburger menu (theme toggle, logout)
+  - `DashboardLayout` - Desktop: collapsible sidebar with logo, nav, user profile dropdown. Mobile (<768px): sidebar hidden, replaced by slim top bar with hamburger menu (theme toggle, logout). User profile shows derived display name (Auth0 name or capitalized email prefix) with 2-letter initials avatar and email subtitle.
   - `DateSelector` - Trading day navigation with calendar picker (disables weekends, exchange holidays, and future dates via `/non-trading-days` API)
   - `DatePickerWithRange` - Date range picker with two-month calendar view
   - `LoadingSpinner` - Full-screen centered spinner
@@ -157,8 +158,9 @@ Frontend code uses Auth0 variables (not VITE_ prefixed) exposed via custom Vite 
 2. Tokens stored in localStorage (`auth0_token`) and automatically added to API requests via Axios interceptor
 3. Backend validates JWT tokens using Auth0's JWKS endpoint (RS256, cached for 6 hours)
 4. User claims extracted: sub, email, name, permissions
-5. On 401 response: Axios interceptor clears token, dispatches `auth:token-expired` event, App.tsx triggers logout
-6. Login page includes redirect loop detection (max 3 redirects in 5-second window)
+5. On 401 response: Axios interceptor clears token, sets `auth_401_error` flag in sessionStorage, dispatches `auth:token-expired` event. App.tsx sets `isLoggingOut` state → `ProtectedRoute` shows spinner (prevents component crashes during redirect) → Auth0 `logout()` redirects to `/login`
+6. Login page reads `auth_401_error` flag and shows "Session expired" banner. Includes redirect loop detection (max 3 redirects in 5-second window)
+7. **Important**: `https://app.com-compass.com/login` must be in Auth0 **Allowed Logout URLs** — otherwise Auth0 shows its own error page instead of redirecting
 
 ## Data Pipeline
 

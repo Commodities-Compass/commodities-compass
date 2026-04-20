@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { dashboardApi, PositionStatusResponse } from '@/api/dashboard';
-import type { IndicatorsGridResponse, RecommendationsResponse, ChartDataResponse, NewsResponse, WeatherResponse, AudioResponse, NonTradingDaysResponse } from '@/types/dashboard';
+import type { IndicatorsGridResponse, RecommendationsResponse, ChartDataResponse, NewsResponse, NewsSentimentResponse, WeatherResponse, AudioResponse, NonTradingDaysResponse } from '@/types/dashboard';
 
 const DAILY_QUERY_OPTIONS = {
   staleTime: 24 * 60 * 60 * 1000,
@@ -45,6 +45,14 @@ export const useNews = (targetDate?: string) => {
   return useQuery<NewsResponse>({
     queryKey: ['news', targetDate],
     queryFn: () => dashboardApi.getNews(targetDate),
+    ...DAILY_QUERY_OPTIONS,
+  });
+};
+
+export const useNewsSentiment = (targetDate?: string) => {
+  return useQuery<NewsSentimentResponse>({
+    queryKey: ['news-sentiment', targetDate],
+    queryFn: () => dashboardApi.getNewsSentiment(targetDate),
     ...DAILY_QUERY_OPTIONS,
   });
 };

@@ -27,44 +27,24 @@ AUTHOR_LABELS = {
 }
 
 NEWS_SOURCES = [
-    # --- Market data & trading (httpx) ---
-    {
-        "name": "Barchart Cocoa News",
-        "url": "https://www.barchart.com/futures/quotes/CA*0/news",
-        "selectors": ["article", "div.news-article", "div.bc-news-body"],
-    },
+    # --- Market context (1 source — Close already injected in prompt) ---
     {
         "name": "Investing.com Cocoa News",
         "url": "https://www.investing.com/commodities/us-cocoa-news",
         "selectors": ["article", "article p"],
     },
-    {
-        "name": "Nasdaq Cocoa",
-        "url": "https://www.nasdaq.com/market-activity/commodities/cj:nmx",
-        "selectors": ["article", "div.commodity-article", "main"],
-    },
+    # --- Production + Market (httpx) ---
     {
         "name": "CocoaIntel",
         "url": "https://www.cocoaintel.com/",
         "selectors": ["article", "article p"],
     },
     {
-        "name": "MarketScreener Cocoa",
-        "url": "https://www.marketscreener.com/quote/commodity/COCOA-2298/news/",
-        "selectors": ["article", "div.txt", "div.news-block"],
-    },
-    {
         "name": "ICCO News",
         "url": "https://www.icco.org/news/",
         "selectors": ["article", "h3 a", "div.entry-content"],
     },
-    # --- Grinding / transformation (httpx) ---
-    {
-        "name": "ICCO Statistics",
-        "url": "https://www.icco.org/statistics/",
-        "selectors": ["table", ".av_textblock_section"],
-    },
-    # --- Consumer chocolate demand (httpx) ---
+    # --- Chocolat / Consumer demand (httpx) ---
     {
         "name": "Confectionery News Cocoa",
         "url": "https://www.confectionerynews.com/Sectors/Cocoa",
@@ -74,13 +54,23 @@ NEWS_SOURCES = [
             "article",
         ],
     },
-    # --- Africa local (httpx) ---
+    # --- Africa / Production terrain (httpx) ---
     {
         "name": "Abidjan.net Économie",
         "url": "https://news.abidjan.net/articles/economie",
         "selectors": ["article", "h4.title", "div.content"],
     },
-    # --- Africa local (playwright — Cloudflare) ---
+    {
+        "name": "Cacao.ci",
+        "url": "https://cacao.ci/",
+        "selectors": ["h2 a", "div.elementor-post__text", "article"],
+    },
+    {
+        "name": "The Cocoa Post",
+        "url": "https://thecocoapost.com/",
+        "selectors": ["h2 a", "div.post-content", "article"],
+    },
+    # --- Africa / Production terrain (playwright — Cloudflare) ---
     {
         "name": "Agence Ecofin Cacao",
         "url": "https://www.agenceecofin.com/cacao",
@@ -89,17 +79,95 @@ NEWS_SOURCES = [
     },
 ]
 
+# --- Google News RSS — thematic headline discovery ---
+# Dual-sourcing: fixed sources provide depth, Google News provides coverage.
+# Headlines are titles only (no link following) — fed to LLM as context.
+GOOGLE_NEWS_QUERIES = [
+    # Production (EN + FR)
+    {
+        "theme": "production",
+        "url": (
+            "https://news.google.com/rss/search?"
+            'q="cocoa"+AND+("crop"+OR+"ivory+coast"+OR+"ghana"+OR+"arrivals"+OR+"harvest")'
+            "+when:3d&hl=en&gl=US&ceid=US:en"
+        ),
+    },
+    {
+        "theme": "production",
+        "url": (
+            "https://news.google.com/rss/search?"
+            'q="cacao"+AND+("arrivages"+OR+"récolte"+OR+"production"+OR+"Côte+d\'Ivoire")'
+            "+when:3d&hl=fr&gl=FR&ceid=FR:fr"
+        ),
+    },
+    # Chocolat / Demand (EN + FR)
+    {
+        "theme": "chocolat",
+        "url": (
+            "https://news.google.com/rss/search?"
+            'q="cocoa"+AND+("grindings"+OR+"chocolate+demand"+OR+"processing"+OR+"confectionery")'
+            "+when:3d&hl=en&gl=US&ceid=US:en"
+        ),
+    },
+    {
+        "theme": "chocolat",
+        "url": (
+            "https://news.google.com/rss/search?"
+            'q="cacao"+AND+("broyages"+OR+"chocolat"+OR+"transformation"+OR+"demande")'
+            "+when:3d&hl=fr&gl=FR&ceid=FR:fr"
+        ),
+    },
+    # Market / Price (EN + FR)
+    {
+        "theme": "marche",
+        "url": (
+            "https://news.google.com/rss/search?"
+            'q="cocoa"+AND+("price"+OR+"futures"+OR+"market"+OR+"ICE")'
+            "+when:3d&hl=en&gl=US&ceid=US:en"
+        ),
+    },
+    {
+        "theme": "marche",
+        "url": (
+            "https://news.google.com/rss/search?"
+            'q="cacao"+AND+("prix"+OR+"cours"+OR+"marché"+OR+"Londres")'
+            "+when:3d&hl=fr&gl=FR&ceid=FR:fr"
+        ),
+    },
+    # Supply / Offre (EN + FR)
+    {
+        "theme": "offre",
+        "url": (
+            "https://news.google.com/rss/search?"
+            'q="cocoa"+AND+("supply"+OR+"deficit"+OR+"surplus"+OR+"stocks"+OR+"weather")'
+            "+when:3d&hl=en&gl=US&ceid=US:en"
+        ),
+    },
+    {
+        "theme": "offre",
+        "url": (
+            "https://news.google.com/rss/search?"
+            'q="cacao"+AND+("offre"+OR+"déficit"+OR+"stocks"+OR+"météo"+OR+"campagne")'
+            "+when:3d&hl=fr&gl=FR&ceid=FR:fr"
+        ),
+    },
+]
+
+GOOGLE_NEWS_MAX_ITEMS_PER_QUERY = 10
+
 HTTP_TIMEOUT = 10
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/122.0.0.0 Safari/537.36"
 )
-MAX_CHARS_PER_SOURCE = 2000
+MAX_CHARS_PER_SOURCE = 4000
 MIN_SOURCES_REQUIRED = 2
 
+THEMES = ("production", "chocolat", "transformation", "economie")
+
 VALIDATION = {
-    "resume_min_chars": 200,
+    "resume_min_chars": 800,
     "resume_max_chars": 8000,
     "mots_cle_min_chars": 20,
     "mots_cle_max_chars": 2000,
@@ -111,34 +179,51 @@ SYSTEM_PROMPT = """You are an expert cocoa commodity analyst writing a daily Fre
 for professional cocoa traders. Your analysis feeds into an automated trading indicator
 system (Commodities Compass).
 
-Your output must be a valid JSON object (no markdown wrapping) with exactly 3 fields:
+Your output must be a valid JSON object (no markdown wrapping) with exactly 4 fields:
 
-- "resume": A French market analysis (400-1200 words, proportional to source richness).
+- "resume": A French market analysis (600-1500 words, proportional to source richness).
+  Aim for a substantial, informative analysis — traders read this as their daily briefing.
   Structure with the following sections — include a section ONLY if today's sources provide
-  relevant information for it:
-  * MARCHE (always include): Today's price action on London (ICE) and New York using the
-    provided Close price and any price data found in sources
-  * FONDAMENTAUX: Surplus/deficit projections, grindings data (ICCO quarterly stats),
-    consumer chocolate demand signals (confectionery industry), demand trends — only if
-    mentioned in today's sources
-  * OFFRE: Ivory Coast arrivals, Ghana situation, weather impact, production outlook,
-    local African transformation news — only if mentioned in today's sources
-  * SENTIMENT MARCHE: Short-term vs medium-term outlook, key risks — synthesize only from
-    signals present in sources
+  relevant information for it. Sections are listed in priority order:
+  * OFFRE (prioritaire — développe en profondeur): Ivory Coast arrivals, Ghana situation,
+    weather impact, production outlook, local African news, crop conditions. Cite specifics
+    from sources: countries, volumes, trends, analyst quotes. This is the most critical
+    section for the trading system.
+  * FONDAMENTAUX (prioritaire — développe en profondeur): Surplus/deficit projections,
+    grindings data, consumer chocolate demand signals (confectionery industry), demand
+    trends. Include regional breakdowns when available (Europe, Asia, North America).
+  * MARCHE: Price context with the provided Close price, session moves, and any notable
+    trading dynamics (spread movements, open interest shifts). Keep factual.
+  * SENTIMENT MARCHE: Short-term vs medium-term outlook, key risks, positioning signals —
+    synthesize from all available sources including headlines.
   On a thin news day, MARCHE alone with brief sentiment is acceptable.
 
+  IMPORTANT — Sources include both full-content articles and headline-only items (marked
+  "Headlines du jour"). You may reference headlines in the resume as context ("la presse
+  rapporte que...") but do NOT invent details beyond the headline title.
+
 - "mots_cle": A single string of semicolon-separated keywords extracting ONLY numbers and
-  data points that appear in the provided sources. Can be short if few data points are
-  available. Example format:
-  "Londres CAH26 2 750 GBP/t (-7%) ; New York 3 797 $/t (-7,44%) ; surplus 2025/26 287 kt"
+  data points that appear in the provided sources. Prefer trends over exact figures for
+  data from secondary sources (avoids transcription errors). Example format:
+  "Londres CAN26 2 531 GBP/t ; broyages Europe Q1 en baisse ; arrivages CI en retard"
 
 - "impact_synthetiques": A single French paragraph (100-250 words) synthesizing the net
   market impact for a cocoa hedger/trader based on available information.
+
+- "theme_sentiments": An object with 1 to 4 keys among ["production", "chocolat",
+  "transformation", "economie"]. Each key contains:
+  * "score": float from -1.0 (very bearish for cocoa prices) to +1.0 (very bullish)
+  * "confidence": float from 0.0 to 1.0 (how confident you are in the score)
+  * "rationale": one sentence justifying the score
+  Include a theme ONLY if today's sources (full-content or headlines) mention it.
+  Do NOT invent a score for a theme with no coverage. If no theme has coverage, omit
+  this field entirely.
 
 Reasoning process (internal, before generating output):
 - For each number you plan to cite, identify the exact source passage containing it.
 - If no source passage contains the figure, omit it entirely.
 - Cross-check that percentage changes match the absolute values when both are available.
+- For theme_sentiments, assess the overall tone across all sources for that theme.
 - Only then produce the JSON.
 
 Rules:

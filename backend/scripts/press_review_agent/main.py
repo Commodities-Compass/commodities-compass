@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import logging
 import sys
+import uuid
 from pathlib import Path
 
 import sentry_sdk
@@ -20,6 +21,7 @@ from scripts.press_review_agent.config import (
 from scripts.press_review_agent.llm_client import LLMResult, call_providers
 from scripts.press_review_agent.news_fetcher import (
     fetch_all_sources,
+    fetch_google_news_headlines,
     format_sources_for_prompt,
 )
 from scripts.press_review_agent.validator import validate_output
@@ -102,11 +104,13 @@ def main() -> int:
             f"CLOSE={close_price}, DATE={date_str}, CONTRACT={contract_code} ({contract_month})"
         )
 
-        # Step 2: Fetch news sources
+        # Step 2: Fetch news sources + Google News headlines
         logger.info("Step 2: Fetching news sources...")
         news_results = fetch_all_sources()
-        sources_text = format_sources_for_prompt(news_results)
+        headlines = fetch_google_news_headlines()
+        sources_text = format_sources_for_prompt(news_results, headlines)
         successful_sources = sum(1 for r in news_results if r.success)
+        logger.info(f"Google News: {len(headlines)} headlines fetched")
 
         # Step 3: Build prompts (identical for all providers)
         user_prompt = USER_PROMPT_TEMPLATE.format(
@@ -157,10 +161,11 @@ def main() -> int:
             from scripts.press_review_agent.db_writer import (
                 write_article,
                 write_llm_call,
+                write_theme_sentiments,
             )
 
             with get_session() as session:
-                write_article(
+                article_id = write_article(
                     session,
                     result.provider,
                     result.parsed,
@@ -176,6 +181,25 @@ def main() -> int:
                     dry_run=args.dry_run,
                 )
 
+                # Theme sentiments — additive, non-blocking
+                if result.parsed and "theme_sentiments" in result.parsed:
+                    try:
+                        from datetime import date as date_type
+
+                        write_theme_sentiments(
+                            session,
+                            article_id or uuid.uuid4(),
+                            date_type.today(),
+                            result.parsed["theme_sentiments"],
+                            result.provider,
+                            dry_run=args.dry_run,
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"[{result.provider.value}] "
+                            f"Theme sentiment write failed (non-blocking): {e}"
+                        )
+
             any_success = True
 
         # Sentry context
@@ -186,6 +210,7 @@ def main() -> int:
                 "close": close_price,
                 "sources_fetched": successful_sources,
                 "sources_total": len(news_results),
+                "google_news_headlines": len(headlines),
                 "providers_attempted": [p.value for p in providers],
                 "providers_succeeded": [
                     r.provider.value for r in llm_results if r.success and r.parsed

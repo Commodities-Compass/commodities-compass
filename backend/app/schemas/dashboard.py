@@ -101,6 +101,38 @@ class NewsResponse(BaseModel):
     )
 
 
+class ThemeSentiment(BaseModel):
+    """Single theme sentiment score with metadata."""
+
+    theme: str = Field(
+        ..., description="Theme name: production, chocolat, transformation, economie"
+    )
+    score: Optional[float] = Field(None, description="Raw sentiment score [-1.0, +1.0]")
+    confidence: Optional[float] = Field(
+        None, description="Confidence in the score [0.0, 1.0]"
+    )
+    rationale: Optional[str] = Field(None, description="One-sentence justification")
+    zscore_delta: Optional[float] = Field(
+        None, description="Z-score delta (3-day) — null until enough data"
+    )
+    has_signal: bool = Field(
+        False,
+        description="True for themes with Granger significance (production, chocolat)",
+    )
+
+
+class NewsSentimentResponse(BaseModel):
+    """Response schema for theme-level sentiment endpoint."""
+
+    date: str = Field(..., description="Date of the sentiment data")
+    themes: List[ThemeSentiment] = Field(
+        default_factory=list, description="Per-theme sentiment scores"
+    )
+    accumulation: Optional[int] = Field(
+        None, description="Total days with sentiment data so far"
+    )
+
+
 class WeatherResponse(BaseModel):
     """Response schema for weather endpoint from weather data."""
 

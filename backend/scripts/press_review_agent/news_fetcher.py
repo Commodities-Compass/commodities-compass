@@ -3,15 +3,22 @@
 Supports two fetch methods:
 - httpx (default): fast, lightweight HTTP client for SSR sites
 - playwright: headless browser for JS-rendered / Cloudflare-protected sites
+
+Also fetches Google News RSS headlines as a coverage layer (titles only,
+no link following). Inspired by TogetherCocoa Monitor pattern.
 """
 
+import hashlib
 import logging
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 
 import httpx
 from bs4 import BeautifulSoup
 
 from scripts.press_review_agent.config import (
+    GOOGLE_NEWS_MAX_ITEMS_PER_QUERY,
+    GOOGLE_NEWS_QUERIES,
     HTTP_TIMEOUT,
     MAX_CHARS_PER_SOURCE,
     MIN_SOURCES_REQUIRED,
@@ -31,6 +38,14 @@ class NewsResult:
     text: str
     success: bool
     error: str | None = None
+
+
+@dataclass(frozen=True)
+class NewsHeadline:
+    title: str
+    source: str
+    theme: str
+    pub_date: str = ""
 
 
 class NewsFetcherError(Exception):
@@ -202,12 +217,105 @@ def fetch_all_sources() -> list[NewsResult]:
     return results
 
 
-def format_sources_for_prompt(results: list[NewsResult]) -> str:
-    """Format successful news results into the user prompt sources section."""
+def fetch_google_news_headlines() -> list[NewsHeadline]:
+    """Fetch headlines from Google News RSS thematic queries.
+
+    Returns deduplicated headlines (title + source + theme).
+    No link following — titles only. ~2s total network time.
+    """
+    headlines: list[NewsHeadline] = []
+    seen_hashes: set[str] = set()
+    headers = {"User-Agent": USER_AGENT}
+
+    with httpx.Client(timeout=15, follow_redirects=True) as client:
+        for query in GOOGLE_NEWS_QUERIES:
+            theme = query["theme"]
+            url = query["url"]
+            try:
+                response = client.get(url, headers=headers)
+                root = ET.fromstring(response.text)
+                items = root.findall(".//item")
+
+                for item in items[:GOOGLE_NEWS_MAX_ITEMS_PER_QUERY]:
+                    title_el = item.find("title")
+                    source_el = item.find("source")
+                    pub_el = item.find("pubDate")
+
+                    if title_el is None or not title_el.text:
+                        continue
+
+                    title = title_el.text.strip()
+                    source_name = (
+                        source_el.text.strip()
+                        if source_el is not None and source_el.text
+                        else "Unknown"
+                    )
+                    pub_date = (
+                        pub_el.text.strip()
+                        if pub_el is not None and pub_el.text
+                        else ""
+                    )
+
+                    # Strip " - SourceName" suffix that Google News appends to titles
+                    if title.endswith(f" - {source_name}"):
+                        title = title[: -len(f" - {source_name}")].strip()
+
+                    # Dedup by MD5 hash of normalized title
+                    title_hash = hashlib.md5(title.lower().encode()).hexdigest()
+                    if title_hash in seen_hashes:
+                        continue
+                    seen_hashes.add(title_hash)
+
+                    headlines.append(
+                        NewsHeadline(
+                            title=title,
+                            source=source_name,
+                            theme=theme,
+                            pub_date=pub_date,
+                        )
+                    )
+
+            except Exception as e:
+                logger.warning(f"Google News RSS ({theme}): {e}")
+
+    # Log per-theme breakdown
+    theme_counts: dict[str, int] = {}
+    for h in headlines:
+        theme_counts[h.theme] = theme_counts.get(h.theme, 0) + 1
+    breakdown = ", ".join(f"{t}={n}" for t, n in sorted(theme_counts.items()))
+    logger.info(
+        f"Google News: {len(headlines)} unique headlines "
+        f"from {len(GOOGLE_NEWS_QUERIES)} queries ({breakdown})"
+    )
+    return headlines
+
+
+def format_sources_for_prompt(
+    results: list[NewsResult],
+    headlines: list[NewsHeadline] | None = None,
+) -> str:
+    """Format successful news results + Google News headlines for prompt."""
     sections: list[str] = []
+
+    # Full-content sources
     for r in results:
         if r.success and r.text:
             sections.append(f"### {r.name}\n{r.text}")
+
+    # Google News headlines (titles only — separate section for grounding)
+    if headlines:
+        headline_lines: list[str] = []
+        for h in headlines:
+            headline_lines.append(f"- [{h.source}] {h.title}")
+        if headline_lines:
+            sections.append(
+                "### Headlines du jour (titres uniquement — contexte additionnel, "
+                "pas de contenu détaillé)\n" + "\n".join(headline_lines)
+            )
+
     if sections:
         return "\n\n".join(sections)
-    return "(No external sources available today — generate analysis from close price and general market knowledge only)"
+    return (
+        "(No external sources available today — generate analysis "
+        "from close price and general market knowledge only)"
+    )

@@ -1,14 +1,16 @@
-"""Database writer for press review → pl_fundamental_article + aud_llm_call."""
+"""Database writer for press review → pl_fundamental_article + aud_llm_call + pl_article_segment."""
 
 import logging
 import uuid
 from datetime import date
+from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.audit import AudLlmCall
-from app.models.pipeline import PlFundamentalArticle
+from app.models.pipeline import PlArticleSegment, PlFundamentalArticle
 from scripts.press_review_agent.config import (
     AUTHOR_LABELS,
     MODEL_IDS,
@@ -89,6 +91,62 @@ def write_article(
         row_date,
     )
     return article.id
+
+
+def write_theme_sentiments(
+    session: Session,
+    article_id: uuid.UUID,
+    article_date: date,
+    theme_sentiments: dict[str, Any],
+    provider: Provider,
+    dry_run: bool = False,
+) -> int:
+    """Insert per-theme sentiment scores into pl_article_segment.
+
+    Returns the number of segments written.
+    """
+    if dry_run:
+        log.info(
+            "[DRY RUN] [%s] Would insert %d theme sentiments",
+            provider.value,
+            len(theme_sentiments),
+        )
+        return 0
+
+    count = 0
+    for theme, data in theme_sentiments.items():
+        score = float(data["score"])
+        if score > 0.1:
+            sentiment_label = "bullish"
+        elif score < -0.1:
+            sentiment_label = "bearish"
+        else:
+            sentiment_label = "neutral"
+
+        segment = PlArticleSegment(
+            article_id=article_id,
+            article_date=article_date,
+            zone="all",
+            theme=theme,
+            facts=data.get("rationale"),
+            sentiment=sentiment_label,
+            sentiment_score=Decimal(str(round(score, 2))),
+            confidence=Decimal(str(round(float(data.get("confidence", 0.5)), 2))),
+            llm_provider=provider.value,
+            llm_model=MODEL_IDS[provider],
+            extraction_version="inline_v1",
+        )
+        session.add(segment)
+        count += 1
+
+    session.flush()
+    log.info(
+        "[%s] Inserted %d theme sentiments for date=%s",
+        provider.value,
+        count,
+        article_date,
+    )
+    return count
 
 
 def write_llm_call(

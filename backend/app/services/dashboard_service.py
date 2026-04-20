@@ -15,10 +15,12 @@ from sqlalchemy import and_, asc, desc, join, outerjoin, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.pipeline import (
+    PlArticleSegment,
     PlContractDataDaily,
     PlDerivedIndicators,
     PlFundamentalArticle,
     PlIndicatorDaily,
+    PlSentimentFeature,
     PlWeatherObservation,
 )
 from app.models.test_range import TestRange
@@ -468,7 +470,95 @@ async def get_latest_market_research(
 
 
 # ---------------------------------------------------------------------------
-# 7. Weather
+# 7. Theme Sentiments
+# ---------------------------------------------------------------------------
+
+SIGNAL_THEMES = {"production", "chocolat"}
+
+
+async def get_theme_sentiments(
+    db: AsyncSession, target_date: Optional[date] = None
+) -> Optional[Dict[str, Any]]:
+    """Get per-theme sentiment scores for a given date.
+
+    Reads from pl_article_segment (inline_v1) and left-joins
+    pl_sentiment_feature for z-delta values.
+    """
+    # Raw sentiment from pl_article_segment
+    segment_query = (
+        select(
+            PlArticleSegment.theme,
+            PlArticleSegment.sentiment_score,
+            PlArticleSegment.confidence,
+            PlArticleSegment.facts,
+        )
+        .where(
+            PlArticleSegment.extraction_version == "inline_v1",
+            PlArticleSegment.zone == "all",
+        )
+        .order_by(desc(PlArticleSegment.article_date))
+    )
+
+    if target_date:
+        segment_query = segment_query.where(
+            PlArticleSegment.article_date == target_date
+        )
+
+    result = await db.execute(segment_query)
+    segments = result.all()
+
+    if not segments:
+        return None
+
+    # Build theme data from segments
+    themes: list[Dict[str, Any]] = []
+    for row in segments:
+        theme_data: Dict[str, Any] = {
+            "theme": row.theme,
+            "score": float(row.sentiment_score)
+            if row.sentiment_score is not None
+            else None,
+            "confidence": float(row.confidence) if row.confidence is not None else None,
+            "rationale": row.facts,
+            "zscore_delta": None,
+            "has_signal": row.theme in SIGNAL_THEMES,
+        }
+
+        # Try to get z-delta from pl_sentiment_feature
+        if target_date:
+            feat_query = select(PlSentimentFeature.zscore_delta).where(
+                PlSentimentFeature.date == target_date,
+                PlSentimentFeature.theme == row.theme,
+                PlSentimentFeature.min_periods_met.is_(True),
+            )
+            feat_result = await db.execute(feat_query)
+            feat_row = feat_result.scalar_one_or_none()
+            if feat_row is not None:
+                theme_data["zscore_delta"] = float(feat_row)
+
+        themes.append(theme_data)
+
+    # Count total days with sentiment data (for accumulation tracking)
+    count_query = (
+        select(PlArticleSegment.article_date)
+        .where(
+            PlArticleSegment.extraction_version == "inline_v1",
+            PlArticleSegment.zone == "all",
+        )
+        .distinct()
+    )
+    count_result = await db.execute(count_query)
+    accumulation = len(count_result.all())
+
+    return {
+        "date": target_date,
+        "themes": themes,
+        "accumulation": accumulation,
+    }
+
+
+# ---------------------------------------------------------------------------
+# 8. Weather
 # ---------------------------------------------------------------------------
 
 

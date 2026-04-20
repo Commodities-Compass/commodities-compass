@@ -261,6 +261,19 @@ Rolling the active contract (e.g., CAK26 → CAN26) when OI shifts to the next d
 - Compute engine `load_all_market_data()` could interleave overlapping contract data — now uses `DISTINCT ON (date) ORDER BY oi DESC` to pick front-month per date
 - Press review prompt didn't include active contract info — LLM guessed "mai" from news sources instead of "juillet". Now injects `contract_code` and `contract_month` into the prompt template
 
+**Dashboard cross-contract fallback (2026-04-20):**
+After the roll, navigating to historical dates (before the roll) showed empty gauges, no recommendations, and broken YTD — because all dashboard queries filtered by `contract_id = active_contract` (CAN26), but pre-roll data lives on CAK26. During transition days (April 10-13), both contracts have rows but only the old one (CAK26) has complete data (conclusion from daily analysis).
+
+Fix: `_resolve_contract_for_date()` in `dashboard_service.py` resolves the best contract for any historical date, with priority:
+1. Active contract with complete data (conclusion IS NOT NULL)
+2. Any contract with complete data for that date (cross-contract fallback)
+3. Active contract with any row (indicators without conclusion)
+4. Any contract with market data (highest OI = front-month heuristic)
+
+YTD performance uses a separate cross-contract query (`DISTINCT ON (date) ORDER BY oi DESC`) to span contract rolls seamlessly over the full year.
+
+This ensures the dashboard always shows the best available data regardless of which contract was active at that historical date. The fallback is transparent to the user — no gaps when navigating across a roll boundary.
+
 ## AI Agents
 
 Four LLM-powered agents run as GCP Cloud Run Jobs, each generating content for PostgreSQL and/or Google Drive. All share the same `backend/Dockerfile`.

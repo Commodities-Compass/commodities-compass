@@ -11,7 +11,9 @@ import re
 from datetime import date
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import and_, asc, desc, join, outerjoin, select
+import uuid
+
+from sqlalchemy import and_, desc, outerjoin, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.pipeline import (
@@ -36,6 +38,50 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
+
+
+async def _resolve_contract_for_date(
+    db: AsyncSession, target_date: date
+) -> Optional[uuid.UUID]:
+    """Resolve the best contract_id for a historical date.
+
+    Cross-contract fallback: tries the active contract first. If no
+    pl_indicator_daily row exists for that date + contract, falls back
+    to whatever contract has data for that date (picks highest OI from
+    pl_contract_data_daily as tiebreaker — front-month heuristic).
+
+    Returns None if no contract has data for that date at all.
+    """
+    active_id = await get_active_contract_id(db)
+
+    # Check if active contract has data for this date
+    active_check = await db.execute(
+        select(PlIndicatorDaily.id)
+        .where(
+            PlIndicatorDaily.contract_id == active_id,
+            PlIndicatorDaily.date == target_date,
+        )
+        .limit(1)
+    )
+    if active_check.scalar_one_or_none() is not None:
+        return active_id
+
+    # Fallback: find contract with data for this date (highest OI = front-month)
+    fallback = await db.execute(
+        select(PlContractDataDaily.contract_id)
+        .where(PlContractDataDaily.date == target_date)
+        .order_by(desc(PlContractDataDaily.oi))
+        .limit(1)
+    )
+    fallback_id = fallback.scalar_one_or_none()
+    if fallback_id is not None:
+        logger.debug(
+            "Cross-contract fallback for %s: active=%s -> fallback=%s",
+            target_date,
+            active_id,
+            fallback_id,
+        )
+    return fallback_id
 
 
 def _score_day(decision: str, close_t: float, close_t1: float) -> Optional[float]:
@@ -103,7 +149,12 @@ async def get_position_from_technicals(
     db: AsyncSession, target_date: Optional[date] = None
 ) -> Optional[str]:
     """Get the trading position (OPEN/HEDGE/MONITOR) for a given date."""
-    contract_id = await get_active_contract_id(db)
+    if target_date:
+        contract_id = await _resolve_contract_for_date(db, target_date)
+        if not contract_id:
+            return None
+    else:
+        contract_id = await get_active_contract_id(db)
     algo_id = await get_active_algorithm_version_id(db)
 
     query = select(PlIndicatorDaily.decision).where(
@@ -129,42 +180,42 @@ async def get_position_from_technicals(
 async def calculate_ytd_performance(
     db: AsyncSession, reference_date: Optional[date] = None
 ) -> float:
-    """Calculate YTD performance by replicating the CONCLUSION scoring server-side."""
+    """Calculate YTD performance by replicating the CONCLUSION scoring server-side.
+
+    Cross-contract: uses a raw SQL subquery with DISTINCT ON (date) to pick
+    the front-month contract per date (highest OI), so YTD scoring spans
+    contract rolls seamlessly.
+    """
     if reference_date is None:
         reference_date = date.today()
 
-    contract_id = await get_active_contract_id(db)
+    from sqlalchemy import text as sa_text
+
     algo_id = await get_active_algorithm_version_id(db)
     start_of_year = get_year_start_date(reference_date)
 
-    query = (
-        select(
-            PlContractDataDaily.date,
-            PlContractDataDaily.close,
-            PlIndicatorDaily.decision,
+    # Cross-contract query: for each date, pick the contract with highest OI
+    # then join to pl_indicator_daily for the decision
+    query = sa_text("""
+        WITH front_month AS (
+            SELECT DISTINCT ON (cd.date) cd.date, cd.close, cd.contract_id
+            FROM pl_contract_data_daily cd
+            WHERE cd.date >= :start AND cd.date <= :end_date
+            ORDER BY cd.date, cd.oi DESC NULLS LAST
         )
-        .select_from(
-            join(
-                PlContractDataDaily,
-                PlIndicatorDaily,
-                and_(
-                    PlContractDataDaily.date == PlIndicatorDaily.date,
-                    PlContractDataDaily.contract_id == PlIndicatorDaily.contract_id,
-                ),
-            )
-        )
-        .where(
-            and_(
-                PlContractDataDaily.contract_id == contract_id,
-                PlIndicatorDaily.algorithm_version_id == algo_id,
-                PlContractDataDaily.date >= start_of_year,
-                PlContractDataDaily.date <= reference_date,
-            )
-        )
-        .order_by(asc(PlContractDataDaily.date))
-    )
+        SELECT fm.date, fm.close, i.decision
+        FROM front_month fm
+        JOIN pl_indicator_daily i
+          ON i.date = fm.date
+         AND i.contract_id = fm.contract_id
+         AND i.algorithm_version_id = :algo_id
+        ORDER BY fm.date ASC
+    """)
 
-    result = await db.execute(query)
+    result = await db.execute(
+        query,
+        {"start": start_of_year, "end_date": reference_date, "algo_id": str(algo_id)},
+    )
     rows = result.all()
 
     scores: list[float] = []
@@ -215,7 +266,12 @@ async def get_indicators_with_ranges(
     db: AsyncSession, target_date: Optional[date] = None
 ) -> Dict[str, Dict[str, Any]]:
     """Get all indicators with their ranges for a given date."""
-    contract_id = await get_active_contract_id(db)
+    if target_date:
+        contract_id = await _resolve_contract_for_date(db, target_date)
+        if not contract_id:
+            return {}
+    else:
+        contract_id = await get_active_contract_id(db)
     algo_id = await get_active_algorithm_version_id(db)
 
     query = select(PlIndicatorDaily).where(
@@ -313,7 +369,12 @@ async def get_latest_recommendations(
     db: AsyncSession, target_date: Optional[date] = None
 ) -> tuple[List[str], Optional[str], Optional[date]]:
     """Get the latest recommendations from pl_indicator_daily.conclusion."""
-    contract_id = await get_active_contract_id(db)
+    if target_date:
+        contract_id = await _resolve_contract_for_date(db, target_date)
+        if not contract_id:
+            return [], None, None
+    else:
+        contract_id = await get_active_contract_id(db)
     algo_id = await get_active_algorithm_version_id(db)
 
     query = select(PlIndicatorDaily.conclusion, PlIndicatorDaily.date).where(

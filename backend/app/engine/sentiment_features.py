@@ -61,7 +61,7 @@ def compute_sentiment_zdelta(
 
         zscore = (group["raw_score"] - rolling_mean) / rolling_std
         zscore_delta = zscore - zscore.shift(delta_lag)
-        min_periods_met = rolling_mean.notna()
+        min_periods_met = ~pd.isna(rolling_mean)
 
         result = pd.DataFrame(
             {

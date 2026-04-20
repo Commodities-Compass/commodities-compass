@@ -320,6 +320,7 @@ async def get_latest_recommendations(
         and_(
             PlIndicatorDaily.contract_id == contract_id,
             PlIndicatorDaily.algorithm_version_id == algo_id,
+            PlIndicatorDaily.conclusion.isnot(None),
         )
     )
 

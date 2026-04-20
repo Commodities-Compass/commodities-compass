@@ -45,17 +45,54 @@ async def _resolve_contract_for_date(
 ) -> Optional[uuid.UUID]:
     """Resolve the best contract_id for a historical date.
 
-    Cross-contract fallback: tries the active contract first. If no
-    pl_indicator_daily row exists for that date + contract, falls back
-    to whatever contract has data for that date (picks highest OI from
-    pl_contract_data_daily as tiebreaker — front-month heuristic).
+    Priority order:
+    1. Active contract — if it has a complete pl_indicator_daily row
+       (conclusion IS NOT NULL = daily analysis ran for this contract+date)
+    2. Any contract with a complete row for that date
+    3. Active contract with any row (even without conclusion)
+    4. Any contract with data (highest OI = front-month heuristic)
 
     Returns None if no contract has data for that date at all.
     """
     active_id = await get_active_contract_id(db)
+    algo_id = await get_active_algorithm_version_id(db)
 
-    # Check if active contract has data for this date
-    active_check = await db.execute(
+    # 1. Active contract with complete data (conclusion exists)
+    active_complete = await db.execute(
+        select(PlIndicatorDaily.id)
+        .where(
+            PlIndicatorDaily.contract_id == active_id,
+            PlIndicatorDaily.algorithm_version_id == algo_id,
+            PlIndicatorDaily.date == target_date,
+            PlIndicatorDaily.conclusion.isnot(None),
+        )
+        .limit(1)
+    )
+    if active_complete.scalar_one_or_none() is not None:
+        return active_id
+
+    # 2. Any contract with complete data for this date
+    any_complete = await db.execute(
+        select(PlIndicatorDaily.contract_id)
+        .where(
+            PlIndicatorDaily.date == target_date,
+            PlIndicatorDaily.algorithm_version_id == algo_id,
+            PlIndicatorDaily.conclusion.isnot(None),
+        )
+        .limit(1)
+    )
+    fallback_id = any_complete.scalar_one_or_none()
+    if fallback_id is not None:
+        logger.debug(
+            "Cross-contract fallback (complete) for %s: %s -> %s",
+            target_date,
+            active_id,
+            fallback_id,
+        )
+        return fallback_id
+
+    # 3. Active contract with any row
+    active_any = await db.execute(
         select(PlIndicatorDaily.id)
         .where(
             PlIndicatorDaily.contract_id == active_id,
@@ -63,20 +100,20 @@ async def _resolve_contract_for_date(
         )
         .limit(1)
     )
-    if active_check.scalar_one_or_none() is not None:
+    if active_any.scalar_one_or_none() is not None:
         return active_id
 
-    # Fallback: find contract with data for this date (highest OI = front-month)
-    fallback = await db.execute(
+    # 4. Any contract with market data (highest OI = front-month)
+    fallback_market = await db.execute(
         select(PlContractDataDaily.contract_id)
         .where(PlContractDataDaily.date == target_date)
         .order_by(desc(PlContractDataDaily.oi))
         .limit(1)
     )
-    fallback_id = fallback.scalar_one_or_none()
+    fallback_id = fallback_market.scalar_one_or_none()
     if fallback_id is not None:
         logger.debug(
-            "Cross-contract fallback for %s: active=%s -> fallback=%s",
+            "Cross-contract fallback (market) for %s: %s -> %s",
             target_date,
             active_id,
             fallback_id,
@@ -368,7 +405,12 @@ async def _build_indicators_dict(
 async def get_latest_recommendations(
     db: AsyncSession, target_date: Optional[date] = None
 ) -> tuple[List[str], Optional[str], Optional[date]]:
-    """Get the latest recommendations from pl_indicator_daily.conclusion."""
+    """Get the latest recommendations from pl_indicator_daily.conclusion.
+
+    Cross-contract fallback: if the resolved contract has no conclusion
+    for the target date, tries any contract that does (transition days
+    where both old and new contract have rows but only one has a conclusion).
+    """
     if target_date:
         contract_id = await _resolve_contract_for_date(db, target_date)
         if not contract_id:
@@ -391,6 +433,24 @@ async def get_latest_recommendations(
     query = query.order_by(desc(PlIndicatorDaily.date)).limit(1)
     result = await db.execute(query)
     row = result.one_or_none()
+
+    # Cross-contract fallback: if no conclusion found for resolved contract,
+    # try any contract for that date (handles transition days)
+    if (not row or not row.conclusion) and target_date:
+        fallback_query = (
+            select(PlIndicatorDaily.conclusion, PlIndicatorDaily.date)
+            .where(
+                and_(
+                    PlIndicatorDaily.date == target_date,
+                    PlIndicatorDaily.algorithm_version_id == algo_id,
+                    PlIndicatorDaily.conclusion.isnot(None),
+                )
+            )
+            .order_by(desc(PlIndicatorDaily.date))
+            .limit(1)
+        )
+        fallback_result = await db.execute(fallback_query)
+        row = fallback_result.one_or_none()
 
     if not row or not row.conclusion:
         return [], None, None

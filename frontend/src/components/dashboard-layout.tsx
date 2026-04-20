@@ -36,6 +36,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [isMobile, setIsMobile] = useState(false);
   const { user, logout } = useAuth();
 
+  // Derive display name: Auth0 name (if real name, not email) > first part of email, capitalized
+  const rawName = user?.name && !user.name.includes('@') ? user.name : null;
+  const displayName = rawName
+    || (user?.email ? user.email.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'User');
+
   useEffect(() => {
     const check = () => {
       const mobile = window.innerWidth < 768;
@@ -118,13 +123,14 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                         alt={user?.name || 'User'}
                       />
                       <AvatarFallback>
-                        {user?.name?.charAt(0)?.toUpperCase() || 'U'}
+                        {displayName.split(/\s+/).filter(Boolean).slice(0, 2).map(s => s[0].toUpperCase()).join('')}
                       </AvatarFallback>
                     </Avatar>
                     {!sidebarCollapsed && (
-                      <span className="ml-3 truncate">
-                        {user?.name || user?.email || 'User Profile'}
-                      </span>
+                      <div className="ml-3 text-left truncate">
+                        <p className="text-sm font-medium truncate">{displayName}</p>
+                        {user?.email && <p className="text-xs text-muted-foreground truncate">{user.email}</p>}
+                      </div>
                     )}
                   </Button>
                 </DropdownMenuTrigger>
@@ -167,13 +173,14 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   <DropdownMenuLabel className="flex items-center gap-2">
                     <Avatar className="h-6 w-6">
                       <AvatarImage src={user?.picture} alt={user?.name || 'User'} />
-                      <AvatarFallback>
-                        {user?.name?.charAt(0)?.toUpperCase() || 'U'}
+                      <AvatarFallback className="text-[10px]">
+                        {displayName.split(/\s+/).filter(Boolean).slice(0, 2).map(s => s[0].toUpperCase()).join('')}
                       </AvatarFallback>
                     </Avatar>
-                    <span className="truncate text-sm">
-                      {user?.name || user?.email || 'Mon Compte'}
-                    </span>
+                    <div className="truncate">
+                      <p className="text-sm font-medium truncate">{displayName}</p>
+                      {user?.email && <p className="text-xs text-muted-foreground font-normal truncate">{user.email}</p>}
+                    </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={toggleTheme}>

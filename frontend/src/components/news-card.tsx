@@ -247,9 +247,6 @@ export default function NewsCard({ targetDate, className }: NewsCardProps) {
         </div>
       </CardHeader>
 
-      {/* Impact synthesis banner — always visible above tabs */}
-      <ImpactBanner text={news.title || ""} />
-
       {/* Sentiment thematic gauges */}
       <div className="px-6 pb-2">
         <SentimentGauges targetDate={targetDate} />
@@ -283,6 +280,9 @@ export default function NewsCard({ targetDate, className }: NewsCardProps) {
           ))}
         </Tabs>
       </CardContent>
+
+      {/* Impact synthesis — conclusion after the analysis */}
+      <ImpactBanner text={news.title || ""} />
 
       {/* Footer: keywords + metadata */}
       <CardFooter className="flex flex-col items-start gap-3 pt-2 border-t">

@@ -76,6 +76,46 @@ const INDICATOR_META: Record<string, IndicatorMeta> = {
       GREEN: "Conviction forte",
     },
   },
+  "PRODUCTION": {
+    fullName: "Sentiment Production",
+    description:
+      "Ton de la presse sur la production cacao (récolte, arrivages, météo, Afrique de l'Ouest)",
+    zones: {
+      RED: "Récit baissier — tensions sur l'offre",
+      ORANGE: "Ton neutre",
+      GREEN: "Récit haussier — production favorable",
+    },
+  },
+  "CHOCOLAT": {
+    fullName: "Sentiment Chocolat",
+    description:
+      "Ton de la presse sur la demande chocolat (grindings, consommation, industrie)",
+    zones: {
+      RED: "Demande en repli",
+      ORANGE: "Demande stable",
+      GREEN: "Demande soutenue",
+    },
+  },
+  "TRANSF.": {
+    fullName: "Sentiment Transformation",
+    description:
+      "Ton de la presse sur la transformation (broyages, capacités industrielles)",
+    zones: {
+      RED: "Activité en baisse",
+      ORANGE: "Activité stable",
+      GREEN: "Activité en hausse",
+    },
+  },
+  "ÉCONOMIE": {
+    fullName: "Sentiment Économie",
+    description:
+      "Ton de la presse macro-économique (devises, politique monétaire, contexte global)",
+    zones: {
+      RED: "Contexte défavorable",
+      ORANGE: "Contexte neutre",
+      GREEN: "Contexte porteur",
+    },
+  },
 };
 
 // ---------------------------------------------------------------------------

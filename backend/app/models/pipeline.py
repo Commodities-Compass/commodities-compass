@@ -373,3 +373,28 @@ class PlArticleSegment(Base):
         VARCHAR(20), nullable=False, default="v1"
     )
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+
+
+class PlSentimentFeature(Base):
+    """Daily z-score delta features derived from pl_article_segment sentiment.
+
+    Shadow mode: computed and stored daily but NOT injected into the trading
+    engine composite score. Will be activated when n > 250 (~October 2026).
+
+    Pipeline: pl_article_segment (inline_v1) → aggregate by (date, theme)
+    → rolling z-score (21 days) → delta 3 days → this table.
+    """
+
+    __tablename__ = "pl_sentiment_feature"
+    __table_args__ = (
+        UniqueConstraint("date", "theme", name="uq_sentiment_feature_date_theme"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    date: Mapped[date] = mapped_column(DATE, nullable=False, index=True)
+    theme: Mapped[str] = mapped_column(VARCHAR(30), nullable=False)
+    raw_score: Mapped[Optional[float]] = mapped_column(DECIMAL(4, 3))
+    zscore: Mapped[Optional[float]] = mapped_column(DECIMAL(6, 3))
+    zscore_delta: Mapped[Optional[float]] = mapped_column(DECIMAL(6, 3))
+    min_periods_met: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())

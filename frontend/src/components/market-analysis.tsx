@@ -15,7 +15,6 @@ interface MarketAnalysisProps {
 // ---------------------------------------------------------------------------
 
 const INDICATOR_KEYS = [
-  "macroeco",
   "macd",
   "volOi",
   "rsi",
@@ -192,9 +191,9 @@ export default function MarketAnalysis({
       </CardHeader>
 
       <CardContent className="space-y-5">
-        {/* Row 1: Gauges — single horizontal row */}
+        {/* Technical gauges (5) */}
         {indicators && !gridError && (
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-1 justify-items-center">
+          <div className="grid grid-cols-3 sm:grid-cols-5 gap-1 justify-items-center">
             {INDICATOR_KEYS.map(
               (key) =>
                 indicators[key] && (

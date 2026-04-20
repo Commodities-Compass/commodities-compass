@@ -56,6 +56,21 @@ export interface NewsResponse {
   total_sources: number | null;
 }
 
+export interface ThemeSentiment {
+  theme: string;
+  score: number | null;
+  confidence: number | null;
+  rationale: string | null;
+  zscore_delta: number | null;
+  has_signal: boolean;
+}
+
+export interface NewsSentimentResponse {
+  date: string;
+  themes: ThemeSentiment[];
+  accumulation: number | null;
+}
+
 export interface SeasonStatus {
   season_name: string;
   label: string;

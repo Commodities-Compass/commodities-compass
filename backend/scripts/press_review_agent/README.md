@@ -1,205 +1,202 @@
-# Press Review Agent (US-003)
+# Press Review Agent (US-003 → V2)
 
-Automated LLM agent that generates a daily French-language cocoa press review and writes it to the BIBLIO_ALL Google Sheet. Eliminates the last manual step before human validation.
+Automated LLM agent that generates a daily French-language cocoa press review, extracts per-theme sentiment scores, and writes both to GCP PostgreSQL. The press review serves two purposes: a daily briefing for traders (narrative) and structured sentiment data for the trading engine (signal).
 
 ## Architecture
 
 ```
-TECHNICALS sheet (read CLOSE) → httpx (6 news sources) → LLM(s) → GCP PostgreSQL + BIBLIO_ALL sheet(s)
+pl_contract_data_daily (read CLOSE)
+    ↓
+Fixed sources (8, httpx/Playwright) → full content
+Google News RSS (8 thematic queries) → headlines only (titles, no link following)
+    ↓
+LLM (o4-mini) — single call, two outputs:
+    ├→ resume + mots_cle + impact_synthetiques  → pl_fundamental_article (trader reads)
+    └→ theme_sentiments (4 scores [-1,+1])      → pl_article_segment    (signal pipeline)
 ```
 
-Follows the same patterns as existing scrapers (barchart, ICE, CFTC): argparse CLI, Sentry cron monitoring, Google Sheets API, structured logging.
+## V2 Changes (April 2026)
 
-## A/B Test (Current Phase)
+Driven by EXP-014 findings: only **production** (p=0.017) and **chocolat** (p=0.025) themes carry Granger-significant signal at lag 3-4 days via z-score delta.
 
-Running 3 providers in parallel for comparison before picking a winner:
+| Change | Before | After |
+|--------|--------|-------|
+| Sources | 10 (4 redundant Reuters intermediaries) | 8 fixed + Google News RSS (8 queries) |
+| Prompt priority | MARCHE first | OFFRE/FONDAMENTAUX first (signal-carrying themes) |
+| Output fields | 3 (resume, mots_cle, impact) | 4 (+theme_sentiments) |
+| MAX_CHARS_PER_SOURCE | 2000 | 4000 (prevents content truncation on heavy days) |
+| Sentiment extraction | None | Inline per-theme scores stored in pl_article_segment |
+| JSON parser | Basic (fences + newlines) | Hardened (+ trailing commas, unclosed braces) |
 
-| Provider | Model | Staging Sheet |
-|----------|-------|---------------|
-| Claude | `claude-sonnet-4-5-20250929` | `BIBLIO_ALL_STAGING_CLAUDE` |
-| OpenAI | `o4-mini` (reasoning_effort=medium) | `BIBLIO_ALL_STAGING_OPENAI` |
-| Gemini | `gemini-2.5-pro` | `BIBLIO_ALL_STAGING_GEMINI` |
+Full strategy document: [press-review-v2-strategy.md](../../../docs/press-review-v2-strategy.md)
 
-Same system prompt and news sources for all 3 — fair comparison.
+## News Sources (8 fixed + Google News RSS)
 
-## News Sources (6)
+### Fixed Sources (full content via httpx/Playwright)
 
-| Source | URL | Status |
-|--------|-----|--------|
-| Barchart Cocoa News | barchart.com/futures/quotes/CA*0/news | OK |
-| Investing.com Cocoa | investing.com/commodities/us-cocoa-news | OK |
-| Nasdaq Cocoa | nasdaq.com/market-activity/commodities/cj:nmx | OK |
-| CocoaIntel | cocoaintel.com | OK |
-| MarketScreener Cocoa | marketscreener.com/.../COCOA-2298/news/ | OK |
-| ICCO News | icco.org/news/ | OK |
+| Source | Theme | Method | Status |
+|--------|-------|--------|--------|
+| Investing.com Cocoa | Market (price context) | httpx | OK |
+| CocoaIntel | Production + Market | httpx | OK |
+| ICCO News | Production (official) | httpx | OK |
+| Confectionery News | Chocolat / Demand | httpx | OK |
+| Abidjan.net | Africa / Production | httpx | OK |
+| Cacao.ci | Production Ivory Coast | httpx | OK — *new in V2* |
+| The Cocoa Post | Production Ghana/Global | httpx | OK — *new in V2* |
+| Agence Ecofin Cacao | Africa / Production | Playwright | OK |
 
-Graceful degradation: if < 2 sources return content, agent runs in price-only mode.
+### Google News RSS (headlines only — coverage layer)
+
+8 thematic queries (4 themes × 2 languages EN/FR), `when:3d` window, max 10 items per query. Headlines are deduplicated by MD5 hash and passed to the LLM as a separate "Headlines du jour" section in the prompt. No link following — titles only.
+
+| Theme | Query (EN) | Query (FR) |
+|-------|-----------|-----------|
+| production | cocoa AND (crop OR ivory coast OR ghana) | cacao AND (arrivages OR récolte OR production) |
+| chocolat | cocoa AND (grindings OR chocolate demand) | cacao AND (broyages OR chocolat OR demande) |
+| marche | cocoa AND (price OR futures OR market) | cacao AND (prix OR cours OR marché) |
+| offre | cocoa AND (supply OR deficit OR stocks) | cacao AND (offre OR déficit OR stocks) |
+
+### Removed Sources (V2)
+
+| Source | Reason |
+|--------|--------|
+| Barchart Cocoa News | Redundant — same Reuters wire as Investing.com |
+| Nasdaq Cocoa | Redundant — same Reuters wire |
+| MarketScreener Cocoa | Redundant — same Reuters wire |
+| ICCO Statistics | Quasi-static page, rarely updated |
 
 ### Sources that don't work via httpx (tried and rejected)
 
-| Source | Issue | Replaced by |
-|--------|-------|-------------|
-| Reuters (`reuters.com/markets/commodities/`) | DataDome WAF — 401 on all non-browser clients | Investing.com (same Reuters wire content) |
-| TradingEconomics (`tradingeconomics.com/commodity/cocoa`) | All cocoa data is JS-rendered, SSR shell is empty | CocoaIntel (cocoa-specialized) |
-| ICCO old URL (`icco.org/category/press-release/`) | 404 — site restructured | Fixed to `icco.org/news/` |
-| Yahoo Finance (`CC=F`) | Returns error page | Not used |
-| MarketWatch | Same DataDome WAF as Reuters | Not used |
+| Source | Issue |
+|--------|-------|
+| Reuters | DataDome WAF — 401 ($2K-5K+/month API, not worth it for zero-signal theme) |
+| Commodafrica | 503 Service Unavailable |
+| Candy Industry | 403 WAF |
+| Barry Callebaut | Content not extractible (corporate format) |
+| Bloomberg / FT | WAF |
 
-## Environment Variables
+## Output Format
 
-```bash
-# Required — LLM API keys (add to backend/.env)
-ANTHROPIC_API_KEY=sk-ant-...
-OPENAI_API_KEY=sk-proj-...
-GEMINI_API_KEY=AIza...
+Each run produces a JSON with 4 fields:
 
-# Required — GCP Cloud SQL
-DATABASE_SYNC_URL=postgresql://...
+| Field | Target | Description |
+|-------|--------|-------------|
+| `resume` | pl_fundamental_article.summary | 600-1500 words French analysis (OFFRE → FONDAMENTAUX → MARCHE → SENTIMENT) |
+| `mots_cle` | pl_fundamental_article.keywords | Semicolon-separated data points from sources |
+| `impact_synthetiques` | pl_fundamental_article.impact_synthesis | 100-250 word synthesis paragraph |
+| `theme_sentiments` | pl_article_segment (×1-4 rows) | Per-theme score [-1,+1], confidence [0,1], rationale |
 
-# Existing — already set in .env
-GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON=...
-SENTRY_DSN=...
+### theme_sentiments example
+
+```json
+{
+  "production": {"score": -0.6, "confidence": 0.8, "rationale": "Inquiétudes mid-crop CI"},
+  "chocolat": {"score": 0.3, "confidence": 0.7, "rationale": "Demande asiatique soutenue"}
+}
 ```
+
+Themes are omitted if no source covers them (NULL, not 0 — per EXP-014).
+
+## Database Write
+
+For each successful provider result, writes three records:
+
+1. **`pl_fundamental_article`** — resume, keywords, impact_synthesis, source metadata
+2. **`aud_llm_call`** — tokens, latency, model audit trail
+3. **`pl_article_segment`** (×1-4 rows) — per-theme sentiment with `extraction_version='inline_v1'`, `zone='all'`
+
+Theme sentiment write is non-blocking — if it fails, the article is still persisted.
+
+## Shadow Mode Pipeline
+
+A separate CLI computes z-delta features from accumulated sentiment data:
+
+```
+pl_article_segment (inline_v1) → avg by (date, theme)
+    → rolling z-score (21 days, min_periods=5)
+    → delta 3 days: z[t] - z[t-3]
+    → pl_sentiment_feature (shadow — not injected into trading engine)
+```
+
+CLI: `poetry run compute-sentiment-features [--dry-run]`
+
+Features will be activated when n > 250 (~October 2026) after re-validation of EXP-014.
 
 ## CLI Usage
 
 ```bash
-# All 3 providers, dry-run (no writes), verbose logging
-poetry run python -m scripts.press_review_agent.main --sheet staging --dry-run --verbose
+# Production run (single provider, writes to DB)
+poetry run press-review [--force]
 
-# All 3 providers, write to staging sheets
-poetry run python -m scripts.press_review_agent.main --sheet staging
+# Dry run (calls LLM but skips DB writes)
+poetry run press-review --dry-run --verbose
 
-# Single provider only
-poetry run python -m scripts.press_review_agent.main --sheet staging --provider claude
+# Specific provider
+poetry run press-review --provider claude --dry-run
 
-# Production (single winner, after A/B test)
-poetry run python -m scripts.press_review_agent.main --sheet production --provider claude
+# Compute sentiment z-delta features
+poetry run compute-sentiment-features [--dry-run]
 ```
 
 ### Arguments
 
 | Flag | Values | Default | Description |
 |------|--------|---------|-------------|
-| `--sheet` | `staging`, `production` | `staging` | Target sheet mode |
-| `--provider` | `claude`, `openai`, `gemini`, `all` | `all` | Which LLM(s) to run |
-| `--dry-run` | flag | off | Run pipeline but don't write to Sheets |
+| `--provider` | `claude`, `openai`, `gemini`, `all` | `openai` | Which LLM(s) to run |
+| `--dry-run` | flag | off | Run pipeline but don't write to DB |
 | `--verbose` | flag | off | Enable DEBUG logging |
-
-## Output Format (BIBLIO_ALL)
-
-Each run appends a new row at the bottom of the sheet (chronological order).
-
-| Column | Field | Example |
-|--------|-------|---------|
-| A | DATE | `02/24/2026` |
-| B | AUTEUR | `LLM Agent (Claude Sonnet 4.5)` |
-| C | RESUME | 800-1200 word French market analysis |
-| D | MOTS-CLE | `Londres CAH26 2 261 GBP/t ; ...` |
-| E | IMPACT SYNTHETIQUES | 150-250 word synthesis paragraph |
-| F | DATE TEXT | `=TEXT(A{row},"MM/DD/YYYY")` → `02/24/2026` |
-
-## Pipeline Schedule (Cloud Scheduler → Cloud Run Jobs)
-
-```
- 9:00 PM UTC  -- Barchart scraper       -> TECHNICALS (CLOSE, HIGH, LOW, VOL, OI, IV)
- 9:10 PM UTC  -- ICE stocks + CFTC      -> TECHNICALS (STOCK US, COM NET US)
- 9:10 PM UTC  -- Press review agent     -> BIBLIO_ALL  ← this
- 9:10 PM UTC  -- Meteo agent            -> METEO_ALL
- 9:20 PM UTC  -- Daily analysis          -> INDICATOR + TECHNICALS (DECISION, SCORE)
- 9:30 PM UTC  -- Compass brief          -> Drive (.txt)
-```
-
-Cron: `10 21 * * 1-5` (9:10 PM UTC weekdays, after Barchart scraper writes CLOSE)
+| `--force` | flag | off | Run on non-trading days |
 
 ## File Structure
 
 ```
 backend/scripts/press_review_agent/
 ├── __init__.py
-├── config.py            # Sources, prompts, sheet names, models, validation
-├── sheets_reader.py     # Read CLOSE from TECHNICALS (last row)
-├── news_fetcher.py      # httpx + BeautifulSoup, 6 sources
+├── config.py            # Sources, Google News queries, prompts, models, validation, themes
+├── db_reader.py         # Read CLOSE from pl_contract_data_daily
+├── news_fetcher.py      # httpx + Playwright + Google News RSS (XML parsing, MD5 dedup)
 ├── llm_client.py        # 3 async provider functions + JSON extraction
-├── validator.py         # Output length/structure checks
-├── db_writer.py         # GCP PostgreSQL writer (pl_fundamental_article + aud_llm_call)
-├── sheets_writer.py     # Append row to BIBLIO_ALL sheets (bottom of sheet)
-├── main.py              # CLI orchestrator with Sentry monitoring (dual-write: DB then Sheets)
-└── run_agent.sh         # Railway cron entry point
+├── validator.py         # Output validation (resume, mots_cle, impact, theme_sentiments)
+├── db_writer.py         # Write to pl_fundamental_article + aud_llm_call + pl_article_segment
+├── main.py              # CLI orchestrator with Sentry monitoring
+└── run_agent.sh         # Cloud Run Job entry point
+
+backend/scripts/compute_sentiment_features/
+├── __init__.py
+└── main.py              # CLI for z-delta computation (shadow mode)
+
+backend/app/engine/
+└── sentiment_features.py  # Pure function: rolling z-score + delta per theme
 ```
-
-## GCP Database Write
-
-For each successful provider result, writes two records:
-
-1. **`pl_fundamental_article`** — `write_article(session, provider, parsed, article_date, dry_run)`
-   - Field mapping: `parsed["resume"]` -> `summary`, `parsed["mots_cle"]` -> `keywords`, `parsed["impact_synthetiques"]` -> `impact_synthesis`
-   - `AUTHOR_LABELS[provider]` -> `source`, `provider.value` -> `llm_provider`, `category="macro"`
-
-2. **`aud_llm_call`** — `write_llm_call(session, provider, usage, latency_ms, dry_run)`
-   - LLM audit trail per invocation (tokens, latency, model)
-
-DB write is non-blocking per provider — if one provider's DB write fails, it continues to Sheets and other providers.
 
 ## Troubleshooting
 
-### JSON extraction fails for a provider
+### JSON extraction fails
 
-All 3 LLMs wrap JSON in markdown fences (` ```json ... ``` `) and output literal newlines inside JSON string values. The `extract_json()` function in `llm_client.py` handles both:
-1. Strips markdown fences
-2. Extracts content between first `{` and last `}`
-3. Escapes literal newlines/tabs inside string values via `_fix_unescaped_newlines()`
+The `extract_json()` in `scripts/llm_utils.py` handles:
+1. Markdown fences (` ```json ... ``` `)
+2. Unescaped newlines/tabs inside strings
+3. Trailing commas before `}` or `]`
+4. Unclosed braces (truncated output — appends missing `}`)
 
-If a provider still fails, it's likely hitting the `max_tokens` limit and the JSON is truncated (no closing `}`). The current limit is 8192 tokens — increase in `llm_client.py` if needed.
+### Theme sentiments missing for some themes
 
-### Response truncated (no closing brace)
+Normal behavior — the LLM omits themes not covered by today's sources. Check per-theme headline counts in logs: `Google News: 34 unique headlines from 8 queries (chocolat=5, marche=12, offre=8, production=9)`. Low counts on weekends are expected.
 
-Gemini 2.5 Pro generates verbose `resume` fields (5000+ chars). If `max_output_tokens` is too low (e.g. 4096), the response gets cut off mid-sentence and JSON parsing fails with "No JSON object found". Fix: set `max_output_tokens=8192` (already done).
+### Resume too short
 
-### News source returns 401/403
+`resume_min_chars` is set to 800. If validation fails, the prompt instructs 600-1500 words with "développe en profondeur" on OFFRE and FONDAMENTAUX sections.
 
-Some sites (Reuters, MarketWatch) use DataDome/Cloudflare WAF that blocks all non-browser requests regardless of User-Agent. These cannot be fixed with httpx — they require Playwright. We replaced them with accessible alternatives (see rejected sources table above).
+## Pipeline Schedule
 
-### News source returns empty content
-
-If a site returns HTML but the CSS selectors don't match any content, it's likely JS-rendered (TradingEconomics). The page HTML is just a shell. Fix: replace with a site that serves server-rendered content.
-
-### API key not found
-
-The `.env` is loaded via `load_dotenv()` at module level in `main.py`. If running outside the CLI (e.g. testing in a Python REPL), load it manually:
-```python
-from dotenv import load_dotenv
-from pathlib import Path
-load_dotenv(Path('.env'))
+```
+7:00 PM UTC  -- Barchart scraper       → pl_contract_data_daily (OHLCV + IV)
+7:00 PM UTC  -- Meteo agent            → pl_weather_observation
+7:05 PM UTC  -- ICE stocks + CFTC      → pl_contract_data_daily (STOCK US, COM NET US)
+7:05 PM UTC  -- Press review agent     → pl_fundamental_article + pl_article_segment ← this
+7:15 PM UTC  -- Compute indicators     → pl_derived_indicators + pl_indicator_daily
+7:20 PM UTC  -- Daily analysis          → pl_indicator_daily (LLM decision + score)
+7:30 PM UTC  -- Compass brief          → Google Drive (.txt for NotebookLM)
 ```
 
-## Current Status
-
-- [x] All 9 files created and importable (8 Python modules + 1 shell script)
-- [x] Dependencies installed (`anthropic`, `openai`, `google-genai`)
-- [x] Sheets reader tested — reads CLOSE from TECHNICALS_STAGING
-- [x] News fetcher tested — 6/6 sources returning content
-- [x] Validator tested — catches short/missing fields
-- [x] JSON extractor hardened — handles markdown fences, literal newlines, truncation
-- [x] Live staging test — all 3 providers write successfully
-- [x] Pushed to main — auto-deploy triggered
-- [x] Cloud Run Job `cc-press-review` deployed with Cloud Scheduler (`10 21 * * 1-5`)
-- [x] Env vars configured: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`
-- [ ] Run 3-day A/B test, compare outputs in staging sheets
-- [ ] Pick winner, switch to single-provider production mode
-- [ ] Monitor first week in production
-
-## First Run Results (2026-02-24)
-
-| Provider | Tokens (in/out) | Latency | Resume | Mots-cle | Impact |
-|----------|----------------|---------|--------|----------|--------|
-| Claude Sonnet 4.5 | 3796 / 2329 | 52s | 5603 chars | 416 chars | 1467 chars |
-| GPT-4.1 | 3227 / 1301 | 24s | 3841 chars | 268 chars | 1201 chars |
-| Gemini 2.5 Pro | 3591 / 1920 | 50s | 5933 chars | 275 chars | 1166 chars |
-
-## Cost Estimate
-
-| Phase | Monthly Cost |
-|-------|-------------|
-| A/B test (3 providers) | ~$3-5/month |
-| Production (single provider) | < $2/month |
+Cron: `05 19 * * 1-5` (7:05 PM UTC weekdays)

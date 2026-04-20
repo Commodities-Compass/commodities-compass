@@ -14,6 +14,7 @@ import {
   TrendingUpIcon,
 } from "lucide-react";
 import { useNews } from "@/hooks/useDashboard";
+import SentimentGauges from "@/components/sentiment-gauges";
 import { cn } from "@/utils";
 import { formatFinancialText } from "@/utils/format-financial-text";
 
@@ -248,6 +249,11 @@ export default function NewsCard({ targetDate, className }: NewsCardProps) {
 
       {/* Impact synthesis banner — always visible above tabs */}
       <ImpactBanner text={news.title || ""} />
+
+      {/* Sentiment thematic gauges */}
+      <div className="px-6 pb-2">
+        <SentimentGauges targetDate={targetDate} />
+      </div>
 
       {/* Tabbed content */}
       <CardContent className="pt-0">

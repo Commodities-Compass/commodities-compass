@@ -21,6 +21,8 @@ from app.schemas.dashboard import (
     IndicatorsGridResponse,
     RecommendationsResponse,
     NewsResponse,
+    NewsSentimentResponse,
+    ThemeSentiment,
     WeatherEnrichedResponse,
     ChartDataResponse,
     AudioResponse,
@@ -33,6 +35,7 @@ from app.services.dashboard_service import (
     get_chart_data,
     get_latest_market_research,
     get_latest_weather_data,
+    get_theme_sentiments,
 )
 from app.services.dashboard_transformers import (
     transform_to_position_status_response,
@@ -371,6 +374,50 @@ async def get_news(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error getting news: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/news/sentiment", response_model=NewsSentimentResponse)
+@limiter.limit("60/minute")
+async def get_news_sentiment(
+    request: Request,
+    target_date: Optional[str] = Query(
+        default=None, description="Specific date (YYYY-MM-DD format)"
+    ),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> NewsSentimentResponse:
+    """Get per-theme sentiment scores for the press review.
+
+    Returns sentiment scores for production, chocolat, transformation,
+    and economie themes, plus z-delta trend when available.
+    """
+    try:
+        business_date = None
+        if target_date:
+            business_date = await _parse_and_validate_date(target_date, db)
+
+        data = await get_theme_sentiments(db, business_date)
+
+        if not data:
+            raise HTTPException(
+                status_code=404, detail="No sentiment data found for this date"
+            )
+
+        from app.utils.date_utils import format_date_for_display
+
+        return NewsSentimentResponse(
+            date=format_date_for_display(data["date"]) if data["date"] else "",
+            themes=[ThemeSentiment(**t) for t in data["themes"]],
+            accumulation=data.get("accumulation"),
+        )
+
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error getting news sentiment: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

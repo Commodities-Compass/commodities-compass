@@ -161,7 +161,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           {/* Mobile top bar */}
           {isMobile && (
             <header className="flex items-center justify-between px-4 py-3 border-b bg-background">
-              <img src={logoIcon} alt="Compass" className="h-8 w-8 object-contain" />
+              <img src={logoIcon} alt="Compass" className="h-8 w-8 object-contain dark:invert" />
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

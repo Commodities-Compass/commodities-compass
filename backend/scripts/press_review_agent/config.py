@@ -151,6 +151,44 @@ GOOGLE_NEWS_QUERIES = [
             "+when:3d&hl=fr&gl=FR&ceid=FR:fr"
         ),
     },
+    # Economie / Macro (EN + FR)
+    {
+        "theme": "economie",
+        "url": (
+            "https://news.google.com/rss/search?"
+            'q="cocoa"+AND+("dollar"+OR+"currency"+OR+"tariff"+OR+"trade+policy"'
+            '+OR+"inflation"+OR+"interest+rate")'
+            "+when:3d&hl=en&gl=US&ceid=US:en"
+        ),
+    },
+    {
+        "theme": "economie",
+        "url": (
+            "https://news.google.com/rss/search?"
+            'q="cacao"+AND+("dollar"+OR+"devise"+OR+"tarif"+OR+"politique+commerciale"'
+            '+OR+"inflation"+OR+"taux")'
+            "+when:3d&hl=fr&gl=FR&ceid=FR:fr"
+        ),
+    },
+    # Transformation / Processing (EN + FR)
+    {
+        "theme": "transformation",
+        "url": (
+            "https://news.google.com/rss/search?"
+            'q="cocoa"+AND+("processing"+OR+"grinding"+OR+"butter"+OR+"powder"'
+            '+OR+"factory"+OR+"capacity")'
+            "+when:3d&hl=en&gl=US&ceid=US:en"
+        ),
+    },
+    {
+        "theme": "transformation",
+        "url": (
+            "https://news.google.com/rss/search?"
+            'q="cacao"+AND+("broyage"+OR+"transformation"+OR+"beurre"+OR+"poudre"'
+            '+OR+"usine"+OR+"capacité")'
+            "+when:3d&hl=fr&gl=FR&ceid=FR:fr"
+        ),
+    },
 ]
 
 GOOGLE_NEWS_MAX_ITEMS_PER_QUERY = 10
@@ -215,9 +253,23 @@ Your output must be a valid JSON object (no markdown wrapping) with exactly 4 fi
   * "score": float from -1.0 (very bearish for cocoa prices) to +1.0 (very bullish)
   * "confidence": float from 0.0 to 1.0 (how confident you are in the score)
   * "rationale": one sentence justifying the score
-  Include a theme ONLY if today's sources (full-content or headlines) mention it.
-  Do NOT invent a score for a theme with no coverage. If no theme has coverage, omit
-  this field entirely.
+
+  Theme definitions (what each theme covers):
+  - "production": crop conditions, arrivals at ports, harvest progress, weather impact
+    on growing regions, farmer/government policy, disease (swollen shoot, etc.)
+  - "chocolat": consumer demand, grindings data, confectionery industry trends,
+    chocolate consumption patterns, seasonal demand (Easter, Christmas)
+  - "transformation": cocoa processing capacity, butter/powder production, factory
+    activity, industrial investment in processing
+  - "economie": macro factors affecting cocoa prices — USD/GBP/EUR currency moves,
+    trade policy and tariffs, inflation, interest rates, global economic context.
+    If any source mentions dollar strength, currency impact, or trade policy related
+    to commodities, score this theme.
+
+  Include a theme if today's sources (full-content or headlines) contain relevant
+  information. Aim to score all 4 themes when possible — even brief mentions of
+  currency moves or trade policy in market commentary qualify for "economie".
+  Only omit a theme if genuinely zero coverage exists.
 
 Reasoning process (internal, before generating output):
 - For each number you plan to cite, identify the exact source passage containing it.

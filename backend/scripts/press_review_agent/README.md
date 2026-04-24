@@ -47,7 +47,7 @@ Full strategy document: [press-review-v2-strategy.md](../../../docs/press-review
 
 ### Google News RSS (headlines only — coverage layer)
 
-8 thematic queries (4 themes × 2 languages EN/FR), `when:3d` window, max 10 items per query. Headlines are deduplicated by MD5 hash and passed to the LLM as a separate "Headlines du jour" section in the prompt. No link following — titles only.
+12 thematic queries (6 themes × 2 languages EN/FR), `when:3d` window, max 10 items per query. Headlines are deduplicated by MD5 hash and passed to the LLM as a separate "Headlines du jour" section in the prompt. No link following — titles only.
 
 | Theme | Query (EN) | Query (FR) |
 |-------|-----------|-----------|
@@ -55,6 +55,10 @@ Full strategy document: [press-review-v2-strategy.md](../../../docs/press-review
 | chocolat | cocoa AND (grindings OR chocolate demand) | cacao AND (broyages OR chocolat OR demande) |
 | marche | cocoa AND (price OR futures OR market) | cacao AND (prix OR cours OR marché) |
 | offre | cocoa AND (supply OR deficit OR stocks) | cacao AND (offre OR déficit OR stocks) |
+| economie | cocoa AND (dollar OR currency OR tariff OR trade policy) | cacao AND (dollar OR devise OR tarif OR inflation) |
+| transformation | cocoa AND (processing OR grinding OR butter OR powder) | cacao AND (broyage OR transformation OR beurre OR usine) |
+
+The 4 sentiment themes (production, chocolat, transformation, economie) each have dedicated queries. The marche and offre queries feed the resume content but don't map directly to sentiment themes.
 
 ### Removed Sources (V2)
 
@@ -181,7 +185,13 @@ The `extract_json()` in `scripts/llm_utils.py` handles:
 
 ### Theme sentiments missing for some themes
 
-Normal behavior — the LLM omits themes not covered by today's sources. Check per-theme headline counts in logs: `Google News: 34 unique headlines from 8 queries (chocolat=5, marche=12, offre=8, production=9)`. Low counts on weekends are expected.
+Check per-theme headline counts in logs: `Google News: N unique headlines from 12 queries (chocolat=5, economie=3, marche=12, offre=8, production=9, transformation=2)`.
+
+Each of the 4 sentiment themes (production, chocolat, transformation, economie) has dedicated Google News queries. If a theme is still empty despite headlines, the LLM may not be mapping content correctly — check the theme definitions in the prompt.
+
+The prompt instructs the LLM to "aim to score all 4 themes when possible" — even brief mentions of currency moves or trade policy in market commentary qualify for "economie". Low counts on weekends are expected.
+
+**Bug fixed (2026-04-23):** The "economie" and "transformation" themes were declared in THEMES but had no Google News queries — the LLM never saw content for them. Fixed by adding 4 queries (economie EN/FR + transformation EN/FR) and explicit theme definitions in the prompt.
 
 ### Resume too short
 

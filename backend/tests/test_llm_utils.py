@@ -3,6 +3,7 @@
 import pytest
 
 from scripts.llm_utils import (
+    _find_matching_brace,
     _fix_invalid_escapes,
     _fix_unescaped_quotes,
     extract_json,
@@ -76,6 +77,26 @@ class TestFixUnescapedQuotes:
         assert _fix_unescaped_quotes(raw) == raw
 
 
+class TestFindMatchingBrace:
+    def test_simple_object(self) -> None:
+        assert _find_matching_brace('{"key": "val"}', 0) == 13
+
+    def test_nested_object(self) -> None:
+        text = '{"a": {"b": "c"}}'
+        assert _find_matching_brace(text, 0) == len(text) - 1
+
+    def test_skips_braces_in_strings(self) -> None:
+        text = '{"key": "val with } inside"}'
+        assert _find_matching_brace(text, 0) == len(text) - 1
+
+    def test_no_matching_brace(self) -> None:
+        assert _find_matching_brace('{"key": "val"', 0) == -1
+
+    def test_extra_closing_brace(self) -> None:
+        # Should stop at the first balanced }, ignoring the extra one
+        assert _find_matching_brace('{"key": "val"}}', 0) == 13
+
+
 class TestExtractJson:
     def test_clean_json(self) -> None:
         raw = '{"resume": "text", "mots_cle": "k1;k2"}'
@@ -122,6 +143,22 @@ class TestExtractJson:
 
     def test_text_before_and_after_json(self) -> None:
         raw = 'Here is the result:\n{"key": "val"}\nDone!'
+        result = extract_json(raw)
+        assert result == {"key": "val"}
+
+    def test_double_closing_brace(self) -> None:
+        """The actual o4-mini failure: extra closing brace at the end."""
+        raw = '{"key": "val"}}'
+        result = extract_json(raw)
+        assert result == {"key": "val"}
+
+    def test_triple_closing_brace_nested(self) -> None:
+        raw = '{"a": {"b": "c"}}}'
+        result = extract_json(raw)
+        assert result == {"a": {"b": "c"}}
+
+    def test_trailing_text_after_json(self) -> None:
+        raw = '{"key": "val"}} some trailing garbage'
         result = extract_json(raw)
         assert result == {"key": "val"}
 

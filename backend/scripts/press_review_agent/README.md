@@ -26,7 +26,7 @@ Driven by EXP-014 findings: only **production** (p=0.017) and **chocolat** (p=0.
 | Output fields | 3 (resume, mots_cle, impact) | 4 (+theme_sentiments) |
 | MAX_CHARS_PER_SOURCE | 2000 | 4000 (prevents content truncation on heavy days) |
 | Sentiment extraction | None | Inline per-theme scores stored in pl_article_segment |
-| JSON parser | Basic (fences + newlines) | Hardened (+ trailing commas, unclosed braces) |
+| JSON parser | Basic (fences + newlines) | OpenAI: API JSON mode. Others: balanced brace extraction + 6-stage repair cascade |
 
 Full strategy document: [press-review-v2-strategy.md](../../../docs/press-review-v2-strategy.md)
 
@@ -177,11 +177,16 @@ backend/app/engine/
 
 ### JSON extraction fails
 
-The `extract_json()` in `scripts/llm_utils.py` handles:
-1. Markdown fences (` ```json ... ``` `)
-2. Unescaped newlines/tabs inside strings
-3. Trailing commas before `}` or `]`
-4. Unclosed braces (truncated output — appends missing `}`)
+**OpenAI (o4-mini)** uses `response_format={"type": "json_object"}` which guarantees valid JSON from the API. This was added after o4-mini produced double closing braces (`{...}}`) on 2026-04-22, causing two production failures.
+
+**Claude and Gemini** don't have API-level JSON mode, so they rely on the `extract_json()` repair cascade in `scripts/llm_utils.py`:
+1. Balanced brace extraction (finds matching `}` via depth counting, not `rfind`)
+2. Markdown fences (` ```json ... ``` `)
+3. Unescaped newlines/tabs inside strings
+4. Trailing commas before `}` or `]`
+5. Unclosed braces (truncated output — appends missing `}`)
+6. Invalid escape sequences (`\'`, `\x`, `\a`)
+7. Unescaped double quotes inside string values (heuristic)
 
 ### Theme sentiments missing for some themes
 

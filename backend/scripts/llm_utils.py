@@ -150,11 +150,41 @@ def _fix_unescaped_quotes(text: str) -> str:
     return "".join(result)
 
 
+def _find_matching_brace(text: str, start: int) -> int:
+    """Find the closing } that matches the { at position start.
+
+    Uses balanced brace counting, skipping braces inside JSON strings.
+    Returns the index of the matching }, or -1 if not found (truncated).
+    """
+    depth = 0
+    in_string = False
+    escape_next = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if escape_next:
+            escape_next = False
+            continue
+        if ch == "\\":
+            escape_next = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if not in_string:
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return i
+    return -1
+
+
 def extract_json(raw: str) -> dict[str, Any]:
     """Extract JSON from LLM response, handling markdown wrapping.
 
     Strategy (4-attempt cascade):
-    1. Strip markdown fences, extract between first { and last }
+    1. Strip markdown fences, extract balanced JSON object
     2. Parse as-is
     3. Fix unescaped newlines inside string values
     4. Fix trailing commas + unclosed braces
@@ -165,15 +195,15 @@ def extract_json(raw: str) -> dict[str, Any]:
     text = re.sub(r"\s*```\s*$", "", text)
 
     first_brace = text.find("{")
-    last_brace = text.rfind("}")
-    if first_brace == -1 or last_brace <= first_brace:
-        # No closing brace at all — try to fix truncated output
-        if first_brace != -1:
-            text = _fix_unclosed_braces(text[first_brace:])
-        else:
-            raise ValueError(f"No JSON object found in LLM response ({len(raw)} chars)")
+    if first_brace == -1:
+        raise ValueError(f"No JSON object found in LLM response ({len(raw)} chars)")
+
+    matched_end = _find_matching_brace(text, first_brace)
+    if matched_end == -1:
+        # No matching } — truncated output, try to fix
+        text = _fix_unclosed_braces(text[first_brace:])
     else:
-        text = text[first_brace : last_brace + 1]
+        text = text[first_brace : matched_end + 1]
 
     # Attempt 1: parse as-is
     try:

@@ -82,6 +82,7 @@ async def call_openai(system_prompt: str, user_prompt: str) -> LLMResult:
             model=MODEL_IDS[provider],
             max_completion_tokens=8192,
             reasoning_effort="medium",
+            response_format={"type": "json_object"},
             messages=[
                 {"role": "developer", "content": system_prompt},
                 {"role": "user", "content": user_prompt},

@@ -111,6 +111,7 @@ The frontend uses modern React patterns:
   - `/dashboard` - Main trading dashboard (protected)
   - `/dashboard/historical` - Historical data view (protected)
 - **Favicon** - `frontend/public/favicon-32x32.png` (transparent background, circle only) + `frontend/public/apple-touch-icon.png` (180x180, white background for mobile dark mode). Generated from `src/assets/compass-icon.png`.
+- **Typography** - Inter Variable (self-hosted via `@fontsource-variable/inter`). Configured in `index.css` as `--font-sans`. Font features `cv11`, `ss01` enabled. All card titles use `text-lg font-semibold tracking-tight`. Body text is `text-sm leading-relaxed` across all cards.
 - **UI Components** - Shadcn/ui (new-york style) with Radix UI primitives in `src/components/ui/`
 - **Dashboard Components**:
   - `SignalHero` - Hero panel for trading signal (OPEN/HEDGE/MONITOR) as a pill badge with colored ring + dot, plus YTD performance. Replaces the old `PositionStatus` component.

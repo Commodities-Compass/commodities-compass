@@ -110,7 +110,7 @@ export default function PriceChart({
     <Card className={cn("w-full", className)}>
       <CardHeader className="pb-2 space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <CardTitle className="text-lg font-medium">{title}</CardTitle>
+          <CardTitle className="text-lg font-semibold tracking-tight">{title}</CardTitle>
 
           <div className="flex items-center gap-2">
             <Select

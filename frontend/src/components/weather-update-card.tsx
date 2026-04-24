@@ -415,7 +415,7 @@ export default function WeatherUpdateCard({
                   .map((p, i) => (
                     <p
                       key={i}
-                      className="text-xs text-foreground/85 leading-relaxed"
+                      className="text-sm text-foreground/85 leading-relaxed"
                     >
                       {formatFinancialText(p.trim())}
                     </p>

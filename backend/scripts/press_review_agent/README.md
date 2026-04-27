@@ -196,7 +196,9 @@ Each of the 4 sentiment themes (production, chocolat, transformation, economie) 
 
 The prompt instructs the LLM to "aim to score all 4 themes when possible" — even brief mentions of currency moves or trade policy in market commentary qualify for "economie". Low counts on weekends are expected.
 
-**Bug fixed (2026-04-23):** The "economie" and "transformation" themes were declared in THEMES but had no Google News queries — the LLM never saw content for them. Fixed by adding 4 queries (economie EN/FR + transformation EN/FR) and explicit theme definitions in the prompt.
+**Bug fixed (2026-04-23):** Two issues caused "economie" to be empty for 3 consecutive sessions:
+1. The theme was declared in THEMES but had no Google News queries — the LLM never saw economic content. Fixed by adding 4 queries (economie EN/FR + transformation EN/FR).
+2. Headlines were passed to the LLM as a flat list without theme tags — the LLM couldn't map headlines to sentiment themes. Fixed by grouping headlines under `**ECONOMIE**`, `**PRODUCTION**`, etc. in the prompt.
 
 ### Resume too short
 

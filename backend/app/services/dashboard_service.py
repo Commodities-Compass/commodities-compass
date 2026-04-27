@@ -155,6 +155,22 @@ def _score_day(decision: str, close_t: float, close_t1: float) -> Optional[float
     return None
 
 
+def _clean_numbers(text: str) -> str:
+    """Round numbers with 3+ decimal places to max 2 for clean display.
+
+    Examples: 2575.000000 → 2575, 58.072610 → 58.07, 0.420800 → 0.42.
+    Numbers with ≤2 decimals are left untouched. DB values are not modified.
+    """
+
+    def _fmt(m: re.Match[str]) -> str:
+        num = float(m.group(0))
+        if num == int(num):
+            return str(int(num))
+        return f"{num:.2f}".rstrip("0").rstrip(".")
+
+    return re.sub(r"\d+\.\d{3,}", _fmt, text)
+
+
 def parse_recommendations_text(text: str) -> list[str]:
     """Parse recommendations from raw text. Pure CPU, no I/O."""
     if not text:
@@ -163,6 +179,9 @@ def parse_recommendations_text(text: str) -> list[str]:
     # Strip HTML tags replacing them with newlines
     text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
     text = re.sub(r"</?[a-z][a-z0-9]*[^>]*>", "\n", text, flags=re.IGNORECASE)
+
+    # Clean excessive decimal places for display
+    text = _clean_numbers(text)
 
     lines = text.split("\n")
     recommendations = []

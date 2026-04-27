@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -294,7 +295,6 @@ def _format_value(value: object) -> str:
     """Format a DB value for prompt injection. None → empty string."""
     if value is None:
         return ""
-    if isinstance(value, float):
-        # Remove trailing zeros for cleaner prompts
-        return f"{value:g}"
+    if isinstance(value, (float, Decimal)):
+        return f"{float(value):g}"
     return str(value)

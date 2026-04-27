@@ -302,15 +302,20 @@ def format_sources_for_prompt(
         if r.success and r.text:
             sections.append(f"### {r.name}\n{r.text}")
 
-    # Google News headlines (titles only — separate section for grounding)
+    # Google News headlines grouped by theme — helps LLM map content to sentiment themes
     if headlines:
-        headline_lines: list[str] = []
+        themes_seen: dict[str, list[str]] = {}
         for h in headlines:
-            headline_lines.append(f"- [{h.source}] {h.title}")
-        if headline_lines:
+            themes_seen.setdefault(h.theme, []).append(f"- [{h.source}] {h.title}")
+
+        grouped_lines: list[str] = []
+        for theme in sorted(themes_seen):
+            grouped_lines.append(f"**{theme.upper()}**")
+            grouped_lines.extend(themes_seen[theme])
+        if grouped_lines:
             sections.append(
-                "### Headlines du jour (titres uniquement — contexte additionnel, "
-                "pas de contenu détaillé)\n" + "\n".join(headline_lines)
+                "### Headlines du jour par thème (titres uniquement — contexte "
+                "additionnel, pas de contenu détaillé)\n" + "\n".join(grouped_lines)
             )
 
     if sections:

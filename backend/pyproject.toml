@@ -78,6 +78,7 @@ seed-historical-csv = "scripts.seed_historical_csv:main"
 compute-indicators = "app.engine.runner:main"
 compute-sentiment-features = "scripts.compute_sentiment_features.main:main"
 roll-contract = "scripts.roll_contract:main"
+watchlist-eval = "scripts.watchlist_eval.main:main"
 
 [tool.pyright]
 include = ["app", "tests"]

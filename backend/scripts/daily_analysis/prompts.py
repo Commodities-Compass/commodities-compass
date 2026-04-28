@@ -174,10 +174,24 @@ Rédige une recommandation claire et utile pour la journée, en identifiant les 
 
 D. À SURVEILLER AUJOURD'HUI
 
-Bloc très court listant les trois signaux techniques ou seuils critiques à suivre dans la journée. Ils doivent compléter ou invalider la tendance actuelle. Exemples :
-\t•\tRSI sous 40 = risque de cassure baissière
-\t•\tCassure haussière si CLOSE dépasse R1 à 6520
-\t•\tOPEN INTEREST sous 16000 = baisse de la conviction marché
+Exactement 3 alertes techniques à suivre demain. Chaque alerte DOIT contenir :
+1. Un indicateur précis (CLOSE, RSI, SUPPORT 1, RESISTANCE 1, MACD, ATR, %K, OI, BOLLINGER)
+2. Un seuil numérique chiffré
+3. Une direction explicite (haussier/baissière)
+4. Une conséquence si le seuil est franchi
+
+RÈGLES STRICTES :
+- Au moins 1 alerte DOIT porter sur SUPPORT 1 ou RESISTANCE 1 (les plus fiables historiquement)
+- N'utilise PAS VOLUME ni SIGNAL seuls comme indicateurs d'alerte (mauvais pouvoir prédictif directionnel)
+- Ne commence JAMAIS par "Monitorer" ou "Surveiller" sans direction — chaque alerte est directionnelle
+- Pour RSI : utilise des seuils proches de la valeur actuelle ({RSI14TOD}), pas des seuils extrêmes (30, 40, 70, 80) qui se déclenchent rarement
+
+FORMAT : "[Direction] si [INDICATEUR] [franchit/passe sous/dépasse] [SEUIL] — [conséquence]"
+
+Exemples :
+\t•\tBaissier si CLOSE clôture sous SUPPORT 1 à 2484 — objectif S2 à 2380
+\t•\tHaussier si CLOSE dépasse RESISTANCE 1 à 6520 — confirmation de tendance haussière
+\t•\tBaissier si RSI passe sous 45 (actuellement à 52) — accélération de la pression vendeuse
 
 
 E **IMPORTANT** Format final OBLIGATOIRE ET STRICT :
@@ -190,7 +204,7 @@ Le champ "conclusion" doit OBLIGATOIREMENT suivre ce format exact :
 - Section "A SURVEILLER" : une ligne commençant par "> A SURVEILLER AUJOURD'HUI:" suivie des seuils critiques en "        • " bullets
 - Pas de Markdown. Pas de phrases vagues. Chaque phrase concise avec des chiffres.
 
-{{"decision": "OPEN ou MONITOR ou HEDGE", "confiance": 3, "direction": "HAUSSIERE ou BAISSIERE ou NEUTRE", "conclusion": "> Le CLOSE a diminué passant de X à Y, indiquant une tendance baissière.\\n        • Le VOLUME a baissé de X à Y, montrant une réduction de l'activité.\\n        • OPEN INTEREST a réduit de X à Y, suggérant un repli des positions.\\n        • Le RSI est à X, signifiant une situation de survente.\\n        • MACD est négatif à X, confirmant la tendance baissière.\\n        • La volatilité implicite est à X%, indiquant les anticipations du marché.\\n        • Le STOCK EU a augmenté, passant de X à Y.\\n> A SURVEILLER AUJOURD'HUI:\\n        • RSI sous 40 = risque de cassure baissière.\\n        • Cassure haussière si CLOSE dépasse la résistance à X.\\n        • Monitorer le niveau de SUPPORT à X."}}
+{{"decision": "OPEN ou MONITOR ou HEDGE", "confiance": 3, "direction": "HAUSSIERE ou BAISSIERE ou NEUTRE", "conclusion": "> Le CLOSE a diminué passant de X à Y, indiquant une tendance baissière.\\n        • Le VOLUME a baissé de X à Y, montrant une réduction de l'activité.\\n        • OPEN INTEREST a réduit de X à Y, suggérant un repli des positions.\\n        • Le RSI est à X, signifiant une situation de survente.\\n        • MACD est négatif à X, confirmant la tendance baissière.\\n        • La volatilité implicite est à X%, indiquant les anticipations du marché.\\n        • Le STOCK EU a augmenté, passant de X à Y.\\n> A SURVEILLER AUJOURD'HUI:\\n        • Baissier si CLOSE clôture sous SUPPORT 1 à X — objectif S2 à Y.\\n        • Haussier si CLOSE dépasse RESISTANCE 1 à X — poursuite de la tendance haussière.\\n        • Baissier si RSI passe sous X (actuellement à Y) — pression vendeuse accrue."}}
 """
 
 

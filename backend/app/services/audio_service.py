@@ -112,14 +112,16 @@ class AudioService:
                 f"'{settings.GOOGLE_DRIVE_AUDIO_FOLDER_ID}' in parents"
             )
 
-            # Run sync Google API in thread to avoid blocking event loop
+            # Run sync Google API in thread to avoid blocking event loop.
+            # num_retries=3 handles transient network errors (SSL EOF, broken
+            # pipe, 5xx) with exponential backoff via the google-api SDK.
             request = self.drive_service.files().list(
                 q=query,
                 fields="files(id, name, mimeType)",
                 supportsAllDrives=True,
                 includeItemsFromAllDrives=True,
             )
-            response = await asyncio.to_thread(request.execute)
+            response = await asyncio.to_thread(request.execute, num_retries=3)
 
             files = response.get("files", [])
 

@@ -113,8 +113,23 @@ def main() -> int:
                 logger.info("No campaign memory available (first run?)")
             if harmattan_context:
                 logger.info("Harmattan context: %s", harmattan_context.strip())
+        except (OSError, ConnectionError) as mem_err:
+            logger.warning(
+                "Campaign memory unavailable (transient): %s (continuing)", mem_err
+            )
         except Exception as mem_err:
-            logger.warning("Campaign memory unavailable: %s (continuing)", mem_err)
+            # Import DB libraries to check for transient DB errors
+            try:
+                from sqlalchemy.exc import OperationalError, InterfaceError
+
+                if isinstance(mem_err, (OperationalError, InterfaceError)):
+                    logger.warning(
+                        "Campaign memory unavailable (DB): %s (continuing)", mem_err
+                    )
+                else:
+                    raise
+            except ImportError:
+                raise mem_err from None
 
         # Step 3: Build prompt and call LLM
         logger.info("Step 3: Calling OpenAI for analysis...")

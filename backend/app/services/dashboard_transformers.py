@@ -5,6 +5,7 @@ Transforms database query results into API response formats.
 Separates data transformation logic from API endpoints.
 """
 
+import logging
 from typing import Any, Dict, List, Optional
 from datetime import date
 
@@ -26,15 +27,28 @@ from app.schemas.dashboard import (
 from app.utils.date_utils import format_date_for_display
 
 
+_VALID_POSITIONS = {"OPEN", "HEDGE", "MONITOR"}
+
+_position_logger = logging.getLogger(__name__)
+
+
 def transform_to_position_status_response(
     position: Optional[str],
     ytd_performance: float,
     response_date,
 ) -> PositionStatusResponse:
     """Transform position data to PositionStatusResponse."""
+    original = position
     if position:
         position = position.strip().upper()
-    if not position or position not in ["OPEN", "HEDGE", "MONITOR"]:
+    if not position or position not in _VALID_POSITIONS:
+        _position_logger.error(
+            "UNEXPECTED POSITION VALUE: got %r, expected one of %s — "
+            "defaulting to MONITOR. This indicates a data quality issue "
+            "in pl_indicator_daily.decision. Investigate immediately.",
+            original,
+            _VALID_POSITIONS,
+        )
         position = "MONITOR"
 
     return PositionStatusResponse(

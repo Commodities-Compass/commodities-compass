@@ -191,11 +191,10 @@ class DBAnalysisEngine:
         row = result.fetchone()
 
         if not row:
-            logger.warning(
-                "No indicator data found for %s — returning default MONITOR",
-                target_date,
+            raise RuntimeError(
+                f"No indicator data found for {target_date} / {contract_code} — "
+                f"compute-indicators may not have run. Cannot produce trading signal."
             )
-            return 0.0, "MONITOR"
 
         today = dict(zip(result.keys(), row))
 
@@ -345,7 +344,7 @@ class DBAnalysisEngine:
                 {
                     "id": uuid.uuid4(),
                     "pipeline_run_id": pipeline_run_id,
-                    "provider": "openai",
+                    "provider": self._llm.provider,
                     "model": response.model,
                     "prompt": f"[daily_analysis_call_{call_num}]",
                     "response": response.raw_text,

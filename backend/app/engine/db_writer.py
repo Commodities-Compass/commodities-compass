@@ -14,7 +14,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from app.engine.types import DERIVED_COLS
+from app.engine.types import DERIVED_COLS, NORM_COLS, SCORE_COLS
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -35,27 +35,10 @@ def _to_nullable_float(val: Any) -> float | None:
     return float(val)
 
 
-# Columns from the pipeline DataFrame that map to pl_derived_indicators fields.
-# Single source of truth: imported from app.engine.types.DERIVED_COLS
+# Column lists: single source of truth is app.engine.types
 _DERIVED_COLS = DERIVED_COLS
-
-# Columns for pl_indicator_daily.
-_INDICATOR_SCORE_COLS = [
-    "rsi_score",
-    "macd_score",
-    "stochastic_score",
-    "atr_score",
-    "close_pivot",
-    "volume_oi",
-]
-_INDICATOR_NORM_COLS = [
-    "rsi_norm",
-    "macd_norm",
-    "stoch_k_norm",
-    "atr_norm",
-    "close_pivot_norm",
-    "vol_oi_norm",
-]
+_INDICATOR_SCORE_COLS = SCORE_COLS
+_INDICATOR_NORM_COLS = NORM_COLS
 _INDICATOR_COMPOSITE_COLS = [
     "indicator_value",
     "momentum",
@@ -284,8 +267,14 @@ def write_pipeline_results(
     contract_id: uuid.UUID,
     algorithm_version_id: uuid.UUID,
     config: Any,
+    *,
+    commit: bool = True,
 ) -> dict[str, int]:
     """Write all pipeline results to the database.
+
+    When called from _write_results_per_contract (multi-contract mode),
+    commit=False is passed so the caller controls the transaction boundary
+    with savepoints. Single-contract callers get commit=True (default).
 
     Returns dict with row counts per table.
     """
@@ -309,8 +298,9 @@ def write_pipeline_results(
     )
     logger.info("Wrote %d rows to pl_signal_component", signal_count)
 
-    session.commit()
-    logger.info("Committed all writes")
+    if commit:
+        session.commit()
+        logger.info("Committed all writes")
 
     return {
         "pl_derived_indicators": derived_count,

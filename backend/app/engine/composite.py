@@ -113,6 +113,53 @@ def _extract_norm_inputs(
     )
 
 
+def _vectorized_power_term(coeff: float, exp: float, arr: np.ndarray) -> np.ndarray:
+    """Vectorized version of _power_term for numpy arrays."""
+    sign = np.sign(arr)
+    result = coeff * sign * np.abs(arr) ** exp
+    result = np.where(np.isnan(arr) | (arr == 0.0), 0.0, result)
+    return result
+
+
+def _vectorized_score(
+    rsi: np.ndarray,
+    macd: np.ndarray,
+    stoch: np.ndarray,
+    atr: np.ndarray,
+    cp: np.ndarray,
+    voi: np.ndarray,
+    momentum: np.ndarray,
+    macroeco: np.ndarray,
+    config: AlgorithmConfig,
+) -> np.ndarray:
+    """Vectorized composite score computation."""
+    return (
+        config.k
+        + _vectorized_power_term(config.a, config.b, rsi)
+        + _vectorized_power_term(config.c, config.d, macd)
+        + _vectorized_power_term(config.e, config.f, stoch)
+        + _vectorized_power_term(config.g, config.h, atr)
+        + _vectorized_power_term(config.i, config.j, cp)
+        + _vectorized_power_term(config.l, config.m, voi)
+        + _vectorized_power_term(config.n, config.o, momentum)
+        + _vectorized_power_term(config.p, config.q, macroeco)
+    )
+
+
+def _vectorized_decision(scores: np.ndarray, config: AlgorithmConfig) -> list[str]:
+    """Vectorized decision mapping."""
+    decisions = np.where(
+        np.isnan(scores),
+        "MONITOR",
+        np.where(
+            scores >= config.open_threshold,
+            "OPEN",
+            np.where(scores <= config.hedge_threshold, "HEDGE", "MONITOR"),
+        ),
+    )
+    return decisions.tolist()
+
+
 def compute_signals(
     df: pd.DataFrame,
     config: AlgorithmConfig,
@@ -150,66 +197,53 @@ def compute_signals(
         )
         macroeco = np.zeros(n)
 
-    # Pass 1: base score = power formula with momentum=0
-    base_score = np.full(n, np.nan)
-    for idx in range(n):
-        rsi, macd, stoch, atr, cp, voi = _extract_norm_inputs(result.iloc[idx])
-        base_score[idx] = compute_score(
-            rsi_norm=rsi,
-            macd_norm=macd,
-            stoch_norm=stoch,
-            atr_norm=atr,
-            cp_norm=cp,
-            voi_norm=voi,
-            momentum=0.0,
-            macroeco=float(macroeco[idx]),
-            config=config,
-        )
+    # Extract the 6 normalized indicator columns as numpy arrays
+    def _col(name: str) -> np.ndarray:  # type: ignore[type-arg]
+        if name in result.columns:
+            return np.asarray(
+                pd.to_numeric(result[name], errors="coerce"), dtype=np.float64
+            )
+        return np.full(n, np.nan)
 
+    rsi = _col("rsi_norm")
+    macd_arr = _col("macd_norm")
+    stoch = _col("stoch_k_norm")
+    atr = _col("atr_norm")
+    cp = _col("close_pivot_norm")
+    voi = _col("vol_oi_norm")
+
+    # Pass 1: base score = power formula with momentum=0
+    zero_momentum = np.zeros(n)
+    base_score = _vectorized_score(
+        rsi, macd_arr, stoch, atr, cp, voi, zero_momentum, macroeco, config
+    )
     result["indicator_value"] = base_score
 
     # Momentum: direction change of base_score day-over-day
     momentum_values = np.full(n, np.nan)
-    for idx in range(1, n):
-        momentum_values[idx] = compute_momentum(
-            base_score[idx], base_score[idx - 1], config.momentum_threshold
-        )
+    shifted = np.roll(base_score, 1)
+    shifted[0] = np.nan
+    valid = ~np.isnan(base_score) & ~np.isnan(shifted)
+    momentum_values[valid] = np.where(
+        base_score[valid] > shifted[valid],
+        config.momentum_threshold,
+        -config.momentum_threshold,
+    )
     result["momentum"] = momentum_values
 
     # Pass 2: final score = power formula with real momentum
-    final = np.full(n, np.nan)
-    decisions = ["MONITOR"] * n
-
-    for idx in range(n):
-        rsi, macd, stoch, atr, cp, voi = _extract_norm_inputs(result.iloc[idx])
-        mom = float(momentum_values[idx]) if not np.isnan(momentum_values[idx]) else 0.0
-        score = compute_score(
-            rsi_norm=rsi,
-            macd_norm=macd,
-            stoch_norm=stoch,
-            atr_norm=atr,
-            cp_norm=cp,
-            voi_norm=voi,
-            momentum=mom,
-            macroeco=float(macroeco[idx]),
-            config=config,
-        )
-        final[idx] = score
-        decisions[idx] = compute_decision(score, config)
-
+    mom_for_score = np.where(np.isnan(momentum_values), 0.0, momentum_values)
+    final = _vectorized_score(
+        rsi, macd_arr, stoch, atr, cp, voi, mom_for_score, macroeco, config
+    )
     result["final_indicator"] = final
-    result["decision"] = decisions
+    result["decision"] = _vectorized_decision(final, config)
 
     # macroeco_score = 1.0 + macroeco_bonus (computed here, not in writers)
-    macroeco_series = result.get(macroeco_col)
-    if macroeco_series is None:
-        macroeco_series = pd.Series(np.nan, index=result.index)
-    result["macroeco_score"] = macroeco_series.apply(
-        lambda v: (
-            1.0 + v
-            if not (v is None or (isinstance(v, float) and np.isnan(v)))
-            else np.nan
-        )
-    )
+    if macroeco_col in result.columns:
+        bonus = pd.to_numeric(result[macroeco_col], errors="coerce")
+        result["macroeco_score"] = pd.Series(bonus, dtype="float64") + 1.0
+    else:
+        result["macroeco_score"] = np.nan
 
     return result

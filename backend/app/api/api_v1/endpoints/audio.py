@@ -5,13 +5,16 @@ from datetime import date, datetime, timezone
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
+from app.core.auth import get_current_user
 from app.services.audio_service import get_audio_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+_ALLOWED_AUDIO_ORIGIN = "https://drive.google.com/"
 
 
 def _resolve_date(target_date: Optional[str]) -> Optional[date]:
@@ -26,6 +29,8 @@ def _resolve_date(target_date: Optional[str]) -> Optional[date]:
 
 
 def _resolve_file_url(url: str) -> str:
+    if not url.startswith(_ALLOWED_AUDIO_ORIGIN):
+        raise HTTPException(status_code=500, detail="Invalid audio source URL")
     if "uc?id=" in url and "export=download" in url:
         return url
     if "/d/" in url:
@@ -92,34 +97,52 @@ async def stream_audio(
             head_resp = await head_client.head(file_url)
             total_size = int(head_resp.headers.get("content-length", 0))
 
-        if not total_size:
-            # Fallback: full stream without Range support
-            client = httpx.AsyncClient(timeout=30.0)
-            req = client.build_request("GET", file_url)
-            response = await client.send(req, stream=True, follow_redirects=True)
-            if response.status_code >= 400:
-                await response.aclose()
-                await client.aclose()
-                raise HTTPException(
-                    status_code=502, detail="Failed to fetch audio from Google Drive"
-                )
+        async def _stream_drive(
+            extra_headers: dict[str, str] | None = None,
+        ) -> tuple[httpx.AsyncClient, httpx.Response]:
+            """Open a streaming GET to Drive, checking status.
 
-            async def generate():
-                try:
-                    async for chunk in response.aiter_bytes(chunk_size=8192):
-                        yield chunk
-                finally:
+            Returns (client, response) — caller owns cleanup.
+            """
+            client = httpx.AsyncClient(timeout=30.0)
+            try:
+                req = client.build_request("GET", file_url, headers=extra_headers or {})
+                response = await client.send(req, stream=True, follow_redirects=True)
+                if response.status_code >= 400:
                     await response.aclose()
                     await client.aclose()
+                    raise HTTPException(
+                        status_code=502,
+                        detail="Failed to fetch audio from Google Drive",
+                    )
+                return client, response
+            except HTTPException:
+                raise
+            except Exception:
+                await client.aclose()
+                raise
 
+        async def _generate(client: httpx.AsyncClient, response: httpx.Response):
+            try:
+                async for chunk in response.aiter_bytes(chunk_size=8192):
+                    yield chunk
+            finally:
+                await response.aclose()
+                await client.aclose()
+
+        common_headers = {
+            "Accept-Ranges": "bytes",
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Cache-Control": "public, max-age=3600",
+        }
+
+        if not total_size:
+            # Fallback: full stream without Range support
+            client, response = await _stream_drive()
             return StreamingResponse(
-                generate(),
+                _generate(client, response),
                 media_type=media_type,
-                headers={
-                    "Accept-Ranges": "bytes",
-                    "Content-Disposition": f'inline; filename="{filename}"',
-                    "Cache-Control": "public, max-age=3600",
-                },
+                headers=common_headers,
             )
 
         # Parse Range header
@@ -132,62 +155,26 @@ async def stream_audio(
             end = min(end, total_size - 1)
             content_length = end - start + 1
 
-            client = httpx.AsyncClient(timeout=30.0)
-            req = client.build_request(
-                "GET", file_url, headers={"Range": f"bytes={start}-{end}"}
+            client, response = await _stream_drive(
+                extra_headers={"Range": f"bytes={start}-{end}"}
             )
-            response = await client.send(req, stream=True, follow_redirects=True)
-
-            async def generate_range():
-                try:
-                    async for chunk in response.aiter_bytes(chunk_size=8192):
-                        yield chunk
-                finally:
-                    await response.aclose()
-                    await client.aclose()
-
             return StreamingResponse(
-                generate_range(),
+                _generate(client, response),
                 status_code=206,
                 media_type=media_type,
                 headers={
-                    "Accept-Ranges": "bytes",
+                    **common_headers,
                     "Content-Range": f"bytes {start}-{end}/{total_size}",
                     "Content-Length": str(content_length),
-                    "Content-Disposition": f'inline; filename="{filename}"',
-                    "Cache-Control": "public, max-age=3600",
                 },
             )
 
         # No Range header: full stream with Content-Length
-        client = httpx.AsyncClient(timeout=30.0)
-        req = client.build_request("GET", file_url)
-        response = await client.send(req, stream=True, follow_redirects=True)
-
-        if response.status_code >= 400:
-            await response.aclose()
-            await client.aclose()
-            raise HTTPException(
-                status_code=502, detail="Failed to fetch audio from Google Drive"
-            )
-
-        async def generate_full():
-            try:
-                async for chunk in response.aiter_bytes(chunk_size=8192):
-                    yield chunk
-            finally:
-                await response.aclose()
-                await client.aclose()
-
+        client, response = await _stream_drive()
         return StreamingResponse(
-            generate_full(),
+            _generate(client, response),
             media_type=media_type,
-            headers={
-                "Accept-Ranges": "bytes",
-                "Content-Length": str(total_size),
-                "Content-Disposition": f'inline; filename="{filename}"',
-                "Cache-Control": "public, max-age=3600",
-            },
+            headers={**common_headers, "Content-Length": str(total_size)},
         )
 
     except HTTPException:
@@ -203,6 +190,7 @@ async def get_audio_info(
         default=None,
         description="Specific date for audio file (YYYY-MM-DD format)",
     ),
+    current_user: dict = Depends(get_current_user),
 ):
     """Get audio file information without streaming."""
     try:

@@ -43,7 +43,6 @@ async def call_openai(system_prompt: str, user_prompt: str) -> LLMResult:
                 response.usage.completion_tokens if response.usage else 0
             ),
         }
-        parsed = extract_json(raw)
         latency = int((time.monotonic() - start) * 1000)
         logger.info(
             "OpenAI: %din/%dout, %dms",
@@ -51,6 +50,22 @@ async def call_openai(system_prompt: str, user_prompt: str) -> LLMResult:
             usage["output_tokens"],
             latency,
         )
+        try:
+            parsed = extract_json(raw)
+        except ValueError as parse_err:
+            logger.warning(
+                "JSON parse failed — raw LLM response (%d chars): %s",
+                len(raw),
+                raw[:2000],
+            )
+            return LLMResult(
+                raw_text=raw,
+                parsed=None,
+                usage=usage,
+                success=False,
+                error=f"JSON parse failed: {parse_err}",
+                latency_ms=latency,
+            )
         return LLMResult(
             raw_text=raw,
             parsed=parsed,

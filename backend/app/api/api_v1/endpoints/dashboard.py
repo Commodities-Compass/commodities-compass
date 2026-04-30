@@ -16,6 +16,7 @@ from app.core.rate_limit import limiter
 
 from app.core.database import get_db
 from app.core.auth import get_current_user
+from app.schemas.auth import NonTradingDaysResponse
 from app.schemas.dashboard import (
     PositionStatusResponse,
     IndicatorsGridResponse,
@@ -36,6 +37,10 @@ from app.services.dashboard_service import (
     get_latest_market_research,
     get_latest_weather_data,
     get_theme_sentiments,
+)
+from app.utils.contract_resolver import (
+    get_active_contract_id,
+    get_active_algorithm_version_id,
 )
 from app.services.dashboard_transformers import (
     transform_to_position_status_response,
@@ -139,8 +144,14 @@ async def get_position_status(
         if target_date:
             business_date = await _parse_and_validate_date(target_date, db)
 
+        # Resolve contract/algo once, pass to both service calls
+        contract_id = await get_active_contract_id(db)
+        algo_id = await get_active_algorithm_version_id(db)
+
         # Get position and YTD performance from service layer
-        position = await get_position_from_technicals(db, business_date)
+        position = await get_position_from_technicals(
+            db, business_date, contract_id=contract_id, algo_id=algo_id
+        )
         ytd_performance = await calculate_ytd_performance(db, business_date)
 
         # Use business_date for response, or current date if not provided
@@ -578,7 +589,7 @@ async def get_audio(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/non-trading-days")
+@router.get("/non-trading-days", response_model=NonTradingDaysResponse)
 @limiter.limit("10/minute")
 async def get_non_trading_days(
     request: Request,

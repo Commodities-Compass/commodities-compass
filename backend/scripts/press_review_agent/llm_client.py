@@ -27,6 +27,38 @@ class LLMResult:
     latency_ms: int = 0
 
 
+def _try_parse_json(
+    raw: str, provider: Provider, usage: dict[str, int], latency: int
+) -> LLMResult:
+    """Parse JSON from raw LLM text. Log warning + fail on parse error."""
+    try:
+        parsed = extract_json(raw)
+    except ValueError as parse_err:
+        logger.warning(
+            "[%s] JSON parse failed — raw LLM response (%d chars): %s",
+            provider.value,
+            len(raw),
+            raw[:2000],
+        )
+        return LLMResult(
+            provider=provider,
+            raw_text=raw,
+            parsed=None,
+            usage=usage,
+            success=False,
+            error=f"JSON parse failed: {parse_err}",
+            latency_ms=latency,
+        )
+    return LLMResult(
+        provider=provider,
+        raw_text=raw,
+        parsed=parsed,
+        usage=usage,
+        success=True,
+        latency_ms=latency,
+    )
+
+
 async def call_claude(system_prompt: str, user_prompt: str) -> LLMResult:
     """Call Anthropic Claude Sonnet 4.5."""
     provider = Provider.CLAUDE
@@ -44,23 +76,17 @@ async def call_claude(system_prompt: str, user_prompt: str) -> LLMResult:
             "input_tokens": response.usage.input_tokens,
             "output_tokens": response.usage.output_tokens,
         }
-        parsed = extract_json(raw)
         latency = int((time.monotonic() - start) * 1000)
         logger.info(
-            f"Claude: {usage['input_tokens']}in/{usage['output_tokens']}out, "
-            f"{latency}ms"
+            "Claude: %din/%dout, %dms",
+            usage["input_tokens"],
+            usage["output_tokens"],
+            latency,
         )
-        return LLMResult(
-            provider=provider,
-            raw_text=raw,
-            parsed=parsed,
-            usage=usage,
-            success=True,
-            latency_ms=latency,
-        )
+        return _try_parse_json(raw, provider, usage, latency)
     except Exception as e:
         latency = int((time.monotonic() - start) * 1000)
-        logger.error(f"Claude failed: {e}")
+        logger.error("Claude failed: %s", e)
         return LLMResult(
             provider=provider,
             raw_text="",
@@ -95,23 +121,17 @@ async def call_openai(system_prompt: str, user_prompt: str) -> LLMResult:
                 response.usage.completion_tokens if response.usage else 0
             ),
         }
-        parsed = extract_json(raw)
         latency = int((time.monotonic() - start) * 1000)
         logger.info(
-            f"OpenAI: {usage['input_tokens']}in/{usage['output_tokens']}out, "
-            f"{latency}ms"
+            "OpenAI: %din/%dout, %dms",
+            usage["input_tokens"],
+            usage["output_tokens"],
+            latency,
         )
-        return LLMResult(
-            provider=provider,
-            raw_text=raw,
-            parsed=parsed,
-            usage=usage,
-            success=True,
-            latency_ms=latency,
-        )
+        return _try_parse_json(raw, provider, usage, latency)
     except Exception as e:
         latency = int((time.monotonic() - start) * 1000)
-        logger.error(f"OpenAI failed: {e}")
+        logger.error("OpenAI failed: %s", e)
         return LLMResult(
             provider=provider,
             raw_text="",
@@ -148,23 +168,17 @@ async def call_gemini(system_prompt: str, user_prompt: str) -> LLMResult:
                 response.usage_metadata, "candidates_token_count", 0
             ),
         }
-        parsed = extract_json(raw)
         latency = int((time.monotonic() - start) * 1000)
         logger.info(
-            f"Gemini: {usage['input_tokens']}in/{usage['output_tokens']}out, "
-            f"{latency}ms"
+            "Gemini: %din/%dout, %dms",
+            usage["input_tokens"],
+            usage["output_tokens"],
+            latency,
         )
-        return LLMResult(
-            provider=provider,
-            raw_text=raw,
-            parsed=parsed,
-            usage=usage,
-            success=True,
-            latency_ms=latency,
-        )
+        return _try_parse_json(raw, provider, usage, latency)
     except Exception as e:
         latency = int((time.monotonic() - start) * 1000)
-        logger.error(f"Gemini failed: {e}")
+        logger.error("Gemini failed: %s", e)
         return LLMResult(
             provider=provider,
             raw_text="",

@@ -202,16 +202,26 @@ def parse_recommendations_text(text: str) -> list[str]:
 
 
 async def get_position_from_technicals(
-    db: AsyncSession, target_date: Optional[date] = None
+    db: AsyncSession,
+    target_date: Optional[date] = None,
+    *,
+    contract_id: Optional[uuid.UUID] = None,
+    algo_id: Optional[uuid.UUID] = None,
 ) -> Optional[str]:
-    """Get the trading position (OPEN/HEDGE/MONITOR) for a given date."""
-    if target_date:
-        contract_id = await _resolve_contract_for_date(db, target_date)
-        if not contract_id:
-            return None
-    else:
-        contract_id = await get_active_contract_id(db)
-    algo_id = await get_active_algorithm_version_id(db)
+    """Get the trading position (OPEN/HEDGE/MONITOR) for a given date.
+
+    Pass contract_id/algo_id to skip redundant resolver calls when the
+    caller has already resolved them (e.g., dashboard endpoint).
+    """
+    if contract_id is None:
+        if target_date:
+            contract_id = await _resolve_contract_for_date(db, target_date)
+            if not contract_id:
+                return None
+        else:
+            contract_id = await get_active_contract_id(db)
+    if algo_id is None:
+        algo_id = await get_active_algorithm_version_id(db)
 
     query = select(PlIndicatorDaily.decision).where(
         and_(
@@ -319,16 +329,22 @@ async def calculate_ytd_performance(
 
 
 async def get_indicators_with_ranges(
-    db: AsyncSession, target_date: Optional[date] = None
+    db: AsyncSession,
+    target_date: Optional[date] = None,
+    *,
+    contract_id: Optional[uuid.UUID] = None,
+    algo_id: Optional[uuid.UUID] = None,
 ) -> Dict[str, Dict[str, Any]]:
     """Get all indicators with their ranges for a given date."""
-    if target_date:
-        contract_id = await _resolve_contract_for_date(db, target_date)
-        if not contract_id:
-            return {}
-    else:
-        contract_id = await get_active_contract_id(db)
-    algo_id = await get_active_algorithm_version_id(db)
+    if contract_id is None:
+        if target_date:
+            contract_id = await _resolve_contract_for_date(db, target_date)
+            if not contract_id:
+                return {}
+        else:
+            contract_id = await get_active_contract_id(db)
+    if algo_id is None:
+        algo_id = await get_active_algorithm_version_id(db)
 
     query = select(PlIndicatorDaily).where(
         and_(
@@ -422,7 +438,11 @@ async def _build_indicators_dict(
 
 
 async def get_latest_recommendations(
-    db: AsyncSession, target_date: Optional[date] = None
+    db: AsyncSession,
+    target_date: Optional[date] = None,
+    *,
+    contract_id: Optional[uuid.UUID] = None,
+    algo_id: Optional[uuid.UUID] = None,
 ) -> tuple[List[str], Optional[str], Optional[date]]:
     """Get the latest recommendations from pl_indicator_daily.conclusion.
 
@@ -430,13 +450,15 @@ async def get_latest_recommendations(
     for the target date, tries any contract that does (transition days
     where both old and new contract have rows but only one has a conclusion).
     """
-    if target_date:
-        contract_id = await _resolve_contract_for_date(db, target_date)
-        if not contract_id:
-            return [], None, None
-    else:
-        contract_id = await get_active_contract_id(db)
-    algo_id = await get_active_algorithm_version_id(db)
+    if contract_id is None:
+        if target_date:
+            contract_id = await _resolve_contract_for_date(db, target_date)
+            if not contract_id:
+                return [], None, None
+        else:
+            contract_id = await get_active_contract_id(db)
+    if algo_id is None:
+        algo_id = await get_active_algorithm_version_id(db)
 
     query = select(PlIndicatorDaily.conclusion, PlIndicatorDaily.date).where(
         and_(
@@ -651,6 +673,22 @@ async def get_theme_sentiments(
     if not segments:
         return None
 
+    # Batch-fetch all z-delta values for this date (avoids N+1 queries)
+    zscore_by_theme: dict[str, float] = {}
+    if target_date:
+        feat_query = select(
+            PlSentimentFeature.theme, PlSentimentFeature.zscore_delta
+        ).where(
+            PlSentimentFeature.date == target_date,
+            PlSentimentFeature.min_periods_met.is_(True),
+        )
+        feat_result = await db.execute(feat_query)
+        zscore_by_theme = {
+            r.theme: float(r.zscore_delta)
+            for r in feat_result.all()
+            if r.zscore_delta is not None
+        }
+
     # Build theme data from segments
     themes: list[Dict[str, Any]] = []
     for row in segments:
@@ -661,22 +699,9 @@ async def get_theme_sentiments(
             else None,
             "confidence": float(row.confidence) if row.confidence is not None else None,
             "rationale": row.facts,
-            "zscore_delta": None,
+            "zscore_delta": zscore_by_theme.get(row.theme),
             "has_signal": row.theme in SIGNAL_THEMES,
         }
-
-        # Try to get z-delta from pl_sentiment_feature
-        if target_date:
-            feat_query = select(PlSentimentFeature.zscore_delta).where(
-                PlSentimentFeature.date == target_date,
-                PlSentimentFeature.theme == row.theme,
-                PlSentimentFeature.min_periods_met.is_(True),
-            )
-            feat_result = await db.execute(feat_query)
-            feat_row = feat_result.scalar_one_or_none()
-            if feat_row is not None:
-                theme_data["zscore_delta"] = float(feat_row)
-
         themes.append(theme_data)
 
     # Count total days with sentiment data (for accumulation tracking)

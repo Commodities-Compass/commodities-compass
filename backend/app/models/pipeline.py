@@ -393,7 +393,7 @@ class PlSentimentFeature(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     date: Mapped[date] = mapped_column(DATE, nullable=False, index=True)
     theme: Mapped[str] = mapped_column(VARCHAR(30), nullable=False)
-    raw_score: Mapped[Optional[float]] = mapped_column(DECIMAL(4, 3))
+    raw_score: Mapped[Optional[float]] = mapped_column(DECIMAL(6, 3))
     zscore: Mapped[Optional[float]] = mapped_column(DECIMAL(6, 3))
     zscore_delta: Mapped[Optional[float]] = mapped_column(DECIMAL(6, 3))
     min_periods_met: Mapped[bool] = mapped_column(Boolean, default=False)

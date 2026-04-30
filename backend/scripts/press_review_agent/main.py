@@ -195,10 +195,12 @@ def main() -> int:
                             dry_run=args.dry_run,
                         )
                     except Exception as e:
-                        logger.warning(
-                            f"[{result.provider.value}] "
-                            f"Theme sentiment write failed (non-blocking): {e}"
+                        logger.error(
+                            "[%s] Theme sentiment write FAILED: %s",
+                            result.provider.value,
+                            e,
                         )
+                        raise
 
             any_success = True
 

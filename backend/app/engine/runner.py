@@ -329,7 +329,12 @@ def _write_results_per_contract(
     algo_version_id: uuid.UUID,
     config: AlgorithmConfig,
 ) -> dict[str, int]:
-    """Write results grouped by contract_id. Returns total counts."""
+    """Write results grouped by contract_id, using savepoints.
+
+    Each contract's writes are wrapped in a SAVEPOINT so that a failure
+    in contract N+1 doesn't leave contract N permanently committed while
+    contract N+1 has partial deletes. All contracts commit atomically.
+    """
     totals: dict[str, int] = {
         "pl_derived_indicators": 0,
         "pl_indicator_daily": 0,
@@ -345,16 +350,20 @@ def _write_results_per_contract(
         )
         logger.info("Writing %d rows for %s", len(group_df), contract_code)
 
-        counts = write_pipeline_results(
-            session=session,
-            signals_df=group_df,
-            contract_id=uuid.UUID(str(contract_id)),
-            algorithm_version_id=algo_version_id,
-            config=config,
-        )
+        with session.begin_nested():  # SAVEPOINT per contract
+            counts = write_pipeline_results(
+                session=session,
+                signals_df=group_df,
+                contract_id=uuid.UUID(str(contract_id)),
+                algorithm_version_id=algo_version_id,
+                config=config,
+                commit=False,
+            )
         for key in totals:
             totals[key] += counts[key]
 
+    session.commit()
+    logger.info("Committed all contract writes atomically")
     return totals
 
 

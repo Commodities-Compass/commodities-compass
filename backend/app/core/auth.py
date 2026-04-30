@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any
 
 import httpx
@@ -12,34 +13,46 @@ from app.core.config import settings
 
 # JWKS cache with 6 hour TTL
 jwks_cache: TTLCache[str, Any] = TTLCache(maxsize=1, ttl=21600)
+_jwks_lock: asyncio.Lock = asyncio.Lock()
 
 
 async def get_jwks() -> dict[str, Any]:
-    """Fetch and cache JWKS from Auth0 (async, with timeout)."""
+    """Fetch and cache JWKS from Auth0 (async, with timeout).
+
+    Uses double-check locking to prevent thundering herd on TTL expiry.
+    """
     try:
         if "jwks" in jwks_cache:
             return jwks_cache["jwks"]
     except KeyError:
         pass
 
-    jwks_url = f"https://{settings.AUTH0_DOMAIN}/.well-known/jwks.json"
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(jwks_url)
-            response.raise_for_status()
-            jwks_data = response.json()
-            jwks_cache["jwks"] = jwks_data
-            return jwks_data
-    except httpx.RequestError as e:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Could not fetch JWKS for token validation.",
-        ) from e
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error processing JWKS for token validation.",
-        ) from e
+    async with _jwks_lock:
+        # Double-check after acquiring lock
+        try:
+            if "jwks" in jwks_cache:
+                return jwks_cache["jwks"]
+        except KeyError:
+            pass
+
+        jwks_url = f"https://{settings.AUTH0_DOMAIN}/.well-known/jwks.json"
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(jwks_url)
+                response.raise_for_status()
+                jwks_data = response.json()
+                jwks_cache["jwks"] = jwks_data
+                return jwks_data
+        except httpx.RequestError as e:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Could not fetch JWKS for token validation.",
+            ) from e
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error processing JWKS for token validation.",
+            ) from e
 
 
 async def validate_auth0_token(token: str) -> dict:

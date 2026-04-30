@@ -25,7 +25,7 @@ def get_current_contract_code() -> str:
     if _resolved_contract is not None:
         return _resolved_contract
 
-    # Try DB first
+    # Try DB first — only fall back to env var for transient DB errors
     try:
         from scripts.contract_resolver import resolve_active_code
         from scripts.db import get_session
@@ -35,8 +35,22 @@ def get_current_contract_code() -> str:
         _resolved_contract = code
         _logger.info("Active contract: %s (source: database)", code)
         return code
-    except Exception as exc:
+    except (OSError, ConnectionError) as exc:
+        # Transient: network/connection issues → env var fallback is acceptable
         _logger.warning("DB contract lookup failed (%s), trying env var fallback", exc)
+    except Exception as exc:
+        # Import, Attribute, Type, Key errors = code bugs → must not hide
+        try:
+            from sqlalchemy.exc import OperationalError, InterfaceError
+
+            if isinstance(exc, (OperationalError, InterfaceError)):
+                _logger.warning(
+                    "DB contract lookup failed (%s), trying env var fallback", exc
+                )
+            else:
+                raise
+        except ImportError:
+            raise exc from None
 
     # Fallback to env var
     env_code = os.getenv("ACTIVE_CONTRACT", "")

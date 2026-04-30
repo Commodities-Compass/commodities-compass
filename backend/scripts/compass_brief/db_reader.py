@@ -90,10 +90,41 @@ _INDICATOR_MAP: dict[str, tuple[str, str]] = {
 }
 
 
-_INDICATOR_DAILY_FILTER = """
-    JOIN pl_algorithm_version av ON i.algorithm_version_id = av.id AND av.is_active = true
-    JOIN ref_contract rc ON i.contract_id = rc.id AND rc.is_active = true
-"""
+_INDICATOR_DAILY_JOIN = (
+    " JOIN pl_algorithm_version av ON i.algorithm_version_id = av.id AND av.is_active = true"
+    " JOIN ref_contract rc ON i.contract_id = rc.id AND rc.is_active = true"
+)
+
+# Pre-built queries — no f-string interpolation inside text()
+_INDICATOR_FULL_QUERY = text(
+    "SELECT"
+    " i.rsi_score, i.macd_score, i.stochastic_score, i.atr_score,"
+    " i.close_pivot, i.volume_oi,"
+    " i.rsi_norm, i.macd_norm, i.stoch_k_norm, i.atr_norm,"
+    " i.close_pivot_norm, i.vol_oi_norm,"
+    " i.indicator_value, i.momentum,"
+    " i.macroeco_bonus, i.macroeco_score,"
+    " i.final_indicator, i.decision, i.eco"
+    " FROM pl_indicator_daily i"
+    + _INDICATOR_DAILY_JOIN
+    + " WHERE i.date = :target_date"
+    " ORDER BY i.created_at DESC LIMIT 1"
+)
+_CONFIDENCE_QUERY = text(
+    "SELECT i.confidence FROM pl_indicator_daily i"
+    + _INDICATOR_DAILY_JOIN
+    + " WHERE i.date = :target_date ORDER BY i.created_at DESC LIMIT 1"
+)
+_DIRECTION_QUERY = text(
+    "SELECT i.direction FROM pl_indicator_daily i"
+    + _INDICATOR_DAILY_JOIN
+    + " WHERE i.date = :target_date ORDER BY i.created_at DESC LIMIT 1"
+)
+_SCORE_TEXT_QUERY = text(
+    "SELECT i.conclusion FROM pl_indicator_daily i"
+    + _INDICATOR_DAILY_JOIN
+    + " WHERE i.date = :target_date ORDER BY i.created_at DESC LIMIT 1"
+)
 
 
 class DBBriefReader:
@@ -190,21 +221,7 @@ class DBBriefReader:
     def _read_indicators(self, target_date: date) -> dict[str, str]:
         """Read indicator scores + norms + composite for a date."""
         result = self._session.execute(
-            text(f"""
-                SELECT
-                    i.rsi_score, i.macd_score, i.stochastic_score, i.atr_score,
-                    i.close_pivot, i.volume_oi,
-                    i.rsi_norm, i.macd_norm, i.stoch_k_norm, i.atr_norm,
-                    i.close_pivot_norm, i.vol_oi_norm,
-                    i.indicator_value, i.momentum,
-                    i.macroeco_bonus, i.macroeco_score,
-                    i.final_indicator, i.decision, i.eco
-                FROM pl_indicator_daily i
-                {_INDICATOR_DAILY_FILTER}
-                WHERE i.date = :target_date
-                ORDER BY i.created_at DESC
-                LIMIT 1
-            """),
+            _INDICATOR_FULL_QUERY,
             {"target_date": target_date},
         )
         row = result.fetchone()
@@ -224,12 +241,7 @@ class DBBriefReader:
     def _read_confidence(self, target_date: date) -> str:
         """Read LLM confidence for a date."""
         result = self._session.execute(
-            text(f"""
-                SELECT i.confidence FROM pl_indicator_daily i
-                {_INDICATOR_DAILY_FILTER}
-                WHERE i.date = :target_date
-                ORDER BY i.created_at DESC LIMIT 1
-            """),
+            _CONFIDENCE_QUERY,
             {"target_date": target_date},
         )
         row = result.fetchone()
@@ -238,12 +250,7 @@ class DBBriefReader:
     def _read_direction(self, target_date: date) -> str:
         """Read LLM direction for a date."""
         result = self._session.execute(
-            text(f"""
-                SELECT i.direction FROM pl_indicator_daily i
-                {_INDICATOR_DAILY_FILTER}
-                WHERE i.date = :target_date
-                ORDER BY i.created_at DESC LIMIT 1
-            """),
+            _DIRECTION_QUERY,
             {"target_date": target_date},
         )
         row = result.fetchone()
@@ -252,12 +259,7 @@ class DBBriefReader:
     def _read_score_text(self, target_date: date) -> str:
         """Read LLM conclusion/score text for a date."""
         result = self._session.execute(
-            text(f"""
-                SELECT i.conclusion FROM pl_indicator_daily i
-                {_INDICATOR_DAILY_FILTER}
-                WHERE i.date = :target_date
-                ORDER BY i.created_at DESC LIMIT 1
-            """),
+            _SCORE_TEXT_QUERY,
             {"target_date": target_date},
         )
         row = result.fetchone()

@@ -146,11 +146,20 @@ class AudioService:
             return result
 
         except HttpError as e:
-            logger.error("Google Drive API error: %s", e)
-            return None
+            if e.resp and e.resp.status in (404,):
+                logger.warning("Audio file not found (Drive 404): %s", e)
+                self._file_cache[cache_key] = (None, time.monotonic())
+                return None
+            # 403, 429, 500, etc. = service issue, not "file missing"
+            logger.error(
+                "Google Drive API error (status=%s): %s",
+                getattr(e.resp, "status", "?"),
+                e,
+            )
+            raise
         except Exception as e:
             logger.error("Unexpected error retrieving audio file: %s", e)
-            return None
+            raise
 
 
 # Lazy singleton — won't crash if env vars are missing at import time

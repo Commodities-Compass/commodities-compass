@@ -1,7 +1,10 @@
 import axios from 'axios';
-import * as Sentry from '@sentry/react';
 
 const API_BASE_URL = import.meta.env.API_BASE_URL || 'http://localhost:8000/api/v1';
+
+if (!import.meta.env.API_BASE_URL && import.meta.env.PROD) {
+  throw new Error('Missing required env var: API_BASE_URL');
+}
 
 let tokenGetter: (() => Promise<string>) | null = null;
 
@@ -51,12 +54,10 @@ apiClient.interceptors.response.use(
       sessionStorage.setItem('auth_401_error', 'true');
       window.dispatchEvent(new CustomEvent('auth:token-expired'));
     } else {
-      Sentry.captureException(error, {
-        tags: {
-          api_url: error.config?.url,
-          api_status: String(error.response?.status ?? 'network'),
-        },
-      });
+      console.error(
+        `[API Error] ${error.config?.method?.toUpperCase()} ${error.config?.url} — status=${error.response?.status ?? 'network'}`,
+        error,
+      );
     }
     return Promise.reject(error);
   },

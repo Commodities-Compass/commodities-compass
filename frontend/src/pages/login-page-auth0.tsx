@@ -56,7 +56,7 @@ export default function LoginPage() {
       const isLooping = detectRedirectLoop();
 
       if (isLooping) {
-        console.warn('Redirect loop detected - forcing logout to break cycle');
+        console.error('[Auth] Redirect loop detected — forcing logout to break cycle');
         logoutTriggeredRef.current = true;
 
         // Clear redirect loop tracking

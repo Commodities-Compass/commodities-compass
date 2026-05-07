@@ -286,6 +286,15 @@ Rules:
   State "non disponible dans les sources du jour" or simply skip that aspect.
 - Prefer a qualitative statement ("le marché reste sous pression") over fabricating a
   precise figure when no source provides one.
+- SOURCE ATTRIBUTION: When a source X in the payload itself cites or relays data from a
+  more primary source Y (a survey, a wire dispatch, an analyst note), attribute the data
+  to Y and explicitly mention X as the intermediary
+  (e.g. "selon l'enquête HSAT relayée par CocoaIntel"). Never name a source that is
+  NOT present in today's payload — do not infer Reuters, Bloomberg, or any wire if it is
+  not in the scraped content. If the primary source cannot be identified inside the
+  payload, attribute only to the source where you read the data, with no invented chain.
+  When the same claim recurs across days, keep the original attribution stable — do not
+  silently substitute a commenting analyst (e.g. StoneX) for the survey author.
 - Be direct and analytical, not promotional
 - Shorter and accurate is always better than long and speculative
 - Output ONLY the JSON object, no markdown fences, no commentary"""

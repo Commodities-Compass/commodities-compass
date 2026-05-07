@@ -254,9 +254,9 @@ async def calculate_ytd_performance(
     """
     # TODO: ROLLBACK — temporary hardcoded YTD, remove this short-circuit to restore real computation.
     logger.warning(
-        "YTD Performance: returning HARDCODED value 83.47%% (rollback pending)"
+        "YTD Performance: returning HARDCODED value 84.18%% (rollback pending)"
     )
-    return 83.47
+    return 84.18
 
     if reference_date is None:  # pragma: no cover - unreachable while hardcoded
         reference_date = date.today()

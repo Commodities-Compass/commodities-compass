@@ -202,7 +202,11 @@ class WeatherEnrichedResponse(WeatherResponse):
         None, description="Campaign identifier (e.g. 2025-2026)"
     )
     campaign_health: Optional[float] = Field(
-        None, description="Average score across all location-seasons"
+        None,
+        description=(
+            "Worst-season average score (1-5). Tracks the most stressed "
+            "phenological window per Copernicus EDO / Climate Central methodology."
+        ),
     )
     seasons: List[SeasonStatus] = Field(
         default_factory=list, description="Season statuses"

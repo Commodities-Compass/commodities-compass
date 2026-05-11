@@ -90,11 +90,21 @@ async def get_seasonal_scores(db: AsyncSession, campaign: str) -> list[PlSeasona
 
 
 def compute_campaign_health(scores: list[PlSeasonalScore]) -> Optional[float]:
-    """Average score across all location-season rows. None if no data."""
+    """Campaign health = average score of the WORST season.
+
+    Per Copernicus EDO peak-severity and Climate Central per-season methodology:
+    a campaign-wide average dilutes acute stress windows (e.g. 2024-2025 saison
+    sèche) with normal seasons. The headline tracks the worst phenological
+    window so the trader-facing label stays risk-aware. The per-season detail
+    is exposed via `build_season_statuses`.
+    """
     if not scores:
         return None
-    total = sum(float(s.score) for s in scores)
-    return round(total / len(scores), 1)
+    season_scores: dict[str, list[float]] = {}
+    for s in scores:
+        season_scores.setdefault(s.season_name, []).append(float(s.score))
+    season_avgs = [sum(v) / len(v) for v in season_scores.values()]
+    return round(min(season_avgs), 1)
 
 
 def build_season_statuses(

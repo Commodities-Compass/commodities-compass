@@ -518,10 +518,15 @@ def compute_season_stats(
 def compute_score(
     stats: LocationSeasonStats,
     season: SeasonalProfile,
+    harmattan_days: int | None = None,
 ) -> float:
     """Deterministic score (1.0-5.0) based on deviation from seasonal norms.
 
-    Starts at 5.0 (perfect) and applies penalties.
+    Starts at 5.0 (perfect) and applies penalties:
+    - Precipitation deviation vs seasonal norm
+    - Heat stress ratio (days above season's tmax threshold)
+    - Persistent water deficit (avg balance < -5 mm/day)
+    - Harmattan days (only when caller provides them, typically saison_seche)
     """
     score = 5.0
     norm_range = _PRECIP_30D_NORMS.get(season.name, (0, 999))
@@ -556,11 +561,29 @@ def compute_score(
         elif stress_ratio > 0.15:
             score -= 0.5
 
-    # Water balance bonus/penalty
+    # Water balance penalty — tiered (was a single -5.0 threshold which missed
+    # the persistent multi-month deficits like Daloa 2024-2025 saison sèche at
+    # -3.96 mm/day for 121 days). Tiers calibrated against the 2024-2025 inland
+    # belt: -3 mm/day = real drought, -5 = severe, -6+ = catastrophic.
     if stats.total_days > 0:
         avg_daily_balance = stats.cumulative_balance_mm / stats.total_days
-        if avg_daily_balance < -5.0:
-            score -= 0.5  # persistent deep deficit
+        if avg_daily_balance < -6.0:
+            score -= 1.5
+        elif avg_daily_balance < -4.0:
+            score -= 1.0
+        elif avg_daily_balance < -2.5:
+            score -= 0.5
+
+    # Harmattan penalty — only when caller passes a count (i.e., saison_seche).
+    # Tiered against HARMATTAN_IMPACT_DAYS (24, project's critical threshold).
+    # Backed by USDA FAS / ICCO -10 to -20% yield impact for high-Harmattan years.
+    if harmattan_days is not None:
+        if harmattan_days >= HARMATTAN_IMPACT_DAYS:
+            score -= 2.0
+        elif harmattan_days >= 18:
+            score -= 1.0
+        elif harmattan_days >= 12:
+            score -= 0.5
 
     return max(1.0, min(5.0, round(score * 2) / 2))  # clamp + round to 0.5
 
@@ -663,15 +686,16 @@ def compute_and_store_season(
             loc.country,
             season_range.season.tmax_stress_threshold,
         )
-        score_val = compute_score(stats, season_range.season)
-        stats_list.append(stats)
-        scores.append(score_val)
 
-        # Compute Harmattan days if data available
+        # Compute Harmattan days FIRST — feeds into the score (saison_seche only).
         h_days = None
         if harmattan_raw and i < len(harmattan_raw):
             h_days = compute_harmattan_days(harmattan_raw[i], season_range.start_date)
             harmattan_days_per_location.append(h_days)
+
+        score_val = compute_score(stats, season_range.season, harmattan_days=h_days)
+        stats_list.append(stats)
+        scores.append(score_val)
 
         logger.info(
             "  %s: precip=%.0fmm, ET0=%.0fmm, balance=%+.0fmm, "
@@ -782,18 +806,36 @@ def build_campaign_memory(session: Session, target_date: date | None = None) -> 
             f"Meilleure: {best}, pire: {worst}. [{status}]"
         )
 
-    # Summary line
+    # Summary line — label driven by the WORST season (Copernicus EDO peak-severity
+    # and Climate Central per-season methodology). A campaign-wide average dilutes
+    # acute stress windows (e.g., 2024-2025 saison_sèche) with normal seasons.
+    season_avgs = {
+        season_name: sum(float(r[7]) for r in season_rows) / len(season_rows)
+        for season_name, season_rows in seasons.items()
+    }
+    worst_season_name = min(season_avgs, key=lambda k: season_avgs[k])
+    worst_season_avg = season_avgs[worst_season_name]
+
     all_scores = [float(r[7]) for r in rows]
     campaign_avg = sum(all_scores) / len(all_scores)
-    if campaign_avg >= 4.0:
+
+    if worst_season_avg >= 4.0:
         health = "Réserves hydriques bien constituées. Stress ponctuel absorbable."
-    elif campaign_avg >= 3.0:
+    elif worst_season_avg >= 3.0:
         health = "Campagne correcte. Vigilance sur les localités les plus faibles."
-    elif campaign_avg >= 2.0:
+    elif worst_season_avg >= 2.0:
         health = "Campagne dégradée. Stress cumulé significatif, sensibilité élevée."
     else:
-        health = "Campagne critique. Déficits cumulés importants, tout stress additionnel est amplifié."
+        health = (
+            "Campagne critique. Déficits cumulés importants, "
+            "tout stress additionnel est amplifié."
+        )
 
-    lines.append(f"→ Santé campagne : {campaign_avg:.1f}/5 — {health}")
+    worst_display = worst_season_name.replace("_", " ")
+    lines.append(
+        f"→ Santé campagne : pire saison = {worst_display} "
+        f"({worst_season_avg:.1f}/5) — {health} "
+        f"(moyenne globale {campaign_avg:.1f}/5)"
+    )
 
     return "\n".join(lines)

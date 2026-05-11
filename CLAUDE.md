@@ -248,32 +248,7 @@ The frontend calendar shows `display_date` values. Non-trading days (weekends + 
 
 ### Contract Roll Procedure
 
-Rolling the active contract (e.g., CAK26 → CAN26) when OI shifts to the next delivery month:
-
-1. **Backfill** (optional but recommended): Insert 5-10 days of the new contract's OHLCV+OI into `pl_contract_data_daily` from Barchart charts. Copy `stock_us`/`com_net_us` from the old contract's rows (commodity-level, same values). This smooths the price transition — the compute engine's `DISTINCT ON (date) ORDER BY oi DESC` picks the front-month automatically at the OI crossover.
-2. **Roll**: `poetry run roll-contract CAN26` (or direct SQL: `UPDATE ref_contract SET is_active = false WHERE is_active = true; UPDATE ref_contract SET is_active = true WHERE code = 'CAN26';`). Run against GCP prod via bastion — the CLI uses the local `.env` DATABASE_URL.
-3. **Deploy** code if any fixes were made, then **recompute**: `gcloud run jobs execute cc-compute-indicators --args="compute-indicators,--all-contracts,--all-versions,--full" --region=europe-west9 --project=cacaooo`
-4. **Verify**: Check `pl_indicator_daily` has rows for the new contract, check dashboard shows new contract data.
-
-**Bugs fixed during CAK26→CAN26 roll (2026-04-14):**
-- Daily analysis had hardcoded `--contract CAK26` default — now resolves from DB via `resolve_active_code()`
-- Daily analysis `_read_technicals()` SQL had no contract filter — now filters by active contract with cross-contract fallback for transition days
-- Compass brief queries had no contract filter — now all queries filter by `ref_contract.is_active = true`
-- Compute engine `load_all_market_data()` could interleave overlapping contract data — now uses `DISTINCT ON (date) ORDER BY oi DESC` to pick front-month per date
-- Press review prompt didn't include active contract info — LLM guessed "mai" from news sources instead of "juillet". Now injects `contract_code` and `contract_month` into the prompt template
-
-**Dashboard cross-contract fallback (2026-04-20):**
-After the roll, navigating to historical dates (before the roll) showed empty gauges, no recommendations, and broken YTD — because all dashboard queries filtered by `contract_id = active_contract` (CAN26), but pre-roll data lives on CAK26. During transition days (April 10-13), both contracts have rows but only the old one (CAK26) has complete data (conclusion from daily analysis).
-
-Fix: `_resolve_contract_for_date()` in `dashboard_service.py` resolves the best contract for any historical date, with priority:
-1. Active contract with complete data (conclusion IS NOT NULL)
-2. Any contract with complete data for that date (cross-contract fallback)
-3. Active contract with any row (indicators without conclusion)
-4. Any contract with market data (highest OI = front-month heuristic)
-
-YTD performance uses a separate cross-contract query (`DISTINCT ON (date) ORDER BY oi DESC`) to span contract rolls seamlessly over the full year.
-
-This ensures the dashboard always shows the best available data regardless of which contract was active at that historical date. The fallback is transparent to the user — no gaps when navigating across a roll boundary.
+When OI shifts to the next delivery month (e.g., `CAK26 → CAN26`), follow [docs/runbooks/contract-roll-procedure.md](docs/runbooks/contract-roll-procedure.md). Quick path: `poetry run roll-contract <NEW>` (against GCP via bastion) then trigger `cc-compute-indicators` with `--full --all-versions`. The runbook covers backfill, rollback, past incidents (CAK26→CAN26 bugs), and the dashboard cross-contract fallback (`_resolve_contract_for_date()` in `dashboard_service.py`) that ensures historical dates resolve correctly across rolls — no gaps when navigating across a roll boundary.
 
 ## AI Agents
 
@@ -295,7 +270,7 @@ Four LLM-powered agents run as GCP Cloud Run Jobs, each generating content for P
 
 - **Purpose**: Generates daily French-language cocoa press review from 6 news sources
 - **Provider**: OpenAI `o4-mini` (production). Claude and Gemini available via `--provider claude|gemini|all` for testing only.
-- **Active flag**: `pl_fundamental_article.is_active` controls which provider's articles the dashboard reads. Set by `PRODUCTION_PROVIDER` in `config.py`. To switch provider: update `PRODUCTION_PROVIDER` + backfill `UPDATE pl_fundamental_article SET is_active = true WHERE llm_provider = '<new>'`.
+- **Active flag**: `pl_fundamental_article.is_active` controls which provider's articles the dashboard reads. Set by `PRODUCTION_PROVIDER` in `config.py`. To switch provider, follow [docs/runbooks/press-review-provider-switch.md](docs/runbooks/press-review-provider-switch.md) (code constant + DB `is_active` backfill must happen together).
 - **Contract context**: The prompt injects the active contract code and delivery month (e.g., `CAN26`, `2026-07`) so the LLM references the correct contract — not what news sources mention (which may lag behind a roll).
 - **Output**: `pl_fundamental_article` (DB)
 - **Cron**: `5 19 * * 1-5` — **CLI**: `poetry run press-review [--dry-run]`
@@ -435,6 +410,8 @@ The `PositionStatus` component automatically fetches and plays the audio file:
 19:30  cc-compass-brief         → Google Drive (.txt for NotebookLM)
 ```
 
+When a job fails, follow [docs/runbooks/pipeline-failure-recovery.md](docs/runbooks/pipeline-failure-recovery.md) — covers diagnosis, root-cause categories, and the cascade of jobs to re-run based on the dependency graph. Pipeline jobs are configured fail-loud, no auto-retry (see `.claude/rules/pipeline-error-handling.md`).
+
 ## Development Notes
 
 - Backend uses Poetry scripts: `poetry run dev`, `poetry run lint`, `poetry run daily-analysis`, `poetry run meteo-agent`, `poetry run compass-brief`, `poetry run press-review`, `poetry run barchart-scraper`, `poetry run ice-stocks-scraper`, `poetry run cftc-scraper`, `poetry run compute-indicators`, `poetry run seed-gcp`, `poetry run seed-trading-calendar`
@@ -448,4 +425,4 @@ The `PositionStatus` component automatically fetches and plays the audio file:
 - **GCP env var gotcha**: `gcloud run services update --set-env-vars` REPLACES all env vars. Use `--update-env-vars` to add/update without wiping existing vars.
 - **Auth0 + React Router gotcha**: Never use bare `<Navigate>` on the Auth0 callback route. `Navigate` runs in `useLayoutEffect` and strips `?code=` params before Auth0Provider's `useEffect` can read them. Use a wrapper that waits for `isLoading=false`.
 - **DB access (GCP prod)**: Cloud SQL is private IP only. Use the IAP bastion tunnel: `gcloud compute ssh cc-bastion --zone europe-west9-a --tunnel-through-iap --project cacaooo -- -N -L 5434:10.119.160.3:5432`, then connect via `psql -h 127.0.0.1 -p 5434 -U cc_app -d commodities_compass`. Works with DBeaver and any PostgreSQL client. See `infra/INFRASTRUCTURE.md` for full details.
-- **DB sync from GCP**: `poetry run python scripts/sync_from_gcp.py` copies all pl_*/ref_*/aud_* tables from GCP Cloud SQL to local. Requires the IAP bastion tunnel running (see above) and `GCP_DATABASE_URL=postgresql+psycopg2://cc_app:<pass>@localhost:5434/commodities_compass`. Use before generating Alembic autogenerate migrations.
+- **DB sync from GCP**: `poetry run python scripts/sync_from_gcp.py` copies all `pl_*` / `ref_*` / `aud_*` tables from GCP Cloud SQL to local (use before generating Alembic autogenerate migrations). Full procedure including bastion tunnel setup and troubleshooting: [docs/runbooks/db-sync-from-gcp.md](docs/runbooks/db-sync-from-gcp.md).

@@ -7,12 +7,17 @@ Focus: `compute_campaign_health` follows the worst-season methodology
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any
 
 from app.services.weather_service import compute_campaign_health
 
 
-def _score(season_name: str, score: float) -> SimpleNamespace:
-    """Minimal duck-typed stand-in for PlSeasonalScore (only `score` and `season_name` read)."""
+def _score(season_name: str, score: float) -> Any:
+    """Minimal duck-typed stand-in for PlSeasonalScore (only `score` and `season_name` read).
+
+    Returns Any to keep the test focused on behavior; the real signature takes
+    list[PlSeasonalScore] but the function only touches two attributes.
+    """
     return SimpleNamespace(season_name=season_name, score=score)
 
 

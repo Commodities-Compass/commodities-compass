@@ -120,3 +120,6 @@ infra/terraform/tfplan
 frontend/.env.production
 
 # NOTE: .terraform.lock.hcl is intentionally NOT ignored — commit it for reproducible builds
+
+# Local-only runbooks, scripts, credentials (never committed)
+.local/

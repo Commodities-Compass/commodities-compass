@@ -6,6 +6,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
+import sentry_sdk
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -15,10 +16,18 @@ from scripts.press_review_agent.config import (
     AUTHOR_LABELS,
     MODEL_IDS,
     PRODUCTION_PROVIDER,
+    THEMES,
     Provider,
 )
 
 log = logging.getLogger(__name__)
+
+# Neutral fallback used when the LLM omits a theme. Guarantees 4 gauges
+# render every day; presence is surfaced to Sentry as a warning so we
+# can detect prompt drift without breaking the daily run.
+NEUTRAL_FALLBACK_RATIONALE = "Aucune couverture significative dans les sources du jour."
+NEUTRAL_FALLBACK_SCORE = 0.0
+NEUTRAL_FALLBACK_CONFIDENCE = 0.1
 
 
 class DbWriterError(Exception):
@@ -93,6 +102,50 @@ def write_article(
     return article.id
 
 
+def _fill_missing_themes(
+    theme_sentiments: dict[str, Any],
+    provider: Provider,
+    article_date: date,
+) -> tuple[dict[str, Any], list[str]]:
+    """Return a copy of `theme_sentiments` with all 4 themes guaranteed.
+
+    Missing themes are filled with a neutral fallback row and reported to
+    Sentry as a warning. Never mutates the input dict.
+    """
+    missing = [t for t in THEMES if t not in theme_sentiments]
+    if not missing:
+        return dict(theme_sentiments), []
+
+    log.warning(
+        "[%s] LLM omitted %d theme(s): %s — filling with neutral fallback",
+        provider.value,
+        len(missing),
+        missing,
+    )
+    sentry_sdk.capture_message(
+        f"press_review_partial_themes: {provider.value} omitted {missing}",
+        level="warning",
+    )
+    sentry_sdk.set_context(
+        "press_review_partial_themes",
+        {
+            "provider": provider.value,
+            "article_date": article_date.isoformat(),
+            "missing_themes": missing,
+            "present_themes": sorted(theme_sentiments.keys()),
+        },
+    )
+
+    filled = dict(theme_sentiments)
+    for theme in missing:
+        filled[theme] = {
+            "score": NEUTRAL_FALLBACK_SCORE,
+            "confidence": NEUTRAL_FALLBACK_CONFIDENCE,
+            "rationale": NEUTRAL_FALLBACK_RATIONALE,
+        }
+    return filled, missing
+
+
 def write_theme_sentiments(
     session: Session,
     article_id: uuid.UUID,
@@ -103,18 +156,25 @@ def write_theme_sentiments(
 ) -> int:
     """Insert per-theme sentiment scores into pl_article_segment.
 
-    Returns the number of segments written.
+    If the LLM omitted any of the 4 themes (production / chocolat /
+    transformation / economie), they are filled with a neutral fallback
+    row and a Sentry warning is emitted. Guarantees 4 rows per day so
+    the dashboard always renders 4 sentiment gauges.
+
+    Returns the number of segments written (always len(THEMES) on success).
     """
+    filled, _missing = _fill_missing_themes(theme_sentiments, provider, article_date)
+
     if dry_run:
         log.info(
             "[DRY RUN] [%s] Would insert %d theme sentiments",
             provider.value,
-            len(theme_sentiments),
+            len(filled),
         )
         return 0
 
     count = 0
-    for theme, data in theme_sentiments.items():
+    for theme, data in filled.items():
         score = float(data["score"])
         if score > 0.1:
             sentiment_label = "bullish"

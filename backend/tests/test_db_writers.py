@@ -390,6 +390,197 @@ class TestPressReviewDbWriter:
 
 
 # ---------------------------------------------------------------------------
+# Press Review Theme Sentiments — soft-fill
+# ---------------------------------------------------------------------------
+
+
+class TestPressReviewThemeSentimentsSoftFill:
+    """Guarantees all 4 themes are written every day so the dashboard
+    always renders 4 sentiment gauges. Missing themes are filled with a
+    neutral fallback and a Sentry warning is emitted.
+    """
+
+    def _make_article(self, sync_db_session, article_date=date(2026, 5, 5)):
+        from scripts.press_review_agent.config import Provider
+        from scripts.press_review_agent.db_writer import write_article
+
+        parsed = {
+            "resume": "x" * 50,
+            "mots_cle": "k",
+            "impact_synthetiques": "i",
+        }
+        article_id = write_article(
+            sync_db_session, Provider.OPENAI, parsed, article_date=article_date
+        )
+        assert article_id is not None
+        return article_id
+
+    def test_all_four_themes_present_inserts_four_rows(self, sync_db_session):
+        from app.models.pipeline import PlArticleSegment
+        from scripts.press_review_agent.config import Provider
+        from scripts.press_review_agent.db_writer import write_theme_sentiments
+
+        article_id = self._make_article(sync_db_session)
+        theme_sentiments = {
+            "production": {
+                "score": 0.5,
+                "confidence": 0.8,
+                "rationale": "Arrivages en hausse",
+            },
+            "chocolat": {
+                "score": -0.3,
+                "confidence": 0.7,
+                "rationale": "Demande chocolat en repli",
+            },
+            "transformation": {
+                "score": 0.2,
+                "confidence": 0.6,
+                "rationale": "Broyages stables",
+            },
+            "economie": {"score": 0.0, "confidence": 0.4, "rationale": "USD neutre"},
+        }
+
+        count = write_theme_sentiments(
+            sync_db_session,
+            article_id,
+            date(2026, 5, 5),
+            theme_sentiments,
+            Provider.OPENAI,
+        )
+
+        assert count == 4
+        rows = sync_db_session.execute(select(PlArticleSegment)).scalars().all()
+        assert {r.theme for r in rows} == {
+            "production",
+            "chocolat",
+            "transformation",
+            "economie",
+        }
+
+    def test_missing_themes_are_soft_filled_with_neutral(
+        self, sync_db_session, monkeypatch
+    ):
+        from app.models.pipeline import PlArticleSegment
+        from scripts.press_review_agent.config import Provider
+        from scripts.press_review_agent.db_writer import (
+            NEUTRAL_FALLBACK_CONFIDENCE,
+            NEUTRAL_FALLBACK_RATIONALE,
+            NEUTRAL_FALLBACK_SCORE,
+            write_theme_sentiments,
+        )
+
+        captures: list[dict] = []
+        monkeypatch.setattr(
+            "scripts.press_review_agent.db_writer.sentry_sdk.capture_message",
+            lambda msg, **kw: captures.append({"msg": msg, **kw}),
+        )
+        contexts: list[dict] = []
+        monkeypatch.setattr(
+            "scripts.press_review_agent.db_writer.sentry_sdk.set_context",
+            lambda name, ctx: contexts.append({"name": name, "ctx": ctx}),
+        )
+
+        article_id = self._make_article(sync_db_session)
+        # LLM only emitted 2 themes — transformation and economie are missing.
+        partial = {
+            "production": {
+                "score": 0.5,
+                "confidence": 0.8,
+                "rationale": "Arrivages en hausse",
+            },
+            "chocolat": {
+                "score": -0.3,
+                "confidence": 0.7,
+                "rationale": "Demande chocolat en repli",
+            },
+        }
+
+        count = write_theme_sentiments(
+            sync_db_session, article_id, date(2026, 5, 5), partial, Provider.OPENAI
+        )
+
+        assert count == 4
+        rows = sync_db_session.execute(select(PlArticleSegment)).scalars().all()
+        assert {r.theme for r in rows} == {
+            "production",
+            "chocolat",
+            "transformation",
+            "economie",
+        }
+
+        filled_rows = [r for r in rows if r.theme in ("transformation", "economie")]
+        for row in filled_rows:
+            assert float(row.sentiment_score) == NEUTRAL_FALLBACK_SCORE
+            assert float(row.confidence) == NEUTRAL_FALLBACK_CONFIDENCE
+            assert row.facts == NEUTRAL_FALLBACK_RATIONALE
+            assert row.sentiment == "neutral"
+
+        assert len(captures) == 1
+        assert "press_review_partial_themes" in captures[0]["msg"]
+        assert captures[0]["level"] == "warning"
+        assert any(c["name"] == "press_review_partial_themes" for c in contexts)
+        ctx = next(
+            c["ctx"] for c in contexts if c["name"] == "press_review_partial_themes"
+        )
+        assert set(ctx["missing_themes"]) == {"transformation", "economie"}
+        assert ctx["provider"] == "openai"
+        assert ctx["article_date"] == "2026-05-05"
+
+    def test_empty_theme_sentiments_produces_four_neutral_rows(
+        self, sync_db_session, monkeypatch
+    ):
+        from app.models.pipeline import PlArticleSegment
+        from scripts.press_review_agent.config import Provider
+        from scripts.press_review_agent.db_writer import write_theme_sentiments
+
+        monkeypatch.setattr(
+            "scripts.press_review_agent.db_writer.sentry_sdk.capture_message",
+            lambda *a, **kw: None,
+        )
+        monkeypatch.setattr(
+            "scripts.press_review_agent.db_writer.sentry_sdk.set_context",
+            lambda *a, **kw: None,
+        )
+
+        article_id = self._make_article(sync_db_session)
+        count = write_theme_sentiments(
+            sync_db_session, article_id, date(2026, 5, 5), {}, Provider.OPENAI
+        )
+
+        assert count == 4
+        rows = sync_db_session.execute(select(PlArticleSegment)).scalars().all()
+        assert all(r.sentiment == "neutral" for r in rows)
+        assert all(float(r.sentiment_score) == 0.0 for r in rows)
+
+    def test_dry_run_does_not_write(self, sync_db_session, monkeypatch):
+        from app.models.pipeline import PlArticleSegment
+        from scripts.press_review_agent.config import Provider
+        from scripts.press_review_agent.db_writer import write_theme_sentiments
+
+        monkeypatch.setattr(
+            "scripts.press_review_agent.db_writer.sentry_sdk.capture_message",
+            lambda *a, **kw: None,
+        )
+        monkeypatch.setattr(
+            "scripts.press_review_agent.db_writer.sentry_sdk.set_context",
+            lambda *a, **kw: None,
+        )
+
+        article_id = self._make_article(sync_db_session)
+        count = write_theme_sentiments(
+            sync_db_session,
+            article_id,
+            date(2026, 5, 5),
+            {"production": {"score": 0.5, "confidence": 0.8, "rationale": "x"}},
+            Provider.OPENAI,
+            dry_run=True,
+        )
+        assert count == 0
+        rows = sync_db_session.execute(select(PlArticleSegment)).scalars().all()
+        assert rows == []
+
+
+# ---------------------------------------------------------------------------
 # Meteo DB Writer
 # ---------------------------------------------------------------------------
 

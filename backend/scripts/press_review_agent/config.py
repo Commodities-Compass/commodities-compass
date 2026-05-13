@@ -248,8 +248,9 @@ Your output must be a valid JSON object (no markdown wrapping) with exactly 4 fi
 - "impact_synthetiques": A single French paragraph (100-250 words) synthesizing the net
   market impact for a cocoa hedger/trader based on available information.
 
-- "theme_sentiments": An object with 1 to 4 keys among ["production", "chocolat",
-  "transformation", "economie"]. Each key contains:
+- "theme_sentiments": An object that MUST contain ALL 4 keys ["production",
+  "chocolat", "transformation", "economie"]. Never omit a key, even when coverage
+  is thin. Each key contains:
   * "score": float from -1.0 (very bearish for cocoa prices) to +1.0 (very bullish)
   * "confidence": float from 0.0 to 1.0 (how confident you are in the score)
   * "rationale": one sentence justifying the score
@@ -266,10 +267,17 @@ Your output must be a valid JSON object (no markdown wrapping) with exactly 4 fi
     If any source mentions dollar strength, currency impact, or trade policy related
     to commodities, score this theme.
 
-  Include a theme if today's sources (full-content or headlines) contain relevant
-  information. Aim to score all 4 themes when possible — even brief mentions of
-  currency moves or trade policy in market commentary qualify for "economie".
-  Only omit a theme if genuinely zero coverage exists.
+  When today's sources do contain even brief mentions of a theme, score it with the
+  appropriate sign and a confidence reflecting source richness (0.3-0.9). Even brief
+  mentions of currency moves or trade policy in market commentary qualify for
+  "economie"; processing or grindings mentions qualify for "transformation".
+
+  When a theme has GENUINELY no coverage in today's sources (no mention at all),
+  you MUST still emit it with exactly:
+    {"score": 0.0, "confidence": 0.1,
+     "rationale": "Aucune couverture significative dans les sources du jour."}
+  Use this neutral fallback rather than omitting the key. The downstream UI relies
+  on all 4 themes being present every day.
 
 Reasoning process (internal, before generating output):
 - For each number you plan to cite, identify the exact source passage containing it.

@@ -181,8 +181,11 @@ def main() -> int:
                     dry_run=args.dry_run,
                 )
 
-                # Theme sentiments — additive, non-blocking
-                if result.parsed and "theme_sentiments" in result.parsed:
+                # Theme sentiments — additive, non-blocking.
+                # The writer guarantees all 4 themes via soft-fill + Sentry
+                # warning, so we always invoke it (with {} if the LLM omitted
+                # the whole field, which will produce 4 neutral rows).
+                if result.parsed is not None:
                     try:
                         from datetime import date as date_type
 
@@ -190,7 +193,7 @@ def main() -> int:
                             session,
                             article_id or uuid.uuid4(),
                             date_type.today(),
-                            result.parsed["theme_sentiments"],
+                            result.parsed.get("theme_sentiments") or {},
                             result.provider,
                             dry_run=args.dry_run,
                         )

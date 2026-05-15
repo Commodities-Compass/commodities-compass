@@ -16,6 +16,7 @@ interface DateSelectorProps {
   onDateChange: (date: string) => void;
   sessionDate?: string;
   className?: string;
+  variant?: 'card' | 'compact';
 }
 
 export default function DateSelector({
@@ -23,6 +24,7 @@ export default function DateSelector({
   onDateChange,
   sessionDate,
   className,
+  variant = 'card',
 }: DateSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -41,9 +43,73 @@ export default function DateSelector({
     }
   };
 
-  const isNextDisabled = () => {
-    return isFuture(addDays(selectedDate, 1));
-  };
+  const isNextDisabled = () => isFuture(addDays(selectedDate, 1));
+
+  function handleCalendarSelect(date: Date | undefined) {
+    if (date) {
+      onDateChange(format(date, 'yyyy-MM-dd'));
+      setIsOpen(false);
+    }
+  }
+
+  if (variant === 'compact') {
+    return (
+      <Popover open={isOpen} onOpenChange={setIsOpen}>
+        <PopoverTrigger asChild>
+          <button
+            className={className}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              fontFamily: 'var(--font-mono)',
+              fontSize: 10,
+              letterSpacing: '0.15em',
+              textTransform: 'uppercase',
+              color: 'var(--ink-mid)',
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '2px 4px',
+              transition: 'color 120ms',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--ink)')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--ink-mid)')}
+            aria-label="Select session date"
+          >
+            <CalendarIcon style={{ width: 12, height: 12 }} />
+            <span style={{ color: 'var(--ink)', fontWeight: 600 }}>
+              {format(selectedDate, 'd MMM yyyy', { locale: fr })}
+            </span>
+            {sessionDate && sessionDate.slice(0, 10) !== currentDate && (
+              <span style={{ color: 'var(--ink-light)' }}>
+                · session {format(parseISO(sessionDate), 'd MMM', { locale: fr })}
+              </span>
+            )}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          className="w-auto p-0"
+          align="end"
+          sideOffset={6}
+          style={{
+            background: 'var(--paper)',
+            border: '1px solid var(--ink)',
+            borderRadius: 0,
+            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.08)',
+          }}
+        >
+          <Calendar
+            mode="single"
+            selected={selectedDate}
+            onSelect={handleCalendarSelect}
+            disabled={(date) => isFuture(date)}
+            defaultMonth={selectedDate}
+          />
+        </PopoverContent>
+      </Popover>
+    );
+  }
 
   return (
     <Card className={className}>
@@ -62,7 +128,7 @@ export default function DateSelector({
             <PopoverTrigger asChild>
               <Button
                 variant="ghost"
-                className="min-w-[280px] justify-center font-medium hover:bg-accent h-auto px-4 py-1 flex flex-col items-center gap-0"
+                className="min-w-70 justify-center font-medium hover:bg-accent h-auto px-4 py-1 flex flex-col items-center gap-0"
               >
                 <div className="flex items-center gap-2">
                   <CalendarIcon className="h-5 w-5 text-gray-500" />
@@ -101,11 +167,4 @@ export default function DateSelector({
       </CardContent>
     </Card>
   );
-
-  function handleCalendarSelect(date: Date | undefined) {
-    if (date) {
-      onDateChange(format(date, 'yyyy-MM-dd'));
-      setIsOpen(false);
-    }
-  }
 }

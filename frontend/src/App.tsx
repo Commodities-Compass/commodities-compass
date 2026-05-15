@@ -8,6 +8,7 @@ import {
 import { useAuth0 } from '@auth0/auth0-react';
 import { useAuth } from '@/hooks/useAuth';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import { DashboardDateProvider } from '@/contexts/DashboardDateContext';
 
 const DashboardLayout = React.lazy(() => import('@/components/dashboard-layout'));
 const LoginPage = React.lazy(() => import('@/pages/login-page-auth0'));
@@ -103,9 +104,11 @@ export default function App() {
             path="/dashboard"
             element={
               <ProtectedRoute isLoggingOut={isLoggingOut}>
-                <DashboardLayout>
-                  <DashboardPage />
-                </DashboardLayout>
+                <DashboardDateProvider>
+                  <DashboardLayout>
+                    <DashboardPage />
+                  </DashboardLayout>
+                </DashboardDateProvider>
               </ProtectedRoute>
             }
           />
@@ -114,9 +117,11 @@ export default function App() {
             path="/dashboard/historical"
             element={
               <ProtectedRoute isLoggingOut={isLoggingOut}>
-                <DashboardLayout>
-                  <HistoricalPage />
-                </DashboardLayout>
+                <DashboardDateProvider>
+                  <DashboardLayout>
+                    <HistoricalPage />
+                  </DashboardLayout>
+                </DashboardDateProvider>
               </ProtectedRoute>
             }
           />

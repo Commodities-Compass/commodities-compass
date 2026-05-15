@@ -1,104 +1,179 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import GaugeIndicator from "@/components/gauge-indicator";
-import { Loader2 } from "lucide-react";
-import { useIndicatorsGrid, useRecommendations } from "@/hooks/useDashboard";
-import { cn } from "@/utils";
-import { parseConclusion, formatRecoText } from "@/utils/recommendation-parser";
+import GaugeIndicator from '@/components/gauge-indicator';
+import EditorialTabs from '@/components/editorial-tabs';
+import SectionHeader from '@/components/section-header';
+import { Loader2 } from 'lucide-react';
+import { useIndicatorsGrid, useRecommendations } from '@/hooks/useDashboard';
+import { parseConclusion, formatRecoText } from '@/utils/recommendation-parser';
 
 interface MarketAnalysisProps {
   targetDate?: string;
   className?: string;
 }
 
-// ---------------------------------------------------------------------------
-// Indicator keys
-// ---------------------------------------------------------------------------
+const INDICATOR_KEYS = ['macd', 'volOi', 'rsi', 'percentK', 'atr'] as const;
 
-const INDICATOR_KEYS = [
-  "macd",
-  "volOi",
-  "rsi",
-  "percentK",
-  "atr",
-] as const;
-
-// ---------------------------------------------------------------------------
-// Direction icon
-// ---------------------------------------------------------------------------
-
-function getDirectionDot(text: string) {
-  const lower = text.toLowerCase();
-  if (
-    /diminué|baissé|réduit|négatif|baissière|repli|chute|survendu/.test(lower)
-  ) {
-    return <span className="mt-1.5 shrink-0 h-2 w-2 rounded-full bg-amber-500" />;
-  }
-  if (
-    /augmenté|haussière|hausse|positif|accroissement|intensification/.test(lower)
-  ) {
-    return <span className="mt-1.5 shrink-0 h-2 w-2 rounded-full bg-emerald-500" />;
-  }
-  return <span className="mt-1.5 shrink-0 h-2 w-2 rounded-full bg-muted-foreground/40" />;
+function EditorialParagraph({ children, dropcap = false }: { children: React.ReactNode; dropcap?: boolean }) {
+  return (
+    <p
+      style={{
+        fontFamily: 'var(--font-editorial)',
+        fontSize: 15,
+        lineHeight: 1.75,
+        color: 'var(--ink-dark)',
+        textAlign: 'justify',
+        marginBottom: 14,
+      }}
+      className={dropcap ? 'has-dropcap' : undefined}
+    >
+      {children}
+    </p>
+  );
 }
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
-
-export default function MarketAnalysis({
-  targetDate,
-  className,
-}: MarketAnalysisProps) {
-  const {
-    data: gridData,
-    isLoading: gridLoading,
-    error: gridError,
-  } = useIndicatorsGrid(targetDate);
-  const {
-    data: recoData,
-    isLoading: recoLoading,
-    error: recoError,
-  } = useRecommendations(targetDate);
-
-  const isLoading = gridLoading || recoLoading;
-
-  if (isLoading) {
+function ParagraphsList({ items }: { items: string[] }) {
+  if (items.length === 0) {
     return (
-      <Card
-        className={cn(
-          "flex items-center justify-center h-[300px]",
-          className,
-        )}
-      >
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <Loader2 className="h-5 w-5 animate-spin" />
-          <span className="text-sm">Chargement de l'analyse...</span>
-        </div>
-      </Card>
+      <p style={{ color: 'var(--ink-light)', fontStyle: 'italic', fontSize: 14 }}>
+        Aucune information pour cette section.
+      </p>
     );
   }
+  return (
+    <div>
+      {items.map((p, i) => (
+        <EditorialParagraph key={i} dropcap={i === 0}>
+          {formatRecoText(p)}
+        </EditorialParagraph>
+      ))}
+      <style>{`
+        .has-dropcap::first-letter {
+          font-family: var(--font-display);
+          font-size: 56px;
+          font-weight: 700;
+          float: left;
+          line-height: 0.85;
+          padding-right: 8px;
+          padding-top: 4px;
+          color: var(--ink);
+        }
+      `}</style>
+    </div>
+  );
+}
 
+function Watchlist({ items }: { items: string[] }) {
+  if (items.length === 0) return null;
+  return (
+    <aside
+      style={{
+        padding: '18px 18px 16px',
+        background: 'var(--paper-off)',
+        borderLeft: '2px solid var(--ink)',
+      }}
+    >
+      <div
+        className="uppercase"
+        style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: 10,
+          fontWeight: 600,
+          letterSpacing: '0.22em',
+          color: 'var(--ink-mid)',
+          marginBottom: 12,
+          paddingBottom: 8,
+          borderBottom: '1px dotted var(--rule)',
+        }}
+      >
+        À surveiller
+      </div>
+      <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+        {items.map((item, i) => (
+          <li
+            key={i}
+            style={{
+              fontFamily: 'var(--font-sans)',
+              fontSize: 13,
+              lineHeight: 1.55,
+              color: 'var(--ink-dark)',
+              marginBottom: 10,
+              paddingLeft: 16,
+              position: 'relative',
+            }}
+          >
+            <span
+              aria-hidden
+              style={{
+                position: 'absolute',
+                left: 0,
+                top: 9,
+                width: 8,
+                height: 1,
+                background: 'var(--ink-mid)',
+              }}
+            />
+            {formatRecoText(item)}
+          </li>
+        ))}
+      </ul>
+    </aside>
+  );
+}
+
+export default function MarketAnalysis({ targetDate, className }: MarketAnalysisProps) {
+  const { data: gridData, isLoading: gridLoading } = useIndicatorsGrid(targetDate);
+  const { data: recoData, isLoading: recoLoading } = useRecommendations(targetDate);
+
+  const isLoading = gridLoading || recoLoading;
   const indicators = gridData?.indicators;
   const recommendations = recoData?.recommendations;
-  const parsed = recommendations
-    ? parseConclusion(recommendations)
-    : { analysis: [], watchlist: [] };
+  const parsed = recommendations ? parseConclusion(recommendations) : { analysis: [], watchlist: [] };
+
+  // Split analysis into 3 buckets — same distribution as before
+  const split3 = (arr: string[]): [string[], string[], string[]] => {
+    if (arr.length === 0) return [[], [], []];
+    const per = Math.ceil(arr.length / 3);
+    return [arr.slice(0, per), arr.slice(per, per * 2), arr.slice(per * 2)];
+  };
+  const [bucketReco, bucketSupply, bucketTechnical] = split3(parsed.analysis);
+
+  const tabs = [
+    { id: 'reco', label: 'Recommandation', badge: bucketReco.length > 0 ? String(bucketReco.length) : undefined },
+    { id: 'supply', label: 'Supply & Momentum', badge: bucketSupply.length > 0 ? String(bucketSupply.length) : undefined },
+    { id: 'technical', label: 'Technical Outlook', badge: bucketTechnical.length > 0 ? String(bucketTechnical.length) : undefined },
+  ];
 
   return (
-    <Card className={cn("overflow-hidden", className)}>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-lg font-semibold tracking-tight">
-          Analyse du Jour
-        </CardTitle>
-      </CardHeader>
+    <div className={className}>
+      {/* ===== SECTION II — Market Analysis ===== */}
+      <section style={{ padding: '32px 0 24px' }}>
+        <SectionHeader numeral="II" title="Market Analysis" />
 
-      <CardContent className="space-y-5">
-        {/* Technical gauges (5) */}
-        {indicators && !gridError && (
-          <div className="grid grid-cols-3 sm:grid-cols-5 gap-1 justify-items-center">
-            {INDICATOR_KEYS.map(
-              (key) =>
-                indicators[key] && (
+        {/* Sub-block: Compass Gauges (snapshot) — comes first */}
+        <div style={{ marginBottom: 32 }}>
+          <div
+            className="uppercase mb-4"
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 10,
+              fontWeight: 600,
+              letterSpacing: '0.22em',
+              color: 'var(--ink-mid)',
+            }}
+          >
+            Compass Gauges
+          </div>
+          {indicators ? (
+            <div
+              className="gauges-row"
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
+                gap: 24,
+                alignItems: 'start',
+              }}
+            >
+              {INDICATOR_KEYS.map((key) =>
+                indicators[key] ? (
                   <GaugeIndicator
                     key={key}
                     value={indicators[key].value}
@@ -106,68 +181,69 @@ export default function MarketAnalysis({
                     max={indicators[key].max}
                     label={indicators[key].label}
                     ranges={indicators[key].ranges}
-                    size="sm"
                   />
-                ),
-            )}
-          </div>
-        )}
-
-        {/* Separator */}
-        <div className="border-t border-border/50" />
-
-        {/* Row 2: Analysis (left) + Watchlist (right) */}
-        {!recoError &&
-        (parsed.analysis.length > 0 || parsed.watchlist.length > 0) ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Analysis */}
-            <div className="space-y-2">
-              {parsed.analysis.length > 0 && (
-                <ul className="space-y-2">
-                  {parsed.analysis.map((item, i) => (
-                    <li key={i} className="flex items-start gap-2">
-                      {getDirectionDot(item)}
-                      <span className="text-sm leading-relaxed text-foreground/85">
-                        {formatRecoText(item)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                ) : null,
               )}
             </div>
+          ) : (
+            <p style={{ color: 'var(--ink-light)', fontSize: 14, textAlign: 'center' }}>
+              Aucun indicateur disponible.
+            </p>
+          )}
+        </div>
 
-            {/* Watchlist */}
-            {parsed.watchlist.length > 0 && (
-              <div className="rounded-lg border border-border/60 bg-muted/30 px-4 py-3 space-y-2.5 h-fit overflow-hidden">
-                <h3 className="text-sm font-semibold tracking-tight">
-                  À surveiller
-                </h3>
-                <ul className="space-y-2">
-                  {parsed.watchlist.map((item, i) => (
-                    <li
-                      key={i}
-                      className="flex items-start gap-2.5 text-sm leading-relaxed text-foreground/85 min-w-0"
-                    >
-                      <span className="text-muted-foreground mt-1 shrink-0">
-                        •
-                      </span>
-                      <span className="break-words min-w-0">
-                        {formatRecoText(item)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+        {/* Dotted separator between gauges and editorial body */}
+        <div
+          aria-hidden
+          style={{
+            height: 1,
+            borderTop: '1px dotted var(--rule)',
+            marginBottom: 28,
+          }}
+        />
+
+        {/* Sub-block: Analysis (tabs + sidebar) */}
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16" style={{ color: 'var(--ink-light)' }}>
+            <Loader2 className="h-5 w-5 animate-spin mr-2" />
+            <span className="text-sm">Chargement de l'analyse...</span>
           </div>
         ) : (
-          !recoError && (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              Aucune recommandation disponible
-            </p>
-          )
+          <div
+            className="market-grid"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)',
+              gap: 40,
+            }}
+          >
+            {/* Left: tabbed content */}
+            <div>
+              <EditorialTabs
+                tabs={tabs}
+                panels={{
+                  reco: <ParagraphsList items={bucketReco} />,
+                  supply: <ParagraphsList items={bucketSupply} />,
+                  technical: <ParagraphsList items={bucketTechnical} />,
+                }}
+              />
+            </div>
+
+            {/* Right rail: À surveiller */}
+            <Watchlist items={parsed.watchlist} />
+          </div>
         )}
-      </CardContent>
-    </Card>
+      </section>
+
+      <style>{`
+        @media (max-width: 1024px) {
+          .market-grid { grid-template-columns: 1fr !important; }
+          .gauges-row { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+        }
+        @media (max-width: 600px) {
+          .gauges-row { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+        }
+      `}</style>
+    </div>
   );
 }

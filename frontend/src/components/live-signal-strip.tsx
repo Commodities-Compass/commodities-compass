@@ -1,0 +1,220 @@
+import { useDashboardDate } from '@/contexts/DashboardDateContext';
+import {
+  usePositionStatus,
+  useChartData,
+  useIndicatorsGrid,
+} from '@/hooks/useDashboard';
+
+const SIGNAL_HEX = {
+  OPEN: '#10B981',
+  MONITOR: '#F59E0B',
+  HEDGE: '#EF4444',
+} as const;
+
+function fmtPrice(n: number | null | undefined): string {
+  if (n == null) return '—';
+  return `£${n.toLocaleString('en-GB', { maximumFractionDigits: 0 })}`;
+}
+
+function fmtPct(n: number | null | undefined): string {
+  if (n == null) return '—';
+  const sign = n >= 0 ? '+' : '';
+  return `${sign}${n.toFixed(2)}%`;
+}
+
+function fmtNum(n: number | null | undefined, digits = 2): string {
+  if (n == null) return '—';
+  return n.toFixed(digits);
+}
+
+function fmtInt(n: number | null | undefined): string {
+  if (n == null) return '—';
+  return Math.round(n).toLocaleString('en-GB');
+}
+
+interface TickerItem {
+  key: string;
+  label: string;
+  value: string;
+  valueColor?: string;
+  dot?: string;
+}
+
+function TickerCell({ item }: { item: TickerItem }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 mr-8 whitespace-nowrap">
+      {item.dot && (
+        <span
+          aria-hidden
+          style={{
+            display: 'inline-block',
+            width: 7,
+            height: 7,
+            borderRadius: '50%',
+            background: item.dot,
+          }}
+        />
+      )}
+      {item.label && (
+        <span
+          className="uppercase"
+          style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: 10,
+            letterSpacing: '0.18em',
+            color: 'var(--ink-light)',
+          }}
+        >
+          {item.label}
+        </span>
+      )}
+      <span
+        className="tabular-nums"
+        style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: 11,
+          fontWeight: 600,
+          letterSpacing: '0.05em',
+          color: item.valueColor ?? 'var(--ink)',
+        }}
+      >
+        {item.value}
+      </span>
+    </span>
+  );
+}
+
+function Sep() {
+  return (
+    <span
+      aria-hidden
+      className="mr-8"
+      style={{
+        display: 'inline-block',
+        width: 4,
+        height: 4,
+        borderRadius: '50%',
+        background: 'var(--rule)',
+        verticalAlign: 'middle',
+      }}
+    />
+  );
+}
+
+export default function LiveSignalStrip() {
+  const { currentDate } = useDashboardDate();
+  const { data: pos } = usePositionStatus(currentDate);
+  const { data: chart } = useChartData(5, currentDate);
+  const { data: grid } = useIndicatorsGrid(currentDate);
+
+  const sortedPoints = (chart?.data ?? [])
+    .filter((p) => p.close != null)
+    .slice()
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const latest = sortedPoints[sortedPoints.length - 1];
+  const previous = sortedPoints[sortedPoints.length - 2];
+  const dod =
+    latest && previous && latest.close != null && previous.close != null && previous.close !== 0
+      ? ((latest.close - previous.close) / previous.close) * 100
+      : null;
+
+  const indicators = grid?.indicators ?? {};
+  const rsi = indicators.rsi?.value ?? null;
+  const macd = indicators.macd?.value ?? null;
+  const volOi = indicators.volOi?.value ?? null;
+  const percentK = indicators.percentK?.value ?? null;
+  const atr = indicators.atr?.value ?? null;
+
+  const items: TickerItem[] = [
+    {
+      key: 'signal',
+      label: 'Signal',
+      value: pos?.position ?? '—',
+      valueColor: pos ? SIGNAL_HEX[pos.position] : 'var(--ink-light)',
+      dot: pos ? SIGNAL_HEX[pos.position] : undefined,
+    },
+    { key: 'price', label: 'ICE LDN', value: fmtPrice(latest?.close) },
+    {
+      key: 'dod',
+      label: 'DoD',
+      value: fmtPct(dod),
+      valueColor:
+        dod == null
+          ? 'var(--ink-light)'
+          : dod >= 0
+            ? 'var(--color-signal-open)'
+            : 'var(--color-signal-hedge)',
+    },
+    { key: 'vol', label: 'Volume', value: fmtInt(latest?.volume) },
+    { key: 'oi', label: 'OI', value: fmtInt(latest?.open_interest) },
+    { key: 'rsi', label: 'RSI', value: fmtNum(rsi) },
+    { key: 'macd', label: 'MACD', value: fmtNum(macd) },
+    { key: 'pk', label: '%K', value: fmtNum(percentK) },
+    { key: 'atr', label: 'ATR', value: fmtNum(atr) },
+    { key: 'voi', label: 'V/OI', value: fmtNum(volOi) },
+    {
+      key: 'ytd',
+      label: 'YTD',
+      value: pos?.ytd_performance != null ? fmtPct(pos.ytd_performance) : '—',
+      valueColor:
+        pos?.ytd_performance == null
+          ? 'var(--ink-light)'
+          : pos.ytd_performance >= 0
+            ? 'var(--color-signal-open)'
+            : 'var(--color-signal-hedge)',
+    },
+    { key: 'session', label: 'Session', value: (pos?.date ?? currentDate).slice(0, 10) },
+  ];
+
+  // Render the same list twice for a seamless infinite scroll
+  const row = (keyPrefix: string) => (
+    <div className="inline-flex items-center" aria-hidden={keyPrefix === 'b'}>
+      {items.map((it, i) => (
+        <span key={`${keyPrefix}-${it.key}`} className="inline-flex items-center">
+          <TickerCell item={it} />
+          {i < items.length - 1 && <Sep />}
+        </span>
+      ))}
+      <Sep />
+    </div>
+  );
+
+  return (
+    <div
+      className="overflow-hidden ticker-track"
+      style={{
+        flex: 1,
+        minWidth: 0,
+      }}
+      aria-label="Live market data ticker"
+      role="marquee"
+    >
+      <div className="ticker-scroll inline-flex items-center">
+        {row('a')}
+        {row('b')}
+      </div>
+      <style>{`
+        .ticker-track {
+          mask-image: linear-gradient(to right, transparent 0, #000 32px, #000 calc(100% - 32px), transparent 100%);
+          -webkit-mask-image: linear-gradient(to right, transparent 0, #000 32px, #000 calc(100% - 32px), transparent 100%);
+        }
+        .ticker-scroll {
+          animation: ticker-scroll 60s linear infinite;
+          will-change: transform;
+        }
+        .ticker-track:hover .ticker-scroll {
+          animation-play-state: paused;
+        }
+        @keyframes ticker-scroll {
+          from { transform: translateX(0); }
+          to { transform: translateX(-50%); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .ticker-scroll {
+            animation: none;
+          }
+        }
+      `}</style>
+    </div>
+  );
+}

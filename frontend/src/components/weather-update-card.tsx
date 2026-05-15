@@ -1,216 +1,80 @@
-import { useState } from "react";
-import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
-  CloudRainIcon,
-  Loader2,
-  CalendarIcon,
-  ChevronDown,
-  BotIcon,
-} from "lucide-react";
-import { useWeather } from "@/hooks/useDashboard";
-import { cn } from "@/utils";
-import { formatFinancialText } from "@/utils/format-financial-text";
+import { Loader2 } from 'lucide-react';
+import { useWeather } from '@/hooks/useDashboard';
 import type {
-  SeasonStatus,
+  LocationDiagnostic,
   LocationStressHistory,
-} from "@/types/dashboard";
+  SeasonStatus,
+} from '@/types/dashboard';
+import SectionHeader from '@/components/section-header';
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function scoreColor(score: number | null | undefined): string {
-  if (score == null) return "bg-muted text-muted-foreground";
-  if (score >= 3.5) return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300";
-  if (score >= 2.5) return "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300";
-  return "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300";
+interface WeatherUpdateCardProps {
+  targetDate?: string;
+  className?: string;
 }
 
-function statusLabel(status: string): string {
-  if (status === "normal") return "normal";
-  if (status === "degraded") return "dégradé";
-  return "stress";
-}
-
-function scoreBarColor(score: number | null | undefined): string {
-  if (score == null) return "bg-muted-foreground";
-  if (score >= 3.5) return "bg-emerald-500";
-  if (score >= 2.5) return "bg-amber-500";
-  return "bg-red-500";
-}
-
-function seasonStatusIcon(status: string): string {
-  if (status === "completed") return "bg-foreground/20";
-  if (status === "in_progress") return "bg-primary";
-  return "bg-muted";
-}
-
-function countryFlag(country: string): string {
-  return country === "CIV" ? "\u{1F1E8}\u{1F1EE}" : "\u{1F1EC}\u{1F1ED}";
-}
-
-function timelineDotColor(status: string): string {
-  if (status === "normal") return "bg-emerald-500";
-  if (status === "degraded") return "bg-amber-500";
-  return "bg-red-500";
-}
-
-// ---------------------------------------------------------------------------
-// InfoHint — discreet contextual note
-// ---------------------------------------------------------------------------
-
-function InfoHint({ children }: { children: string }) {
+function SubHeader({ title, hint }: { title: string; hint?: string }) {
   return (
-    <p className="text-[10px] text-muted-foreground/50 italic mt-0.5">
-      {children}
-    </p>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// MiniTimeline — 7-dot history per zone
-// ---------------------------------------------------------------------------
-
-function MiniTimeline({ history }: { history: string[] }) {
-  return (
-    <div className="flex items-center gap-1">
-      {history.map((status, i) => (
-        <div
-          key={i}
-          className={cn(
-            "h-2 w-2 rounded-full",
-            timelineDotColor(status),
-          )}
-        />
-      ))}
+    <div className="flex items-baseline justify-between mb-3">
+      <h3
+        className="uppercase"
+        style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: 11,
+          fontWeight: 600,
+          letterSpacing: '0.18em',
+          color: 'var(--ink)',
+        }}
+      >
+        {title}
+      </h3>
+      {hint && (
+        <span
+          className="uppercase"
+          style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: 9,
+            letterSpacing: '0.15em',
+            color: 'var(--ink-light)',
+          }}
+        >
+          {hint}
+        </span>
+      )}
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// ZoneList — per-location rows with timeline + streak
-// ---------------------------------------------------------------------------
+const STATUS_HEX: Record<string, string> = {
+  normal: '#10B981',
+  degraded: '#F59E0B',
+  stress: '#EF4444',
+};
 
-function ZoneRow({ zone }: { zone: LocationStressHistory }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <div className="flex items-center gap-2.5 py-1.5 text-sm">
-          <span className="w-[80px] shrink-0 font-medium">
-            {zone.location_name}
-          </span>
-          <MiniTimeline history={zone.history} />
-          <span className="w-3" />
-          <span
-            className={cn(
-              "shrink-0 text-xs",
-              zone.current_status === "normal"
-                ? "text-muted-foreground"
-                : zone.current_status === "degraded"
-                  ? "font-medium text-amber-600 dark:text-amber-400"
-                  : "font-medium text-red-600 dark:text-red-400",
-            )}
-          >
-            {statusLabel(zone.current_status)}
-          </span>
-        </div>
-      </TooltipTrigger>
-      <TooltipContent side="top">
-        <p>
-          {zone.location_name} ({zone.country}) — {statusLabel(zone.current_status)}
-          {zone.streak_days > 1 && ` depuis ${zone.streak_days} jours`}
-          {zone.trend !== "stable" &&
-            ` (${zone.trend === "worsening" ? "en dégradation" : "en amélioration"})`}
-        </p>
-      </TooltipContent>
-    </Tooltip>
-  );
+function statusLabel(status?: string): string {
+  if (status === 'normal') return 'Normal';
+  if (status === 'degraded') return 'Dégradé';
+  if (status === 'stress') return 'Stress';
+  return '—';
 }
 
-function ZoneList({ history }: { history: LocationStressHistory[] }) {
-  const civZones = history.filter((z) => z.country === "CIV");
-  const ghaZones = history.filter((z) => z.country === "GHA");
-
-  return (
-    <TooltipProvider delayDuration={200}>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 md:gap-y-0">
-        <div>
-          <p className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider mb-1">
-            {countryFlag("CIV")} Côte d&apos;Ivoire
-          </p>
-          {civZones.map((zone) => (
-            <ZoneRow key={zone.location_name} zone={zone} />
-          ))}
-        </div>
-        <div>
-          <p className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider mb-1">
-            {countryFlag("GHA")} Ghana
-          </p>
-          {ghaZones.map((zone) => (
-            <ZoneRow key={zone.location_name} zone={zone} />
-          ))}
-        </div>
-      </div>
-    </TooltipProvider>
-  );
+function healthColor(score: number | null | undefined): string {
+  if (score == null) return 'var(--ink-light)';
+  if (score >= 3.5) return 'var(--color-signal-open)';
+  if (score >= 2.5) return 'var(--color-signal-monitor)';
+  return 'var(--color-signal-hedge)';
 }
 
 // ---------------------------------------------------------------------------
-// HarmattanSection — dedicated block for cumulative Harmattan days
+// Campaign health + seasons
 // ---------------------------------------------------------------------------
 
-function HarmattanSection({
-  diagnostics,
-}: {
-  diagnostics: LocationDiagnostic[];
-}) {
-  const affected = diagnostics.filter(
-    (d) => d.harmattan_days != null && d.harmattan_days > 0,
-  );
-  if (affected.length === 0) return null;
-
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="text-xs font-medium text-muted-foreground">Harmattan</span>
-      <p className="text-xs text-muted-foreground">
-        {affected.map((loc, i) => (
-          <span key={loc.location_name}>
-            {i > 0 && <span className="mx-1.5">·</span>}
-            <span>{loc.location_name}</span>{" "}
-            <span className="font-semibold tabular-nums text-foreground">
-              {loc.harmattan_days}
-            </span>
-          </span>
-        ))}
-      </p>
-      <InfoHint>Jours cumulés de vent sec depuis nov. (seuil critique : 24j)</InfoHint>
-    </div>
-  );
+function statusBadge(status: SeasonStatus['status']): { label: string; color: string } {
+  if (status === 'completed') return { label: 'Clôturée', color: 'var(--ink-light)' };
+  if (status === 'in_progress') return { label: 'En cours', color: 'var(--ink)' };
+  return { label: 'À venir', color: 'var(--ink-light)' };
 }
 
-// ---------------------------------------------------------------------------
-// CampaignSection — seasonal progress bars (rolling data)
-// ---------------------------------------------------------------------------
-
-function CampaignSection({
+function CampaignBlock({
   campaign,
   campaignHealth,
   seasons,
@@ -220,233 +84,545 @@ function CampaignSection({
   seasons: SeasonStatus[];
 }) {
   return (
-    <div className="space-y-3">
-      <InfoHint>
-        {`Bilan saisonnier cumulé depuis oct. ${campaign.split("-")[0]}`}
-      </InfoHint>
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-muted-foreground">
-          Campagne {campaign}
-        </span>
-        {campaignHealth != null && (
-          <Badge className={cn("text-xs font-semibold", scoreColor(campaignHealth))}>
-            Santé {campaignHealth}/5
-          </Badge>
-        )}
+    <div style={{ marginBottom: 40 }}>
+      {/* Header: campaign title (left) + santé globale (right) */}
+      <div
+        className="flex items-end justify-between gap-6 mb-6 pb-3"
+        style={{ borderBottom: '1px solid var(--ink)' }}
+      >
+        <div>
+          <div
+            className="uppercase"
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 10,
+              fontWeight: 600,
+              letterSpacing: '0.2em',
+              color: 'var(--ink-mid)',
+              marginBottom: 4,
+            }}
+          >
+            Campagne {campaign}
+          </div>
+          <div
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontStyle: 'italic',
+              fontWeight: 400,
+              fontSize: 22,
+              color: 'var(--ink)',
+              lineHeight: 1.1,
+            }}
+          >
+            Bilan saisonnier cumulé
+          </div>
+        </div>
+        <div className="text-right">
+          <div
+            className="uppercase"
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 9,
+              letterSpacing: '0.22em',
+              color: 'var(--ink-light)',
+              marginBottom: 2,
+            }}
+          >
+            Santé globale
+          </div>
+          <div
+            className="tabular-nums"
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontWeight: 700,
+              fontSize: 44,
+              lineHeight: 1,
+              color: healthColor(campaignHealth),
+            }}
+          >
+            {campaignHealth != null ? campaignHealth.toFixed(1) : '—'}
+            <span
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 14,
+                fontWeight: 500,
+                color: 'var(--ink-light)',
+                marginLeft: 4,
+              }}
+            >
+              /5
+            </span>
+          </div>
+        </div>
       </div>
 
+      {/* Methodology-grid style: one column per saison */}
       {seasons.length > 0 && (
-        <TooltipProvider delayDuration={200}>
-          <div className="space-y-1.5">
-            {seasons.map((season) => (
-              <Tooltip key={season.season_name}>
-                <TooltipTrigger asChild>
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="w-[140px] truncate text-muted-foreground">
-                      {season.label}
-                    </span>
-                    <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-                      {season.score != null ? (
-                        <div
-                          className={cn(
-                            "h-full rounded-full transition-all duration-700",
-                            season.status === "in_progress"
-                              ? "bg-primary animate-pulse"
-                              : scoreBarColor(season.score),
-                          )}
-                          style={{ width: `${(season.score / 5) * 100}%` }}
-                        />
-                      ) : (
-                        <div
-                          className={cn(
-                            "h-full rounded-full",
-                            seasonStatusIcon(season.status),
-                          )}
-                          style={{ width: season.status === "upcoming" ? "0%" : "100%" }}
-                        />
-                      )}
-                    </div>
-                    <span className="w-[40px] text-right tabular-nums font-medium">
-                      {season.score != null ? `${season.score}` : "—"}
-                    </span>
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="top">
-                  <p>
-                    {season.label} ({season.months_covered})
-                    {season.score != null && ` — ${season.score}/5`}
-                    {season.status !== "in_progress" &&
-                      ` — ${season.status === "completed" ? "Terminée" : "À venir"}`}
-                  </p>
-                </TooltipContent>
-              </Tooltip>
-            ))}
-          </div>
-        </TooltipProvider>
+        <div
+          className="campaign-grid"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(${seasons.length}, minmax(0, 1fr))`,
+            gap: 0,
+          }}
+        >
+          {seasons.map((s, i) => {
+            const badge = statusBadge(s.status);
+            const isLast = i === seasons.length - 1;
+            const isActive = s.status === 'in_progress';
+            return (
+              <div
+                key={s.season_name}
+                style={{
+                  padding: '20px 18px',
+                  borderRight: isLast ? 'none' : '1px solid var(--rule)',
+                  borderTop: isActive ? `2px solid ${healthColor(s.score)}` : '2px solid transparent',
+                  position: 'relative',
+                  background: isActive ? 'var(--paper-off)' : 'transparent',
+                }}
+              >
+                <div
+                  style={{
+                    fontFamily: 'var(--font-display)',
+                    fontWeight: 300,
+                    fontSize: 36,
+                    color: 'var(--rule)',
+                    lineHeight: 1,
+                    marginBottom: 12,
+                  }}
+                >
+                  {String(i + 1).padStart(2, '0')}
+                </div>
+                <div
+                  className="uppercase"
+                  style={{
+                    fontFamily: 'var(--font-sans)',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    letterSpacing: '0.15em',
+                    color: 'var(--ink)',
+                    marginBottom: 4,
+                    lineHeight: 1.3,
+                  }}
+                >
+                  {s.label}
+                </div>
+                <div
+                  className="uppercase"
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 9,
+                    letterSpacing: '0.18em',
+                    color: 'var(--ink-light)',
+                    marginBottom: 12,
+                  }}
+                >
+                  {s.months_covered}
+                </div>
+                <div
+                  className="tabular-nums"
+                  style={{
+                    fontFamily: 'var(--font-display)',
+                    fontWeight: 700,
+                    fontSize: 28,
+                    lineHeight: 1,
+                    color: s.score != null ? healthColor(s.score) : 'var(--ink-light)',
+                    marginBottom: 2,
+                  }}
+                >
+                  {s.score != null ? s.score.toFixed(1) : '—'}
+                </div>
+                <div
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 10,
+                    color: 'var(--ink-light)',
+                    marginBottom: 10,
+                  }}
+                >
+                  / 5
+                </div>
+                <div
+                  className="uppercase"
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 9,
+                    fontWeight: 600,
+                    letterSpacing: '0.18em',
+                    color: badge.color,
+                  }}
+                >
+                  {badge.label}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       )}
 
+      <style>{`
+        @media (max-width: 900px) {
+          .campaign-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+          .campaign-grid > div { border-right: none !important; border-bottom: 1px solid var(--rule); }
+        }
+      `}</style>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// ZonePlaceholder — shown when no stress history data exists yet
+// Stress history mini-timeline per zone (7 days)
 // ---------------------------------------------------------------------------
 
-const PLACEHOLDER_LOCATIONS = [
-  { name: "Daloa", country: "CIV" },
-  { name: "San-Pédro", country: "CIV" },
-  { name: "Soubré", country: "CIV" },
-  { name: "Kumasi", country: "GHA" },
-  { name: "Takoradi", country: "GHA" },
-  { name: "Goaso", country: "GHA" },
-] as const;
+function trendArrow(trend: LocationStressHistory['trend']): { glyph: string; color: string } {
+  if (trend === 'improving') return { glyph: '↗', color: 'var(--color-signal-open)' };
+  if (trend === 'worsening') return { glyph: '↘', color: 'var(--color-signal-hedge)' };
+  return { glyph: '→', color: 'var(--ink-light)' };
+}
 
-function ZonePlaceholder() {
+function StressBars({ history }: { history: string[] }) {
   return (
-    <div className="space-y-1">
-      {PLACEHOLDER_LOCATIONS.map((loc) => (
-        <div key={loc.name} className="flex items-center gap-2 py-1 text-xs">
-          <div className="h-2 w-2 rounded-full bg-muted-foreground/20 shrink-0" />
-          <span className="w-[80px] shrink-0 font-medium text-muted-foreground/60">
-            {countryFlag(loc.country)} {loc.name}
+    <span className="inline-flex items-end gap-[3px]">
+      {history.map((s, i) => {
+        const isStress = s === 'stress';
+        const isDegraded = s === 'degraded';
+        const h = isStress ? 14 : isDegraded ? 9 : 5;
+        return (
+          <span
+            key={i}
+            title={statusLabel(s)}
+            style={{
+              display: 'inline-block',
+              width: 4,
+              height: h,
+              background: STATUS_HEX[s] ?? 'var(--rule)',
+              opacity: 0.92,
+            }}
+          />
+        );
+      })}
+    </span>
+  );
+}
+
+function StressHistoryBlock({ history }: { history: LocationStressHistory[] }) {
+  const ordered = [...history].sort((a, b) => {
+    if (a.country !== b.country) return a.country.localeCompare(b.country);
+    return a.location_name.localeCompare(b.location_name);
+  });
+
+  return (
+    <div style={{ marginBottom: 40 }}>
+      {/* Section header matches the editorial weather-table style */}
+      <div
+        className="flex items-baseline justify-between mb-4 pb-2.5"
+        style={{ borderBottom: '1px solid var(--ink)' }}
+      >
+        <h3
+          className="uppercase"
+          style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: '0.22em',
+            color: 'var(--ink)',
+          }}
+        >
+          Stress hydrique — 7 jours
+        </h3>
+        <span
+          className="uppercase"
+          style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: 9,
+            letterSpacing: '0.18em',
+            color: 'var(--ink-light)',
+          }}
+        >
+          Évolution récente
+        </span>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ borderBottom: '2px solid var(--ink)' }}>
+              <th style={thStyle('left')}>Origin</th>
+              <th style={thStyle('left')}>Pays</th>
+              <th style={thStyle('left')}>Tendance 7j</th>
+              <th style={thStyle('left')}>Streak</th>
+              <th style={thStyle('left')}>Trend</th>
+              <th style={thStyle('right')}>Statut</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ordered.map((z) => {
+              const isStress = z.current_status === 'stress';
+              const isDegraded = z.current_status === 'degraded';
+              const tone =
+                isStress
+                  ? STATUS_HEX.stress
+                  : isDegraded
+                    ? STATUS_HEX.degraded
+                    : 'var(--ink-light)';
+              const trend = trendArrow(z.trend);
+              return (
+                <tr key={z.location_name} style={{ borderBottom: '1px dotted var(--rule)' }}>
+                  <td
+                    style={{
+                      padding: '12px 12px 12px 0',
+                      fontFamily: 'var(--font-editorial)',
+                      fontSize: 14,
+                      color: 'var(--ink)',
+                      fontWeight: isStress ? 700 : 600,
+                    }}
+                  >
+                    {z.location_name}
+                  </td>
+                  <td
+                    style={{
+                      padding: '12px',
+                      fontFamily: 'var(--font-sans)',
+                      fontSize: 12,
+                      color: 'var(--ink-mid)',
+                    }}
+                  >
+                    {z.country === 'CIV' ? "Côte d'Ivoire" : 'Ghana'}
+                  </td>
+                  <td style={{ padding: '12px' }}>
+                    <StressBars history={z.history} />
+                  </td>
+                  <td
+                    className="tabular-nums"
+                    style={{
+                      padding: '12px',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 12,
+                      color: 'var(--ink-dark)',
+                    }}
+                  >
+                    {z.streak_days > 1 ? `${z.streak_days}j` : '—'}
+                  </td>
+                  <td
+                    style={{
+                      padding: '12px',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 14,
+                      color: trend.color,
+                      fontWeight: 600,
+                    }}
+                    title={z.trend}
+                  >
+                    {trend.glyph}
+                  </td>
+                  <td
+                    style={{
+                      padding: '12px 0 12px 12px',
+                      textAlign: 'right',
+                    }}
+                  >
+                    <span
+                      className="inline-block uppercase"
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: 9,
+                        fontWeight: 600,
+                        letterSpacing: '0.18em',
+                        color: tone,
+                        background:
+                          isStress
+                            ? 'rgba(239,68,68,0.08)'
+                            : isDegraded
+                              ? 'rgba(245,158,11,0.10)'
+                              : 'rgba(153,153,153,0.08)',
+                        padding: '3px 9px',
+                      }}
+                    >
+                      {statusLabel(z.current_status)}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function thStyle(align: 'left' | 'right'): React.CSSProperties {
+  return {
+    fontFamily: 'var(--font-mono)',
+    fontSize: 9,
+    fontWeight: 600,
+    letterSpacing: '0.2em',
+    textTransform: 'uppercase',
+    color: 'var(--ink-light)',
+    padding: align === 'left' ? '0 12px 10px 0' : '0 0 10px 12px',
+    textAlign: align,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Harmattan summary
+// ---------------------------------------------------------------------------
+
+function HarmattanBlock({
+  harmattan,
+  diagnostics,
+}: {
+  harmattan?: { days: number; threshold: number; risk: boolean; in_season: boolean } | null;
+  diagnostics: LocationDiagnostic[];
+}) {
+  const affected = diagnostics.filter((d) => d.harmattan_days != null && d.harmattan_days > 0);
+  if (!harmattan?.in_season && affected.length === 0) return null;
+
+  const color = harmattan?.risk ? 'var(--color-signal-hedge)' : 'var(--ink)';
+
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <SubHeader title="Harmattan" hint={`Seuil critique ${harmattan?.threshold ?? 24}j`} />
+      <div className="flex items-center gap-3 mb-2">
+        <span
+          className="uppercase"
+          style={{
+            padding: '4px 10px',
+            border: `1px solid ${color}`,
+            color,
+            fontWeight: 600,
+            fontFamily: 'var(--font-mono)',
+            fontSize: 10,
+            letterSpacing: '0.18em',
+          }}
+        >
+          {harmattan?.risk ? '— Risk' : '— Active'}
+        </span>
+        {harmattan && (
+          <span
+            className="tabular-nums"
+            style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--ink-mid)' }}
+          >
+            {harmattan.days} jours cumulés
           </span>
-          <span className="text-muted-foreground/40 italic">—</span>
-        </div>
-      ))}
+        )}
+      </div>
+      {affected.length > 0 && (
+        <p
+          style={{
+            fontFamily: 'var(--font-editorial)',
+            fontStyle: 'italic',
+            fontSize: 13,
+            color: 'var(--ink-dark)',
+            lineHeight: 1.5,
+          }}
+        >
+          Sites affectés :{' '}
+          {affected
+            .map((d) => `${d.location_name} (${d.harmattan_days}j)`)
+            .join(' · ')}
+        </p>
+      )}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Main Component
+// Main component
 // ---------------------------------------------------------------------------
 
-interface WeatherUpdateCardProps {
-  targetDate?: string;
-  className?: string;
-}
-
-export default function WeatherUpdateCard({
-  targetDate,
-  className,
-}: WeatherUpdateCardProps) {
-  const { data: weather, isLoading, error } = useWeather(targetDate);
-  const hasEnrichedData = !!(
-    weather?.campaign &&
-    weather.seasons &&
-    weather.seasons.length > 0
-  );
-  const hasStressHistory = !!(
-    weather?.stress_history && weather.stress_history.length > 0
-  );
-  const [analysisOpen, setAnalysisOpen] = useState(true);
+export default function WeatherUpdateCard({ targetDate, className }: WeatherUpdateCardProps) {
+  const { data, isLoading, error } = useWeather(targetDate);
 
   if (isLoading) {
     return (
-      <Card className={cn("flex items-center justify-center h-[200px]", className)}>
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <Loader2 className="h-5 w-5 animate-spin" />
+      <section className={className} style={{ padding: '24px 0' }}>
+        <SectionHeader numeral="V" title="Weather Intelligence" />
+        <div className="flex items-center justify-center py-12" style={{ color: 'var(--ink-light)' }}>
+          <Loader2 className="h-5 w-5 animate-spin mr-2" />
           <span className="text-sm">Chargement du rapport météo...</span>
         </div>
-      </Card>
+      </section>
     );
   }
 
-  if (error || !weather) {
+  if (error || !data) {
     return (
-      <Card className={cn("flex items-center justify-center h-[200px]", className)}>
-        <div className="text-center space-y-1">
-          <CloudRainIcon className="h-6 w-6 text-muted-foreground/40 mx-auto" />
-          <p className="text-sm text-muted-foreground">
-            Aucun rapport météo pour cette date
-          </p>
-        </div>
-      </Card>
+      <section className={className} style={{ padding: '24px 0' }}>
+        <SectionHeader numeral="V" title="Weather Intelligence" />
+        <p style={{ color: 'var(--ink-light)', textAlign: 'center', fontSize: 14 }}>
+          Aucun rapport météo pour cette date.
+        </p>
+      </section>
     );
   }
+
+  const diagnostics: LocationDiagnostic[] =
+    data.daily_diagnostics ?? data.diagnostics ?? [];
 
   return (
-    <Card className={className}>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-lg font-semibold tracking-tight">
-          Agro-Météo Intelligence
-        </CardTitle>
-      </CardHeader>
+    <section className={className} style={{ padding: '24px 0' }}>
+      <SectionHeader numeral="V" title="Weather Intelligence" />
 
-      <CardContent className="space-y-4">
-        {/* Section 1: Zone List with timeline */}
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold">Zones productrices</h3>
-          <span className="text-[10px] text-muted-foreground/60">
-            {hasStressHistory ? "7 derniers jours" : "en attente de données"}
-          </span>
-        </div>
-        <InfoHint>Diagnostic basé sur l&apos;analyse météo du jour</InfoHint>
-        {hasStressHistory ? (
-          <ZoneList history={weather.stress_history!} />
-        ) : (
-          <ZonePlaceholder />
-        )}
+      {/* Campaign health + seasons */}
+      {data.campaign && data.seasons && data.seasons.length > 0 && (
+        <CampaignBlock
+          campaign={data.campaign}
+          campaignHealth={data.campaign_health}
+          seasons={data.seasons}
+        />
+      )}
 
-        {/* Harmattan section (separate from diagnostic) */}
-        {weather.diagnostics && weather.diagnostics.length > 0 && (
-          <HarmattanSection diagnostics={weather.diagnostics} />
-        )}
+      {/* Stress history per zone */}
+      {data.stress_history && data.stress_history.length > 0 && (
+        <StressHistoryBlock history={data.stress_history} />
+      )}
 
-        {/* Section 2: Daily Analysis (collapsible) */}
-        <div className="border-t border-border/50 pt-3">
-          <Collapsible open={analysisOpen} onOpenChange={setAnalysisOpen}>
-            <CollapsibleTrigger className="flex items-center justify-between w-full">
-              <h3 className="text-sm font-semibold">Analyse du jour</h3>
-              <ChevronDown
-                className={cn(
-                  "h-4 w-4 text-muted-foreground transition-transform duration-200",
-                  analysisOpen && "rotate-180",
-                )}
-              />
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <InfoHint>Bulletin généré par le modèle météo</InfoHint>
-              <div className="mt-2 space-y-2">
-                {weather.description
-                  .split(/\n{2,}/)
-                  .filter(Boolean)
-                  .map((p, i) => (
-                    <p
-                      key={i}
-                      className="text-sm text-foreground/85 leading-relaxed"
-                    >
-                      {formatFinancialText(p.trim())}
-                    </p>
-                  ))}
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
-        </div>
+      {/* Harmattan */}
+      <HarmattanBlock harmattan={data.harmattan} diagnostics={diagnostics} />
 
-        {/* Section 4: Campaign Context (rolling) */}
-        {hasEnrichedData && (
-          <div className="border-t border-dashed border-border/60 pt-3">
-            <CampaignSection
-              campaign={weather.campaign!}
-              campaignHealth={weather.campaign_health}
-              seasons={weather.seasons!}
-            />
+      {/* Bulletin */}
+      {data.description && (
+        <div
+          style={{
+            padding: '16px 18px',
+            background: 'var(--paper-off)',
+            borderLeft: '3px solid var(--ink)',
+          }}
+        >
+          <div
+            className="uppercase mb-2"
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 10,
+              fontWeight: 600,
+              letterSpacing: '0.2em',
+              color: 'var(--ink-mid)',
+            }}
+          >
+            Bulletin du jour
           </div>
-        )}
-      </CardContent>
+          {data.description
+            .split(/\n{2,}/)
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .map((p, i) => (
+              <p
+                key={i}
+                style={{
+                  fontFamily: 'var(--font-editorial)',
+                  fontSize: 14,
+                  lineHeight: 1.65,
+                  color: 'var(--ink-dark)',
+                  marginBottom: 10,
+                }}
+              >
+                {p}
+              </p>
+            ))}
+        </div>
+      )}
 
-      <CardFooter className="pt-0 flex flex-wrap gap-3 items-center">
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          <CalendarIcon className="h-3.5 w-3.5" />
-          <span>{weather.date}</span>
-        </div>
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          <BotIcon className="h-3.5 w-3.5" />
-          <span>meteo-agent</span>
-        </div>
-      </CardFooter>
-    </Card>
+    </section>
   );
 }

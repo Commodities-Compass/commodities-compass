@@ -1,15 +1,11 @@
-import { cn } from "@/utils";
+import { cn } from '@/utils';
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
-import type { IndicatorRange } from "@/types/dashboard";
-
-// ---------------------------------------------------------------------------
-// Indicator metadata — static, never changes, no need to store in DB
-// ---------------------------------------------------------------------------
+} from '@/components/ui/tooltip';
+import type { IndicatorRange } from '@/types/dashboard';
 
 interface IndicatorMeta {
   fullName: string;
@@ -19,120 +15,101 @@ interface IndicatorMeta {
 
 const INDICATOR_META: Record<string, IndicatorMeta> = {
   MACROECO: {
-    fullName: "Macro-Économique",
-    description:
-      "Score macro issu de l'analyse LLM (météo, fondamentaux, contexte global)",
-    zones: {
-      RED: "Contexte défavorable",
-      ORANGE: "Contexte neutre",
-      GREEN: "Contexte porteur",
-    },
+    fullName: 'Macro-Économique',
+    description: "Score macro issu de l'analyse LLM (météo, fondamentaux, contexte global)",
+    zones: { RED: 'Contexte défavorable', ORANGE: 'Contexte neutre', GREEN: 'Contexte porteur' },
   },
   RSI: {
-    fullName: "Relative Strength Index",
-    description:
-      "Vitesse et amplitude des mouvements de prix sur 14 jours",
-    zones: {
-      RED: "Survendu — pression vendeuse",
-      ORANGE: "Zone neutre",
-      GREEN: "Momentum haussier",
-    },
+    fullName: 'Relative Strength Index',
+    description: 'Vitesse et amplitude des mouvements de prix sur 14 jours',
+    zones: { RED: 'Survendu — pression vendeuse', ORANGE: 'Zone neutre', GREEN: 'Momentum haussier' },
   },
   MACD: {
-    fullName: "MACD",
-    description:
-      "Changements de tendance via croisement de moyennes mobiles",
-    zones: {
-      RED: "Signal baissier",
-      ORANGE: "Pas de signal clair",
-      GREEN: "Signal haussier",
-    },
+    fullName: 'MACD',
+    description: 'Changements de tendance via croisement de moyennes mobiles',
+    zones: { RED: 'Signal baissier', ORANGE: 'Pas de signal clair', GREEN: 'Signal haussier' },
   },
-  "%K": {
-    fullName: "Stochastique %K",
-    description:
-      "Cours de clôture vs fourchette haute-basse",
-    zones: {
-      RED: "Survendu (<20%)",
-      ORANGE: "Zone neutre",
-      GREEN: "Momentum fort (>80%)",
-    },
+  '%K': {
+    fullName: 'Stochastique %K',
+    description: 'Cours de clôture vs fourchette haute-basse',
+    zones: { RED: 'Survendu (<20%)', ORANGE: 'Zone neutre', GREEN: 'Momentum fort (>80%)' },
   },
   ATR: {
-    fullName: "Average True Range",
-    description: "Volatilité moyenne du marché (Wilder, 14j)",
-    zones: {
-      RED: "Volatilité faible",
-      ORANGE: "Volatilité normale",
-      GREEN: "Volatilité élevée",
-    },
+    fullName: 'Average True Range',
+    description: 'Volatilité moyenne du marché (Wilder, 14j)',
+    zones: { RED: 'Volatilité faible', ORANGE: 'Volatilité normale', GREEN: 'Volatilité élevée' },
   },
-  "VOL/OI": {
-    fullName: "Volume / Open Interest",
-    description: "Ratio volume de trading / positions ouvertes",
-    zones: {
-      RED: "Activité faible",
-      ORANGE: "Activité normale",
-      GREEN: "Conviction forte",
-    },
+  'VOL/OI': {
+    fullName: 'Volume / Open Interest',
+    description: 'Ratio volume de trading / positions ouvertes',
+    zones: { RED: 'Activité faible', ORANGE: 'Activité normale', GREEN: 'Conviction forte' },
   },
-  "PRODUCTION": {
-    fullName: "Sentiment Production",
-    description:
-      "Ton de la presse sur la production cacao (récolte, arrivages, météo, Afrique de l'Ouest)",
-    zones: {
-      RED: "Récit baissier — tensions sur l'offre",
-      ORANGE: "Ton neutre",
-      GREEN: "Récit haussier — production favorable",
-    },
+  PRODUCTION: {
+    fullName: 'Sentiment Production',
+    description: 'Ton de la presse sur la production cacao',
+    zones: { RED: "Récit baissier — tensions sur l'offre", ORANGE: 'Ton neutre', GREEN: 'Récit haussier' },
   },
-  "CHOCOLAT": {
-    fullName: "Sentiment Chocolat",
-    description:
-      "Ton de la presse sur la demande chocolat (grindings, consommation, industrie)",
-    zones: {
-      RED: "Demande en repli",
-      ORANGE: "Demande stable",
-      GREEN: "Demande soutenue",
-    },
+  CHOCOLAT: {
+    fullName: 'Sentiment Chocolat',
+    description: 'Ton de la presse sur la demande chocolat',
+    zones: { RED: 'Demande en repli', ORANGE: 'Demande stable', GREEN: 'Demande soutenue' },
   },
-  "TRANSF.": {
-    fullName: "Sentiment Transformation",
-    description:
-      "Ton de la presse sur la transformation (broyages, capacités industrielles)",
-    zones: {
-      RED: "Activité en baisse",
-      ORANGE: "Activité stable",
-      GREEN: "Activité en hausse",
-    },
+  'TRANSF.': {
+    fullName: 'Sentiment Transformation',
+    description: 'Ton de la presse sur la transformation',
+    zones: { RED: 'Activité en baisse', ORANGE: 'Activité stable', GREEN: 'Activité en hausse' },
   },
-  "ÉCONOMIE": {
-    fullName: "Sentiment Économie",
-    description:
-      "Ton de la presse macro-économique (devises, politique monétaire, contexte global)",
-    zones: {
-      RED: "Contexte défavorable",
-      ORANGE: "Contexte neutre",
-      GREEN: "Contexte porteur",
-    },
+  'ÉCONOMIE': {
+    fullName: 'Sentiment Économie',
+    description: 'Ton de la presse macro-économique',
+    zones: { RED: 'Contexte défavorable', ORANGE: 'Contexte neutre', GREEN: 'Contexte porteur' },
   },
 };
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
-
-interface GaugeIndicatorProps {
+interface RulerGaugeProps {
   value: number;
   min: number;
   max: number;
   label: string;
   ranges?: IndicatorRange[];
-  size?: "sm" | "md" | "lg";
-  showValue?: boolean;
-  showLabel?: boolean;
   className?: string;
 }
+
+function zoneOf(value: number, ranges?: IndicatorRange[]): 'RED' | 'ORANGE' | 'GREEN' {
+  if (ranges && ranges.length > 0) {
+    for (const r of ranges) {
+      const lo = Math.min(r.range_low, r.range_high);
+      const hi = Math.max(r.range_low, r.range_high);
+      if (value >= lo && value <= hi) return r.area;
+    }
+  }
+  return 'ORANGE';
+}
+
+/**
+ * Compute the two inner tick positions (in %) that split the [min, max] line
+ * into the 3 zones HEDGE / MONITOR / OPEN. Sorts the ranges by midpoint and
+ * uses each range's upper bound as the boundary.
+ */
+function zoneBounds(ranges: IndicatorRange[] | undefined, min: number, max: number): [number, number] {
+  const span = max - min || 1;
+  if (!ranges || ranges.length < 2) return [33.33, 66.66];
+  const sorted = [...ranges].sort(
+    (a, b) =>
+      (a.range_low + a.range_high) / 2 - (b.range_low + b.range_high) / 2,
+  );
+  const upper = (r: IndicatorRange) => Math.max(r.range_low, r.range_high);
+  const b1 = Math.max(0, Math.min(100, ((upper(sorted[0]) - min) / span) * 100));
+  const second = sorted.length >= 3 ? sorted[1] : sorted[0];
+  const b2 = Math.max(0, Math.min(100, ((upper(second) - min) / span) * 100));
+  return [b1, b2];
+}
+
+const SIGNAL_HEX = {
+  RED: '#EF4444',
+  ORANGE: '#F59E0B',
+  GREEN: '#10B981',
+} as const;
 
 export default function GaugeIndicator({
   value,
@@ -140,133 +117,98 @@ export default function GaugeIndicator({
   max,
   label,
   ranges,
-  size = "md",
-  showValue = true,
-  showLabel = true,
   className,
-}: GaugeIndicatorProps) {
-  const percentage = Math.max(
-    0,
-    Math.min(100, ((value - min) / (max - min)) * 100),
-  );
-
+}: RulerGaugeProps) {
+  const span = max - min || 1;
+  const pct = Math.max(0, Math.min(100, ((value - min) / span) * 100));
+  const zone = zoneOf(value, ranges);
+  const [t1, t2] = zoneBounds(ranges, min, max);
   const meta = INDICATOR_META[label];
-  const zone = getCurrentZone(value, percentage, ranges);
-  const colorSections = generateColorSections(ranges, min, max);
-
-  // SVG geometry
-  const cx = 60;
-  const cy = 55;
-  const r = 46;
-
-  const angle = Math.PI - (percentage / 100) * Math.PI;
-  const mx = cx + r * Math.cos(angle);
-  const my = cy - r * Math.abs(Math.sin(angle));
-
-  const sizeClasses = {
-    sm: "w-20 h-12",
-    md: "w-28 h-18",
-    lg: "w-36 h-22",
-  };
 
   const gauge = (
-    <div
-      className={cn(
-        "flex flex-col items-center rounded-md px-1 py-2 transition-colors duration-150",
-        "hover:bg-muted/40 cursor-default",
-        className,
-      )}
-    >
-      <div className={cn("relative", sizeClasses[size])}>
-        <svg
-          className="w-full h-full"
-          viewBox="0 0 120 68"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          {/* Background arc */}
-          <path
-            d={`M${cx - r},${cy} A${r},${r} 0 0,1 ${cx + r},${cy}`}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="4"
-            strokeLinecap="round"
-            className="text-muted/50"
-          />
-
-          {/* Colored zone arcs */}
-          {colorSections.map((section, i) => (
-            <path
-              key={i}
-              d={createArcPath(cx, cy, r, section.startAngle, section.endAngle)}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="4"
-              strokeLinecap="round"
-              className={cn(section.color, "opacity-75")}
-            />
-          ))}
-
-          {/* Needle */}
-          <line
-            x1={cx}
-            y1={cy}
-            x2={mx}
-            y2={my}
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            className="text-foreground/60"
-          />
-          <circle cx={cx} cy={cy} r="2" fill="currentColor" className="text-foreground/40" />
-
-          {/* Marker dot */}
-          <circle cx={mx} cy={my} r="3.5" fill="currentColor" className={zone.color} />
-          <circle cx={mx} cy={my} r="1.8" fill="white" className="dark:fill-gray-900" />
-
-          {/* Min / Max labels */}
-          <text
-            x={cx - r + 2}
-            y={cy + 9}
-            textAnchor="start"
-            className="fill-muted-foreground"
-            fontSize="9"
-            fontFamily="system-ui"
-          >
-            {min.toFixed(1)}
-          </text>
-          <text
-            x={cx + r - 2}
-            y={cy + 9}
-            textAnchor="end"
-            className="fill-muted-foreground"
-            fontSize="9"
-            fontFamily="system-ui"
-          >
-            {max.toFixed(1)}
-          </text>
-        </svg>
+    <div className={cn('flex flex-col items-stretch select-none', className)} style={{ width: '100%' }}>
+      {/* Indicator label */}
+      <div
+        className="uppercase text-center"
+        style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: 10,
+          fontWeight: 600,
+          letterSpacing: '0.18em',
+          color: 'var(--ink-mid)',
+          marginBottom: 18,
+        }}
+      >
+        {label}
       </div>
 
-      {/* Value + label */}
-      {(showValue || showLabel) && (
-        <div className="flex flex-col items-center gap-0 -mt-0.5">
-          {showValue && (
-            <span
-              className={cn(
-                "text-sm font-bold tabular-nums leading-tight",
-                zone.color,
-              )}
-            >
-              {value != null ? value.toFixed(2) : "—"}
-            </span>
-          )}
-          {showLabel && (
-            <span className="text-[10px] font-medium text-muted-foreground tracking-wider uppercase">
-              {label}
-            </span>
-          )}
+      {/* Ruler */}
+      <div
+        style={{
+          position: 'relative',
+          paddingTop: 28,
+          paddingBottom: 4,
+        }}
+      >
+        {/* Value label (top) */}
+        <span
+          className="tabular-nums"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: `${pct}%`,
+            transform: 'translateX(-50%)',
+            fontFamily: 'var(--font-mono)',
+            fontSize: 12,
+            fontWeight: 700,
+            color: 'var(--ink)',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {value != null ? value.toFixed(2) : '—'}
+        </span>
+
+        {/* Triangle marker */}
+        <span
+          style={{
+            position: 'absolute',
+            top: 16,
+            left: `${pct}%`,
+            transform: 'translateX(-50%)',
+            fontSize: 10,
+            lineHeight: 1,
+            color: SIGNAL_HEX[zone],
+          }}
+        >
+          {'▼'}
+        </span>
+
+        {/* Ruler line */}
+        <div
+          style={{
+            position: 'relative',
+            width: '100%',
+            height: 1,
+            background: 'var(--ink)',
+          }}
+        >
+          {/* Ticks */}
+          <span style={tickStyle(0, true)} />
+          <span style={tickStyle(t1, false)} />
+          <span style={tickStyle(t2, false)} />
+          <span style={tickStyle(100, true)} />
         </div>
-      )}
+      </div>
+
+      {/* Zone labels */}
+      <div
+        className="flex justify-between"
+        style={{ marginTop: 6 }}
+      >
+        <span style={zoneLabelStyle}>Hedge</span>
+        <span style={{ ...zoneLabelStyle, textAlign: 'center' }}>Monitor</span>
+        <span style={zoneLabelStyle}>Open</span>
+      </div>
     </div>
   );
 
@@ -276,14 +218,15 @@ export default function GaugeIndicator({
     <TooltipProvider delayDuration={150}>
       <Tooltip>
         <TooltipTrigger asChild>{gauge}</TooltipTrigger>
-        <TooltipContent side="top" className="max-w-[220px] px-3 py-2 space-y-1.5">
+        <TooltipContent side="top" className="max-w-60 px-3 py-2 space-y-1.5">
           <p className="text-xs font-semibold">{meta.fullName}</p>
-          <p className="text-[11px] text-gray-400 leading-snug">
-            {meta.description}
-          </p>
+          <p className="text-[11px] text-muted-foreground leading-snug">{meta.description}</p>
           <div className="flex items-center gap-1.5 pt-0.5">
-            <div className={cn("h-1.5 w-1.5 rounded-full", zoneDotColor(zone.area))} />
-            <span className="text-[11px] font-medium">{meta.zones[zone.area]}</span>
+            <span
+              className="h-1.5 w-1.5 rounded-full"
+              style={{ background: SIGNAL_HEX[zone] }}
+            />
+            <span className="text-[11px] font-medium">{meta.zones[zone]}</span>
           </div>
         </TooltipContent>
       </Tooltip>
@@ -291,86 +234,23 @@ export default function GaugeIndicator({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+const zoneLabelStyle: React.CSSProperties = {
+  fontFamily: 'var(--font-sans)',
+  fontSize: 8,
+  fontWeight: 600,
+  textTransform: 'uppercase',
+  letterSpacing: '0.12em',
+  color: 'var(--ink-light)',
+};
 
-const ZONE_COLORS = {
-  RED: "text-red-500",
-  ORANGE: "text-amber-500",
-  GREEN: "text-emerald-500",
-} as const;
-
-function zoneDotColor(area: "RED" | "ORANGE" | "GREEN"): string {
-  if (area === "RED") return "bg-red-500";
-  if (area === "ORANGE") return "bg-amber-500";
-  return "bg-emerald-500";
-}
-
-function getCurrentZone(
-  value: number,
-  percentage: number,
-  ranges: IndicatorRange[] | undefined,
-): { area: "RED" | "ORANGE" | "GREEN"; color: string } {
-  if (ranges && ranges.length > 0) {
-    for (const range of ranges) {
-      const lo = Math.min(range.range_low, range.range_high);
-      const hi = Math.max(range.range_low, range.range_high);
-      if (value >= lo && value <= hi) {
-        return { area: range.area, color: ZONE_COLORS[range.area] };
-      }
-    }
-  }
-  if (percentage <= 33) return { area: "RED", color: ZONE_COLORS.RED };
-  if (percentage <= 66) return { area: "ORANGE", color: ZONE_COLORS.ORANGE };
-  return { area: "GREEN", color: ZONE_COLORS.GREEN };
-}
-
-function createArcPath(
-  cx: number,
-  cy: number,
-  r: number,
-  startAngle: number,
-  endAngle: number,
-): string {
-  const sx = cx + r * Math.cos(startAngle);
-  const sy = cy - r * Math.abs(Math.sin(startAngle));
-  const ex = cx + r * Math.cos(endAngle);
-  const ey = cy - r * Math.abs(Math.sin(endAngle));
-  const largeArc = Math.abs(startAngle - endAngle) > Math.PI ? 1 : 0;
-  return `M${sx},${sy} A${r},${r} 0 ${largeArc},1 ${ex},${ey}`;
-}
-
-function generateColorSections(
-  ranges: IndicatorRange[] | undefined,
-  min: number,
-  max: number,
-) {
-  if (!ranges || ranges.length === 0) {
-    return [
-      { startAngle: Math.PI, endAngle: (Math.PI * 2) / 3, color: "text-red-500" },
-      { startAngle: (Math.PI * 2) / 3, endAngle: Math.PI / 3, color: "text-amber-500" },
-      { startAngle: Math.PI / 3, endAngle: 0, color: "text-emerald-500" },
-    ];
-  }
-
-  const sorted = [...ranges].sort(
-    (a, b) => (a.range_low + a.range_high) / 2 - (b.range_low + b.range_high) / 2,
-  );
-
-  return sorted.map((range) => {
-    const lo = Math.min(range.range_low, range.range_high);
-    const hi = Math.max(range.range_low, range.range_high);
-    const startPct = Math.max(0, Math.min(100, ((lo - min) / (max - min)) * 100));
-    const endPct = Math.max(0, Math.min(100, ((hi - min) / (max - min)) * 100));
-    const startAngle = Math.PI - (startPct / 100) * Math.PI;
-    const endAngle = Math.PI - (endPct / 100) * Math.PI;
-    const color =
-      range.area === "RED"
-        ? "text-red-500"
-        : range.area === "ORANGE"
-          ? "text-amber-500"
-          : "text-emerald-500";
-    return { startAngle, endAngle, color };
-  });
+function tickStyle(leftPct: number, isEnd: boolean): React.CSSProperties {
+  return {
+    position: 'absolute',
+    left: `${leftPct}%`,
+    top: isEnd ? -2.5 : -4,
+    width: 1,
+    height: isEnd ? 6 : 9,
+    background: 'var(--ink-dark)',
+    transform: leftPct === 100 ? 'translateX(-100%)' : leftPct === 0 ? 'none' : 'translateX(-50%)',
+  };
 }

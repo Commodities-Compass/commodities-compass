@@ -1,4 +1,4 @@
-import DateSelector from '@/components/date-selector';
+import { useState } from 'react';
 import MarketAnalysis from '@/components/market-analysis';
 import NewsCard from '@/components/news-card';
 import SignalHero from '@/components/signal-hero';
@@ -6,62 +6,34 @@ import PodcastPlayer from '@/components/podcast-player';
 import PriceChart from '@/components/price-chart';
 import WeatherUpdateCard from '@/components/weather-update-card';
 import { DashboardErrorBoundary } from '@/components/DashboardErrorBoundary';
-import { METRIC_OPTIONS } from '@/data/commodities-data';
-import { usePositionStatus } from '@/hooks/useDashboard';
-import { useState } from 'react';
-
-const todayISO = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
+import { useDashboardDate } from '@/contexts/DashboardDateContext';
 
 export default function DashboardPage() {
-  const [currentDate, setCurrentDate] = useState(todayISO());
+  const { currentDate } = useDashboardDate();
   const [selectedMetric, setSelectedMetric] = useState('close');
 
-  const { data: positionData } = usePositionStatus(currentDate);
-  const sessionDate = positionData?.date ?? null;
-
-  const metricConfig =
-    METRIC_OPTIONS.find((option) => option.value === selectedMetric) ||
-    METRIC_OPTIONS[0];
-
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-        <h1 className="text-2xl font-bold">Tableau de Bord</h1>
-        <DateSelector
-          currentDate={currentDate}
-          onDateChange={setCurrentDate}
-          sessionDate={sessionDate ?? undefined}
-          className="w-full md:w-auto"
-        />
-      </div>
+    <div>
+      <DashboardErrorBoundary>
+        <SignalHero targetDate={currentDate} />
+      </DashboardErrorBoundary>
 
-      {/* Hero row: Signal + Podcast */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <DashboardErrorBoundary>
-          <SignalHero targetDate={currentDate} />
-        </DashboardErrorBoundary>
-        <DashboardErrorBoundary>
-          <PodcastPlayer audioDate={currentDate} />
-        </DashboardErrorBoundary>
-      </div>
+      <DashboardErrorBoundary>
+        <PodcastPlayer audioDate={currentDate} />
+      </DashboardErrorBoundary>
 
       <DashboardErrorBoundary>
         <MarketAnalysis targetDate={currentDate} />
       </DashboardErrorBoundary>
 
-      <div>
-        <DashboardErrorBoundary>
-          <PriceChart
-            title={`Évolution ${metricConfig.label}`}
-            selectedMetric={selectedMetric}
-            onMetricChange={setSelectedMetric}
-            targetDate={currentDate}
-          />
-        </DashboardErrorBoundary>
-      </div>
+      <DashboardErrorBoundary>
+        <PriceChart
+          title="Price History & Signal Overlay"
+          selectedMetric={selectedMetric}
+          onMetricChange={setSelectedMetric}
+          targetDate={currentDate}
+        />
+      </DashboardErrorBoundary>
 
       <DashboardErrorBoundary>
         <NewsCard targetDate={currentDate} />

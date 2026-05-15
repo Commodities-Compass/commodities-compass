@@ -6,7 +6,7 @@ import PodcastPlayer from '@/components/podcast-player';
 import PriceChart from '@/components/price-chart';
 import WeatherUpdateCard from '@/components/weather-update-card';
 import { DashboardErrorBoundary } from '@/components/DashboardErrorBoundary';
-import { useDashboardDate } from '@/contexts/DashboardDateContext';
+import { useDashboardDate } from '@/hooks/useDashboardDate';
 
 export default function DashboardPage() {
   const { currentDate } = useDashboardDate();

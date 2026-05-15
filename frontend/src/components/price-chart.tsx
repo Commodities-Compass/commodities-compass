@@ -36,7 +36,8 @@ function DaysPillGroup({ value, onChange }: PillGroupProps) {
             role="radio"
             aria-checked={isActive}
             onClick={() => onChange(d)}
-            className="uppercase"
+            className="chart-days-pill uppercase"
+            data-active={isActive ? 'true' : 'false'}
             style={{
               fontFamily: 'var(--font-mono)',
               fontSize: 10,
@@ -49,12 +50,6 @@ function DaysPillGroup({ value, onChange }: PillGroupProps) {
               borderLeft: i > 0 ? '1px solid var(--ink)' : 'none',
               cursor: 'pointer',
               transition: 'background 120ms, color 120ms',
-            }}
-            onMouseEnter={(e) => {
-              if (!isActive) e.currentTarget.style.color = 'var(--ink)';
-            }}
-            onMouseLeave={(e) => {
-              if (!isActive) e.currentTarget.style.color = 'var(--ink-mid)';
             }}
           >
             {d === 365 ? '1Y' : `${d}J`}
@@ -81,7 +76,7 @@ function MetricDropdown({ value, onChange }: MetricDropdownProps) {
           type="button"
           aria-haspopup="listbox"
           aria-expanded={open}
-          className="uppercase inline-flex items-center gap-2"
+          className="chart-metric-trigger uppercase inline-flex items-center gap-2"
           style={{
             fontFamily: 'var(--font-mono)',
             fontSize: 10,
@@ -95,8 +90,6 @@ function MetricDropdown({ value, onChange }: MetricDropdownProps) {
             cursor: 'pointer',
             transition: 'color 120ms',
           }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--ink-mid)')}
-          onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--ink)')}
         >
           <span
             className="uppercase"
@@ -139,7 +132,8 @@ function MetricDropdown({ value, onChange }: MetricDropdownProps) {
                     onChange(m.value);
                     setOpen(false);
                   }}
-                  className="uppercase w-full text-left"
+                  className="chart-metric-option uppercase w-full text-left"
+                  data-active={isActive ? 'true' : 'false'}
                   style={{
                     fontFamily: 'var(--font-mono)',
                     fontSize: 10,
@@ -152,14 +146,6 @@ function MetricDropdown({ value, onChange }: MetricDropdownProps) {
                     padding: '10px 14px',
                     cursor: 'pointer',
                     transition: 'background 120ms, color 120ms',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'var(--paper-off)';
-                    e.currentTarget.style.color = 'var(--ink)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = isActive ? 'var(--paper-off)' : 'transparent';
-                    e.currentTarget.style.color = isActive ? 'var(--ink)' : 'var(--ink-mid)';
                   }}
                 >
                   {m.label}
@@ -217,7 +203,7 @@ export default function PriceChart({
     [selectedMetric],
   );
 
-  const visibleData = chartResponse?.data ?? [];
+  const visibleData = useMemo(() => chartResponse?.data ?? [], [chartResponse?.data]);
 
   const yAxisDomain = useMemo<[number | string, number | string]>(() => {
     const tight = ['close', 'stock_us'];
@@ -246,6 +232,14 @@ export default function PriceChart({
 
   return (
     <section className={className} style={{ padding: '24px 0' }}>
+      <style>{`
+        .chart-days-pill[data-active="false"]:hover { color: var(--ink) !important; }
+        .chart-metric-trigger:hover { color: var(--ink-mid) !important; }
+        .chart-metric-option:hover {
+          background: var(--paper-off) !important;
+          color: var(--ink) !important;
+        }
+      `}</style>
       <SectionHeader numeral="III" title={title} />
 
       {/* Toolbar */}

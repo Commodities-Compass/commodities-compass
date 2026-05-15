@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useDashboardDate } from '@/contexts/DashboardDateContext';
+import { useDashboardDate } from '@/hooks/useDashboardDate';
 import DateSelector from '@/components/date-selector';
 import LiveSignalStrip from '@/components/live-signal-strip';
 import compassIcon from '@/assets/compass-icon.png';
@@ -83,7 +83,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             <div className="flex items-center shrink-0">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="flex items-center gap-2 hover:opacity-70 transition-opacity">
+                  <button type="button" className="flex items-center gap-2 hover:opacity-70 transition-opacity">
                     <Avatar className="h-5 w-5">
                       <AvatarImage src={user?.picture} alt={displayName} />
                       <AvatarFallback className="text-[8px]">{initials}</AvatarFallback>

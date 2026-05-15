@@ -107,6 +107,9 @@ export default function PodcastPlayer({ audioDate, className }: PodcastPlayerPro
 
   return (
     <section className={className} style={{ padding: '24px 0' }}>
+      <style>{`
+        .podcast-play-btn:not(:disabled):hover { background: var(--paper-off) !important; }
+      `}</style>
       <SectionHeader numeral="I" title="Compass Daily Brief" />
 
       <div
@@ -153,9 +156,11 @@ export default function PodcastPlayer({ audioDate, className }: PodcastPlayerPro
           </div>
 
           <button
+            type="button"
             onClick={togglePlayPause}
             disabled={isLoading || !hasAudio}
             aria-label={isPlaying ? 'Pause' : 'Play'}
+            className="podcast-play-btn"
             style={{
               width: 56,
               height: 56,
@@ -169,12 +174,6 @@ export default function PodcastPlayer({ audioDate, className }: PodcastPlayerPro
               opacity: hasAudio ? 1 : 0.4,
               flexShrink: 0,
               transition: 'background 150ms',
-            }}
-            onMouseEnter={(e) => {
-              if (hasAudio) e.currentTarget.style.background = 'var(--paper-off)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'var(--paper)';
             }}
           >
             {isLoading || isBuffering || (hasAudio && !isAudioReady) ? (

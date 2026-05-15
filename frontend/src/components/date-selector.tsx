@@ -54,10 +54,13 @@ export default function DateSelector({
 
   if (variant === 'compact') {
     return (
-      <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <>
+        <style>{`.editorial-date-btn:hover { color: var(--ink) !important; }`}</style>
+        <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>
           <button
-            className={className}
+            type="button"
+            className={`editorial-date-btn ${className ?? ''}`.trim()}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -73,8 +76,6 @@ export default function DateSelector({
               padding: '2px 4px',
               transition: 'color 120ms',
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--ink)')}
-            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--ink-mid)')}
             aria-label="Select session date"
           >
             <CalendarIcon style={{ width: 12, height: 12 }} />
@@ -107,7 +108,8 @@ export default function DateSelector({
             defaultMonth={selectedDate}
           />
         </PopoverContent>
-      </Popover>
+        </Popover>
+      </>
     );
   }
 

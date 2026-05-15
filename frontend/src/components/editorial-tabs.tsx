@@ -66,6 +66,15 @@ export default function EditorialTabs({
 
   return (
     <div className={className}>
+      <style>{`
+        .editorial-tab:focus-visible {
+          outline: 1px dashed var(--ink-mid);
+          outline-offset: 2px;
+        }
+        .editorial-tab[data-active="false"]:not(:disabled):hover {
+          color: var(--ink-mid) !important;
+        }
+      `}</style>
       <div
         role="tablist"
         aria-orientation="horizontal"
@@ -90,7 +99,8 @@ export default function EditorialTabs({
               tabIndex={isActive ? 0 : -1}
               onClick={() => !t.disabled && select(t.id)}
               onKeyDown={(e) => onKey(e, idx)}
-              className="inline-flex items-baseline gap-2"
+              className="editorial-tab inline-flex items-baseline gap-2"
+              data-active={isActive ? 'true' : 'false'}
               style={{
                 fontFamily: 'var(--font-display)',
                 fontSize: labelSize,
@@ -109,20 +119,6 @@ export default function EditorialTabs({
                 borderBottom: isActive ? `${underline}px solid var(--ink)` : `${underline}px solid transparent`,
                 marginBottom: -1,
                 transition: 'color 150ms ease, border-color 150ms ease',
-                outline: 'none',
-              }}
-              onMouseEnter={(e) => {
-                if (!isActive && !t.disabled) e.currentTarget.style.color = 'var(--ink-mid)';
-              }}
-              onMouseLeave={(e) => {
-                if (!isActive && !t.disabled) e.currentTarget.style.color = 'var(--ink-light)';
-              }}
-              onFocus={(e) => {
-                e.currentTarget.style.outline = '1px dashed var(--ink-mid)';
-                e.currentTarget.style.outlineOffset = '2px';
-              }}
-              onBlur={(e) => {
-                e.currentTarget.style.outline = 'none';
               }}
             >
               {t.label}

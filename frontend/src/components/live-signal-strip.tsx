@@ -1,9 +1,10 @@
-import { useDashboardDate } from '@/contexts/DashboardDateContext';
+import { useDashboardDate } from '@/hooks/useDashboardDate';
 import {
   usePositionStatus,
   useChartData,
   useIndicatorsGrid,
 } from '@/hooks/useDashboard';
+import { Eyebrow, DotSeparator, DataValue } from '@/components/editorial';
 
 const SIGNAL_HEX = {
   OPEN: '#10B981',
@@ -56,48 +57,12 @@ function TickerCell({ item }: { item: TickerItem }) {
         />
       )}
       {item.label && (
-        <span
-          className="uppercase"
-          style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: 10,
-            letterSpacing: '0.18em',
-            color: 'var(--ink-light)',
-          }}
-        >
+        <Eyebrow tone="subtle" size={10}>
           {item.label}
-        </span>
+        </Eyebrow>
       )}
-      <span
-        className="tabular-nums"
-        style={{
-          fontFamily: 'var(--font-mono)',
-          fontSize: 11,
-          fontWeight: 600,
-          letterSpacing: '0.05em',
-          color: item.valueColor ?? 'var(--ink)',
-        }}
-      >
-        {item.value}
-      </span>
+      <DataValue color={item.valueColor}>{item.value}</DataValue>
     </span>
-  );
-}
-
-function Sep() {
-  return (
-    <span
-      aria-hidden
-      className="mr-8"
-      style={{
-        display: 'inline-block',
-        width: 4,
-        height: 4,
-        borderRadius: '50%',
-        background: 'var(--rule)',
-        verticalAlign: 'middle',
-      }}
-    />
   );
 }
 
@@ -166,26 +131,28 @@ export default function LiveSignalStrip() {
     { key: 'session', label: 'Session', value: (pos?.date ?? currentDate).slice(0, 10) },
   ];
 
-  // Render the same list twice for a seamless infinite scroll
   const row = (keyPrefix: string) => (
     <div className="inline-flex items-center" aria-hidden={keyPrefix === 'b'}>
       {items.map((it, i) => (
         <span key={`${keyPrefix}-${it.key}`} className="inline-flex items-center">
           <TickerCell item={it} />
-          {i < items.length - 1 && <Sep />}
+          {i < items.length - 1 && (
+            <span className="mr-8">
+              <DotSeparator />
+            </span>
+          )}
         </span>
       ))}
-      <Sep />
+      <span className="mr-8">
+        <DotSeparator />
+      </span>
     </div>
   );
 
   return (
     <div
       className="overflow-hidden ticker-track"
-      style={{
-        flex: 1,
-        minWidth: 0,
-      }}
+      style={{ flex: 1, minWidth: 0 }}
       aria-label="Live market data ticker"
       role="marquee"
     >

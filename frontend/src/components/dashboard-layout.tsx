@@ -1,5 +1,4 @@
-import { MoonIcon, SunIcon, LogOutIcon, MenuIcon, UserIcon } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { LogOutIcon, MenuIcon, UserIcon } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth } from '@/hooks/useAuth';
 import {
@@ -20,11 +19,6 @@ interface DashboardLayoutProps {
 }
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    const saved = localStorage.getItem('theme');
-    if (saved === 'dark' || saved === 'light') return saved;
-    return 'light';
-  });
   const { user, logout } = useAuth();
   const { currentDate, setCurrentDate, sessionDate } = useDashboardDate();
 
@@ -43,16 +37,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     .slice(0, 2)
     .map((s) => s[0].toUpperCase())
     .join('');
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === 'dark');
-  }, [theme]);
-
-  const toggleTheme = () => {
-    const next = theme === 'light' ? 'dark' : 'light';
-    setTheme(next);
-    localStorage.setItem('theme', next);
-  };
 
   const now = new Date();
 
@@ -107,15 +91,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                       )}
                     </div>
                   </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={toggleTheme}>
-                    {theme === 'light' ? (
-                      <MoonIcon className="mr-2 h-4 w-4" />
-                    ) : (
-                      <SunIcon className="mr-2 h-4 w-4" />
-                    )}
-                    {theme === 'light' ? 'Mode Sombre' : 'Mode Clair'}
-                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={logout}>
                     <LogOutIcon className="mr-2 h-4 w-4" />

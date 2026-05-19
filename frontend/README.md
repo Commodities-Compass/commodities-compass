@@ -4,14 +4,16 @@ React + TypeScript frontend for the Commodities Compass BI application, providin
 
 ## Features
 
-- **Trading Dashboard** - Daily trading signal (OPEN/HEDGE/MONITOR), 6 technical indicator gauges, AI-generated analysis
-- **Audio Bulletins** - Compass Bulletin podcast player with waveform visualization
-- **Technical Indicators** - MACROECO, MACD, VOL/OI, RSI, %K, ATR with color-coded gauges (RED/ORANGE/GREEN)
-- **Price Charts** - Interactive area charts with metric and time period selectors
-- **Press Review** - AI-generated market news (Marche/Fondamentaux/Sentiment tabs)
-- **Weather Intelligence** - Campaign health, location diagnostics, stress history, Harmattan tracking
-- **Authentication** - Auth0 integration with JWT tokens and silent refresh
-- **Error Tracking** - Sentry integration with error boundaries
+- **Editorial magazine UI** — Compass CC brand bible 2026 (Playfair Display + Inter + IBM Plex Mono, ink-on-paper palette, light theme only). Layout reads like a daily intelligence briefing.
+- **Trading Dashboard** — Daily trading signal (OPEN/HEDGE/MONITOR), 5 technical indicator ruler gauges, AI-generated 3-tab analysis with drop caps.
+- **Audio Bulletins** — `Compass Daily Brief` (section I) with waveform visualization.
+- **Technical Indicators** — MACD, VOL/OI, RSI, %K, ATR rendered as ruler-scale gauges (HEDGE / MONITOR / OPEN zones).
+- **Price Charts** — Monochrome Recharts area with editorial metric dropdown + segmented days pill group.
+- **Press Review** — Editorial 3-tab layout (Marché–Technique / Fondamentaux / Sentiment de marché) + 4 sentiment thematic ruler gauges.
+- **Weather Intelligence** — Campaign methodology grid (5 saisons), editorial stress-history table, Harmattan tracking.
+- **Live ticker** — Full-width scrolling marquee under the masthead (signal/price/DoD/volume/OI/indicators/YTD), pause-on-hover, `prefers-reduced-motion` aware.
+- **Authentication** — Auth0 integration with JWT tokens and silent refresh.
+- **Error Tracking** — Sentry integration with error boundaries.
 
 ## Tech Stack
 
@@ -36,15 +38,31 @@ frontend/
 ├── src/
 │   ├── api/               # Axios client + dashboard API service
 │   ├── assets/            # Logo and static images
-│   ├── components/        # Feature components
-│   │   └── ui/           # shadcn/ui primitives (button, card, tabs, etc.)
+│   ├── components/
+│   │   ├── editorial/    # Editorial primitives: <Eyebrow>, <DataValue>, <DotSeparator>
+│   │   ├── weather/      # Weather sub-components: CampaignBlock, StressHistoryBlock, HarmattanBlock, shared
+│   │   ├── ui/           # shadcn/ui primitives (button, card, tabs, calendar editorial-restyled)
+│   │   ├── dashboard-layout.tsx       # Masthead + ticker + colophon shell
+│   │   ├── live-signal-strip.tsx      # Scrolling marquee ticker (mounted in masthead)
+│   │   ├── signal-hero.tsx            # Hero headline + composite signal panel
+│   │   ├── market-analysis.tsx        # Section II — gauges + tabs + watchlist
+│   │   ├── gauge-indicator.tsx        # Ruler-scale gauge (Style 4 from brand bible)
+│   │   ├── price-chart.tsx            # Section III — chart + editorial selectors
+│   │   ├── news-card.tsx              # Section IV — press review tabs
+│   │   ├── weather-update-card.tsx    # Section V — orchestrator
+│   │   ├── podcast-player.tsx         # Section I — Compass Daily Brief
+│   │   ├── sentiment-gauges.tsx       # 4 thematic sentiment ruler gauges
+│   │   ├── section-header.tsx         # Roman numeral + title + rule
+│   │   ├── editorial-tabs.tsx         # Magazine-style tabs (Playfair italic active)
+│   │   └── date-selector.tsx          # Calendar picker (card | compact variants)
+│   ├── contexts/         # DashboardDateContext (Provider)
 │   ├── data/             # Chart metric options and mock data
-│   ├── hooks/            # Custom React hooks (useAuth, useDashboard, use-mobile, use-toast)
+│   ├── hooks/            # useAuth, useDashboard, useDashboardDate, use-mobile, use-toast
 │   ├── pages/            # Page components (dashboard, historical, login)
 │   ├── test/             # Test setup and utilities
 │   ├── types/            # TypeScript type definitions
-│   └── utils/            # Utilities (cn, format-financial-text)
-├── public/               # Static assets
+│   └── utils/            # Utilities (cn, format-financial-text, recommendation-parser)
+├── public/               # Static assets (favicons regenerated from brand bible 1024 transparent)
 └── package.json
 ```
 
@@ -103,30 +121,68 @@ pnpm build            # Production build
 pnpm preview          # Preview production build
 ```
 
-## Dashboard Components
+## Dashboard Composition
 
-### Layout
+The dashboard is structured as a 5-section editorial flow under a magazine masthead. Sections are numbered with Roman numerals (I → V) and separated by full-width ink rules.
 
-- **DashboardLayout** - Desktop: collapsible sidebar with logo, nav, user profile dropdown. Mobile (<768px): slim top bar with hamburger menu, theme toggle, logout.
-- **DateSelector** - Trading day navigation with calendar picker. Disables weekends, exchange holidays, and future dates via `/non-trading-days` API.
+### Masthead (DashboardLayout)
 
-### Hero Row (50/50 grid, stacks on mobile)
+- **Top-rule** (mono uppercase 9px) — user dropdown left, compact date picker right.
+- **Title block** — `COMPASS CC` (Playfair 900, clamp 44–76px) + `The Cocoa Markets Intelligence Briefing` italic deck + compass icon lockup on the right.
+- **Signal triplet legend** — OPEN / MONITOR / HEDGE colored dots.
+- **LiveSignalStrip** — scrolling marquee band (60s linear, pause-on-hover, fade mask, respects `prefers-reduced-motion`) showing signal, ICE LDN price, DoD%, volume, OI, RSI, MACD, %K, ATR, V/OI, YTD, session date.
+- **Colophon footer** — user info + version.
 
-- **SignalHero** - Trading signal pill (OPEN/HEDGE/MONITOR) with colored ring + dot, plus YTD performance percentage.
-- **PodcastPlayer** - Audio player with SoundCloud-style waveform bars (48 bars, click-to-seek, progress coloring). Uses `<audio preload="metadata">` for instant load.
+### Hero (SignalHero, above section I)
 
-### Content Stack
+Lead Analysis kicker + Playfair 56px headline `Signal [POSITION] — Cocoa [trend]` with inline colored signal pill, Georgia italic deck from `useRecommendations`, Compass Intelligence Desk byline. 320px score panel on the right with position badge + YTD performance.
 
-- **MarketAnalysis** - 6 gauge indicators (MACROECO/MACD/VOL-OI/RSI/%K/ATR) + analysis bullets with direction dots + watchlist box.
-- **GaugeIndicator** - SVG semi-circular gauge with color zones (RED/ORANGE/GREEN) and tooltip with indicator metadata.
-- **PriceChart** - Recharts area chart with metric selector (close, volume, RSI, stock_us, open_interest, MACD, com_net_us) and days selector.
-- **NewsCard** - Tabbed press review (Marche/Fondamentaux/Sentiment) with inline formatting for financial text (percentages, prices, contract codes highlighted).
-- **WeatherUpdateCard** - Campaign health bars, location diagnostics grid (6 cocoa-growing zones), stress history, Harmattan tracking.
+### Section I — `PodcastPlayer` (Compass Daily Brief)
 
-### Error Handling
+NotebookLM audio player with click-to-seek waveform (56 deterministic bars), pause-on-hover ink play button.
 
-- **DashboardErrorBoundary** - Sentry-powered error boundary wrapping each dashboard section independently.
-- **ErrorFallback** - User-friendly fallback UI with refresh button.
+### Section II — `MarketAnalysis`
+
+Two sub-blocks under a single section header:
+
+1. **Compass Gauges** — 5 ruler-style `GaugeIndicator`s (MACD / VOL-OI / RSI / %K / ATR) with HEDGE/MONITOR/OPEN zone labels, colored triangle marker, mono value above. Tick marks at zone boundaries.
+2. **Editorial body** — `EditorialTabs` (Playfair italic active) with three tabs (`Recommandation` / `Supply & Momentum` / `Technical Outlook`) on the left, parsed from `useRecommendations()`, first paragraph gets a Playfair drop cap. `À surveiller` sidebar on the right (`paper-off` bg, ink left border).
+
+### Section III — `PriceChart` (Price History & Signal Overlay)
+
+Monochrome Recharts area, `MetricDropdown` (mono uppercase trigger + ink underline) + `DaysPillGroup` (segmented `30J / 90J / 180J / 1Y`). Editorial caption `Fig. 1 — ...` below.
+
+### Section IV — `NewsCard` (Press Review)
+
+Top: 4 sentiment thematic ruler gauges (PRODUCTION / CHOCOLAT / TRANSF. / ÉCONOMIE) from `useNewsSentiment`. Then `EditorialTabs` (`Marché — Technique` / `Fondamentaux` / `Sentiment de marché`) with Playfair italic body + drop quote `"`. Impact synthesis box + keyword pills below.
+
+### Section V — `WeatherUpdateCard` (Weather Intelligence)
+
+Orchestrator wiring sub-components from `src/components/weather/`:
+
+- **CampaignBlock** — `Campagne YYYY-YY` header + `Santé globale X.X/5` (Playfair colored) + 5-column methodology grid (one column per saison with serif numeral + colored score + status badge).
+- **StressHistoryBlock** — editorial table (Origin / Pays / Tendance 7j as vertical bars / Streak / Trend arrow / Statut pill).
+- **HarmattanBlock** — risk badge + jours cumulés + affected sites list.
+- **Bulletin du jour** at the bottom in Georgia editorial text.
+
+### Date selector (DateSelector)
+
+Two variants:
+- `compact` (used in masthead) — single mono uppercase button with calendar icon, popover calendar opens on click.
+- `card` (legacy) — Card-wrapped picker with chevrons.
+
+Disables weekends, exchange holidays, and future dates via `/non-trading-days` API.
+
+### Editorial primitives (`src/components/editorial/`)
+
+- `<Eyebrow>` — mono uppercase eyebrow/kicker (three tones).
+- `<DataValue>` — mono tabular numerals for ticker numbers, scores, prices.
+- `<DotSeparator>` — small `--rule` dot between ticker cells.
+
+### Error handling
+
+- **DashboardErrorBoundary** — wraps each dashboard section independently.
+- **ErrorFallback** — User-friendly fallback UI with refresh button.
 
 ## Authentication
 

@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gauge Styles — Editorial</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+  <style>
+    /* ── Custom Properties ── */
+    :root {
+      --green: #10B981;
+      --amber: #F59E0B;
+      --red: #EF4444;
+      --black: #111111;
+      --dark-gray: #333333;
+      --mid-gray: #666666;
+      --light-gray: #999999;
+      --pale-gray: #E5E5E5;
+      --bg: #FAFAFA;
+      --white: #FFFFFF;
+      --font-sans: 'Inter', -apple-system, sans-serif;
+      --font-mono: 'IBM Plex Mono', 'Menlo', monospace;
+      --font-display: 'Playfair Display', Georgia, serif;
+    }
+
+    /* ── Reset & Base ── */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg);
+      color: var(--black);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* ── Page Container ── */
+    .page {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 60px 40px 80px;
+    }
+
+    /* ── Header ── */
+    .page-header {
+      margin-bottom: 64px;
+      border-bottom: 2px solid var(--black);
+      padding-bottom: 24px;
+    }
+
+    .page-header h1 {
+      font-family: var(--font-display);
+      font-size: 42px;
+      font-weight: 400;
+      letter-spacing: -0.5px;
+      margin-bottom: 8px;
+      color: var(--black);
+    }
+
+    .page-header p {
+      font-family: var(--font-sans);
+      font-size: 14px;
+      font-weight: 400;
+      color: var(--mid-gray);
+      letter-spacing: 0.02em;
+    }
+
+    /* ── Section ── */
+    .style-section {
+      margin-bottom: 56px;
+      padding-bottom: 56px;
+      border-bottom: 1px solid var(--pale-gray);
+    }
+
+    .style-section:last-child {
+      border-bottom: none;
+    }
+
+    .style-header {
+      margin-bottom: 32px;
+    }
+
+    .style-header h2 {
+      font-family: var(--font-sans);
+      font-size: 16px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--black);
+      margin-bottom: 4px;
+    }
+
+    .style-header h2 span {
+      font-weight: 400;
+      color: var(--light-gray);
+      margin-left: 6px;
+    }
+
+    .style-header p {
+      font-size: 13px;
+      color: var(--light-gray);
+      font-weight: 400;
+    }
+
+    /* ── Indicators Row ── */
+    .indicators-row {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 32px;
+    }
+
+    /* =============================================
+       STYLE 1: BULLET CHART (Tufte / Economist)
+       ============================================= */
+    .bullet-gauge {
+      position: relative;
+    }
+
+    .bullet-gauge .bullet-labels {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 6px;
+    }
+
+    .bullet-gauge .bullet-label {
+      font-family: var(--font-sans);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--dark-gray);
+    }
+
+    .bullet-gauge .bullet-value {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--black);
+    }
+
+    .bullet-gauge .bullet-bar-container {
+      position: relative;
+      width: 100%;
+      height: 6px;
+      border-radius: 1px;
+      overflow: visible;
+    }
+
+    .bullet-gauge .bullet-zones {
+      display: flex;
+      width: 100%;
+      height: 100%;
+      border-radius: 1px;
+      overflow: hidden;
+    }
+
+    .bullet-gauge .bullet-zone {
+      height: 100%;
+    }
+
+    .bullet-gauge .bullet-zone--red { background: var(--red); opacity: 0.25; }
+    .bullet-gauge .bullet-zone--amber { background: var(--amber); opacity: 0.25; }
+    .bullet-gauge .bullet-zone--green { background: var(--green); opacity: 0.25; }
+
+    .bullet-gauge .bullet-marker {
+      position: absolute;
+      top: -3px;
+      width: 2.5px;
+      height: 12px;
+      background: var(--black);
+      border-radius: 1px;
+      transform: translateX(-50%);
+    }
+
+    .bullet-gauge .bullet-range {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 4px;
+    }
+
+    .bullet-gauge .bullet-range span {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: var(--light-gray);
+      letter-spacing: 0.02em;
+    }
+
+    /* =============================================
+       STYLE 2: DOT SCALE
+       ============================================= */
+    .dot-gauge {
+      display: flex;
+      align-items: center;
+      gap: 0;
+    }
+
+    .dot-gauge .dot-label {
+      font-family: var(--font-sans);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--dark-gray);
+      min-width: 48px;
+      flex-shrink: 0;
+    }
+
+    .dot-gauge .dot-value {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--black);
+      min-width: 52px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    .dot-gauge .dots {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+      justify-content: center;
+    }
+
+    .dot-gauge .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: 1.5px solid;
+      background: transparent;
+      flex-shrink: 0;
+    }
+
+    .dot-gauge .dot--red { border-color: var(--red); }
+    .dot-gauge .dot--amber { border-color: var(--amber); }
+    .dot-gauge .dot--green { border-color: var(--green); }
+
+    .dot-gauge .dot--filled.dot--red { background: var(--red); }
+    .dot-gauge .dot--filled.dot--amber { background: var(--amber); }
+    .dot-gauge .dot--filled.dot--green { background: var(--green); }
+
+    /* =============================================
+       STYLE 3: NUMBER + CONTEXT BAR
+       ============================================= */
+    .number-gauge {
+      text-align: left;
+    }
+
+    .number-gauge .number-main {
+      font-family: var(--font-mono);
+      font-size: 32px;
+      font-weight: 700;
+      line-height: 1.1;
+      margin-bottom: 8px;
+    }
+
+    .number-gauge .number-main--green { color: var(--green); }
+    .number-gauge .number-main--amber { color: var(--amber); }
+    .number-gauge .number-main--red { color: var(--red); }
+
+    .number-gauge .number-bar-track {
+      width: 100%;
+      height: 2px;
+      background: var(--pale-gray);
+      border-radius: 1px;
+      position: relative;
+      margin-bottom: 8px;
+    }
+
+    .number-gauge .number-bar-fill {
+      height: 100%;
+      border-radius: 1px;
+      position: absolute;
+      left: 0;
+      top: 0;
+    }
+
+    .number-gauge .number-bar-fill--green { background: var(--green); }
+    .number-gauge .number-bar-fill--amber { background: var(--amber); }
+    .number-gauge .number-bar-fill--red { background: var(--red); }
+
+    .number-gauge .number-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+
+    .number-gauge .number-label {
+      font-family: var(--font-sans);
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--light-gray);
+    }
+
+    .number-gauge .number-status {
+      font-family: var(--font-sans);
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--mid-gray);
+    }
+
+    /* =============================================
+       STYLE 4: RULER SCALE
+       ============================================= */
+    .ruler-gauge {
+      position: relative;
+      padding-top: 24px;
+      padding-bottom: 20px;
+    }
+
+    .ruler-gauge .ruler-value-label {
+      position: absolute;
+      top: 0;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--black);
+      transform: translateX(-50%);
+      white-space: nowrap;
+    }
+
+    .ruler-gauge .ruler-marker {
+      position: absolute;
+      top: 14px;
+      font-size: 10px;
+      color: var(--black);
+      transform: translateX(-50%);
+      line-height: 1;
+    }
+
+    .ruler-gauge .ruler-line {
+      width: 100%;
+      height: 1px;
+      background: var(--black);
+      position: relative;
+      top: 0;
+    }
+
+    .ruler-gauge .ruler-tick {
+      position: absolute;
+      top: -4px;
+      width: 1px;
+      height: 9px;
+      background: var(--dark-gray);
+    }
+
+    .ruler-gauge .ruler-tick--end {
+      height: 6px;
+      top: -2.5px;
+    }
+
+    .ruler-gauge .ruler-zone-labels {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 6px;
+    }
+
+    .ruler-gauge .ruler-zone-label {
+      font-family: var(--font-sans);
+      font-size: 8px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--light-gray);
+    }
+
+    .ruler-gauge .ruler-zone-label--center {
+      text-align: center;
+    }
+
+    /* =============================================
+       STYLE 5: STACKED TYPOGRAPHY
+       ============================================= */
+    .typo-gauge {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+    }
+
+    .typo-gauge .typo-label {
+      font-family: var(--font-sans);
+      font-size: 10px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      color: var(--light-gray);
+    }
+
+    .typo-gauge .typo-value {
+      font-family: var(--font-mono);
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 1.1;
+    }
+
+    .typo-gauge .typo-value--green { color: var(--green); }
+    .typo-gauge .typo-value--amber { color: var(--amber); }
+    .typo-gauge .typo-value--red { color: var(--red); }
+
+    .typo-gauge .typo-pill {
+      display: inline-block;
+      font-family: var(--font-sans);
+      font-size: 9px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      padding: 2px 8px;
+      border-radius: 3px;
+      color: var(--white);
+      margin-top: 2px;
+    }
+
+    .typo-gauge .typo-pill--green { background: var(--green); }
+    .typo-gauge .typo-pill--amber { background: var(--amber); }
+    .typo-gauge .typo-pill--red { background: var(--red); }
+
+    /* ── Responsive ── */
+    @media (max-width: 900px) {
+      .indicators-row {
+        grid-template-columns: repeat(3, 1fr);
+      }
+    }
+
+    @media (max-width: 600px) {
+      .page {
+        padding: 32px 20px 60px;
+      }
+
+      .page-header h1 {
+        font-size: 28px;
+      }
+
+      .indicators-row {
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+      }
+
+      .dot-gauge {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+      }
+
+      .dot-gauge .dot-value {
+        text-align: left;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="page">
+
+    <!-- ═══════════════════════════════════════════
+         PAGE HEADER
+         ═══════════════════════════════════════════ -->
+    <header class="page-header">
+      <h1>Gauge Styles &mdash; Editorial</h1>
+      <p>5 approaches for Compass CC dashboard indicators</p>
+    </header>
+
+
+    <!-- ═══════════════════════════════════════════
+         STYLE 1: BULLET CHART
+         ═══════════════════════════════════════════ -->
+    <section class="style-section">
+      <div class="style-header">
+        <h2>Style 1 <span>&mdash; Bullet Chart</span></h2>
+        <p>Horizontal bar with zone backgrounds and a bold marker line. Maximum data-ink ratio.</p>
+      </div>
+
+      <div class="indicators-row" id="bullet-row"></div>
+    </section>
+
+
+    <!-- ═══════════════════════════════════════════
+         STYLE 2: DOT SCALE
+         ═══════════════════════════════════════════ -->
+    <section class="style-section">
+      <div class="style-header">
+        <h2>Style 2 <span>&mdash; Dot Scale</span></h2>
+        <p>Seven dots across three zones. Only the active dot is filled. Like a rating system.</p>
+      </div>
+
+      <div class="indicators-row" id="dot-row"></div>
+    </section>
+
+
+    <!-- ═══════════════════════════════════════════
+         STYLE 3: NUMBER + CONTEXT BAR
+         ═══════════════════════════════════════════ -->
+    <section class="style-section">
+      <div class="style-header">
+        <h2>Style 3 <span>&mdash; Number + Context Bar</span></h2>
+        <p>Typography-driven: the number IS the gauge. A thin bar below shows position.</p>
+      </div>
+
+      <div class="indicators-row" id="number-row"></div>
+    </section>
+
+
+    <!-- ═══════════════════════════════════════════
+         STYLE 4: RULER SCALE
+         ═══════════════════════════════════════════ -->
+    <section class="style-section">
+      <div class="style-header">
+        <h2>Style 4 <span>&mdash; Ruler Scale</span></h2>
+        <p>Minimal number line with tick marks at zone boundaries and a triangle marker.</p>
+      </div>
+
+      <div class="indicators-row" id="ruler-row"></div>
+    </section>
+
+
+    <!-- ═══════════════════════════════════════════
+         STYLE 5: STACKED TYPOGRAPHY
+         ═══════════════════════════════════════════ -->
+    <section class="style-section">
+      <div class="style-header">
+        <h2>Style 5 <span>&mdash; Stacked Typography</span></h2>
+        <p>Pure typography. No bars, no graphics. Label, value, and status pill.</p>
+      </div>
+
+      <div class="indicators-row" id="typo-row"></div>
+    </section>
+
+  </div><!-- /.page -->
+
+
+  <!-- ═══════════════════════════════════════════
+       JAVASCRIPT — Render all 5 styles
+       ═══════════════════════════════════════════ -->
+  <script>
+    /**
+     * Indicator data
+     * Each entry: { label, value, min, max, status, zone }
+     * zone: 'green' | 'amber' | 'red'
+     * zones define the three color regions as fractions of the range
+     */
+    const indicators = [
+      {
+        label: 'MACD',
+        value: 1.24,
+        min: -2.0,
+        max: 2.0,
+        status: 'Bullish',
+        zone: 'green',
+        /* zone boundaries as fractions: red 0-0.33, amber 0.33-0.66, green 0.66-1.0 */
+        zoneBounds: [0.33, 0.66]
+      },
+      {
+        label: 'VOL/OI',
+        value: 0.51,
+        min: 0.0,
+        max: 1.0,
+        status: 'Neutral',
+        zone: 'amber',
+        zoneBounds: [0.33, 0.66]
+      },
+      {
+        label: 'RSI',
+        value: 72.40,
+        min: 0,
+        max: 100,
+        status: 'Bullish',
+        zone: 'green',
+        zoneBounds: [0.30, 0.70]
+      },
+      {
+        label: '%K',
+        value: 61.85,
+        min: 0,
+        max: 100,
+        status: 'Neutral',
+        zone: 'amber',
+        zoneBounds: [0.20, 0.80]
+      },
+      {
+        label: 'ATR',
+        value: 38.20,
+        min: 0,
+        max: 150,
+        status: 'High Volatility',
+        zone: 'red',
+        zoneBounds: [0.33, 0.66]
+      }
+    ];
+
+    /**
+     * Helper: normalize value to 0-1 within [min, max]
+     */
+    function normalize(val, min, max) {
+      return Math.max(0, Math.min(1, (val - min) / (max - min)));
+    }
+
+    /**
+     * Helper: format value for display
+     */
+    function fmt(val) {
+      return Number.isInteger(val) ? val.toString() : val.toFixed(2);
+    }
+
+    /**
+     * Helper: find which dot (0-6) is closest to the normalized value
+     */
+    function closestDot(normVal, totalDots) {
+      const idx = Math.round(normVal * (totalDots - 1));
+      return Math.max(0, Math.min(totalDots - 1, idx));
+    }
+
+    /**
+     * Helper: get zone color class for a dot index (7 dots)
+     * Dots 0-1: red, Dots 2-4: amber, Dots 5-6: green
+     */
+    function dotZone(i) {
+      if (i <= 1) return 'red';
+      if (i <= 4) return 'amber';
+      return 'green';
+    }
+
+
+    /* ─────────────────────────────────────────────
+       STYLE 1: BULLET CHART
+       ───────────────────────────────────────────── */
+    (function renderBulletCharts() {
+      const container = document.getElementById('bullet-row');
+
+      indicators.forEach(ind => {
+        const pct = normalize(ind.value, ind.min, ind.max) * 100;
+        const z1 = ind.zoneBounds[0] * 100;
+        const z2 = ind.zoneBounds[1] * 100;
+
+        const el = document.createElement('div');
+        el.className = 'bullet-gauge';
+        el.innerHTML = `
+          <div class="bullet-labels">
+            <span class="bullet-label">${ind.label}</span>
+            <span class="bullet-value">${fmt(ind.value)}</span>
+          </div>
+          <div class="bullet-bar-container">
+            <div class="bullet-zones">
+              <div class="bullet-zone bullet-zone--red" style="width:${z1}%"></div>
+              <div class="bullet-zone bullet-zone--amber" style="width:${z2 - z1}%"></div>
+              <div class="bullet-zone bullet-zone--green" style="width:${100 - z2}%"></div>
+            </div>
+            <div class="bullet-marker" style="left:${pct}%"></div>
+          </div>
+          <div class="bullet-range">
+            <span>${fmt(ind.min)}</span>
+            <span>${fmt(ind.max)}</span>
+          </div>
+        `;
+        container.appendChild(el);
+      });
+    })();
+
+
+    /* ─────────────────────────────────────────────
+       STYLE 2: DOT SCALE
+       ───────────────────────────────────────────── */
+    (function renderDotScales() {
+      const container = document.getElementById('dot-row');
+      const totalDots = 7;
+
+      indicators.forEach(ind => {
+        const normVal = normalize(ind.value, ind.min, ind.max);
+        const activeIdx = closestDot(normVal, totalDots);
+
+        let dotsHTML = '';
+        for (let i = 0; i < totalDots; i++) {
+          const zoneClass = dotZone(i);
+          const filled = i === activeIdx ? ' dot--filled' : '';
+          dotsHTML += `<span class="dot dot--${zoneClass}${filled}"></span>`;
+        }
+
+        const el = document.createElement('div');
+        el.className = 'dot-gauge';
+        el.innerHTML = `
+          <span class="dot-label">${ind.label}</span>
+          <span class="dots">${dotsHTML}</span>
+          <span class="dot-value">${fmt(ind.value)}</span>
+        `;
+        container.appendChild(el);
+      });
+    })();
+
+
+    /* ─────────────────────────────────────────────
+       STYLE 3: NUMBER + CONTEXT BAR
+       ───────────────────────────────────────────── */
+    (function renderNumberGauges() {
+      const container = document.getElementById('number-row');
+
+      indicators.forEach(ind => {
+        const pct = normalize(ind.value, ind.min, ind.max) * 100;
+        const z = ind.zone;
+
+        const el = document.createElement('div');
+        el.className = 'number-gauge';
+        el.innerHTML = `
+          <div class="number-main number-main--${z}">${fmt(ind.value)}</div>
+          <div class="number-bar-track">
+            <div class="number-bar-fill number-bar-fill--${z}" style="width:${pct}%"></div>
+          </div>
+          <div class="number-meta">
+            <span class="number-label">${ind.label}</span>
+            <span class="number-status">${ind.status}</span>
+          </div>
+        `;
+        container.appendChild(el);
+      });
+    })();
+
+
+    /* ─────────────────────────────────────────────
+       STYLE 4: RULER SCALE
+       ───────────────────────────────────────────── */
+    (function renderRulerScales() {
+      const container = document.getElementById('ruler-row');
+
+      indicators.forEach(ind => {
+        const pct = normalize(ind.value, ind.min, ind.max) * 100;
+        const t1 = ind.zoneBounds[0] * 100;
+        const t2 = ind.zoneBounds[1] * 100;
+
+        const el = document.createElement('div');
+        el.className = 'ruler-gauge';
+        el.innerHTML = `
+          <span class="ruler-value-label" style="left:${pct}%">${fmt(ind.value)}</span>
+          <span class="ruler-marker" style="left:${pct}%">&#9660;</span>
+          <div class="ruler-line">
+            <span class="ruler-tick ruler-tick--end" style="left:0%"></span>
+            <span class="ruler-tick" style="left:${t1}%"></span>
+            <span class="ruler-tick" style="left:${t2}%"></span>
+            <span class="ruler-tick ruler-tick--end" style="left:100%"></span>
+          </div>
+          <div class="ruler-zone-labels">
+            <span class="ruler-zone-label">Hedge</span>
+            <span class="ruler-zone-label ruler-zone-label--center">Monitor</span>
+            <span class="ruler-zone-label">Open</span>
+          </div>
+        `;
+        container.appendChild(el);
+      });
+    })();
+
+
+    /* ─────────────────────────────────────────────
+       STYLE 5: STACKED TYPOGRAPHY
+       ───────────────────────────────────────────── */
+    (function renderTypoGauges() {
+      const container = document.getElementById('typo-row');
+
+      indicators.forEach(ind => {
+        const z = ind.zone;
+
+        const el = document.createElement('div');
+        el.className = 'typo-gauge';
+        el.innerHTML = `
+          <span class="typo-label">${ind.label}</span>
+          <span class="typo-value typo-value--${z}">${fmt(ind.value)}</span>
+          <span class="typo-pill typo-pill--${z}">${ind.status}</span>
+        `;
+        container.appendChild(el);
+      });
+    })();
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,2204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COMPASS CC — Magazine Editorial Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,500;1,600;1,700&display=swap" rel="stylesheet">
+    <style>
+        /* ===== RESET & BASE ===== */
+        *, *::before, *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --ink: #1A1A1A;
+            --ink-dark: #333;
+            --ink-mid: #666;
+            --ink-light: #999;
+            --rule: #E5E5E5;
+            --paper-off: #F5F5F5;
+            --paper: #FFF;
+            --signal-open: #10B981;
+            --signal-monitor: #F59E0B;
+            --signal-hedge: #EF4444;
+            --font-sans: 'Inter', -apple-system, sans-serif;
+            --font-serif: 'Playfair Display', Georgia, 'Times New Roman', serif;
+            --font-mono: 'IBM Plex Mono', 'Courier New', monospace;
+            --max-width: 1280px;
+        }
+
+        html {
+            font-size: 16px;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            color: var(--ink);
+            background: var(--paper);
+            line-height: 1.6;
+        }
+
+        /* ===== MASTHEAD ===== */
+        .masthead {
+            border-bottom: 4px double var(--ink);
+            padding: 20px 0 16px;
+            text-align: center;
+            position: relative;
+        }
+
+        .masthead-inner {
+            max-width: var(--max-width);
+            margin: 0 auto;
+            padding: 0 40px;
+        }
+
+        .masthead-top-rule {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            color: var(--ink-mid);
+            margin-bottom: 12px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--ink);
+        }
+
+        .masthead-title {
+            font-family: var(--font-serif);
+            font-size: 72px;
+            font-weight: 900;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            line-height: 1;
+            margin-bottom: 4px;
+            color: var(--ink);
+        }
+
+        .masthead-title span {
+            font-weight: 400;
+            font-style: italic;
+            font-size: 40px;
+            letter-spacing: 0.02em;
+            text-transform: none;
+            display: block;
+            margin-top: -4px;
+        }
+
+        .masthead-subtitle {
+            font-family: var(--font-sans);
+            font-size: 11px;
+            letter-spacing: 0.35em;
+            text-transform: uppercase;
+            color: var(--ink-mid);
+            margin-top: 8px;
+        }
+
+        .masthead-bottom-rule {
+            display: flex;
+            justify-content: center;
+            gap: 32px;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--ink-light);
+            margin-top: 14px;
+            padding-top: 10px;
+            border-top: 1px solid var(--rule);
+        }
+
+        .masthead-bottom-rule .signal-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .masthead-bottom-rule .signal-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .signal-dot.open { background: var(--signal-open); }
+        .signal-dot.monitor { background: var(--signal-monitor); }
+        .signal-dot.hedge { background: var(--signal-hedge); }
+
+        /* ===== WRAPPER ===== */
+        .page-wrapper {
+            max-width: var(--max-width);
+            margin: 0 auto;
+            padding: 0 40px;
+        }
+
+        /* ===== HERO / HEADLINE ===== */
+        .hero {
+            display: grid;
+            grid-template-columns: 1fr 320px;
+            gap: 40px;
+            padding: 48px 0 40px;
+            border-bottom: 2px solid var(--ink);
+        }
+
+        .hero-main {
+            position: relative;
+        }
+
+        .hero-kicker {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: var(--ink-mid);
+            margin-bottom: 12px;
+        }
+
+        .hero-headline {
+            font-family: var(--font-serif);
+            font-size: 56px;
+            font-weight: 700;
+            line-height: 1.08;
+            letter-spacing: -0.01em;
+            color: var(--ink);
+            margin-bottom: 20px;
+        }
+
+        .hero-headline .signal-label {
+            display: inline-block;
+            padding: 4px 16px;
+            font-family: var(--font-mono);
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            border-radius: 2px;
+            vertical-align: middle;
+            margin-left: 8px;
+        }
+
+        .signal-label.open {
+            background: var(--signal-open);
+            color: var(--paper);
+        }
+
+        .signal-label.monitor {
+            background: var(--signal-monitor);
+            color: var(--ink);
+        }
+
+        .signal-label.hedge {
+            background: var(--signal-hedge);
+            color: var(--paper);
+        }
+
+        .hero-deck {
+            font-family: var(--font-serif);
+            font-size: 20px;
+            font-weight: 400;
+            font-style: italic;
+            line-height: 1.5;
+            color: var(--ink-dark);
+            margin-bottom: 20px;
+        }
+
+        .hero-byline {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            color: var(--ink-light);
+        }
+
+        .hero-score-panel {
+            background: var(--paper-off);
+            border: 1px solid var(--rule);
+            padding: 32px;
+            text-align: center;
+            position: relative;
+        }
+
+        .hero-score-panel::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--signal-open);
+        }
+
+        .score-label {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            letter-spacing: 0.25em;
+            text-transform: uppercase;
+            color: var(--ink-light);
+            margin-bottom: 8px;
+        }
+
+        .score-number {
+            font-family: var(--font-serif);
+            font-size: 96px;
+            font-weight: 900;
+            line-height: 1;
+            color: var(--signal-open);
+            margin-bottom: 4px;
+        }
+
+        .score-max {
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--ink-light);
+            margin-bottom: 24px;
+        }
+
+        .score-signal-text {
+            font-family: var(--font-mono);
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: var(--signal-open);
+            padding: 8px 0;
+            border-top: 1px solid var(--rule);
+            border-bottom: 1px solid var(--rule);
+        }
+
+        .score-details {
+            margin-top: 20px;
+            text-align: left;
+        }
+
+        .score-detail-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 0;
+            border-bottom: 1px dotted var(--rule);
+            font-size: 12px;
+        }
+
+        .score-detail-row:last-child {
+            border-bottom: none;
+        }
+
+        .score-detail-label {
+            font-family: var(--font-sans);
+            color: var(--ink-mid);
+            font-size: 11px;
+        }
+
+        .score-detail-value {
+            font-family: var(--font-mono);
+            font-weight: 600;
+            color: var(--ink);
+        }
+
+        /* ===== SECTION HEADERS ===== */
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 24px 0 16px;
+            border-bottom: 1px solid var(--ink);
+            margin-bottom: 24px;
+        }
+
+        .section-number {
+            font-family: var(--font-serif);
+            font-size: 36px;
+            font-weight: 300;
+            color: var(--ink-light);
+            line-height: 1;
+        }
+
+        .section-title {
+            font-family: var(--font-sans);
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            color: var(--ink);
+        }
+
+        .section-rule {
+            flex: 1;
+            height: 1px;
+            background: var(--rule);
+        }
+
+        /* ===== NEWSPAPER COLUMNS ANALYSIS ===== */
+        .analysis-section {
+            padding: 0 0 40px;
+            border-bottom: 1px solid var(--rule);
+        }
+
+        .columns-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 0;
+            position: relative;
+        }
+
+        .column {
+            padding: 0 24px;
+            border-right: 1px solid var(--rule);
+        }
+
+        .column:first-child {
+            padding-left: 0;
+        }
+
+        .column:last-child {
+            padding-right: 0;
+            border-right: none;
+        }
+
+        .column p {
+            font-family: Georgia, var(--font-serif);
+            font-size: 14.5px;
+            line-height: 1.75;
+            color: var(--ink-dark);
+            text-align: justify;
+            hyphens: auto;
+            margin-bottom: 16px;
+        }
+
+        .column p:first-of-type::first-letter {
+            font-family: var(--font-serif);
+            font-size: 56px;
+            font-weight: 700;
+            float: left;
+            line-height: 0.8;
+            padding-right: 8px;
+            padding-top: 6px;
+            color: var(--ink);
+        }
+
+        .column-subhead {
+            font-family: var(--font-serif);
+            font-size: 18px;
+            font-weight: 600;
+            font-style: italic;
+            color: var(--ink);
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px dotted var(--rule);
+        }
+
+        /* ===== PULL QUOTE ===== */
+        .pull-quote {
+            position: relative;
+            padding: 32px 0;
+            margin: 24px 0;
+            border-top: 2px solid var(--ink);
+            border-bottom: 2px solid var(--ink);
+            text-align: center;
+        }
+
+        .pull-quote::before {
+            content: '\201C';
+            font-family: var(--font-serif);
+            font-size: 120px;
+            font-weight: 900;
+            color: var(--rule);
+            position: absolute;
+            top: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            line-height: 1;
+            z-index: 0;
+        }
+
+        .pull-quote blockquote {
+            font-family: var(--font-serif);
+            font-size: 26px;
+            font-weight: 500;
+            font-style: italic;
+            line-height: 1.4;
+            color: var(--ink);
+            position: relative;
+            z-index: 1;
+            max-width: 700px;
+            margin: 0 auto;
+        }
+
+        .pull-quote cite {
+            display: block;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-style: normal;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: var(--ink-light);
+            margin-top: 16px;
+        }
+
+        /* ===== INFOGRAPHIC STRIP ===== */
+        .infographic-strip {
+            padding: 40px 0;
+            border-bottom: 1px solid var(--rule);
+        }
+
+        .gauges-row {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 24px;
+        }
+
+        .gauge-card {
+            text-align: center;
+            padding: 24px 16px;
+            background: var(--paper-off);
+            border: 1px solid var(--rule);
+            position: relative;
+        }
+
+        .gauge-card::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+        }
+
+        .gauge-card.positive::after { background: var(--signal-open); }
+        .gauge-card.warning::after { background: var(--signal-monitor); }
+        .gauge-card.negative::after { background: var(--signal-hedge); }
+        .gauge-card.neutral::after { background: var(--ink-light); }
+
+        .gauge-title {
+            font-family: var(--font-mono);
+            font-size: 9px;
+            font-weight: 600;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: var(--ink-light);
+            margin-bottom: 12px;
+        }
+
+        .gauge-value {
+            font-family: var(--font-serif);
+            font-size: 40px;
+            font-weight: 700;
+            line-height: 1;
+            margin-bottom: 4px;
+        }
+
+        .gauge-value.positive { color: var(--signal-open); }
+        .gauge-value.warning { color: var(--signal-monitor); }
+        .gauge-value.negative { color: var(--signal-hedge); }
+        .gauge-value.neutral { color: var(--ink-dark); }
+
+        .gauge-unit {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--ink-light);
+            margin-bottom: 12px;
+        }
+
+        .gauge-bar-track {
+            width: 100%;
+            height: 4px;
+            background: var(--rule);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-bottom: 8px;
+        }
+
+        .gauge-bar-fill {
+            height: 100%;
+            border-radius: 2px;
+            transition: width 1.5s ease;
+        }
+
+        .gauge-bar-fill.positive { background: var(--signal-open); }
+        .gauge-bar-fill.warning { background: var(--signal-monitor); }
+        .gauge-bar-fill.negative { background: var(--signal-hedge); }
+        .gauge-bar-fill.neutral { background: var(--ink-light); }
+
+        .gauge-context {
+            font-family: var(--font-sans);
+            font-size: 10px;
+            color: var(--ink-light);
+        }
+
+        /* ===== FULL-WIDTH CHART ===== */
+        .chart-section {
+            padding: 40px 0;
+            border-bottom: 1px solid var(--rule);
+        }
+
+        .chart-container {
+            position: relative;
+            width: 100%;
+            height: 400px;
+            background: var(--paper-off);
+            border: 1px solid var(--rule);
+            overflow: hidden;
+        }
+
+        .chart-canvas-area {
+            position: absolute;
+            top: 40px;
+            left: 70px;
+            right: 20px;
+            bottom: 50px;
+        }
+
+        .chart-grid-line {
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: var(--rule);
+        }
+
+        .chart-y-label {
+            position: absolute;
+            left: -60px;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--ink-light);
+            transform: translateY(-50%);
+        }
+
+        .chart-x-label {
+            position: absolute;
+            bottom: -30px;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--ink-light);
+            transform: translateX(-50%);
+        }
+
+        .chart-line {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+        }
+
+        .chart-line svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .chart-line svg polyline {
+            fill: none;
+            stroke: var(--ink);
+            stroke-width: 2;
+            stroke-linejoin: round;
+        }
+
+        .chart-line svg .area-fill {
+            fill: var(--ink);
+            opacity: 0.05;
+            stroke: none;
+        }
+
+        .chart-annotation {
+            position: absolute;
+            background: var(--paper);
+            border: 1px solid var(--ink);
+            padding: 4px 8px;
+            font-family: var(--font-mono);
+            font-size: 9px;
+            letter-spacing: 0.05em;
+            white-space: nowrap;
+        }
+
+        .chart-annotation::before {
+            content: '';
+            position: absolute;
+            bottom: -6px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-top: 5px solid var(--ink);
+        }
+
+        .chart-caption {
+            font-family: Georgia, var(--font-serif);
+            font-size: 13px;
+            font-style: italic;
+            color: var(--ink-mid);
+            margin-top: 16px;
+            padding-top: 12px;
+            border-top: 1px dotted var(--rule);
+        }
+
+        .chart-caption strong {
+            font-family: var(--font-sans);
+            font-style: normal;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            color: var(--ink-light);
+        }
+
+        .chart-signal-zones {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+        }
+
+        .chart-zone {
+            position: absolute;
+            left: 0;
+            right: 0;
+            opacity: 0.06;
+        }
+
+        .chart-zone.open-zone { background: var(--signal-open); }
+        .chart-zone.monitor-zone { background: var(--signal-monitor); }
+        .chart-zone.hedge-zone { background: var(--signal-hedge); }
+
+        /* ===== TWO COLUMN: WEATHER + PRESS ===== */
+        .dual-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0;
+            border-bottom: 1px solid var(--rule);
+        }
+
+        .dual-left {
+            padding: 40px 40px 40px 0;
+            border-right: 1px solid var(--rule);
+        }
+
+        .dual-right {
+            padding: 40px 0 40px 40px;
+        }
+
+        /* ===== WEATHER TABLE ===== */
+        .weather-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .weather-table thead th {
+            font-family: var(--font-mono);
+            font-size: 9px;
+            font-weight: 600;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: var(--ink-light);
+            text-align: left;
+            padding: 0 8px 12px;
+            border-bottom: 2px solid var(--ink);
+        }
+
+        .weather-table thead th:last-child {
+            text-align: right;
+        }
+
+        .weather-table tbody td {
+            font-family: var(--font-sans);
+            font-size: 13px;
+            padding: 10px 8px;
+            border-bottom: 1px dotted var(--rule);
+            color: var(--ink-dark);
+            vertical-align: top;
+        }
+
+        .weather-table tbody td:first-child {
+            font-weight: 600;
+            color: var(--ink);
+        }
+
+        .weather-table tbody td:last-child {
+            text-align: right;
+            font-family: var(--font-mono);
+            font-size: 12px;
+        }
+
+        .weather-impact {
+            display: inline-block;
+            padding: 2px 8px;
+            font-family: var(--font-mono);
+            font-size: 9px;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            border-radius: 2px;
+        }
+
+        .weather-impact.bullish {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--signal-open);
+        }
+
+        .weather-impact.bearish {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--signal-hedge);
+        }
+
+        .weather-impact.neutral-imp {
+            background: rgba(153, 153, 153, 0.1);
+            color: var(--ink-light);
+        }
+
+        /* ===== PRESS REVIEW ===== */
+        .press-item {
+            margin-bottom: 28px;
+            padding-bottom: 24px;
+            border-bottom: 1px dotted var(--rule);
+        }
+
+        .press-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .press-quote-mark {
+            font-family: var(--font-serif);
+            font-size: 48px;
+            font-weight: 900;
+            color: var(--rule);
+            line-height: 0.5;
+            margin-bottom: 8px;
+        }
+
+        .press-excerpt {
+            font-family: Georgia, var(--font-serif);
+            font-size: 14px;
+            font-style: italic;
+            line-height: 1.6;
+            color: var(--ink-dark);
+            margin-bottom: 10px;
+            padding-left: 16px;
+            border-left: 2px solid var(--rule);
+        }
+
+        .press-source {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            color: var(--ink-light);
+            padding-left: 16px;
+        }
+
+        .press-source span {
+            color: var(--ink-mid);
+            font-weight: 600;
+        }
+
+        /* ===== SIDEBAR METRICS (within hero grid) ===== */
+        .metrics-sidebar {
+            padding: 40px 0;
+            border-bottom: 1px solid var(--rule);
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0;
+        }
+
+        .metric-block {
+            padding: 20px 24px;
+            border-right: 1px solid var(--rule);
+            position: relative;
+        }
+
+        .metric-block:last-child {
+            border-right: none;
+        }
+
+        .metric-eyebrow {
+            font-family: var(--font-mono);
+            font-size: 9px;
+            font-weight: 600;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: var(--ink-light);
+            margin-bottom: 8px;
+        }
+
+        .metric-value {
+            font-family: var(--font-serif);
+            font-size: 32px;
+            font-weight: 700;
+            line-height: 1.1;
+            color: var(--ink);
+            margin-bottom: 4px;
+        }
+
+        .metric-change {
+            font-family: var(--font-mono);
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .metric-change.up { color: var(--signal-open); }
+        .metric-change.down { color: var(--signal-hedge); }
+        .metric-change.flat { color: var(--ink-light); }
+
+        .metric-subtext {
+            font-family: var(--font-sans);
+            font-size: 11px;
+            color: var(--ink-light);
+            margin-top: 4px;
+        }
+
+        /* ===== WATCHLIST ===== */
+        .watchlist-section {
+            padding: 40px 0;
+            border-bottom: 1px solid var(--rule);
+        }
+
+        .watchlist-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0;
+        }
+
+        .watchlist-item {
+            padding: 20px 24px;
+            border-right: 1px solid var(--rule);
+            border-bottom: 1px solid var(--rule);
+        }
+
+        .watchlist-item:nth-child(3n) {
+            border-right: none;
+        }
+
+        .watchlist-item:nth-last-child(-n+3) {
+            border-bottom: none;
+        }
+
+        .watchlist-label {
+            font-family: var(--font-mono);
+            font-size: 9px;
+            font-weight: 600;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: var(--ink-light);
+            margin-bottom: 6px;
+        }
+
+        .watchlist-value {
+            font-family: var(--font-mono);
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--ink);
+            margin-bottom: 4px;
+        }
+
+        .watchlist-note {
+            font-family: var(--font-sans);
+            font-size: 11px;
+            color: var(--ink-light);
+        }
+
+        /* ===== COMPASS METHODOLOGY ===== */
+        .methodology-section {
+            padding: 40px 0;
+            border-bottom: 1px solid var(--rule);
+        }
+
+        .methodology-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 0;
+        }
+
+        .method-card {
+            padding: 24px;
+            border-right: 1px solid var(--rule);
+            position: relative;
+        }
+
+        .method-card:last-child {
+            border-right: none;
+        }
+
+        .method-number {
+            font-family: var(--font-serif);
+            font-size: 48px;
+            font-weight: 300;
+            color: var(--rule);
+            line-height: 1;
+            margin-bottom: 12px;
+        }
+
+        .method-name {
+            font-family: var(--font-sans);
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            color: var(--ink);
+            margin-bottom: 8px;
+        }
+
+        .method-score {
+            font-family: var(--font-mono);
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .method-weight {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--ink-light);
+            margin-bottom: 12px;
+        }
+
+        .method-desc {
+            font-family: Georgia, var(--font-serif);
+            font-size: 12px;
+            line-height: 1.6;
+            color: var(--ink-mid);
+            font-style: italic;
+        }
+
+        /* ===== FOOTER / COLOPHON ===== */
+        .colophon {
+            padding: 32px 0;
+            text-align: center;
+            border-top: 4px double var(--ink);
+        }
+
+        .colophon-inner {
+            max-width: var(--max-width);
+            margin: 0 auto;
+            padding: 0 40px;
+        }
+
+        .colophon-logo {
+            font-family: var(--font-serif);
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            color: var(--ink);
+            margin-bottom: 8px;
+        }
+
+        .colophon-text {
+            font-family: var(--font-mono);
+            font-size: 9px;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            color: var(--ink-light);
+            line-height: 2;
+        }
+
+        .colophon-disclaimer {
+            font-family: Georgia, var(--font-serif);
+            font-size: 11px;
+            font-style: italic;
+            color: var(--ink-light);
+            max-width: 600px;
+            margin: 16px auto 0;
+            line-height: 1.6;
+        }
+
+        /* ===== SIGNAL STRIP (below masthead) ===== */
+        .signal-strip {
+            display: flex;
+            justify-content: center;
+            gap: 48px;
+            padding: 16px 0;
+            border-bottom: 1px solid var(--rule);
+            background: var(--paper-off);
+        }
+
+        .signal-strip-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            letter-spacing: 0.1em;
+            color: var(--ink-mid);
+        }
+
+        .signal-strip-item .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .signal-strip-item .dot.active-open { background: var(--signal-open); box-shadow: 0 0 8px rgba(16, 185, 129, 0.4); }
+        .signal-strip-item .dot.inactive { background: var(--rule); }
+
+        /* ===== TRENDING TICKER ===== */
+        .ticker-bar {
+            display: flex;
+            gap: 32px;
+            padding: 10px 0;
+            border-bottom: 2px solid var(--ink);
+            overflow: hidden;
+        }
+
+        .ticker-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+            font-family: var(--font-mono);
+            font-size: 12px;
+        }
+
+        .ticker-name {
+            font-weight: 600;
+            color: var(--ink);
+        }
+
+        .ticker-price {
+            color: var(--ink-dark);
+        }
+
+        .ticker-change {
+            font-weight: 500;
+            font-size: 11px;
+        }
+
+        .ticker-change.up { color: var(--signal-open); }
+        .ticker-change.down { color: var(--signal-hedge); }
+
+        .ticker-sep {
+            color: var(--rule);
+            font-size: 8px;
+        }
+
+        /* ===== HISTORICAL CONTEXT ===== */
+        .historical-section {
+            padding: 40px 0;
+            border-bottom: 1px solid var(--rule);
+        }
+
+        .timeline {
+            display: flex;
+            gap: 0;
+            position: relative;
+        }
+
+        .timeline::before {
+            content: '';
+            position: absolute;
+            top: 20px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--rule);
+        }
+
+        .timeline-event {
+            flex: 1;
+            text-align: center;
+            padding-top: 36px;
+            position: relative;
+        }
+
+        .timeline-event::before {
+            content: '';
+            position: absolute;
+            top: 14px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--paper);
+            border: 2px solid var(--ink);
+        }
+
+        .timeline-event.current::before {
+            background: var(--ink);
+        }
+
+        .timeline-date {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--ink-light);
+            letter-spacing: 0.1em;
+            margin-bottom: 4px;
+        }
+
+        .timeline-price {
+            font-family: var(--font-serif);
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--ink);
+            margin-bottom: 4px;
+        }
+
+        .timeline-note {
+            font-family: Georgia, var(--font-serif);
+            font-size: 11px;
+            font-style: italic;
+            color: var(--ink-mid);
+            line-height: 1.4;
+            max-width: 140px;
+            margin: 0 auto;
+        }
+
+        /* ===== RISK MATRIX ===== */
+        .risk-section {
+            padding: 40px 0;
+            border-bottom: 1px solid var(--rule);
+        }
+
+        .risk-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0;
+        }
+
+        .risk-column {
+            padding: 0 32px;
+        }
+
+        .risk-column:first-child {
+            padding-left: 0;
+            border-right: 1px solid var(--rule);
+        }
+
+        .risk-column:last-child {
+            padding-right: 0;
+        }
+
+        .risk-column-title {
+            font-family: var(--font-serif);
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--ink);
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--rule);
+        }
+
+        .risk-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 12px 0;
+            border-bottom: 1px dotted var(--rule);
+        }
+
+        .risk-item:last-child {
+            border-bottom: none;
+        }
+
+        .risk-icon {
+            font-size: 16px;
+            margin-top: 2px;
+            flex-shrink: 0;
+        }
+
+        .risk-text {
+            font-family: var(--font-sans);
+            font-size: 13px;
+            color: var(--ink-dark);
+            line-height: 1.5;
+        }
+
+        .risk-severity {
+            font-family: var(--font-mono);
+            font-size: 9px;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            margin-top: 4px;
+        }
+
+        .risk-severity.high { color: var(--signal-hedge); }
+        .risk-severity.medium { color: var(--signal-monitor); }
+        .risk-severity.low { color: var(--signal-open); }
+
+        /* ===== ANIMATIONS ===== */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-10px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .animate-in {
+            animation: fadeInUp 0.6s ease-out forwards;
+        }
+
+        .animate-delay-1 { animation-delay: 0.1s; opacity: 0; }
+        .animate-delay-2 { animation-delay: 0.2s; opacity: 0; }
+        .animate-delay-3 { animation-delay: 0.3s; opacity: 0; }
+        .animate-delay-4 { animation-delay: 0.4s; opacity: 0; }
+        .animate-delay-5 { animation-delay: 0.5s; opacity: 0; }
+
+        /* ===== PRINT STYLES ===== */
+        @media print {
+            body { font-size: 11pt; }
+            .masthead-title { font-size: 48pt; }
+            .hero-headline { font-size: 36pt; }
+            .page-wrapper { padding: 0; }
+        }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 1024px) {
+            .columns-layout { grid-template-columns: 1fr; }
+            .column { border-right: none; padding: 0; margin-bottom: 20px; }
+            .gauges-row { grid-template-columns: repeat(3, 1fr); }
+            .dual-section { grid-template-columns: 1fr; }
+            .dual-left { border-right: none; padding-right: 0; }
+            .hero { grid-template-columns: 1fr; }
+            .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ===== MASTHEAD ===== -->
+    <header class="masthead">
+        <div class="masthead-inner">
+            <div class="masthead-top-rule">
+                <span>Vol. XXIV &middot; No. 192</span>
+                <span>Cocoa Commodities Intelligence</span>
+                <span>Sunday, May 11, 2026</span>
+            </div>
+            <div class="masthead-title">
+                COMPASS CC
+                <span>The Cocoa Markets Intelligence Briefing</span>
+            </div>
+            <div class="masthead-subtitle">
+                Institutional-Grade Analysis &middot; Data-Driven Signals &middot; Weekly Edition
+            </div>
+            <div class="masthead-bottom-rule">
+                <span class="signal-badge">
+                    <span class="signal-dot open"></span> OPEN &mdash; Buy Signal Active
+                </span>
+                <span class="signal-badge">
+                    <span class="signal-dot monitor"></span> MONITOR &mdash; Watch & Wait
+                </span>
+                <span class="signal-badge">
+                    <span class="signal-dot hedge"></span> HEDGE &mdash; Protect Positions
+                </span>
+            </div>
+        </div>
+    </header>
+
+    <!-- ===== SIGNAL STRIP ===== -->
+    <div class="signal-strip">
+        <div class="signal-strip-item">
+            <span class="dot active-open"></span>
+            <span><strong>CURRENT SIGNAL: OPEN</strong></span>
+        </div>
+        <div class="signal-strip-item">
+            <span>ICE NY Front Month: $8,247/mt</span>
+        </div>
+        <div class="signal-strip-item">
+            <span>Composite Score: 72/100</span>
+        </div>
+        <div class="signal-strip-item">
+            <span>Last Updated: 11 May 2026, 08:00 UTC</span>
+        </div>
+    </div>
+
+    <!-- ===== TICKER BAR ===== -->
+    <div class="page-wrapper">
+        <div class="ticker-bar">
+            <div class="ticker-item">
+                <span class="ticker-name">ICE NY Jul-26</span>
+                <span class="ticker-price">$8,247</span>
+                <span class="ticker-change up">+3.4%</span>
+            </div>
+            <span class="ticker-sep">&bull;</span>
+            <div class="ticker-item">
+                <span class="ticker-name">ICE LDN Jul-26</span>
+                <span class="ticker-price">&pound;6,512</span>
+                <span class="ticker-change up">+2.8%</span>
+            </div>
+            <span class="ticker-sep">&bull;</span>
+            <div class="ticker-item">
+                <span class="ticker-name">USD/XOF</span>
+                <span class="ticker-price">602.3</span>
+                <span class="ticker-change down">-0.2%</span>
+            </div>
+            <span class="ticker-sep">&bull;</span>
+            <div class="ticker-item">
+                <span class="ticker-name">Grindings Q1</span>
+                <span class="ticker-price">-4.2%</span>
+                <span class="ticker-change down">YoY</span>
+            </div>
+            <span class="ticker-sep">&bull;</span>
+            <div class="ticker-item">
+                <span class="ticker-name">ICCO Deficit</span>
+                <span class="ticker-price">-374kt</span>
+                <span class="ticker-change down">2025/26</span>
+            </div>
+            <span class="ticker-sep">&bull;</span>
+            <div class="ticker-item">
+                <span class="ticker-name">C&ocirc;te d'Ivoire</span>
+                <span class="ticker-price">1,200 CFA/kg</span>
+                <span class="ticker-change up">+8.1%</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== HERO SECTION ===== -->
+    <div class="page-wrapper">
+        <section class="hero animate-in">
+            <div class="hero-main">
+                <div class="hero-kicker">Lead Analysis &middot; Week 19, 2026</div>
+                <h1 class="hero-headline">
+                    Cocoa Rally Confirmed &mdash;<br>
+                    Third Consecutive<br>
+                    Deficit Year
+                    <span class="signal-label open">OPEN</span>
+                </h1>
+                <p class="hero-deck">
+                    The structural supply deficit deepens as West African mid-crop arrivals disappoint.
+                    ICCO revises 2025/26 shortfall to 374,000 tonnes. Compass composite score holds firmly
+                    in buy territory at 72/100, the highest reading since the March 2024 breakout.
+                </p>
+                <p class="hero-byline">
+                    Compass Intelligence Desk &middot; Published 11 May 2026
+                </p>
+            </div>
+            <div class="hero-score-panel animate-in animate-delay-2">
+                <div class="score-label">Compass Composite Score</div>
+                <div class="score-number">72</div>
+                <div class="score-max">out of 100</div>
+                <div class="score-signal-text">Signal: OPEN</div>
+                <div class="score-details">
+                    <div class="score-detail-row">
+                        <span class="score-detail-label">Fundamentals</span>
+                        <span class="score-detail-value">78/100</span>
+                    </div>
+                    <div class="score-detail-row">
+                        <span class="score-detail-label">Technicals</span>
+                        <span class="score-detail-value">65/100</span>
+                    </div>
+                    <div class="score-detail-row">
+                        <span class="score-detail-label">Sentiment</span>
+                        <span class="score-detail-value">70/100</span>
+                    </div>
+                    <div class="score-detail-row">
+                        <span class="score-detail-label">Macro</span>
+                        <span class="score-detail-value">62/100</span>
+                    </div>
+                    <div class="score-detail-row">
+                        <span class="score-detail-label">Weather</span>
+                        <span class="score-detail-value">81/100</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- ===== KEY METRICS STRIP ===== -->
+    <div class="page-wrapper">
+        <section class="metrics-sidebar animate-in animate-delay-1">
+            <div class="metrics-grid">
+                <div class="metric-block">
+                    <div class="metric-eyebrow">ICE NY Front Month</div>
+                    <div class="metric-value">$8,247</div>
+                    <div class="metric-change up">+3.4% WoW</div>
+                    <div class="metric-subtext">Jul-26 contract</div>
+                </div>
+                <div class="metric-block">
+                    <div class="metric-eyebrow">ICE London</div>
+                    <div class="metric-value">&pound;6,512</div>
+                    <div class="metric-change up">+2.8% WoW</div>
+                    <div class="metric-subtext">Jul-26 contract</div>
+                </div>
+                <div class="metric-block">
+                    <div class="metric-eyebrow">NY/LDN Spread</div>
+                    <div class="metric-value">$1,735</div>
+                    <div class="metric-change up">Widening</div>
+                    <div class="metric-subtext">Arbitrage premium</div>
+                </div>
+                <div class="metric-block">
+                    <div class="metric-eyebrow">ICCO Deficit</div>
+                    <div class="metric-value">-374kt</div>
+                    <div class="metric-change down">Deepening</div>
+                    <div class="metric-subtext">2025/26 forecast</div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- ===== THREE-COLUMN ANALYSIS ===== -->
+    <div class="page-wrapper">
+        <section class="analysis-section">
+            <div class="section-header">
+                <span class="section-number">I</span>
+                <span class="section-title">Market Analysis</span>
+                <span class="section-rule"></span>
+            </div>
+
+            <div class="columns-layout">
+                <div class="column animate-in animate-delay-1">
+                    <p>Cocoa futures surged to fresh highs this week as the market digested another round of disappointing crop data from West Africa. The ICE New York front-month contract closed at $8,247 per metric tonne, extending its year-to-date advance to 34 percent and marking the highest weekly close since the historic spike in April 2024. London futures followed suit, with the July contract settling at &pound;6,512, up 2.8 percent on the week.</p>
+
+                    <p>The rally is underpinned by an increasingly dire supply picture. The International Cocoa Organization revised its 2025/26 global deficit estimate to 374,000 tonnes, the third consecutive year of shortfall and the largest since the 2015/16 El Ni&ntilde;o event. C&ocirc;te d'Ivoire, which accounts for roughly 40 percent of global production, has seen cumulative port arrivals lag last season by 12 percent through early May, with mid-crop expectations being downgraded across the board.</p>
+                </div>
+
+                <div class="column animate-in animate-delay-2">
+                    <div class="column-subhead">Supply Dynamics</div>
+                    <p>Ghana's Cocobod has announced a further cut to its 2025/26 production target, now standing at 620,000 tonnes &mdash; well below the 750,000-tonne ambition articulated just two seasons ago. The combination of aging tree stock, swollen shoot virus disease, and erratic rainfall patterns has created structural headwinds that cannot be resolved within a single crop cycle.</p>
+
+                    <p>Meanwhile, grindings data continues to signal demand destruction at the margins. European Q1 grindings fell 4.2 percent year-on-year, while North American processors reported a 3.1 percent decline. However, Asian demand remains resilient with a 1.8 percent increase, suggesting the premium chocolate segment and emerging market appetite are partially offsetting weakness in traditional consuming regions.</p>
+                </div>
+
+                <div class="column animate-in animate-delay-3">
+                    <div class="column-subhead">Technical Outlook</div>
+                    <p>From a technical perspective, the breakout above $8,000 resistance is significant. The 20-day moving average has crossed above the 50-day, generating a golden cross signal that historically precedes extended moves in cocoa. Open interest has expanded by 8 percent over the past two weeks, suggesting new money is entering the market rather than short-covering driving the advance.</p>
+
+                    <p>The Commitment of Traders report shows managed money net-long positioning at 42,000 contracts, elevated but not yet at the extreme levels seen during the March 2024 peak of 58,000 contracts. This suggests the speculative community has room to add further length. The term structure remains in steep backwardation, with the July/September spread at $380 per tonne, reinforcing the tightness narrative and discouraging producer selling.</p>
+                </div>
+            </div>
+
+            <!-- Pull Quote -->
+            <div class="pull-quote animate-in animate-delay-3">
+                <blockquote>
+                    The cocoa market is experiencing the most severe structural supply deficit in a generation.
+                    Three consecutive years of shortfall have depleted buffer stocks to critical levels.
+                </blockquote>
+                <cite>Compass Intelligence Desk &mdash; Fundamental Assessment, May 2026</cite>
+            </div>
+        </section>
+    </div>
+
+    <!-- ===== INFOGRAPHIC STRIP: GAUGES ===== -->
+    <div class="page-wrapper">
+        <section class="infographic-strip">
+            <div class="section-header">
+                <span class="section-number">II</span>
+                <span class="section-title">Compass Gauges</span>
+                <span class="section-rule"></span>
+            </div>
+
+            <div class="gauges-row">
+                <div class="gauge-card positive animate-in animate-delay-1">
+                    <div class="gauge-title">Fundamentals</div>
+                    <div class="gauge-value positive">78</div>
+                    <div class="gauge-unit">/ 100</div>
+                    <div class="gauge-bar-track">
+                        <div class="gauge-bar-fill positive" style="width: 78%"></div>
+                    </div>
+                    <div class="gauge-context">3rd deficit year, stocks critically low</div>
+                </div>
+
+                <div class="gauge-card warning animate-in animate-delay-2">
+                    <div class="gauge-title">Technicals</div>
+                    <div class="gauge-value warning">65</div>
+                    <div class="gauge-unit">/ 100</div>
+                    <div class="gauge-bar-track">
+                        <div class="gauge-bar-fill warning" style="width: 65%"></div>
+                    </div>
+                    <div class="gauge-context">Golden cross confirmed, RSI elevated</div>
+                </div>
+
+                <div class="gauge-card positive animate-in animate-delay-3">
+                    <div class="gauge-title">Sentiment</div>
+                    <div class="gauge-value positive">70</div>
+                    <div class="gauge-unit">/ 100</div>
+                    <div class="gauge-bar-track">
+                        <div class="gauge-bar-fill positive" style="width: 70%"></div>
+                    </div>
+                    <div class="gauge-context">CoT net-long expanding, not extreme</div>
+                </div>
+
+                <div class="gauge-card warning animate-in animate-delay-4">
+                    <div class="gauge-title">Macro</div>
+                    <div class="gauge-value warning">62</div>
+                    <div class="gauge-unit">/ 100</div>
+                    <div class="gauge-bar-track">
+                        <div class="gauge-bar-fill warning" style="width: 62%"></div>
+                    </div>
+                    <div class="gauge-context">USD softening, EM currencies stable</div>
+                </div>
+
+                <div class="gauge-card positive animate-in animate-delay-5">
+                    <div class="gauge-title">Weather</div>
+                    <div class="gauge-value positive">81</div>
+                    <div class="gauge-unit">/ 100</div>
+                    <div class="gauge-bar-track">
+                        <div class="gauge-bar-fill positive" style="width: 81%"></div>
+                    </div>
+                    <div class="gauge-context">Dry spells persist across Sahel belt</div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- ===== FULL-WIDTH CHART ===== -->
+    <div class="page-wrapper">
+        <section class="chart-section">
+            <div class="section-header">
+                <span class="section-number">III</span>
+                <span class="section-title">Price History &amp; Signal Overlay</span>
+                <span class="section-rule"></span>
+            </div>
+
+            <div class="chart-container">
+                <!-- Signal Zones -->
+                <div class="chart-signal-zones">
+                    <div class="chart-zone hedge-zone" style="top: 0; height: 15%;"></div>
+                    <div class="chart-zone monitor-zone" style="top: 15%; height: 20%;"></div>
+                    <div class="chart-zone open-zone" style="top: 65%; height: 35%;"></div>
+                </div>
+
+                <div class="chart-canvas-area">
+                    <!-- Y-axis labels -->
+                    <span class="chart-y-label" style="top: 0%;">$10,000</span>
+                    <span class="chart-y-label" style="top: 20%;">$9,000</span>
+                    <span class="chart-y-label" style="top: 40%;">$8,000</span>
+                    <span class="chart-y-label" style="top: 60%;">$7,000</span>
+                    <span class="chart-y-label" style="top: 80%;">$6,000</span>
+                    <span class="chart-y-label" style="top: 100%;">$5,000</span>
+
+                    <!-- Grid lines -->
+                    <div class="chart-grid-line" style="top: 0%;"></div>
+                    <div class="chart-grid-line" style="top: 20%;"></div>
+                    <div class="chart-grid-line" style="top: 40%;"></div>
+                    <div class="chart-grid-line" style="top: 60%;"></div>
+                    <div class="chart-grid-line" style="top: 80%;"></div>
+                    <div class="chart-grid-line" style="top: 100%;"></div>
+
+                    <!-- X-axis labels -->
+                    <span class="chart-x-label" style="left: 0%;">Jun 25</span>
+                    <span class="chart-x-label" style="left: 16.6%;">Aug 25</span>
+                    <span class="chart-x-label" style="left: 33.3%;">Oct 25</span>
+                    <span class="chart-x-label" style="left: 50%;">Dec 25</span>
+                    <span class="chart-x-label" style="left: 66.6%;">Feb 26</span>
+                    <span class="chart-x-label" style="left: 83.3%;">Apr 26</span>
+                    <span class="chart-x-label" style="left: 100%;">May 26</span>
+
+                    <!-- SVG Price Line -->
+                    <div class="chart-line">
+                        <svg viewBox="0 0 1000 300" preserveAspectRatio="none">
+                            <!-- Area fill -->
+                            <polygon class="area-fill" points="0,240 40,235 80,225 120,230 160,210 200,195 240,200 280,185 320,175 360,160 400,150 440,155 480,140 520,125 560,130 600,110 640,95 680,100 720,80 760,70 800,65 840,55 880,50 920,45 960,40 1000,35 1000,300 0,300" />
+                            <!-- Price line -->
+                            <polyline points="0,240 40,235 80,225 120,230 160,210 200,195 240,200 280,185 320,175 360,160 400,150 440,155 480,140 520,125 560,130 600,110 640,95 680,100 720,80 760,70 800,65 840,55 880,50 920,45 960,40 1000,35" />
+                            <!-- Current price dot -->
+                            <circle cx="1000" cy="35" r="5" fill="#1A1A1A" />
+                            <!-- Moving average -->
+                            <polyline points="0,245 80,238 160,225 240,210 320,195 400,170 480,155 560,140 640,120 720,100 800,85 880,65 960,50 1000,45" style="stroke: #999; stroke-width: 1; stroke-dasharray: 6,4; fill: none;" />
+                        </svg>
+                    </div>
+
+                    <!-- Annotations -->
+                    <div class="chart-annotation" style="left: 30%; top: 45%;">
+                        ICCO deficit revision
+                    </div>
+                    <div class="chart-annotation" style="left: 60%; top: 25%;">
+                        Ghana crop cut
+                    </div>
+                    <div class="chart-annotation" style="right: 5%; top: 2%;">
+                        $8,247
+                    </div>
+                </div>
+            </div>
+
+            <div class="chart-caption">
+                <strong>Fig. 1 &mdash; </strong>ICE New York cocoa front-month continuous contract, weekly closes from June 2025 to May 2026.
+                Dashed line represents the 20-week moving average. Shaded zones indicate Compass signal thresholds:
+                green (OPEN), amber (MONITOR), red (HEDGE). Source: ICE Futures, Compass CC calculations.
+            </div>
+        </section>
+    </div>
+
+    <!-- ===== METHODOLOGY STRIP ===== -->
+    <div class="page-wrapper">
+        <section class="methodology-section">
+            <div class="section-header">
+                <span class="section-number">IV</span>
+                <span class="section-title">Compass Methodology &mdash; Five Pillars</span>
+                <span class="section-rule"></span>
+            </div>
+
+            <div class="methodology-grid">
+                <div class="method-card animate-in animate-delay-1">
+                    <div class="method-number">01</div>
+                    <div class="method-name">Fundamentals</div>
+                    <div class="method-score" style="color: var(--signal-open);">78</div>
+                    <div class="method-weight">Weight: 30%</div>
+                    <div class="method-desc">
+                        Supply/demand balance, global production estimates, grindings data, certified stocks,
+                        origin differentials, and ICCO quarterly revisions.
+                    </div>
+                </div>
+                <div class="method-card animate-in animate-delay-2">
+                    <div class="method-number">02</div>
+                    <div class="method-name">Technicals</div>
+                    <div class="method-score" style="color: var(--signal-monitor);">65</div>
+                    <div class="method-weight">Weight: 20%</div>
+                    <div class="method-desc">
+                        Moving averages, RSI, MACD, Bollinger Bands, support/resistance levels,
+                        volume analysis, and chart pattern recognition.
+                    </div>
+                </div>
+                <div class="method-card animate-in animate-delay-3">
+                    <div class="method-number">03</div>
+                    <div class="method-name">Sentiment</div>
+                    <div class="method-score" style="color: var(--signal-open);">70</div>
+                    <div class="method-weight">Weight: 20%</div>
+                    <div class="method-desc">
+                        CFTC Commitment of Traders positioning, options skew, put/call ratios,
+                        speculative net length, and commercial hedging activity.
+                    </div>
+                </div>
+                <div class="method-card animate-in animate-delay-4">
+                    <div class="method-number">04</div>
+                    <div class="method-name">Macro</div>
+                    <div class="method-score" style="color: var(--signal-monitor);">62</div>
+                    <div class="method-weight">Weight: 15%</div>
+                    <div class="method-desc">
+                        Dollar index, emerging market currencies, interest rates, commodity complex
+                        correlations, and risk appetite indicators.
+                    </div>
+                </div>
+                <div class="method-card animate-in animate-delay-5">
+                    <div class="method-number">05</div>
+                    <div class="method-name">Weather</div>
+                    <div class="method-score" style="color: var(--signal-open);">81</div>
+                    <div class="method-weight">Weight: 15%</div>
+                    <div class="method-desc">
+                        Rainfall anomalies, temperature deviations, ENSO phase, soil moisture,
+                        harmattan impact, and 30-day forecasts for key origins.
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- ===== DUAL SECTION: WEATHER + PRESS ===== -->
+    <div class="page-wrapper">
+        <section class="dual-section">
+            <!-- Weather Table -->
+            <div class="dual-left">
+                <div class="section-header">
+                    <span class="section-number">V</span>
+                    <span class="section-title">Weather Intelligence</span>
+                    <span class="section-rule"></span>
+                </div>
+
+                <table class="weather-table">
+                    <thead>
+                        <tr>
+                            <th>Origin</th>
+                            <th>Conditions</th>
+                            <th>Anomaly</th>
+                            <th>Impact</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>C&ocirc;te d'Ivoire (South)</td>
+                            <td>Below-average rainfall, dry spells persisting in key growing zones. Soil moisture at 65% of seasonal norm.</td>
+                            <td>-32% precip.</td>
+                            <td><span class="weather-impact bullish">Bullish</span></td>
+                        </tr>
+                        <tr>
+                            <td>C&ocirc;te d'Ivoire (North)</td>
+                            <td>Irregular onset of mid-crop rains. Temperature +1.4&deg;C above average, risk of flower abortion.</td>
+                            <td>-18% precip.</td>
+                            <td><span class="weather-impact bullish">Bullish</span></td>
+                        </tr>
+                        <tr>
+                            <td>Ghana (Ashanti)</td>
+                            <td>Moderate rainfall returned but unevenly distributed. Eastern zones remain stressed.</td>
+                            <td>-12% precip.</td>
+                            <td><span class="weather-impact bullish">Bullish</span></td>
+                        </tr>
+                        <tr>
+                            <td>Ghana (Western)</td>
+                            <td>Adequate moisture for pod development. Swollen shoot disease remains primary concern.</td>
+                            <td>Near normal</td>
+                            <td><span class="weather-impact neutral-imp">Neutral</span></td>
+                        </tr>
+                        <tr>
+                            <td>Nigeria</td>
+                            <td>Favourable conditions in South-West. Harmattan receded, seasonal rains establishing well.</td>
+                            <td>+5% precip.</td>
+                            <td><span class="weather-impact bearish">Bearish</span></td>
+                        </tr>
+                        <tr>
+                            <td>Cameroon</td>
+                            <td>Mixed conditions. Central region receiving adequate rainfall, southern areas slightly dry.</td>
+                            <td>-8% precip.</td>
+                            <td><span class="weather-impact neutral-imp">Neutral</span></td>
+                        </tr>
+                        <tr>
+                            <td>Ecuador</td>
+                            <td>La Ni&ntilde;a residual effects fading. Pacific coastal regions well-watered for Nacional variety.</td>
+                            <td>+12% precip.</td>
+                            <td><span class="weather-impact bearish">Bearish</span></td>
+                        </tr>
+                        <tr>
+                            <td>Indonesia (Sulawesi)</td>
+                            <td>Normal monsoon transition. No significant stress on cacao pod development.</td>
+                            <td>Near normal</td>
+                            <td><span class="weather-impact neutral-imp">Neutral</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Press Review -->
+            <div class="dual-right">
+                <div class="section-header">
+                    <span class="section-number">VI</span>
+                    <span class="section-title">Press Review</span>
+                    <span class="section-rule"></span>
+                </div>
+
+                <div class="press-item animate-in animate-delay-1">
+                    <div class="press-quote-mark">&ldquo;</div>
+                    <div class="press-excerpt">
+                        Cocoa prices have surged past $8,000 per tonne as a third consecutive global deficit
+                        erodes already depleted stockpiles. Certified warehouse stocks on ICE exchanges have
+                        fallen to just 1.2 million bags, the lowest level in over a decade.
+                    </div>
+                    <div class="press-source">
+                        <span>Financial Times</span> &mdash; Commodities Desk, 9 May 2026
+                    </div>
+                </div>
+
+                <div class="press-item animate-in animate-delay-2">
+                    <div class="press-quote-mark">&ldquo;</div>
+                    <div class="press-excerpt">
+                        Major chocolate manufacturers are accelerating reformulation efforts as cocoa ingredient
+                        costs reach unprecedented levels. Mondelez, Nestl&eacute;, and Barry Callebaut have all
+                        issued profit warnings citing cocoa-related margin compression.
+                    </div>
+                    <div class="press-source">
+                        <span>Reuters</span> &mdash; Agriculture, 8 May 2026
+                    </div>
+                </div>
+
+                <div class="press-item animate-in animate-delay-3">
+                    <div class="press-quote-mark">&ldquo;</div>
+                    <div class="press-excerpt">
+                        The European Cocoa Association reports Q1 grindings down 4.2%, confirming demand
+                        destruction at current price levels. However, premium dark chocolate sales continue
+                        to grow, suggesting bifurcation between mass-market and luxury segments.
+                    </div>
+                    <div class="press-source">
+                        <span>Bloomberg</span> &mdash; Commodities, 7 May 2026
+                    </div>
+                </div>
+
+                <div class="press-item animate-in animate-delay-4">
+                    <div class="press-quote-mark">&ldquo;</div>
+                    <div class="press-excerpt">
+                        Ghana's COCOBOD warns of structural yield decline, revising 2025/26 production
+                        target down to 620,000 tonnes. Swollen shoot virus has now affected an estimated
+                        500,000 hectares of cocoa farmland nationwide.
+                    </div>
+                    <div class="press-source">
+                        <span>The Economist</span> &mdash; Africa Section, 6 May 2026
+                    </div>
+                </div>
+
+                <div class="press-item animate-in animate-delay-5">
+                    <div class="press-quote-mark">&ldquo;</div>
+                    <div class="press-excerpt">
+                        Speculative positioning in cocoa futures has expanded sharply, with managed money
+                        net-long at 42,000 contracts. Analysts warn that while fundamentals support higher
+                        prices, the speed of the rally increases vulnerability to corrections.
+                    </div>
+                    <div class="press-source">
+                        <span>Wall Street Journal</span> &mdash; Markets, 10 May 2026
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- ===== HISTORICAL TIMELINE ===== -->
+    <div class="page-wrapper">
+        <section class="historical-section">
+            <div class="section-header">
+                <span class="section-number">VII</span>
+                <span class="section-title">Historical Context &mdash; Price Milestones</span>
+                <span class="section-rule"></span>
+            </div>
+
+            <div class="timeline">
+                <div class="timeline-event">
+                    <div class="timeline-date">Jan 2023</div>
+                    <div class="timeline-price">$2,580</div>
+                    <div class="timeline-note">Pre-crisis baseline, balanced market</div>
+                </div>
+                <div class="timeline-event">
+                    <div class="timeline-date">Oct 2023</div>
+                    <div class="timeline-price">$3,750</div>
+                    <div class="timeline-note">First deficit year confirmed by ICCO</div>
+                </div>
+                <div class="timeline-event">
+                    <div class="timeline-date">Mar 2024</div>
+                    <div class="timeline-price">$10,080</div>
+                    <div class="timeline-note">Historic spike, panic buying, record volatility</div>
+                </div>
+                <div class="timeline-event">
+                    <div class="timeline-date">Aug 2024</div>
+                    <div class="timeline-price">$6,200</div>
+                    <div class="timeline-note">Correction from peak, funds reduce length</div>
+                </div>
+                <div class="timeline-event">
+                    <div class="timeline-date">Jan 2025</div>
+                    <div class="timeline-price">$5,400</div>
+                    <div class="timeline-note">Brief optimism on main-crop outlook</div>
+                </div>
+                <div class="timeline-event">
+                    <div class="timeline-date">Sep 2025</div>
+                    <div class="timeline-price">$6,850</div>
+                    <div class="timeline-note">Second deficit confirmed, rally resumes</div>
+                </div>
+                <div class="timeline-event current">
+                    <div class="timeline-date">May 2026</div>
+                    <div class="timeline-price">$8,247</div>
+                    <div class="timeline-note">Third deficit year, Compass signal: OPEN</div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- ===== RISK ASSESSMENT ===== -->
+    <div class="page-wrapper">
+        <section class="risk-section">
+            <div class="section-header">
+                <span class="section-number">VIII</span>
+                <span class="section-title">Risk Assessment Matrix</span>
+                <span class="section-rule"></span>
+            </div>
+
+            <div class="risk-grid">
+                <div class="risk-column">
+                    <div class="risk-column-title" style="color: var(--signal-open);">Upside Catalysts</div>
+                    <div class="risk-item">
+                        <span class="risk-icon">&#9650;</span>
+                        <div>
+                            <div class="risk-text">Mid-crop disappointment in C&ocirc;te d'Ivoire exceeds current expectations, with arrivals falling below 400,000 tonnes.</div>
+                            <div class="risk-severity high">Probability: High</div>
+                        </div>
+                    </div>
+                    <div class="risk-item">
+                        <span class="risk-icon">&#9650;</span>
+                        <div>
+                            <div class="risk-text">Further COCOBOD production downgrades in Ghana as swollen shoot virus assessment worsens.</div>
+                            <div class="risk-severity medium">Probability: Medium</div>
+                        </div>
+                    </div>
+                    <div class="risk-item">
+                        <span class="risk-icon">&#9650;</span>
+                        <div>
+                            <div class="risk-text">ICE certified stocks fall below 1 million bags, triggering physical squeeze dynamics and premium escalation.</div>
+                            <div class="risk-severity medium">Probability: Medium</div>
+                        </div>
+                    </div>
+                    <div class="risk-item">
+                        <span class="risk-icon">&#9650;</span>
+                        <div>
+                            <div class="risk-text">Dollar weakness accelerates, boosting commodity complex and attracting macro fund inflows to soft commodities.</div>
+                            <div class="risk-severity low">Probability: Low</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="risk-column">
+                    <div class="risk-column-title" style="color: var(--signal-hedge);">Downside Risks</div>
+                    <div class="risk-item">
+                        <span class="risk-icon">&#9660;</span>
+                        <div>
+                            <div class="risk-text">Speculative long liquidation triggered by margin calls or broader risk-off event, causing a rapid $500+ correction.</div>
+                            <div class="risk-severity medium">Probability: Medium</div>
+                        </div>
+                    </div>
+                    <div class="risk-item">
+                        <span class="risk-icon">&#9660;</span>
+                        <div>
+                            <div class="risk-text">Demand destruction accelerates beyond forecasts as consumer resistance to higher chocolate prices intensifies.</div>
+                            <div class="risk-severity medium">Probability: Medium</div>
+                        </div>
+                    </div>
+                    <div class="risk-item">
+                        <span class="risk-icon">&#9660;</span>
+                        <div>
+                            <div class="risk-text">Unexpected improvement in Brazilian or Indonesian output supplements global supply pipeline.</div>
+                            <div class="risk-severity low">Probability: Low</div>
+                        </div>
+                    </div>
+                    <div class="risk-item">
+                        <span class="risk-icon">&#9660;</span>
+                        <div>
+                            <div class="risk-text">Regulatory intervention in origin countries (export taxes, price controls) disrupts market mechanics.</div>
+                            <div class="risk-severity low">Probability: Low</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- ===== WATCHLIST ===== -->
+    <div class="page-wrapper">
+        <section class="watchlist-section">
+            <div class="section-header">
+                <span class="section-number">IX</span>
+                <span class="section-title">Watchlist &amp; Key Levels</span>
+                <span class="section-rule"></span>
+            </div>
+
+            <div class="watchlist-grid">
+                <div class="watchlist-item">
+                    <div class="watchlist-label">Support Level 1</div>
+                    <div class="watchlist-value" style="color: var(--signal-open);">$7,800</div>
+                    <div class="watchlist-note">20-day MA, key breakout retest</div>
+                </div>
+                <div class="watchlist-item">
+                    <div class="watchlist-label">Support Level 2</div>
+                    <div class="watchlist-value" style="color: var(--signal-open);">$7,400</div>
+                    <div class="watchlist-note">50-day MA, April consolidation zone</div>
+                </div>
+                <div class="watchlist-item">
+                    <div class="watchlist-label">Resistance</div>
+                    <div class="watchlist-value" style="color: var(--signal-hedge);">$8,600</div>
+                    <div class="watchlist-note">Fib 61.8% retracement of 2024 decline</div>
+                </div>
+                <div class="watchlist-item">
+                    <div class="watchlist-label">RSI (14-day)</div>
+                    <div class="watchlist-value">68.4</div>
+                    <div class="watchlist-note">Approaching overbought, not extreme</div>
+                </div>
+                <div class="watchlist-item">
+                    <div class="watchlist-label">CoT Net Long</div>
+                    <div class="watchlist-value">42,000</div>
+                    <div class="watchlist-note">Contracts, room to 58k (2024 peak)</div>
+                </div>
+                <div class="watchlist-item">
+                    <div class="watchlist-label">ICE Cert. Stocks</div>
+                    <div class="watchlist-value" style="color: var(--signal-hedge);">1.2M bags</div>
+                    <div class="watchlist-note">Decade low, 1M trigger level</div>
+                </div>
+                <div class="watchlist-item">
+                    <div class="watchlist-label">Jul/Sep Spread</div>
+                    <div class="watchlist-value">$380/mt</div>
+                    <div class="watchlist-note">Steep backwardation, supply stress</div>
+                </div>
+                <div class="watchlist-item">
+                    <div class="watchlist-label">Volatility (30d)</div>
+                    <div class="watchlist-value" style="color: var(--signal-monitor);">34.2%</div>
+                    <div class="watchlist-note">Elevated but below 2024 crisis peak</div>
+                </div>
+                <div class="watchlist-item">
+                    <div class="watchlist-label">Next Report</div>
+                    <div class="watchlist-value">May 16</div>
+                    <div class="watchlist-note">CFTC CoT release, ICCO monthly</div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- ===== SECOND PULL QUOTE ===== -->
+    <div class="page-wrapper">
+        <div class="pull-quote animate-in">
+            <blockquote>
+                At $8,247, cocoa remains below the $10,080 panic peak of March 2024, but unlike that
+                speculative overshoot, the current rally is backed by confirmed physical tightness.
+                This is a fundamentals-driven market.
+            </blockquote>
+            <cite>Compass CC Institutional Note &mdash; 11 May 2026</cite>
+        </div>
+    </div>
+
+    <!-- ===== ADDITIONAL ANALYSIS COLUMNS ===== -->
+    <div class="page-wrapper">
+        <section class="analysis-section" style="padding-top: 40px;">
+            <div class="section-header">
+                <span class="section-number">X</span>
+                <span class="section-title">Forward Outlook</span>
+                <span class="section-rule"></span>
+            </div>
+
+            <div class="columns-layout">
+                <div class="column">
+                    <div class="column-subhead">Short-Term (1-4 Weeks)</div>
+                    <p>The immediate outlook favours further upside testing. The breakout above $8,000 has established a new base, and momentum indicators remain constructive despite the elevated RSI reading of 68.4. Key catalysts in the near term include the May 16 CFTC CoT report, which is expected to show continued managed money accumulation, and the publication of April port arrivals data from C&ocirc;te d'Ivoire.</p>
+
+                    <p>Risk of pullback exists around the $8,600 resistance level, which corresponds to the 61.8% Fibonacci retracement of the March 2024 to January 2025 decline. However, any correction to the $7,800 support zone should be viewed as a buying opportunity within the current OPEN signal framework.</p>
+                </div>
+
+                <div class="column">
+                    <div class="column-subhead">Medium-Term (1-3 Months)</div>
+                    <p>The medium-term trajectory depends critically on mid-crop arrivals and the June/July weather patterns across West Africa. Current meteorological models suggest below-average rainfall probability of 60 percent for the Sahel belt through July, which would further compromise yields and extend the supply deficit.</p>
+
+                    <p>Grindings data will provide the key demand-side variable. If Q2 grindings show further decline beyond 5 percent year-on-year, pricing power may moderate as the market begins to discount accelerated substitution and reformulation by confectioners. Compass will recalibrate the demand component of its composite score accordingly.</p>
+                </div>
+
+                <div class="column">
+                    <div class="column-subhead">Strategic View (3-12 Months)</div>
+                    <p>Structurally, the cocoa market faces multi-year supply challenges that are unlikely to be resolved before the 2027/28 crop at the earliest. Tree replanting programmes in Ghana require 3-5 years to reach productive maturity, and the swollen shoot virus continues to spread at an alarming rate. These biological constraints set a floor under prices that is unprecedented in modern market history.</p>
+
+                    <p>The Compass composite score of 72 reflects this structural view. While tactical volatility is expected and short-term corrections are inevitable, the directional bias remains firmly bullish. The OPEN signal will be maintained unless the composite score falls below 55, which would require a material improvement in supply fundamentals or a sharp deterioration in speculative positioning.</p>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- ===== COLOPHON / FOOTER ===== -->
+    <footer class="colophon">
+        <div class="colophon-inner">
+            <div class="colophon-logo">Compass CC</div>
+            <div class="colophon-text">
+                Cocoa Commodities Intelligence &middot; Vol. XXIV No. 192 &middot; 11 May 2026<br>
+                Published Weekly by Compass Intelligence Desk &middot; All Data as of 09 May 2026 Close<br>
+                Signal Thresholds: OPEN &ge; 60 &middot; MONITOR 40&ndash;59 &middot; HEDGE &le; 39
+            </div>
+            <div class="colophon-disclaimer">
+                This report is provided for informational purposes only and does not constitute investment advice.
+                Cocoa futures trading involves substantial risk of loss. Past performance is not indicative of future results.
+                The Compass Composite Score is a proprietary quantitative model and should be used as one input among many
+                in any investment decision process. &copy; 2026 Compass CC. All rights reserved.
+            </div>
+        </div>
+    </footer>
+
+    <!-- ===== SCROLL ANIMATION ===== -->
+    <script>
+        // Intersection Observer for scroll-triggered animations
+        document.addEventListener('DOMContentLoaded', function() {
+            const observerOptions = {
+                root: null,
+                rootMargin: '0px 0px -60px 0px',
+                threshold: 0.1
+            };
+
+            const observer = new IntersectionObserver(function(entries) {
+                entries.forEach(function(entry) {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('animate-in');
+                        observer.unobserve(entry.target);
+                    }
+                });
+            }, observerOptions);
+
+            // Observe all elements with animation delay classes
+            document.querySelectorAll('.animate-delay-1, .animate-delay-2, .animate-delay-3, .animate-delay-4, .animate-delay-5').forEach(function(el) {
+                observer.observe(el);
+            });
+
+            // Animate gauge bars on scroll
+            const gaugeObserver = new IntersectionObserver(function(entries) {
+                entries.forEach(function(entry) {
+                    if (entry.isIntersecting) {
+                        const fills = entry.target.querySelectorAll('.gauge-bar-fill');
+                        fills.forEach(function(fill) {
+                            const width = fill.style.width;
+                            fill.style.width = '0%';
+                            requestAnimationFrame(function() {
+                                requestAnimationFrame(function() {
+                                    fill.style.width = width;
+                                });
+                            });
+                        });
+                        gaugeObserver.unobserve(entry.target);
+                    }
+                });
+            }, { threshold: 0.3 });
+
+            const gaugesRow = document.querySelector('.gauges-row');
+            if (gaugesRow) {
+                gaugeObserver.observe(gaugesRow);
+            }
+
+            // Typewriter effect for score number
+            const scoreEl = document.querySelector('.score-number');
+            if (scoreEl) {
+                const targetVal = parseInt(scoreEl.textContent);
+                scoreEl.textContent = '0';
+                let current = 0;
+                const duration = 1500;
+                const startTime = performance.now();
+
+                function animateScore(timestamp) {
+                    const elapsed = timestamp - startTime;
+                    const progress = Math.min(elapsed / duration, 1);
+                    const eased = 1 - Math.pow(1 - progress, 3);
+                    current = Math.round(eased * targetVal);
+                    scoreEl.textContent = current;
+                    if (progress < 1) {
+                        requestAnimationFrame(animateScore);
+                    }
+                }
+
+                const scoreObserver = new IntersectionObserver(function(entries) {
+                    if (entries[0].isIntersecting) {
+                        requestAnimationFrame(animateScore);
+                        scoreObserver.unobserve(scoreEl);
+                    }
+                }, { threshold: 0.5 });
+
+                scoreObserver.observe(scoreEl);
+            }
+
+            // Smooth ticker scroll
+            const ticker = document.querySelector('.ticker-bar');
+            if (ticker) {
+                let scrollPos = 0;
+                const tickerClone = ticker.innerHTML;
+                ticker.innerHTML += tickerClone;
+                const totalWidth = ticker.scrollWidth / 2;
+
+                function scrollTicker() {
+                    scrollPos += 0.5;
+                    if (scrollPos >= totalWidth) {
+                        scrollPos = 0;
+                    }
+                    ticker.style.transform = 'translateX(-' + scrollPos + 'px)';
+                    requestAnimationFrame(scrollTicker);
+                }
+
+                // Only animate if wide enough
+                if (ticker.scrollWidth > ticker.clientWidth) {
+                    ticker.style.whiteSpace = 'nowrap';
+                    ticker.style.display = 'inline-flex';
+                    requestAnimationFrame(scrollTicker);
+                }
+            }
+
+            // Dynamic date in masthead
+            const now = new Date();
+            const dateOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+        });
+    </script>
+
+</body>
+</html>

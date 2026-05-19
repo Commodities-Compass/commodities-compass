@@ -98,42 +98,65 @@ The backend follows a clean architecture with separation of concerns:
 
 ### Frontend (React 19 + TypeScript)
 
-The frontend uses modern React patterns:
+The frontend follows the **Compass CC editorial / magazine brand identity** (2026 brand bible — assets in `docs/compass-brandbible-pack/`). It reads like a daily intelligence briefing rather than a generic dashboard.
 
+- **Brand identity**:
+  - Tokens in `src/index.css` (`--ink`, `--ink-dark`, `--ink-mid`, `--ink-light`, `--rule`, `--paper-off`, `--paper`, `--color-signal-{open,monitor,hedge}`).
+  - **Typography**: Playfair Display (`--font-display`, italic for editorial voice) + Inter (`--font-sans`, sections + structure) + IBM Plex Mono (`--font-mono`, data, kickers, ticker) + Georgia (`--font-editorial`, article body). All self-hosted via `@fontsource(-variable)`.
+  - **Signal palette**: OPEN `#10B981`, MONITOR `#F59E0B`, HEDGE `#EF4444`.
+  - Light theme only. Dark mode = P2 follow-up (no toggle currently exposed).
+  - **Favicon** — all sizes regenerated from `docs/compass-brandbible-pack/logo/transparent/compass-icon-1024-transparent.png` via `sips` (16/32/48 + 180 apple-touch + 192/512 android-chrome). OG image at `frontend/public/og-image.png`.
 - **Auth0 Integration** - `main.tsx` sets up Auth0Provider with localStorage caching and refresh tokens
 - **API Layer** - `src/api/` contains:
   - `client.ts` - Axios client with automatic token injection and 401 interceptor (dispatches `auth:token-expired` event)
   - `dashboard.ts` - Dashboard API service functions for all endpoints
 - **State Management** - React Query (TanStack Query) — global default stale time is 5 minutes (`main.tsx`), but all dashboard hooks in `useDashboard.ts` override to 24-hour stale time (no auto-refetch) since trading data updates once daily
-- **Routing** - React Router with `ProtectedRoute` wrapper requiring authentication
+- **Routing** - React Router with `ProtectedRoute` wrapper requiring authentication. `DashboardDateProvider` (from `src/contexts/DashboardDateContext.tsx`) wraps the protected routes so the masthead, page, and ticker share `currentDate` without prop-drilling.
   - `/` → `RootRedirect` (waits for Auth0 `isLoading` before redirecting to `/dashboard` — prevents stripping `?code=` callback params)
   - `/login` - Auth0 login page with redirect loop detection and error display
   - `/dashboard` - Main trading dashboard (protected)
   - `/dashboard/historical` - Historical data view (protected)
-- **Favicon** - `frontend/public/favicon-32x32.png` (transparent background, circle only) + `frontend/public/apple-touch-icon.png` (180x180, white background for mobile dark mode). Generated from `src/assets/compass-icon.png`.
-- **Typography** - Inter Variable (self-hosted via `@fontsource-variable/inter`). Configured in `index.css` as `--font-sans`. Font features `cv11`, `ss01` enabled. All card titles use `text-lg font-semibold tracking-tight`. Body text is `text-sm leading-relaxed` across all cards.
-- **UI Components** - Shadcn/ui (new-york style) with Radix UI primitives in `src/components/ui/`
-- **Dashboard Components**:
-  - `SignalHero` - Hero panel for trading signal (OPEN/HEDGE/MONITOR) as a pill badge with colored ring + dot, plus YTD performance. Replaces the old `PositionStatus` component.
-  - `PodcastPlayer` - Audio player with SoundCloud-style waveform bars (48 bars, click-to-seek, progress coloring). Uses `<audio preload="auto">` to buffer audio on page load — play is near-instant. Shows a loading spinner until `canplay` fires, then during mid-playback buffering stalls. Waveform is cosmetic (deterministic pseudo-random bars), not computed from audio data. Replaces the old audio player from `PositionStatus`.
-  - `MarketAnalysis` - Unified card: 6 gauge indicators (MACROECO/MACD/VOL-OI/RSI/%K/ATR) + analysis bullets with direction dots + "À surveiller" watchlist box
-  - `GaugeIndicator` - SVG semi-circular gauge with color zones (RED/ORANGE/GREEN), tooltip with indicator metadata
-  - `PriceChart` - Recharts area chart with metric/days selector and zoom controls
-  - `NewsCard` - Tabbed press review (Technique/Fondamentaux/Synthèse) with inline formatting for financial text
-  - `WeatherUpdateCard` - Campaign health bars, location diagnostics grid, market impact bar
-  - `DashboardLayout` - Desktop: collapsible sidebar with logo, nav, user profile dropdown. Mobile (<768px): sidebar hidden, replaced by slim top bar with hamburger menu (theme toggle, logout). User profile shows derived display name (Auth0 name or capitalized email prefix) with 2-letter initials avatar and email subtitle.
-  - `DateSelector` - Trading day navigation with calendar picker (disables weekends, exchange holidays, and future dates via `/non-trading-days` API)
-  - `DatePickerWithRange` - Date range picker with two-month calendar view
-  - `LoadingSpinner` - Full-screen centered spinner
-- **Dashboard Layout**:
-  - Hero row: 50/50 grid (`grid-cols-2`) — `SignalHero` (left) + `PodcastPlayer` (right). Stacks vertically on mobile.
-  - Below: `MarketAnalysis` → `PriceChart` → `NewsCard` → `WeatherUpdateCard` in vertical stack
+- **UI Components** - Shadcn/ui (new-york style) with Radix UI primitives in `src/components/ui/`. Calendar popover is restyled editorial (sharp corners, mono uppercase weekdays, Playfair italic month caption).
+- **Editorial primitives** (`src/components/editorial/`):
+  - `<Eyebrow>` — mono uppercase eyebrow/kicker, three tones (primary/muted/subtle), used everywhere a section subtitle or data label is needed.
+  - `<DataValue>` — mono tabular numerals for ticker numbers, scores, prices.
+  - `<DotSeparator>` — small `--rule` dot used between ticker cells.
+- **Section header / tabs**:
+  - `SectionHeader` (`src/components/section-header.tsx`) — roman numeral (Playfair light gray) + Inter sans uppercase title + horizontal rule. Used by all top-level dashboard sections.
+  - `EditorialTabs` (`src/components/editorial-tabs.tsx`) — magazine-style tabs (Playfair italic active label, ink underline, optional mono `(n)` badge). Full ARIA + keyboard arrow navigation.
+- **Dashboard sections** (in render order I → V):
+  - **I — `PodcastPlayer`** (Compass Daily Brief): editorial colophon-style audio block. NotebookLM `.wav/.m4a/.mp4` from Google Drive, click-to-seek SoundCloud-style waveform (56 deterministic bars), pause-on-hover. Spinner until `canplay`.
+  - **II — `MarketAnalysis`** (Market Analysis): two sub-blocks under a single section header.
+    - 1. `COMPASS GAUGES` row — 5 ruler-style `GaugeIndicator`s (MACD / VOL-OI / RSI / %K / ATR) with HEDGE/MONITOR/OPEN zone labels, colored triangle marker, mono value above.
+    - 2. Tabs `Recommandation` / `Supply & Momentum` / `Technical Outlook` (parsed from `useRecommendations().recommendations`) with **drop cap** on first paragraph + `À surveiller` sidebar on the right.
+  - **III — `PriceChart`** (Price History & Signal Overlay): monochrome Recharts area, editorial `MetricDropdown` (mono uppercase trigger + ink underline, no rounded shadcn pill) and `DaysPillGroup` (segmented `30J / 90J / 180J / 1Y` button group). Editorial caption `Fig. 1 — ...` below.
+  - **IV — `NewsCard`** (Press Review): top row of 4 sentiment thematic ruler gauges (PRODUCTION / CHOCOLAT / TRANSF. / ÉCONOMIE — `useNewsSentiment`), then 3 tabs `Marché — Technique` / `Fondamentaux` / `Sentiment de marché` with Playfair italic body + drop quote `"`. Impact synthesis box + keyword pills below.
+  - **V — `WeatherUpdateCard`** (Weather Intelligence) — orchestrator. Sub-components in `src/components/weather/`:
+    - `CampaignBlock` — `Campagne YYYY-YY` header + `Santé globale X.X/5` (Playfair colored) + methodology grid (one column per saison, serif numeral + colored score + status badge, `in_progress` highlighted).
+    - `StressHistoryBlock` — editorial table (Origin / Pays / Tendance 7j as vertical bars / Streak / Trend arrow / Statut pill).
+    - `HarmattanBlock` — risk badge + jours cumulés + affected sites list.
+    - `shared.ts` — `STATUS_HEX`, `statusLabel`, `healthColor` helpers.
+    - Bulletin du jour rendered at the bottom as Georgia editorial text.
+- **`SignalHero`** (above section I): Lead Analysis kicker, Playfair 56px headline `Signal [POSITION] — Cocoa [trend]` with inline colored signal pill, Georgia italic deck (from `useRecommendations`), Compass Intelligence Desk byline. Score panel on right (320px) shows position badge + YTD performance.
+- **`DashboardLayout`** (masthead + ticker + colophon):
+  - Top-rule (mono uppercase 9px): user dropdown left, compact date picker right. No Vol/No, no pub name (kept the layout breathing).
+  - Title block: `COMPASS CC` (Playfair 900 ~44-76px clamp) + `The Cocoa Markets Intelligence Briefing` italic deck. Compass icon (`src/assets/compass-icon.png`) on the right of the title (horizontal lockup).
+  - Signal triplet legend (OPEN / MONITOR / HEDGE).
+  - `LiveSignalStrip` band below masthead — full-width scrolling marquee (60s linear, pause-on-hover, fade mask, `prefers-reduced-motion` respected) showing signal/price/DoD/Volume/OI/RSI/MACD/%K/ATR/V-OI/YTD/session.
+  - Editorial colophon footer with display name + version + © year.
+- **`LiveSignalStrip`** (`src/components/live-signal-strip.tsx`): consumes `usePositionStatus` + `useChartData(5)` + `useIndicatorsGrid` via `useDashboardDate`. Compose with `<Eyebrow>` + `<DataValue>` + `<DotSeparator>`.
+- **`DateSelector`** (`src/components/date-selector.tsx`) — two variants:
+  - `card` (legacy) — old Card-wrapped picker with `< >` chevrons.
+  - `compact` (used in masthead) — single mono uppercase button with calendar icon, popover calendar opens on click.
+- **`LoadingSpinner`** (`src/components/LoadingSpinner.tsx`) — full-screen centered spinner.
 - **Custom Hooks**:
   - `useAuth.ts` - Auth0 token management wrapper
   - `useDashboard.ts` - React Query hooks for all dashboard endpoints (24h stale time, no auto-refetch)
+  - `useDashboardDate.ts` - Reads current/session date from `DashboardDateContext`
   - `use-mobile.tsx` - Mobile breakpoint detection
 - **Types** - `src/types/dashboard.ts` for all API response type definitions
 - **Data** - `src/data/commodities-data.ts` for chart metric options and mock data
+- **Brand asset source** - `docs/compass-brandbible-pack/` contains the original 2026 brand pack: tokens (`compass-brandbible-2026.html`), magazine reference (`ux-3-magazine.html`), gauge variants (`gauge-styles-editorial.html`), business cards, and the full logo library (favicon/, png/, dark/, transparent/, social/).
 
 ### Environment Configuration
 

@@ -1,13 +1,4 @@
-import { Button } from '@/components/ui/button';
-import {
-  MoonIcon,
-  SunIcon,
-  LayoutDashboardIcon,
-  LogOutIcon,
-  MenuIcon,
-} from 'lucide-react';
-import { useState, useEffect } from 'react';
-import { cn } from '@/utils';
+import { LogOutIcon, MenuIcon, UserIcon } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth } from '@/hooks/useAuth';
 import {
@@ -18,179 +9,88 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Link } from 'react-router-dom';
-import logo from '@/assets/COMPASS-logo.svg';
-import logoIcon from '@/assets/compass-icon.png';
+import { useDashboardDate } from '@/hooks/useDashboardDate';
+import DateSelector from '@/components/date-selector';
+import LiveSignalStrip from '@/components/live-signal-strip';
+import compassIcon from '@/assets/compass-icon.png';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
 }
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    const saved = localStorage.getItem('theme');
-    if (saved === 'dark' || saved === 'light') return saved;
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-  });
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
   const { user, logout } = useAuth();
+  const { currentDate, setCurrentDate, sessionDate } = useDashboardDate();
 
-  // Derive display name: Auth0 name (if real name, not email) > first part of email, capitalized
   const rawName = user?.name && !user.name.includes('@') ? user.name : null;
-  const displayName = rawName
-    || (user?.email ? user.email.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'User');
+  const displayName =
+    rawName ||
+    (user?.email
+      ? user.email
+          .split('@')[0]
+          .replace(/[._-]/g, ' ')
+          .replace(/\b\w/g, (c) => c.toUpperCase())
+      : 'User');
+  const initials = displayName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0].toUpperCase())
+    .join('');
 
-  useEffect(() => {
-    const check = () => {
-      const mobile = window.innerWidth < 768;
-      setIsMobile(mobile);
-      setSidebarCollapsed(mobile);
-    };
-    check();
-    window.addEventListener('resize', check);
-    return () => window.removeEventListener('resize', check);
-  }, []);
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === 'dark');
-  }, [theme]);
-
-  const toggleTheme = () => {
-    const newTheme = theme === 'light' ? 'dark' : 'light';
-    setTheme(newTheme);
-    localStorage.setItem('theme', newTheme);
-  };
+  const now = new Date();
 
   return (
-    <div className={cn('min-h-screen bg-gray-50 dark:bg-gray-900', theme)}>
-      <div className="flex h-screen overflow-hidden">
-        {/* Sidebar — hidden on mobile */}
-        {!isMobile && (
-          <aside
-            className={cn(
-              'flex flex-col h-full bg-background border-r transition-all duration-300 ease-in-out z-30',
-              sidebarCollapsed ? 'w-16' : 'w-64'
-            )}
+    <div
+      className="min-h-screen"
+      style={{ background: 'var(--paper)', color: 'var(--ink)' }}
+    >
+      {/* ===== MASTHEAD ===== */}
+      <header
+        className="border-b-[3px] border-double"
+        style={{ borderColor: 'var(--ink)' }}
+      >
+        <div className="max-w-7xl mx-auto px-6 md:px-10 pt-3 pb-3">
+          {/* Top rule: user (left) · date picker (right) — kept discreet */}
+          <div
+            className="flex items-center justify-between gap-4 pb-2 mb-4 border-b"
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 9,
+              letterSpacing: '0.18em',
+              textTransform: 'uppercase',
+              borderColor: 'var(--ink)',
+              color: 'var(--ink-light)',
+            }}
           >
-            <div className="flex items-center justify-center p-6 border-b">
-              <img
-                src={logo}
-                alt="Commodities Compass Logo"
-                className={cn(
-                  'object-contain transition-all duration-300',
-                  sidebarCollapsed ? 'h-12 w-12' : 'h-40 w-40'
-                )}
-              />
-            </div>
-
-            <div className="flex-1 overflow-y-auto py-4">
-              <nav className="px-2 space-y-1">
-                <Button
-                  variant="ghost"
-                  className={cn(
-                    'w-full justify-start',
-                    sidebarCollapsed ? 'px-2' : 'px-3'
-                  )}
-                  asChild
-                >
-                  <Link to="/dashboard">
-                    <LayoutDashboardIcon
-                      className={cn(
-                        'h-5 w-5',
-                        sidebarCollapsed ? 'mr-0' : 'mr-3'
-                      )}
-                    />
-                    {!sidebarCollapsed && <span>Cacao</span>}
-                  </Link>
-                </Button>
-              </nav>
-            </div>
-
-            <div className="border-t p-4">
+            {/* LEFT: user dropdown */}
+            <div className="flex items-center shrink-0">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    className={cn(
-                      'w-full flex items-center',
-                      sidebarCollapsed ? 'justify-center' : 'justify-start'
-                    )}
-                  >
-                    <Avatar className="h-8 w-8">
-                      <AvatarImage
-                        src={user?.picture}
-                        alt={user?.name || 'User'}
-                      />
-                      <AvatarFallback>
-                        {displayName.split(/\s+/).filter(Boolean).slice(0, 2).map(s => s[0].toUpperCase()).join('')}
-                      </AvatarFallback>
+                  <button type="button" className="flex items-center gap-2 hover:opacity-70 transition-opacity">
+                    <Avatar className="h-5 w-5">
+                      <AvatarImage src={user?.picture} alt={displayName} />
+                      <AvatarFallback className="text-[8px]">{initials}</AvatarFallback>
                     </Avatar>
-                    {!sidebarCollapsed && (
-                      <div className="ml-3 text-left truncate">
-                        <p className="text-sm font-medium truncate">{displayName}</p>
-                        {user?.email && <p className="text-xs text-muted-foreground truncate">{user.email}</p>}
-                      </div>
-                    )}
-                  </Button>
+                    <span className="hidden sm:inline">{displayName}</span>
+                    <MenuIcon className="h-3 w-3 sm:hidden" />
+                  </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" side="right">
-                  <DropdownMenuLabel>Mon Compte</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={toggleTheme}>
-                    {theme === 'light' ? (
-                      <MoonIcon className="mr-2 h-4 w-4" />
-                    ) : (
-                      <SunIcon className="mr-2 h-4 w-4" />
-                    )}
-                    {theme === 'light' ? 'Mode Sombre' : 'Mode Clair'}
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={logout}>
-                    <LogOutIcon className="mr-2 h-4 w-4" />
-                    Déconnexion
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </aside>
-        )}
-
-        {/* Main content */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Mobile top bar */}
-          {isMobile && (
-            <header className="flex items-center justify-between px-4 py-3 border-b bg-background">
-              <img src={logoIcon} alt="Compass" className="h-8 w-8 object-contain dark:invert" />
-
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-9 w-9">
-                    <MenuIcon className="h-5 w-5" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
+                <DropdownMenuContent align="start">
                   <DropdownMenuLabel className="flex items-center gap-2">
-                    <Avatar className="h-6 w-6">
-                      <AvatarImage src={user?.picture} alt={user?.name || 'User'} />
-                      <AvatarFallback className="text-[10px]">
-                        {displayName.split(/\s+/).filter(Boolean).slice(0, 2).map(s => s[0].toUpperCase()).join('')}
-                      </AvatarFallback>
+                    <Avatar className="h-7 w-7">
+                      <AvatarImage src={user?.picture} alt={displayName} />
+                      <AvatarFallback className="text-xs">{initials}</AvatarFallback>
                     </Avatar>
                     <div className="truncate">
                       <p className="text-sm font-medium truncate">{displayName}</p>
-                      {user?.email && <p className="text-xs text-muted-foreground font-normal truncate">{user.email}</p>}
+                      {user?.email && (
+                        <p className="text-xs text-muted-foreground font-normal truncate normal-case">
+                          {user.email}
+                        </p>
+                      )}
                     </div>
                   </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={toggleTheme}>
-                    {theme === 'light' ? (
-                      <MoonIcon className="mr-2 h-4 w-4" />
-                    ) : (
-                      <SunIcon className="mr-2 h-4 w-4" />
-                    )}
-                    {theme === 'light' ? 'Mode Sombre' : 'Mode Clair'}
-                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={logout}>
                     <LogOutIcon className="mr-2 h-4 w-4" />
@@ -198,12 +98,151 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-            </header>
-          )}
+            </div>
 
-          <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
+            {/* RIGHT: date picker */}
+            <div className="flex items-center shrink-0">
+              <DateSelector
+                variant="compact"
+                currentDate={currentDate}
+                onDateChange={setCurrentDate}
+                sessionDate={sessionDate ?? undefined}
+              />
+            </div>
+          </div>
+
+          {/* Title block: horizontal lockup — wordmark left, logo right */}
+          <div className="flex items-center justify-center gap-6 md:gap-9">
+            <div className="text-center md:text-right">
+              <h1
+                className="leading-none"
+                style={{
+                  fontFamily: 'var(--font-display)',
+                  fontWeight: 900,
+                  fontSize: 'clamp(44px, 7vw, 76px)',
+                  letterSpacing: '0.08em',
+                  color: 'var(--ink)',
+                }}
+              >
+                COMPASS CC
+              </h1>
+              <div
+                className="mt-2"
+                style={{
+                  fontFamily: 'var(--font-display)',
+                  fontWeight: 400,
+                  fontStyle: 'italic',
+                  fontSize: 'clamp(18px, 2.6vw, 28px)',
+                  letterSpacing: '0.02em',
+                  color: 'var(--ink-dark)',
+                }}
+              >
+                The Cocoa Markets Intelligence Briefing
+              </div>
+            </div>
+            <img
+              src={compassIcon}
+              alt="Compass CC"
+              className="shrink-0"
+              style={{
+                width: 'clamp(72px, 9vw, 104px)',
+                height: 'clamp(72px, 9vw, 104px)',
+                objectFit: 'contain',
+              }}
+            />
+          </div>
+
+          {/* Signal legend (compact, just below title block) */}
+          <div
+            className="flex flex-wrap justify-center gap-4 md:gap-8 mt-3 pt-2 border-t uppercase"
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 10,
+              letterSpacing: '0.15em',
+              borderColor: 'var(--rule)',
+              color: 'var(--ink-light)',
+            }}
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{ background: 'var(--color-signal-open)' }}
+              />
+              OPEN — Buy Signal Active
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{ background: 'var(--color-signal-monitor)' }}
+              />
+              MONITOR — Watch & Wait
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{ background: 'var(--color-signal-hedge)' }}
+              />
+              HEDGE — Protect Positions
+            </span>
+          </div>
+        </div>
+      </header>
+
+      {/* ===== LIVE TICKER (between masthead and hero) ===== */}
+      <div
+        className="border-b"
+        style={{
+          background: 'var(--paper-off)',
+          borderColor: 'var(--ink)',
+          padding: '8px 0',
+        }}
+      >
+        <div className="max-w-7xl mx-auto px-6 md:px-10 flex items-center">
+          <LiveSignalStrip />
         </div>
       </div>
+
+      {/* ===== MAIN ===== */}
+      <main className="max-w-7xl mx-auto px-6 md:px-10">{children}</main>
+
+      {/* ===== COLOPHON ===== */}
+      <footer
+        className="max-w-7xl mx-auto px-6 md:px-10 mt-16 pt-8 pb-10 border-t text-center"
+        style={{ borderColor: 'var(--ink)' }}
+      >
+        <div
+          style={{
+            fontFamily: 'var(--font-display)',
+            fontStyle: 'italic',
+            fontSize: 20,
+            color: 'var(--ink)',
+          }}
+        >
+          Compass CC
+        </div>
+        <div
+          className="mt-2 uppercase"
+          style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: 10,
+            letterSpacing: '0.15em',
+            color: 'var(--ink-mid)',
+          }}
+        >
+          <UserIcon className="inline h-3 w-3 mr-1.5" />
+          {displayName} · {user?.email ?? ''}
+        </div>
+        <div
+          className="mt-3"
+          style={{
+            fontFamily: 'var(--font-sans)',
+            fontSize: 11,
+            color: 'var(--ink-light)',
+          }}
+        >
+          © {now.getFullYear()} Compass CC — Cocoa Markets Intelligence
+        </div>
+      </footer>
     </div>
   );
 }

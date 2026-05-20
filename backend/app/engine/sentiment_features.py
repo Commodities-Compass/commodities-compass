@@ -76,15 +76,14 @@ def compute_sentiment_zdelta(
         results.append(result)
 
     if not results:
-        return pd.DataFrame(
-            columns=[
-                "date",
-                "theme",
-                "raw_score",
-                "zscore",
-                "zscore_delta",
-                "min_periods_met",
-            ]
-        )
+        empty_cols = [
+            "date",
+            "theme",
+            "raw_score",
+            "zscore",
+            "zscore_delta",
+            "min_periods_met",
+        ]
+        return pd.DataFrame(columns=pd.Index(empty_cols))
 
     return pd.concat(results, ignore_index=True)

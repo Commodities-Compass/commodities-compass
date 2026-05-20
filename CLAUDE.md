@@ -259,6 +259,36 @@ The frontend calendar shows `display_date` values. Non-trading days (weekends + 
 - **Cron**: `5 19 * * 1-5` (7:05 PM UTC weekdays — 5 min after Barchart; idempotent, new data only on Fridays after CFTC publishes ~9:30 PM CET)
 - **CLI**: `poetry run cftc-scraper [--dry-run]`
 
+### ENSO Scraper (`backend/scripts/enso_scraper/`)
+
+- **Data**: ENSO ONI (`enso_oni_month`) + Niño 3.4 anomaly (`enso_nino34_anomaly`) — climatology features consumed by Campaign 5 ensemble macro panel.
+- **Source**: NOAA Physical Sciences Laboratory — `https://psl.noaa.gov/data/correlation/oni.data` + `nina34.anom.data` (free, no auth, plain ASCII).
+- **Target table**: `pl_external_indicator` (commodity-agnostic, keyed on `date`, shared with FX scraper via partial UPSERT).
+- **Method**: Pure httpx + stdlib parser (no pandas). PSL ASCII format: header + rows `year jan feb ... dec`; missing-value sentinel `-99.9*` filtered.
+- **Cron**: `0 22 20 * 1-5` (20th of month, 22:00 UTC — NOAA publishes mid-month for prior month, 5-day buffer).
+- **Lag policy**: 14 days, applied at compute-time by the engine (`pd.merge_asof(direction="backward")`), not by the scraper.
+- **CLI**: `poetry run enso-scraper [--dry-run] [--force] [--verbose]`
+- **Backfill (one-shot)**: `poetry run enso-scraper-backfill [--verify]` — imports `docs/onboarding/ENSO/{oni,nino34}_monthly.csv` (~1830 rows, 1950-2026).
+- **US**: [docs/user-stories/P1-scraper-enso.md](docs/user-stories/P1-scraper-enso.md)
+
+### FX Scraper (`backend/scripts/fx_scraper/`)
+
+- **Data**: 4 derived FX columns on `pl_external_indicator`:
+  - `fx_dxy_proxy = 1 / usd_per_eur` (rises when USD strengthens)
+  - `fx_eurusd = 1 / usd_per_eur` (alias of dxy_proxy, audit)
+  - `fx_gbpusd = usd_per_eur / gbp_per_eur` (USD per 1 GBP — directly consumed by C5 specialists)
+  - `fx_gbpeur = gbp_per_eur` (raw passthrough, audit)
+- **Source**: ECB SDMX 2.1 (free, no auth, CSV format):
+  - `https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?format=csvdata`
+  - `https://data-api.ecb.europa.eu/service/data/EXR/D.GBP.EUR.SP00.A?format=csvdata`
+- **Target table**: `pl_external_indicator` (same table as ENSO, partial UPSERT preserves ENSO columns).
+- **Method**: Pure httpx + stdlib csv parser (no pandas). Combines the 2 series by date (union, not inner join).
+- **Cron**: `30 18 * * 1-5` (18:30 UTC business days, before `cc-ensemble-compute` at 19:18).
+- **Why ECB not yfinance/FRED/Stooq**: R&D rejected those (Cloudflare, API-key, rate limits). ECB is the most reliable open source.
+- **CLI**: `poetry run fx-scraper [--dry-run] [--force] [--verbose]`
+- **Backfill (one-shot)**: `poetry run fx-scraper-backfill [--verify]` — imports `docs/onboarding/FX/{dxy_proxy,gbpusd}_daily.csv` (~3164 rows, 2014-2026).
+- **US**: [docs/user-stories/P1-scraper-fx.md](docs/user-stories/P1-scraper-fx.md)
+
 ### Known Issues & Lessons (2026-02-18 debugging sessions)
 
 **Bug 1 — Wrong raw block (old scraper)**: Used `re.search` → picked FIRST of 4+ raw blocks. The first block was often a next-month contract or options data → wrong V and OI. Fix: max-volume heuristic picks the block with highest `volume` (always the main contract).

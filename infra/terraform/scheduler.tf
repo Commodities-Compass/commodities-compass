@@ -44,6 +44,17 @@ locals {
       description = "Generate structured brief and upload to Google Drive"
       schedule    = "30 19 * * 1-5"
     }
+    # External-data scrapers for Campaign 5 ensemble.
+    enso-scraper = {
+      description = "Scrape NOAA PSL ENSO indices (ONI + Niño 3.4)"
+      # Day 20 of month at 22:00 UTC — NOAA publishes mid-month for prior month.
+      schedule = "0 22 20 * 1-5"
+    }
+    fx-scraper = {
+      description = "Scrape ECB SDMX FX rates (USD/EUR + GBP/EUR → DXY proxy + GBPUSD)"
+      # 18:30 UTC business days — ECB publishes ~16:00 CET, before cc-ensemble-compute (19:18).
+      schedule = "30 18 * * 1-5"
+    }
   }
 }
 

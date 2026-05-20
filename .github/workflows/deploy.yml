@@ -210,3 +210,8 @@ jobs:
           # docs/user-stories/P2-daily-analysis-version-flag.md.
           deploy_job cc-daily-analysis       1Gi  "daily-analysis,--algorithm-version,legacy"
           deploy_job cc-compass-brief        1Gi  "compass-brief"
+          # External-data scrapers for Campaign 5 ensemble (ENSO monthly, FX daily).
+          # Write to pl_external_indicator (commodity-agnostic). See
+          # docs/user-stories/P1-scraper-{enso,fx}.md.
+          deploy_job cc-enso-scraper         512Mi "enso-scraper"
+          deploy_job cc-fx-scraper           512Mi "fx-scraper"

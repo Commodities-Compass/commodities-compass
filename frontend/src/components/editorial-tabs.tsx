@@ -83,14 +83,25 @@ export default function EditorialTabs({
         }
         @media (max-width: 639px) {
           .editorial-tab {
-            font-size: 13px !important;
-            padding: 8px 0 !important;
+            font-size: 12px !important;
+            padding: 7px 0 !important;
+            letter-spacing: 0 !important;
           }
           .editorial-tab-badge {
             display: none !important;
           }
           .editorial-tablist {
-            gap: 18px !important;
+            gap: 14px !important;
+            mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent 100%);
+            -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent 100%);
+          }
+        }
+        @media (max-width: 380px) {
+          .editorial-tab {
+            font-size: 11px !important;
+          }
+          .editorial-tablist {
+            gap: 12px !important;
           }
         }
       `}</style>

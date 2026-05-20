@@ -44,7 +44,7 @@ interface TickerItem {
 
 function TickerCell({ item }: { item: TickerItem }) {
   return (
-    <span className="inline-flex items-center gap-1.5 mr-8 whitespace-nowrap">
+    <span className="ticker-cell inline-flex items-center gap-1.5 whitespace-nowrap">
       {item.dot && (
         <span
           aria-hidden
@@ -138,13 +138,13 @@ export default function LiveSignalStrip() {
         <span key={`${keyPrefix}-${it.key}`} className="inline-flex items-center">
           <TickerCell item={it} />
           {i < items.length - 1 && (
-            <span className="mr-8">
+            <span className="ticker-sep">
               <DotSeparator />
             </span>
           )}
         </span>
       ))}
-      <span className="mr-8">
+      <span className="ticker-sep">
         <DotSeparator />
       </span>
     </div>
@@ -172,6 +172,8 @@ export default function LiveSignalStrip() {
           mask-image: linear-gradient(to right, transparent 0, #000 32px, #000 calc(100% - 32px), transparent 100%);
           -webkit-mask-image: linear-gradient(to right, transparent 0, #000 32px, #000 calc(100% - 32px), transparent 100%);
         }
+        .ticker-cell { margin-right: 32px; }
+        .ticker-sep { margin-right: 32px; }
         .ticker-scroll {
           animation: ticker-scroll 60s linear infinite;
           will-change: transform;
@@ -192,11 +194,13 @@ export default function LiveSignalStrip() {
         }
         @media (max-width: 639px) {
           .ticker-track {
-            mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
-            -webkit-mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
+            mask-image: linear-gradient(to right, transparent 0, #000 12px, #000 calc(100% - 12px), transparent 100%);
+            -webkit-mask-image: linear-gradient(to right, transparent 0, #000 12px, #000 calc(100% - 12px), transparent 100%);
           }
+          .ticker-cell { margin-right: 14px; }
+          .ticker-sep { margin-right: 14px; }
           .ticker-scroll {
-            animation-duration: 90s;
+            animation-duration: 45s;
           }
         }
       `}</style>

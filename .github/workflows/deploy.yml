@@ -204,5 +204,9 @@ jobs:
           deploy_job cc-press-review-agent   1Gi  "press-review"
           deploy_job cc-meteo-agent          1Gi  "meteo-agent"
           deploy_job cc-compute-indicators   1Gi  "compute-indicators,--all-contracts,--all-versions"
-          deploy_job cc-daily-analysis       1Gi  "daily-analysis"
+          # Pinned to "legacy" so daily-analysis NEVER overwrites the
+          # C5 ensemble's pl_indicator_daily row, even when the ensemble
+          # version is the one with is_active=TRUE. See
+          # docs/user-stories/P2-daily-analysis-version-flag.md.
+          deploy_job cc-daily-analysis       1Gi  "daily-analysis,--algorithm-version,legacy"
           deploy_job cc-compass-brief        1Gi  "compass-brief"

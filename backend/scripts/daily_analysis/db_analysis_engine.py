@@ -36,6 +36,16 @@ from scripts.daily_analysis.prompts import build_call1_prompt, build_call2_promp
 logger = logging.getLogger(__name__)
 
 
+class AlgorithmVersionNotFoundError(RuntimeError):
+    """Raised when --algorithm-version targets a name with no matching row.
+
+    Fail-loud per `.claude/rules/pipeline-error-handling.md`. The job exits
+    non-zero so the operator notices and fixes the deploy.yml flag rather
+    than silently falling back to is_active=TRUE (which would defeat the
+    purpose of pinning).
+    """
+
+
 @dataclass
 class AnalysisResult:
     """Full output of the DB-first daily analysis pipeline."""
@@ -57,6 +67,7 @@ class DBAnalysisEngine:
         session: Session,
         *,
         algorithm_config: AlgorithmConfig = LEGACY_V1,
+        algorithm_version_name: str | None = None,
         llm_provider: str = "openai",
         llm_model: str | None = None,
         call1_temperature: float = 1.0,
@@ -66,9 +77,44 @@ class DBAnalysisEngine:
         self._reader = DBReader(session)
         self._llm = LLMClient(provider=llm_provider, model=llm_model)
         self._config = algorithm_config
+        # When set, _resolve_algorithm_version_id() targets the named version
+        # instead of resolving via is_active=TRUE. Prevents LLM overwrites of
+        # other versions' rows (e.g., C5 ensemble) when this version is the
+        # active one. See P2-daily-analysis-version-flag.md.
+        self._algorithm_version_name = algorithm_version_name
 
         self._call1_temperature = call1_temperature
         self._call2_temperature = call2_temperature
+
+    def _resolve_algorithm_version_id(self) -> uuid.UUID | None:
+        """Return the algorithm_version_id this job is allowed to UPDATE.
+
+        Behavior:
+          * If `algorithm_version_name` was provided at init time, look up the
+            row by name and return its id even when `is_active=FALSE`. Raise
+            `AlgorithmVersionNotFoundError` if no row exists (fail-loud).
+          * Otherwise (backward compat), return the row where `is_active=TRUE`
+            or None if no active version exists.
+        """
+        if self._algorithm_version_name is not None:
+            row = self._session.execute(
+                text(
+                    "SELECT id FROM pl_algorithm_version WHERE name = :name "
+                    "ORDER BY is_active DESC, created_at DESC LIMIT 1"
+                ),
+                {"name": self._algorithm_version_name},
+            ).fetchone()
+            if row is None:
+                raise AlgorithmVersionNotFoundError(
+                    f"No row in pl_algorithm_version with name='{self._algorithm_version_name}'. "
+                    "Check the --algorithm-version flag in deploy.yml or DB state."
+                )
+            return row[0]
+
+        row = self._session.execute(
+            text("SELECT id FROM pl_algorithm_version WHERE is_active = true LIMIT 1"),
+        ).fetchone()
+        return row[0] if row else None
 
     def run(
         self,
@@ -235,10 +281,7 @@ class DBAnalysisEngine:
             return
         contract_id = contract_row[0]
 
-        algo_row = self._session.execute(
-            text("SELECT id FROM pl_algorithm_version WHERE is_active = true LIMIT 1"),
-        ).fetchone()
-        algo_version_id = algo_row[0] if algo_row else None
+        algo_version_id = self._resolve_algorithm_version_id()
 
         # Update pl_indicator_daily with LLM outputs only.
         # Technical indicators (momentum, z-scores) are owned by compute-indicators

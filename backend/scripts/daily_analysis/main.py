@@ -53,6 +53,20 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--llm-provider", default="openai")
     parser.add_argument("--llm-model", default=None)
 
+    # Algorithm version pin (P2-daily-analysis-version-flag.md).
+    # Default None → resolve to is_active=TRUE (backward compatible).
+    # Set to a name (e.g. "legacy") → target that version row even when
+    # another version is currently is_active=TRUE. Required for C5 day-1
+    # launch to prevent overwriting the ensemble's pl_indicator_daily row.
+    parser.add_argument(
+        "--algorithm-version",
+        default=None,
+        help=(
+            "Pin to a specific algorithm name (e.g. 'legacy'). "
+            "If omitted: resolves to is_active=TRUE (current behavior)."
+        ),
+    )
+
     return parser.parse_args()
 
 
@@ -112,6 +126,7 @@ def main() -> int:
         contract_code=contract_code,
         llm_provider=args.llm_provider,
         llm_model=args.llm_model,
+        algorithm_version_name=args.algorithm_version,
         dry_run=args.dry_run,
     )
 
@@ -121,6 +136,7 @@ def _run_db_pipeline(
     contract_code: str,
     llm_provider: str,
     llm_model: str | None,
+    algorithm_version_name: str | None,
     dry_run: bool,
 ) -> int:
     """Run the DB-first pipeline (no Sheets dependency)."""
@@ -150,6 +166,7 @@ def _run_db_pipeline(
         with Session(engine) as session:
             db_engine = DBAnalysisEngine(
                 session,
+                algorithm_version_name=algorithm_version_name,
                 llm_provider=llm_provider,
                 llm_model=llm_model,
             )

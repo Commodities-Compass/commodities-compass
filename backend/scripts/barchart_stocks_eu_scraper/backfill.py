@@ -265,6 +265,14 @@ def main() -> int:
             result.updated,
             result.skipped_missing_ohlcv,
         )
+        if result.skipped_missing_ohlcv > 0:
+            logger.warning(
+                "%d dates skipped because no OHLCV row existed in "
+                "pl_contract_data_daily for the active contract. Run the "
+                "barchart-scraper OHLCV backfill first to fill these gaps, "
+                "then re-run barchart-stocks-eu-scraper-backfill (idempotent).",
+                result.skipped_missing_ohlcv,
+            )
 
         logger.info("SUCCESS — Stock EU backfill complete")
         return 0

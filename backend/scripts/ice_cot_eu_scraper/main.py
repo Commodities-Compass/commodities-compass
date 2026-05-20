@@ -7,7 +7,11 @@ Usage:
     poetry run ice-cot-eu-scraper --verbose --force
 
 Cron (prod):
-    10 19 * * 1-5    # 19:10 UTC weekdays — idempotent UPSERT, weekly publication
+    10 22 * * 1-5    # 22:10 UTC weekdays — ICE publishes Friday ~21:30 CET
+                     # (≈19:30 UTC) for prior Tuesday's snapshot. Daily run +
+                     # idempotent UPSERT on (release_date, contract_market)
+                     # catches late publishes without coupling cron to ICE's
+                     # exact publication time.
 """
 
 from __future__ import annotations

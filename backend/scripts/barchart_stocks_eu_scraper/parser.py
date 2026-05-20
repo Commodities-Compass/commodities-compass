@@ -33,20 +33,31 @@ class BarchartStocksEuParseError(ValueError):
 # Regex to extract the Highcharts chart data series. The page embeds ~18
 # months of (timestamp_ms, value) pairs in the format:
 #     options.series[0].data = [ [1731369600000,283696],[1731456000000,283404],... ];
+#
+# Highcharts can also emit 3-tuple data points (e.g., marker config on the
+# most recent entry: [ts, val, {marker: {...}}]). The pair regex tolerates
+# any trailing comma + content before the closing `]` so the most-recent
+# entry isn't silently dropped if Barchart enables markers.
 _CHART_DATA_RE = re.compile(
     r"options\.series\[0\]\.data\s*=\s*\[(?P<body>[^;]+)\]\s*;",
     re.DOTALL,
 )
-_PAIR_RE = re.compile(r"\[\s*(?P<ts>\d+)\s*,\s*(?P<val>-?\d+(?:\.\d+)?)\s*\]")
+_PAIR_RE = re.compile(
+    r"\[\s*(?P<ts>\d+)\s*,\s*(?P<val>-?\d+(?:\.\d+)?)\s*(?:,[^\]]*)?\]"
+)
 
 
 @dataclass(frozen=True)
 class StockEuObservation:
-    """One snapshot of ICE Europe certified cocoa stocks (in 60kg bags)."""
+    """One snapshot of ICE Europe certified cocoa stocks (in 60kg bags).
+
+    ``history`` is a tuple (not list) so the frozen contract holds at every
+    level — callers cannot mutate the captured history.
+    """
 
     date: date
     value_bags60kg: Decimal
-    history: list[tuple[date, Decimal]] = field(default_factory=list)
+    history: tuple[tuple[date, Decimal], ...] = field(default_factory=tuple)
 
 
 def _parse_mdy(raw: str) -> date:
@@ -133,7 +144,7 @@ def parse_barchart_stocks_eu_html(html: str | None) -> StockEuObservation:
     most_recent_date = _parse_mdy(meta["Most Recent Date"])
 
     # ---- Table 2 (optional): 7-day history ----
-    history: list[tuple[date, Decimal]] = []
+    history_rows: list[tuple[date, Decimal]] = []
     if len(tables) >= 2:
         for tr in tables[1].find_all("tr"):
             th = tr.find("th")
@@ -150,9 +161,9 @@ def parse_barchart_stocks_eu_html(html: str | None) -> StockEuObservation:
                     td.get_text(strip=True),
                 )
                 continue
-            history.append((d, v))
-        history.sort(key=lambda pair: pair[0], reverse=True)
+            history_rows.append((d, v))
 
+    history = tuple(sorted(history_rows, key=lambda pair: pair[0], reverse=True))
     return StockEuObservation(
         date=most_recent_date,
         value_bags60kg=most_recent_value,

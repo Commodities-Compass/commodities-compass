@@ -30,6 +30,7 @@ from scripts.barchart_stocks_eu_scraper.main import _parse_args
 from scripts.barchart_stocks_eu_scraper.parser import (
     BarchartStocksEuParseError,
     StockEuObservation,
+    parse_barchart_history_series,
     parse_barchart_stocks_eu_html,
 )
 from tests.factories import (
@@ -259,14 +260,71 @@ class TestUpdateStockEu:
         ).fetchone()
         assert row.stock_eu_bags60kg == Decimal("621116")
 
+    def _seed_active_contract_only(self, session, suffix: str):
+        """Seed an active contract but NO pl_contract_data_daily row."""
+        exchange = make_ref_exchange(code=f"ICE_EU_{suffix}")
+        session.add(exchange)
+        session.flush()
+        commodity = make_ref_commodity(exchange.id, code=f"CC_{suffix}")
+        session.add(commodity)
+        session.flush()
+        contract = make_ref_contract(commodity.id, code=f"CT_{suffix}")
+        session.add(contract)
+        session.flush()
+        return contract
+
     def test_missing_row_fails_loud(self, sync_db_session):
         """If barchart OHLCV scraper hasn't run yet, fail-loud — don't INSERT."""
-        with pytest.raises(StockEuRowMissingError, match="2026-05-99|no row"):
+        self._seed_active_contract_only(sync_db_session, "MISSING")
+        with pytest.raises(StockEuRowMissingError, match="no row"):
             update_stock_eu(
                 sync_db_session,
                 date(2026, 5, 31),  # no row was seeded for this date
                 Decimal("621116"),
             )
+
+    def test_only_updates_active_contract_during_roll(self, sync_db_session):
+        """During a contract roll, only the active contract's row gets the stock value.
+
+        Seeds two contracts on the same date — one active (CAK26), one inactive
+        (CAH26). The UPDATE must hit only the active one, never both.
+        """
+        target = date(2026, 5, 15)
+        suffix = target.strftime("%Y%m%d")
+        exchange = make_ref_exchange(code=f"ICE_EU_{suffix}")
+        sync_db_session.add(exchange)
+        sync_db_session.flush()
+        commodity = make_ref_commodity(exchange.id, code=f"CC_{suffix}")
+        sync_db_session.add(commodity)
+        sync_db_session.flush()
+        active = make_ref_contract(commodity.id, code=f"ACT_{suffix}", is_active=True)
+        inactive = make_ref_contract(
+            commodity.id,
+            code=f"INA_{suffix}",
+            contract_month="H26",
+            is_active=False,
+        )
+        sync_db_session.add_all([active, inactive])
+        sync_db_session.flush()
+
+        active_row = make_pl_contract_data_daily(active.id, date=target)
+        inactive_row = make_pl_contract_data_daily(inactive.id, date=target)
+        sync_db_session.add_all([active_row, inactive_row])
+        sync_db_session.flush()
+
+        update_stock_eu(sync_db_session, target, Decimal("621116"))
+
+        rows = sync_db_session.execute(
+            text(
+                "SELECT contract_id, stock_eu_bags60kg FROM pl_contract_data_daily "
+                "WHERE date = :d ORDER BY contract_id"
+            ),
+            {"d": target},
+        ).fetchall()
+        assert len(rows) == 2
+        by_contract = {r.contract_id: r.stock_eu_bags60kg for r in rows}
+        assert by_contract[active.id] == Decimal("621116")
+        assert by_contract[inactive.id] is None  # untouched
 
 
 # ---------------------------------------------------------------------------
@@ -370,7 +428,7 @@ class TestMainOrchestration:
         sample = StockEuObservation(
             date=date(2026, 5, 13),
             value_bags60kg=Decimal("621116"),
-            history=[(date(2026, 5, 13), Decimal("621116"))],
+            history=((date(2026, 5, 13), Decimal("621116")),),
         )
         with (
             patch.object(sys, "argv", ["barchart-stocks-eu-scraper", "--dry-run"]),
@@ -393,7 +451,7 @@ class TestMainOrchestration:
         sample = StockEuObservation(
             date=date(2026, 5, 13),
             value_bags60kg=Decimal("621116"),
-            history=[(date(2026, 5, 13), Decimal("621116"))],
+            history=((date(2026, 5, 13), Decimal("621116")),),
         )
 
         class _Fake:
@@ -462,7 +520,7 @@ class TestMainOrchestration:
         sample = StockEuObservation(
             date=date(2026, 5, 13),
             value_bags60kg=Decimal("621116"),
-            history=[(date(2026, 5, 13), Decimal("621116"))],
+            history=((date(2026, 5, 13), Decimal("621116")),),
         )
         # should_skip_non_trading_day receives force=True → returns False
         fake_session = MagicMock()
@@ -489,3 +547,47 @@ class TestMainOrchestration:
         assert rc == 0
         # Verify --force propagates as force=True
         mock_skip.assert_called_with(force=True)
+
+
+# ---------------------------------------------------------------------------
+# Highcharts history series parser (used by the backfill)
+# ---------------------------------------------------------------------------
+
+
+class TestParseBarchartHistorySeries:
+    def test_parses_2tuple_series(self):
+        html = (
+            "<script>"
+            "options.series[0].data = [ "
+            "[1731369600000,283696],[1731456000000,283404],[1731542400000,292873] "
+            "];</script>"
+        )
+        rows = parse_barchart_history_series(html)
+        assert len(rows) == 3
+        assert rows[0][0] == date(2024, 11, 12)
+        assert rows[0][1] == Decimal("283696")
+
+    def test_tolerates_3tuple_data_with_marker_config(self):
+        """Highcharts may emit a 3rd element (marker config) on the most-recent
+        entry. The regex must not silently drop it.
+        """
+        html = (
+            "<script>"
+            "options.series[0].data = [ "
+            "[1731369600000,283696],"
+            "[1731456000000,283404,{marker:{enabled:true,radius:5}}] "
+            "];</script>"
+        )
+        rows = parse_barchart_history_series(html)
+        assert len(rows) == 2
+        # The 3-tuple entry must be parsed, not silently dropped.
+        assert rows[1] == (date(2024, 11, 13), Decimal("283404"))
+
+    def test_missing_block_fails_loud(self):
+        with pytest.raises(BarchartStocksEuParseError, match="series data block"):
+            parse_barchart_history_series("<html><body>no series here</body></html>")
+
+    def test_empty_pairs_fails_loud(self):
+        html = "<script>options.series[0].data = [ ];</script>"
+        with pytest.raises(BarchartStocksEuParseError, match="no \\(timestamp"):
+            parse_barchart_history_series(html)

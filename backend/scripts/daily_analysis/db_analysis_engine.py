@@ -46,6 +46,16 @@ class AlgorithmVersionNotFoundError(RuntimeError):
     """
 
 
+class AnalysisWriteError(RuntimeError):
+    """Raised when the LLM analysis run writes nothing to pl_indicator_daily.
+
+    Fail-loud per `.claude/rules/pipeline-error-handling.md`. A run that
+    succeeds at LLM calls but cannot persist results (because the target
+    row doesn't exist — typically compute-indicators hasn't run yet) must
+    NOT exit 0. Otherwise the cron green-checkmark masks a silent failure.
+    """
+
+
 @dataclass
 class AnalysisResult:
     """Full output of the DB-first daily analysis pipeline."""
@@ -83,11 +93,21 @@ class DBAnalysisEngine:
         # active one. See P2-daily-analysis-version-flag.md.
         self._algorithm_version_name = algorithm_version_name
 
+        # Cached `algorithm_version_id` — resolved once per engine instance to
+        # avoid (1) a second DB roundtrip on every run() and (2) a race where
+        # `is_active` rotates between the read in _compute_final_indicator and
+        # the write in _write_results.
+        self._algorithm_version_id_cache: uuid.UUID | None = None
+        self._algorithm_version_id_resolved: bool = False
+
         self._call1_temperature = call1_temperature
         self._call2_temperature = call2_temperature
 
     def _resolve_algorithm_version_id(self) -> uuid.UUID | None:
         """Return the algorithm_version_id this job is allowed to UPDATE.
+
+        Cached after first call to ensure read+write target the same row even
+        if `is_active` is rotated mid-run.
 
         Behavior:
           * If `algorithm_version_name` was provided at init time, look up the
@@ -96,6 +116,9 @@ class DBAnalysisEngine:
           * Otherwise (backward compat), return the row where `is_active=TRUE`
             or None if no active version exists.
         """
+        if self._algorithm_version_id_resolved:
+            return self._algorithm_version_id_cache
+
         if self._algorithm_version_name is not None:
             row = self._session.execute(
                 text(
@@ -109,12 +132,17 @@ class DBAnalysisEngine:
                     f"No row in pl_algorithm_version with name='{self._algorithm_version_name}'. "
                     "Check the --algorithm-version flag in deploy.yml or DB state."
                 )
-            return row[0]
+            self._algorithm_version_id_cache = row[0]
+        else:
+            row = self._session.execute(
+                text(
+                    "SELECT id FROM pl_algorithm_version WHERE is_active = true LIMIT 1"
+                ),
+            ).fetchone()
+            self._algorithm_version_id_cache = row[0] if row else None
 
-        row = self._session.execute(
-            text("SELECT id FROM pl_algorithm_version WHERE is_active = true LIMIT 1"),
-        ).fetchone()
-        return row[0] if row else None
+        self._algorithm_version_id_resolved = True
+        return self._algorithm_version_id_cache
 
     def run(
         self,
@@ -341,11 +369,11 @@ class DBAnalysisEngine:
             },
         )
         if result.rowcount == 0:
-            logger.warning(
-                "pl_indicator_daily UPDATE matched 0 rows for date=%s contract=%s — "
-                "row may not exist yet (compute-indicators not run?)",
-                target_date,
-                contract_code,
+            raise AnalysisWriteError(
+                f"pl_indicator_daily UPDATE matched 0 rows for date={target_date} "
+                f"contract={contract_code} algorithm_version_id={algo_version_id} "
+                "— compute-indicators must run first to create the row. "
+                "Re-run cc-compute-indicators, then re-run cc-daily-analysis."
             )
 
         # Update macroeco signal component with LLM-provided values

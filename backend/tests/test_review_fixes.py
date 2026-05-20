@@ -410,6 +410,10 @@ class TestComputeFinalIndicatorFailsLoud:
         engine._session = session
         engine._config = MagicMock()
         engine._algorithm_version_name = None
+        # Bypass cached resolution so the version lookup runs once before the
+        # data lookup (matches the side_effect order).
+        engine._algorithm_version_id_cache = None
+        engine._algorithm_version_id_resolved = False
 
         with pytest.raises(RuntimeError, match="No indicator data found"):
             engine._compute_final_indicator(date(2026, 4, 28), "CAN26", 0.05)

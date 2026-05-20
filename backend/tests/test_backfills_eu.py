@@ -250,7 +250,7 @@ class TestStockEuBackfillWalker:
         def fake_fetch_snapshot(d: date) -> StockEuObservation:
             called_dates.append(d)
             return StockEuObservation(
-                date=d, value_bags60kg=Decimal("100000"), history=[]
+                date=d, value_bags60kg=Decimal("100000"), history=()
             )
 
         with (
@@ -298,7 +298,7 @@ class TestStockEuBackfillWalker:
                 return_value=StockEuObservation(
                     date=date(2026, 5, 13),
                     value_bags60kg=Decimal("100000"),
-                    history=[],
+                    history=(),
                 ),
             ),
             patch(

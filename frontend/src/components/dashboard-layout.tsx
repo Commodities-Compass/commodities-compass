@@ -67,13 +67,17 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             <div className="flex items-center shrink-0">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button type="button" className="flex items-center gap-2 hover:opacity-70 transition-opacity">
-                    <Avatar className="h-5 w-5">
+                  <button
+                    type="button"
+                    aria-label="User menu"
+                    className="flex items-center gap-2 hover:opacity-70 transition-opacity min-h-11 min-w-11 px-1"
+                  >
+                    <Avatar className="h-6 w-6 sm:h-5 sm:w-5">
                       <AvatarImage src={user?.picture} alt={displayName} />
                       <AvatarFallback className="text-[8px]">{initials}</AvatarFallback>
                     </Avatar>
                     <span className="hidden sm:inline">{displayName}</span>
-                    <MenuIcon className="h-3 w-3 sm:hidden" />
+                    <MenuIcon className="h-4 w-4 sm:hidden" />
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
@@ -111,15 +115,15 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             </div>
           </div>
 
-          {/* Title block: horizontal lockup — wordmark left, logo right */}
-          <div className="flex items-center justify-center gap-6 md:gap-9">
-            <div className="text-center md:text-right">
+          {/* Title block: horizontal lockup desktop, vertical stack on phones */}
+          <div className="masthead-title flex items-center justify-center gap-6 md:gap-9">
+            <div className="masthead-text text-center md:text-right">
               <h1
-                className="leading-none"
+                className="masthead-wordmark leading-none"
                 style={{
                   fontFamily: 'var(--font-display)',
                   fontWeight: 900,
-                  fontSize: 'clamp(44px, 7vw, 76px)',
+                  fontSize: 'clamp(32px, 7vw, 76px)',
                   letterSpacing: '0.08em',
                   color: 'var(--ink)',
                 }}
@@ -127,12 +131,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 COMPASS CC
               </h1>
               <div
-                className="mt-2"
+                className="masthead-deck mt-2"
                 style={{
                   fontFamily: 'var(--font-display)',
                   fontWeight: 400,
                   fontStyle: 'italic',
-                  fontSize: 'clamp(18px, 2.6vw, 28px)',
+                  fontSize: 'clamp(14px, 2.6vw, 28px)',
                   letterSpacing: '0.02em',
                   color: 'var(--ink-dark)',
                 }}
@@ -143,18 +147,29 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             <img
               src={compassIcon}
               alt="Compass CC"
-              className="shrink-0"
+              className="masthead-logo shrink-0"
               style={{
-                width: 'clamp(72px, 9vw, 104px)',
-                height: 'clamp(72px, 9vw, 104px)',
+                width: 'clamp(56px, 9vw, 104px)',
+                height: 'clamp(56px, 9vw, 104px)',
                 objectFit: 'contain',
               }}
             />
           </div>
+          <style>{`
+            @media (max-width: 639px) {
+              .masthead-title {
+                flex-direction: column-reverse;
+                gap: 12px;
+              }
+              .masthead-text {
+                text-align: center !important;
+              }
+            }
+          `}</style>
 
           {/* Signal legend (compact, just below title block) */}
           <div
-            className="flex flex-wrap justify-center gap-4 md:gap-8 mt-3 pt-2 border-t uppercase"
+            className="flex flex-col items-center sm:flex-row sm:flex-wrap sm:justify-center gap-2 sm:gap-4 md:gap-8 mt-3 pt-2 border-t uppercase"
             style={{
               fontFamily: 'var(--font-mono)',
               fontSize: 10,

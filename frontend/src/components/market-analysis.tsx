@@ -22,6 +22,8 @@ function EditorialParagraph({ children, dropcap = false }: { children: React.Rea
         color: 'var(--ink-dark)',
         textAlign: 'justify',
         marginBottom: 14,
+        hyphens: 'auto',
+        WebkitHyphens: 'auto',
       }}
       className={dropcap ? 'has-dropcap' : undefined}
     >
@@ -236,12 +238,14 @@ export default function MarketAnalysis({ targetDate, className }: MarketAnalysis
       </section>
 
       <style>{`
-        @media (max-width: 1024px) {
+        @media (max-width: 1023px) {
           .market-grid { grid-template-columns: 1fr !important; }
+        }
+        @media (max-width: 767px) {
           .gauges-row { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
         }
-        @media (max-width: 600px) {
-          .gauges-row { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+        @media (max-width: 479px) {
+          .gauges-row { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 16px !important; }
         }
       `}</style>
     </div>

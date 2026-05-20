@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useDashboardDate } from '@/hooks/useDashboardDate';
 import {
   usePositionStatus,
@@ -149,14 +150,20 @@ export default function LiveSignalStrip() {
     </div>
   );
 
+  const [paused, setPaused] = useState(false);
+
   return (
     <div
       className="overflow-hidden ticker-track"
-      style={{ flex: 1, minWidth: 0 }}
-      aria-label="Live market data ticker"
+      style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
+      aria-label="Live market data ticker — tap to pause/resume"
       role="marquee"
+      onClick={() => setPaused((p) => !p)}
     >
-      <div className="ticker-scroll inline-flex items-center">
+      <div
+        className="ticker-scroll inline-flex items-center"
+        style={paused ? { animationPlayState: 'paused' } : undefined}
+      >
         {row('a')}
         {row('b')}
       </div>
@@ -169,8 +176,10 @@ export default function LiveSignalStrip() {
           animation: ticker-scroll 60s linear infinite;
           will-change: transform;
         }
-        .ticker-track:hover .ticker-scroll {
-          animation-play-state: paused;
+        @media (hover: hover) {
+          .ticker-track:hover .ticker-scroll {
+            animation-play-state: paused;
+          }
         }
         @keyframes ticker-scroll {
           from { transform: translateX(0); }
@@ -179,6 +188,15 @@ export default function LiveSignalStrip() {
         @media (prefers-reduced-motion: reduce) {
           .ticker-scroll {
             animation: none;
+          }
+        }
+        @media (max-width: 639px) {
+          .ticker-track {
+            mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
+            -webkit-mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
+          }
+          .ticker-scroll {
+            animation-duration: 90s;
           }
         }
       `}</style>

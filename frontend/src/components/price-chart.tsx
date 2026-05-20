@@ -43,7 +43,8 @@ function DaysPillGroup({ value, onChange }: PillGroupProps) {
               fontSize: 10,
               fontWeight: 600,
               letterSpacing: '0.18em',
-              padding: '7px 14px',
+              padding: '10px 14px',
+              minWidth: 44,
               background: isActive ? 'var(--ink)' : 'transparent',
               color: isActive ? 'var(--paper)' : 'var(--ink-mid)',
               border: 'none',
@@ -86,7 +87,8 @@ function MetricDropdown({ value, onChange }: MetricDropdownProps) {
             background: 'transparent',
             border: 'none',
             borderBottom: '1px solid var(--ink)',
-            padding: '6px 0',
+            padding: '10px 0',
+            minHeight: 40,
             cursor: 'pointer',
             transition: 'color 120ms',
           }}
@@ -110,6 +112,7 @@ function MetricDropdown({ value, onChange }: MetricDropdownProps) {
       <PopoverContent
         align="end"
         sideOffset={4}
+        collisionPadding={16}
         className="p-0"
         style={{
           background: 'var(--paper)',

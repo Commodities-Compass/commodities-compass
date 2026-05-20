@@ -7,6 +7,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useNewsSentiment } from '@/hooks/useDashboard';
+import { useIsTouch } from '@/hooks/useIsTouch';
 import type { IndicatorRange } from '@/types/dashboard';
 
 interface SentimentGaugesProps {
@@ -34,14 +35,12 @@ const SENTIMENT_RANGES: IndicatorRange[] = [
 const NO_COVERAGE_CONFIDENCE_THRESHOLD = 0.2;
 
 function NoCoveragePlaceholder({ label }: { label: string }) {
-  return (
-    <TooltipProvider delayDuration={150}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div
-            className="flex flex-col items-stretch select-none"
-            style={{ width: '100%', cursor: 'help' }}
-          >
+  const isTouch = useIsTouch();
+  const inner = (
+    <div
+      className="flex flex-col items-stretch select-none"
+      style={{ width: '100%', cursor: isTouch ? 'default' : 'help' }}
+    >
             <div
               className="uppercase text-center"
               style={{
@@ -102,7 +101,14 @@ function NoCoveragePlaceholder({ label }: { label: string }) {
               Pas de couverture
             </div>
           </div>
-        </TooltipTrigger>
+  );
+
+  if (isTouch) return inner;
+
+  return (
+    <TooltipProvider delayDuration={150}>
+      <Tooltip>
+        <TooltipTrigger asChild>{inner}</TooltipTrigger>
         <TooltipContent side="top" className="max-w-60 px-3 py-2">
           <p className="text-[11px] leading-snug">
             Aucune couverture significative dans les sources du jour.
@@ -166,8 +172,11 @@ export default function SentimentGauges({ targetDate }: SentimentGaugesProps) {
         );
       })}
       <style>{`
-        @media (max-width: 720px) {
-          .sentiment-row { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+        @media (max-width: 767px) {
+          .sentiment-row { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 16px !important; }
+        }
+        @media (max-width: 399px) {
+          .sentiment-row { grid-template-columns: 1fr !important; }
         }
       `}</style>
     </div>

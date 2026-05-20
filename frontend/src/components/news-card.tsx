@@ -81,7 +81,7 @@ function ArticleBody({ body, attribution }: { body: string; attribution?: string
             left: 0,
             top: 6,
             fontFamily: 'var(--font-display)',
-            fontSize: 64,
+            fontSize: 'clamp(36px, 6vw, 64px)',
             fontWeight: 900,
             color: 'var(--rule)',
             lineHeight: 0.6,
@@ -101,6 +101,8 @@ function ArticleBody({ body, attribution }: { body: string; attribution?: string
               color: 'var(--ink-dark)',
               marginBottom: 14,
               textAlign: 'justify',
+              hyphens: 'auto',
+              WebkitHyphens: 'auto',
             }}
           >
             {formatFinancialText(p)}

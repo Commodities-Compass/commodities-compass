@@ -3,10 +3,10 @@
 Usage:
     poetry run enso-scraper
     poetry run enso-scraper --dry-run
-    poetry run enso-scraper --force --verbose
+    poetry run enso-scraper --verbose
 
 Cron (prod):
-    0 22 20 * 1-5    # 20 du mois 22:00 UTC, NOAA publishes ~mid-month
+    0 22 20 * *      # 20 du mois 22:00 UTC, NOAA publishes ~mid-month
 """
 
 from __future__ import annotations
@@ -46,15 +46,9 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Scrape + parse + log, but do not write to DB",
     )
-    parser.add_argument(
-        "--force",
-        action="store_true",
-        help=(
-            "Run even if today is a non-trading day. ENSO is monthly, so this "
-            "flag is mostly relevant for manual backfills (the default cron "
-            "already runs on a fixed monthly day)."
-        ),
-    )
+    # No --force flag here: ENSO is monthly (cron `0 22 20 * *`), independent
+    # of the trading calendar. Manual rescrape is done by triggering the job
+    # directly (`gcloud run jobs execute cc-enso-scraper`).
     parser.add_argument(
         "--verbose",
         action="store_true",
@@ -112,6 +106,10 @@ def main() -> int:
         logger.info("=" * 60)
         return 0
 
+    except (KeyboardInterrupt, SystemExit):
+        # Let OS signals + explicit exits propagate; don't classify them as
+        # pipeline errors.
+        raise
     except Exception as exc:
         # Fail-loud: log + Sentry + non-zero exit. NO retry, NO fallback.
         logger.exception("ENSO scraper failed: %s", exc)

@@ -165,14 +165,18 @@ class TestCombineToFxRecords:
     def test_zero_usd_per_eur_is_safe(self):
         """Defensive: a usd_per_eur of 0 (impossible in practice) must NOT
         crash with ZeroDivisionError. Treat as missing.
+
+        Contract: the row is emitted for auditability (so we don't silently
+        drop a date), but the divide-by-zero columns are None.
         """
         usd = [EcbObservation(date=date(2024, 1, 2), value=0.0)]
         gbp = []
         records = combine_to_fx_records(usd, gbp)
-        # Either skip the date or emit None — we choose to emit None for
-        # auditability (the row exists, the value is just missing).
-        if records:
-            assert records[0].fx_dxy_proxy is None
+        assert len(records) == 1
+        assert records[0].fx_dxy_proxy is None
+        assert records[0].fx_eurusd is None
+        assert records[0].fx_gbpusd is None
+        assert records[0].fx_gbpeur is None
 
     def test_empty_inputs_return_empty(self):
         assert combine_to_fx_records([], []) == []

@@ -220,7 +220,23 @@ class DBAnalysisEngine:
         Reads z-scores and momentum from pl_indicator_daily (written by
         compute-indicators). Only recomputes final_indicator and decision
         — does NOT recompute or overwrite technical indicators.
+
+        Scoped to ``algorithm_version_id`` (same resolution rule as the
+        UPDATE in ``_write_results``). When multiple versions coexist for
+        the same date (e.g. C5 ensemble + legacy), the legacy run must
+        read the legacy z-scores, not an arbitrary version's. Without this
+        filter ``LIMIT 1`` is non-deterministic.
         """
+        algo_version_id = self._resolve_algorithm_version_id()
+        if algo_version_id is None:
+            # No active version at all → can't read z-scores deterministically.
+            # Fail-loud per .claude/rules/pipeline-error-handling.md.
+            raise RuntimeError(
+                "No active algorithm_version_id resolved — cannot read "
+                "z-scores deterministically. Check pl_algorithm_version "
+                "for is_active=true rows, or pass --algorithm-version."
+            )
+
         result = self._session.execute(
             text("""
                 SELECT
@@ -229,17 +245,24 @@ class DBAnalysisEngine:
                     i.momentum
                 FROM pl_indicator_daily i
                 JOIN ref_contract c ON i.contract_id = c.id
-                WHERE i.date = :target_date AND c.code = :contract_code
+                WHERE i.date = :target_date
+                  AND c.code = :contract_code
+                  AND i.algorithm_version_id = :algo_version_id
                 LIMIT 1
             """),
-            {"target_date": target_date, "contract_code": contract_code},
+            {
+                "target_date": target_date,
+                "contract_code": contract_code,
+                "algo_version_id": algo_version_id,
+            },
         )
         row = result.fetchone()
 
         if not row:
             raise RuntimeError(
-                f"No indicator data found for {target_date} / {contract_code} — "
-                f"compute-indicators may not have run. Cannot produce trading signal."
+                f"No indicator data found for {target_date} / {contract_code} "
+                f"/ algo_version={algo_version_id} — compute-indicators may "
+                f"not have run for this version. Cannot produce trading signal."
             )
 
         today = dict(zip(result.keys(), row))

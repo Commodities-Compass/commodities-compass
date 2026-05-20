@@ -48,7 +48,12 @@ locals {
     enso-scraper = {
       description = "Scrape NOAA PSL ENSO indices (ONI + Niño 3.4)"
       # Day 20 of month at 22:00 UTC — NOAA publishes mid-month for prior month.
-      schedule = "0 22 20 * 1-5"
+      # IMPORTANT: when both dom and dow are specified in cron, Cloud Scheduler
+      # uses OR semantics (fires on day-20 OR any weekday). We need ONLY the
+      # 20th of each month → dow MUST be '*'. If the 20th lands on a weekend
+      # NOAA data is still available and the upsert is idempotent for a
+      # manual rescrape: `gcloud run jobs execute cc-enso-scraper`.
+      schedule = "0 22 20 * *"
     }
     fx-scraper = {
       description = "Scrape ECB SDMX FX rates (USD/EUR + GBP/EUR → DXY proxy + GBPUSD)"

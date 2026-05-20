@@ -47,7 +47,7 @@ def _parse_date(raw: str) -> date | None:
         return None
 
 
-def _parse_value(raw: str) -> float | None:
+def _parse_value(raw: str | None) -> float | None:
     """Parse a numeric value; return None on empty/NaN/error."""
     if raw is None:
         return None

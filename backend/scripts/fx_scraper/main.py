@@ -119,6 +119,10 @@ def main() -> int:
         logger.info("=" * 60)
         return 0
 
+    except (KeyboardInterrupt, SystemExit):
+        # Let OS signals + explicit exits propagate; don't classify them as
+        # pipeline errors.
+        raise
     except Exception as exc:
         # Fail-loud: log + Sentry + non-zero exit. NO retry, NO fallback.
         logger.exception("FX scraper failed: %s", exc)

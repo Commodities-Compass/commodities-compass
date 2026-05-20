@@ -285,7 +285,6 @@ class TestCli:
         with patch.object(sys, "argv", ["enso-scraper"]):
             args = _parse_args()
         assert args.dry_run is False
-        assert args.force is False
         assert args.verbose is False
 
     def test_dry_run_flag(self):
@@ -293,18 +292,18 @@ class TestCli:
             args = _parse_args()
         assert args.dry_run is True
 
-    def test_force_flag(self):
-        with patch.object(sys, "argv", ["enso-scraper", "--force"]):
-            args = _parse_args()
-        assert args.force is True
+    def test_force_flag_rejected(self):
+        """--force was removed (LOW-2 fix): ENSO is monthly, no trading-day skip."""
+        with (
+            patch.object(sys, "argv", ["enso-scraper", "--force"]),
+            pytest.raises(SystemExit),
+        ):
+            _parse_args()
 
     def test_combine_flags(self):
-        with patch.object(
-            sys, "argv", ["enso-scraper", "--dry-run", "--force", "--verbose"]
-        ):
+        with patch.object(sys, "argv", ["enso-scraper", "--dry-run", "--verbose"]):
             args = _parse_args()
         assert args.dry_run is True
-        assert args.force is True
         assert args.verbose is True
 
 

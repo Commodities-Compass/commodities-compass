@@ -24,7 +24,6 @@ import logging
 import math
 import sys
 from datetime import date, datetime
-from decimal import Decimal
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -43,7 +42,7 @@ logger = logging.getLogger(__name__)
 # Default snapshot locations (from R&D, checked into docs/onboarding/).
 _REPO_ROOT = Path(__file__).parent.parent.parent.parent
 _DEFAULT_ONI_CSV = _REPO_ROOT / "docs" / "onboarding" / "ENSO" / "oni_monthly.csv"
-_DEFAULT_NIN34_CSV = _REPO_ROOT / "docs" / "onboarding" / "ENSO" / "nino34_monthly.csv"
+_DEFAULT_NINO34_CSV = _REPO_ROOT / "docs" / "onboarding" / "ENSO" / "nino34_monthly.csv"
 
 # Tolerance for the verify step. Decimal(8,4) → 4 decimal places stored, so
 # 1e-3 leaves a safe margin for float→Decimal rounding.
@@ -172,9 +171,9 @@ def _parse_args() -> argparse.Namespace:
         help="Path to oni_monthly.csv (default: docs/onboarding/ENSO/oni_monthly.csv)",
     )
     parser.add_argument(
-        "--source-csv-nin34",
+        "--source-csv-nino34",
         type=Path,
-        default=_DEFAULT_NIN34_CSV,
+        default=_DEFAULT_NINO34_CSV,
         help=(
             "Path to nino34_monthly.csv (default: "
             "docs/onboarding/ENSO/nino34_monthly.csv)"
@@ -209,7 +208,7 @@ def main() -> int:
     logger.info("=" * 60)
     logger.info("ENSO Backfill — one-shot from CSV snapshots")
     logger.info("ONI CSV:    %s", args.source_csv_oni)
-    logger.info("Niño34 CSV: %s", args.source_csv_nin34)
+    logger.info("Niño34 CSV: %s", args.source_csv_nino34)
     logger.info("Mode: %s", "DRY RUN" if args.dry_run else "LIVE")
     logger.info("Verify after write: %s", args.verify)
     logger.info("=" * 60)
@@ -222,7 +221,7 @@ def main() -> int:
             end=args.end,
         )
         nin = load_enso_csv(
-            args.source_csv_nin34,
+            args.source_csv_nino34,
             value_name=VALUE_NAME_NINO34,
             start=args.start,
             end=args.end,
@@ -246,10 +245,15 @@ def main() -> int:
             session.commit()
             logger.info("Upserted %d rows into pl_external_indicator", n)
 
-            if args.verify:
-                logger.info("Running verify pass...")
+        if args.verify:
+            # Open a fresh session so the verify is genuinely independent
+            # of any session-level caching from the upsert pass.
+            logger.info("Running verify pass...")
+            with get_session() as verify_session:
                 verify_enso_against_csv(
-                    session, args.source_csv_oni, args.source_csv_nin34
+                    verify_session,
+                    args.source_csv_oni,
+                    args.source_csv_nino34,
                 )
 
         logger.info("SUCCESS — ENSO backfill complete")
@@ -264,11 +268,6 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001 — fail-loud at top level
         logger.exception("Backfill failed: %s", exc)
         return 1
-
-
-# Tame an unused-import warning while keeping Decimal in scope for the type
-# checker (used implicitly via the db_writer / SQL round-trip).
-_ = Decimal
 
 
 if __name__ == "__main__":

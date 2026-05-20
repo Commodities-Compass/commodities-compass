@@ -140,7 +140,10 @@ def _verify_one_series(
         return
     # `column` is one of two fixed names (fx_dxy_proxy, fx_gbpusd) — not user input.
     sql = text(f"SELECT {column} FROM pl_external_indicator WHERE date = :d")  # noqa: S608
-    for d, expected_value in expected.items():
+    # Iterate in date order so the first reported mismatch is the earliest one,
+    # which makes triage of failures more useful.
+    for d in sorted(expected):
+        expected_value = expected[d]
         row = session.execute(sql, {"d": d}).fetchone()
         if row is None:
             raise BackfillVerificationError(
@@ -244,10 +247,13 @@ def main() -> int:
             session.commit()
             logger.info("Upserted %d rows into pl_external_indicator", n)
 
-            if args.verify:
-                logger.info("Running verify pass...")
+        if args.verify:
+            # Open a fresh session so the verify is genuinely independent
+            # of any session-level caching from the upsert pass.
+            logger.info("Running verify pass...")
+            with get_session() as verify_session:
                 verify_fx_against_csvs(
-                    session, args.source_csv_dxy, args.source_csv_gbpusd
+                    verify_session, args.source_csv_dxy, args.source_csv_gbpusd
                 )
 
         logger.info("SUCCESS — FX backfill complete")

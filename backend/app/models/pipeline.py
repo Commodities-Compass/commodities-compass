@@ -21,6 +21,7 @@ from sqlalchemy import (
     TIMESTAMP,
     VARCHAR,
     Boolean,
+    Computed,
     ForeignKey,
     Index,
     UniqueConstraint,
@@ -440,5 +441,73 @@ class PlExternalIndicator(Base):
     fx_gbpusd: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
     fx_eurusd: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
     fx_gbpeur: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
+
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+
+
+class PlCotEuWeekly(Base):
+    """ICE COT Europe weekly positioning (cocoa London #7 + multi-market ready).
+
+    Source: ICE public CSV ``publicdocs/futures/COTHistYYYY.csv`` (one file
+    per year, ~250 rows for ~52 weeks × 5 markets). Each row is one weekly
+    snapshot. We filter for "ICE Cocoa Futures - ICE Futures Europe" rows
+    where ``FutOnly_or_Combined='FutOnly'`` (standard CFTC convention).
+
+    Schema chosen per docs/user-stories/P1-scrapers-stock-cot-eu.md §4.1
+    (revised 2026-05-19): dedicated table rather than columns on
+    ``pl_contract_data_daily`` because the data is weekly, not daily.
+
+    ``prod_merc_net`` and ``m_money_net`` are GENERATED columns (Postgres
+    auto-computed) — never write to them directly.
+
+    Z-scores (26w) and percentiles are computed at engine time (rolling
+    normalization, not stored here).
+    """
+
+    __tablename__ = "pl_cot_eu_weekly"
+    __table_args__ = (
+        UniqueConstraint("release_date", "contract_market", name="uq_cot_eu_weekly"),
+        Index("ix_cot_eu_weekly_report_date", "report_date"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    # When ICE published the report (Friday for Tuesday snapshot, conventionally).
+    release_date: Mapped[date] = mapped_column(DATE, nullable=False)
+    # The Tuesday the report covers (CSV column "As_of_Date_Form_MM/DD/YYYY").
+    report_date: Mapped[date] = mapped_column(DATE, nullable=False)
+    # Multi-market ready (default 'cocoa', extensible to coffee/sugar later).
+    contract_market: Mapped[str] = mapped_column(
+        VARCHAR(50), nullable=False, server_default="cocoa"
+    )
+
+    # Producer / Merchant / Processor / User (commercial hedgers)
+    prod_merc_long: Mapped[Optional[int]] = mapped_column(INTEGER)
+    prod_merc_short: Mapped[Optional[int]] = mapped_column(INTEGER)
+    prod_merc_net: Mapped[Optional[int]] = mapped_column(
+        INTEGER,
+        Computed("prod_merc_long - prod_merc_short", persisted=True),
+    )
+
+    # Managed Money (non-commercial speculative — the R&D signal driver)
+    m_money_long: Mapped[Optional[int]] = mapped_column(INTEGER)
+    m_money_short: Mapped[Optional[int]] = mapped_column(INTEGER)
+    m_money_net: Mapped[Optional[int]] = mapped_column(
+        INTEGER,
+        Computed("m_money_long - m_money_short", persisted=True),
+    )
+
+    # Other Reportables + Non-Reportable (audit-only categories)
+    other_rept_long: Mapped[Optional[int]] = mapped_column(INTEGER)
+    other_rept_short: Mapped[Optional[int]] = mapped_column(INTEGER)
+    non_rept_long: Mapped[Optional[int]] = mapped_column(INTEGER)
+    non_rept_short: Mapped[Optional[int]] = mapped_column(INTEGER)
+
+    # Total OI on the report — used for %OI normalization downstream
+    open_interest: Mapped[Optional[int]] = mapped_column(INTEGER)
 
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())

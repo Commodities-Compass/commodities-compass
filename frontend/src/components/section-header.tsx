@@ -19,7 +19,7 @@ export default function SectionHeader({ numeral, title, className }: SectionHead
         style={{
           fontFamily: 'var(--font-display)',
           fontWeight: 300,
-          fontSize: 32,
+          fontSize: 'clamp(22px, 4vw, 32px)',
           color: 'var(--ink-light)',
           letterSpacing: '0.04em',
           lineHeight: 1,
@@ -32,7 +32,7 @@ export default function SectionHeader({ numeral, title, className }: SectionHead
         style={{
           fontFamily: 'var(--font-sans)',
           fontWeight: 700,
-          fontSize: 14,
+          fontSize: 'clamp(12px, 1.4vw, 14px)',
           color: 'var(--ink)',
           letterSpacing: '0.22em',
           lineHeight: 1.2,

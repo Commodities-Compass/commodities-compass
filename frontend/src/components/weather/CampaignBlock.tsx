@@ -156,9 +156,12 @@ export default function CampaignBlock({ campaign, campaignHealth, seasons }: Cam
       )}
 
       <style>{`
-        @media (max-width: 900px) {
+        @media (max-width: 1023px) {
           .campaign-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
           .campaign-grid > div { border-right: none !important; border-bottom: 1px solid var(--rule); }
+        }
+        @media (max-width: 479px) {
+          .campaign-grid { grid-template-columns: 1fr !important; }
         }
       `}</style>
     </div>

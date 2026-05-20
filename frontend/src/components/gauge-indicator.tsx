@@ -5,6 +5,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { useIsTouch } from '@/hooks/useIsTouch';
 import type { IndicatorRange } from '@/types/dashboard';
 
 interface IndicatorMeta {
@@ -124,6 +125,7 @@ export default function GaugeIndicator({
   const zone = zoneOf(value, ranges);
   const [t1, t2] = zoneBounds(ranges, min, max);
   const meta = INDICATOR_META[label];
+  const isTouch = useIsTouch();
 
   const gauge = (
     <div className={cn('flex flex-col items-stretch select-none', className)} style={{ width: '100%' }}>
@@ -212,7 +214,7 @@ export default function GaugeIndicator({
     </div>
   );
 
-  if (!meta) return gauge;
+  if (!meta || isTouch) return gauge;
 
   return (
     <TooltipProvider delayDuration={150}>

@@ -211,7 +211,12 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
               style={{
                 fontFamily: 'var(--font-display)',
                 fontWeight: 700,
-                fontSize: pos.position === 'MONITOR' ? 40 : pos.position === 'HEDGE' ? 56 : 60,
+                fontSize:
+                  pos.position === 'MONITOR'
+                    ? 'clamp(32px, 7vw, 44px)'
+                    : pos.position === 'HEDGE'
+                      ? 'clamp(40px, 8vw, 56px)'
+                      : 'clamp(44px, 9vw, 60px)',
                 lineHeight: 1,
                 color: meta.color,
                 margin: '8px 0 4px',
@@ -269,9 +274,12 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
       </div>
 
       <style>{`
-        @media (max-width: 900px) {
+        @media (max-width: 767px) {
           .hero-grid {
             grid-template-columns: 1fr !important;
+          }
+          .hero-score-panel {
+            width: 100% !important;
           }
         }
       `}</style>

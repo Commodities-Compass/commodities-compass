@@ -73,7 +73,8 @@ export default function DateSelector({
               background: 'transparent',
               border: 'none',
               cursor: 'pointer',
-              padding: '2px 4px',
+              padding: '8px 10px',
+              minHeight: 36,
               transition: 'color 120ms',
             }}
             aria-label="Select session date"
@@ -93,6 +94,7 @@ export default function DateSelector({
           className="w-auto p-0"
           align="end"
           sideOffset={6}
+          collisionPadding={16}
           style={{
             background: 'var(--paper)',
             border: '1px solid var(--ink)',

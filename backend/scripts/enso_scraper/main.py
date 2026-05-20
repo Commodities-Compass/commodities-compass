@@ -14,45 +14,24 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from pathlib import Path
 
 import sentry_sdk
-from dotenv import load_dotenv
 from sentry_sdk.crons import monitor
 
-from app.core.sentry import init_sentry
+from scripts._shared.cli import build_base_argparser
+from scripts._shared.logging import configure_logging
+from scripts._shared.sentry import bootstrap_scraper
 
-LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-
-logging.basicConfig(
-    level=logging.INFO,
-    format=LOG_FORMAT,
-    handlers=[logging.StreamHandler(sys.stdout)],
-)
+configure_logging()
 logger = logging.getLogger(__name__)
 
-# Load env + init Sentry BEFORE @monitor-decorated function (matches the
-# cftc_scraper / ice_stocks_scraper pattern).
-load_dotenv(Path(__file__).parent.parent.parent / ".env")
-init_sentry("enso-scraper")
+# ENSO is monthly (cron `0 22 20 * *`); no --force / non-trading-day skip.
+bootstrap_scraper("enso-scraper", script_file=__file__)
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="NOAA PSL ENSO scraper (ONI + Niño 3.4)"
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Scrape + parse + log, but do not write to DB",
-    )
-    # No --force flag here: ENSO is monthly (cron `0 22 20 * *`), independent
-    # of the trading calendar. Manual rescrape is done by triggering the job
-    # directly (`gcloud run jobs execute cc-enso-scraper`).
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Debug logging",
+    parser = build_base_argparser(
+        "NOAA PSL ENSO scraper (ONI + Niño 3.4)", include_force=False
     )
     return parser.parse_args()
 
@@ -60,9 +39,7 @@ def _parse_args() -> argparse.Namespace:
 @monitor(monitor_slug="enso-scraper")
 def main() -> int:
     args = _parse_args()
-
-    if args.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
+    configure_logging(verbose=args.verbose)
 
     logger.info("=" * 60)
     logger.info("ENSO Scraper - NOAA PSL ONI + Niño 3.4")

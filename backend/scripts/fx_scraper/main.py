@@ -14,56 +14,29 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from pathlib import Path
 
 import sentry_sdk
-from dotenv import load_dotenv
 from sentry_sdk.crons import monitor
 
-from app.core.sentry import init_sentry
+from scripts._shared.cli import build_base_argparser
+from scripts._shared.logging import configure_logging
+from scripts._shared.sentry import bootstrap_scraper
 
-LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-
-logging.basicConfig(
-    level=logging.INFO,
-    format=LOG_FORMAT,
-    handlers=[logging.StreamHandler(sys.stdout)],
-)
+configure_logging()
 logger = logging.getLogger(__name__)
 
-# Load env + init Sentry BEFORE @monitor-decorated function.
-load_dotenv(Path(__file__).parent.parent.parent / ".env")
-init_sentry("fx-scraper")
+bootstrap_scraper("fx-scraper", script_file=__file__)
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="ECB SDMX FX scraper (USD/EUR + GBP/EUR)"
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Scrape + parse + log, but do not write to DB",
-    )
-    parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Run even on non-trading days (manual backfills/debugging)",
-    )
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Debug logging",
-    )
+    parser = build_base_argparser("ECB SDMX FX scraper (USD/EUR + GBP/EUR)")
     return parser.parse_args()
 
 
 @monitor(monitor_slug="fx-scraper")
 def main() -> int:
     args = _parse_args()
-
-    if args.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
+    configure_logging(verbose=args.verbose)
 
     # Skip on non-trading days unless --force (ECB doesn't publish on weekends
     # and some EU bank holidays; skipping aligns with the rest of the pipeline).

@@ -16,36 +16,24 @@ import argparse
 import logging
 import sys
 from datetime import datetime, timezone
-from pathlib import Path
 
 import sentry_sdk
-from dotenv import load_dotenv
 from sentry_sdk.crons import monitor
 
-from app.core.sentry import init_sentry
+from scripts._shared.cli import build_base_argparser
+from scripts._shared.logging import configure_logging
+from scripts._shared.sentry import bootstrap_scraper
 from scripts.ice_cot_eu_scraper.db_writer import upsert_cot_eu_rows
 
-LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-
-logging.basicConfig(
-    level=logging.INFO,
-    format=LOG_FORMAT,
-    handlers=[logging.StreamHandler(sys.stdout)],
-)
+configure_logging()
 logger = logging.getLogger(__name__)
 
-load_dotenv(Path(__file__).parent.parent.parent / ".env")
-init_sentry("ice-cot-eu-scraper")
+bootstrap_scraper("ice-cot-eu-scraper", script_file=__file__)
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="ICE Europe COT scraper (cocoa #7 weekly positioning)"
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Scrape + parse + log, but do not write to DB",
+    parser = build_base_argparser(
+        "ICE Europe COT scraper (cocoa #7 weekly positioning)"
     )
     parser.add_argument(
         "--year",
@@ -56,21 +44,13 @@ def _parse_args() -> argparse.Namespace:
             "rescrape a specific historical year — UPSERT is idempotent."
         ),
     )
-    parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Run even on non-trading days (manual backfills/debugging)",
-    )
-    parser.add_argument("--verbose", action="store_true", help="Debug logging")
     return parser.parse_args()
 
 
 @monitor(monitor_slug="ice-cot-eu-scraper")
 def main() -> int:
     args = _parse_args()
-
-    if args.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
+    configure_logging(verbose=args.verbose)
 
     # Daily cron run: skip weekends + bank holidays unless --force. ICE only
     # publishes a new snapshot on Fridays anyway, but the daily idempotent

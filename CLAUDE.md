@@ -289,6 +289,26 @@ The frontend calendar shows `display_date` values. Non-trading days (weekends + 
 - **Backfill (one-shot)**: `poetry run fx-scraper-backfill [--verify]` — imports `docs/onboarding/FX/{dxy_proxy,gbpusd}_daily.csv` (~3164 rows, 2014-2026).
 - **US**: [docs/user-stories/P1-scraper-fx.md](docs/user-stories/P1-scraper-fx.md)
 
+### ICE COT EU Scraper (`backend/scripts/ice_cot_eu_scraper/`)
+
+- **Data**: ICE Europe COT cocoa weekly positioning — Producer/Merchant (long/short), Managed Money (long/short, the R&D signal), Other Reportables, Non-Reportable, plus Open Interest. Net columns (`prod_merc_net`, `m_money_net`) are Postgres `GENERATED` columns — auto-computed, never written directly.
+- **Source**: ICE public CSV at `https://www.theice.com/publicdocs/futures/COTHist{YYYY}.csv` (free, no auth, ~175 columns, UTF-8 BOM). One file per calendar year, ~52 weeks × 5 markets per file. Filter: `Market_and_Exchange_Names == "ICE Cocoa Futures - ICE Futures Europe"` + `FutOnly_or_Combined == "FutOnly"`.
+- **Target table**: `pl_cot_eu_weekly` (dedicated weekly snapshot table, schema includes Managed Money decomposition for ensemble R&D features — see [docs/onboarding/HEDI_DATA_MAP.md §3.4](docs/onboarding/HEDI_DATA_MAP.md#34-pl_cot_eu_weekly)).
+- **Method**: Pure httpx + stdlib `csv.DictReader` (no pandas, no browser). BOM-stripping + strict header validation (fail-loud on schema drift). `release_date = report_date + 3 days` (ICE/CFTC publication lag).
+- **Cron**: `10 22 * * 1-5` (22:10 UTC weekdays). ICE publishes Friday ~21:30 CET for prior Tuesday's snapshot; daily run + idempotent UPSERT on `(release_date, contract_market)` catches late publishes without coupling cron to ICE's exact time.
+- **CLI**: `poetry run ice-cot-eu-scraper [--dry-run] [--year YYYY] [--force] [--verbose]` — `--year` for backfill (defaults to current UTC year).
+- **US**: [docs/user-stories/P1-scrapers-stock-cot-eu.md](docs/user-stories/P1-scrapers-stock-cot-eu.md)
+
+### Barchart Stocks EU Scraper (`backend/scripts/barchart_stocks_eu_scraper/`)
+
+- **Data**: ICE Europe certified cocoa stocks (in 60kg bags) — updates `pl_contract_data_daily.stock_eu_bags60kg` on the row for the most recent reported date. Never INSERTs (OHLCV row must already exist from `barchart-scraper`).
+- **Source**: `https://www.barchart.com/cmdty/data/fundamental/explore/IC345DRW.CS` (Barchart commodity statistics public page, no authentication required). Identifier `IC345DRW.CS` (Barchart convention: `.CS` suffix = Cocoa Stocks). Historical depth: from 2012-02-07 (14+ years).
+- **Method**: Pure httpx + BeautifulSoup. HTML server-rendered, two `<table class="cmdty-quote-table">` blocks: (1) metadata (Most Recent Value/Date, Unit, Multiplier, Prior Value), (2) 7-day history. Native unit `60 Kg Bag` + Multiplier `1` are validated in the parser — any drift fails-loud.
+- **Cron**: `10 19 * * 1-5` (19:10 UTC weekdays, 10 min after `cc-barchart-scraper` so the OHLCV row exists).
+- **Fail-loud**: HTTP non-200, empty body, missing tables, unexpected unit/multiplier, unparseable value/date, **and** missing OHLCV row for target date (`StockEuRowMissingError`).
+- **CLI**: `poetry run barchart-stocks-eu-scraper [--dry-run] [--force] [--verbose]`
+- **US**: [docs/user-stories/P1-scrapers-stock-cot-eu.md](docs/user-stories/P1-scrapers-stock-cot-eu.md)
+
 ### Known Issues & Lessons (2026-02-18 debugging sessions)
 
 **Bug 1 — Wrong raw block (old scraper)**: Used `re.search` → picked FIRST of 4+ raw blocks. The first block was often a next-month contract or options data → wrong V and OI. Fix: max-volume heuristic picks the block with highest `volume` (always the main contract).
@@ -453,14 +473,20 @@ The `PositionStatus` component automatically fetches and plays the audio file:
 ### Nightly Pipeline Schedule (UTC, weekdays)
 
 ```
-19:00  cc-barchart-scraper      → pl_contract_data_daily (OHLCV + IV)
-19:00  cc-meteo-agent           → pl_weather_observation
-19:05  cc-ice-stocks-scraper    → pl_contract_data_daily (STOCK US)
-19:05  cc-cftc-scraper          → pl_contract_data_daily (COM NET US)
-19:05  cc-press-review-agent    → pl_fundamental_article
-19:15  cc-compute-indicators    → pl_derived_indicators + pl_indicator_daily
-19:20  cc-daily-analysis        → pl_indicator_daily (LLM decision + score)
-19:30  cc-compass-brief         → Google Drive (.txt for NotebookLM)
+18:30  cc-fx-scraper                  → pl_external_indicator (FX, ECB)
+19:00  cc-barchart-scraper            → pl_contract_data_daily (OHLCV + IV)
+19:00  cc-meteo-agent                 → pl_weather_observation
+19:05  cc-ice-stocks-scraper          → pl_contract_data_daily (STOCK US)
+19:05  cc-cftc-scraper                → pl_contract_data_daily (COM NET US)
+19:05  cc-press-review-agent          → pl_fundamental_article
+19:10  cc-barchart-stocks-eu-scraper  → pl_contract_data_daily (stock_eu_bags60kg)
+19:15  cc-compute-indicators          → pl_derived_indicators + pl_indicator_daily
+19:20  cc-daily-analysis              → pl_indicator_daily (LLM decision + score)
+19:30  cc-compass-brief               → Google Drive (.txt for NotebookLM)
+22:10  cc-ice-cot-eu-scraper          → pl_cot_eu_weekly (ICE EU COT positioning)
+
+# Monthly:
+22:00 on the 20th  cc-enso-scraper    → pl_external_indicator (ENSO ONI + Niño 3.4)
 ```
 
 When a job fails, follow [docs/runbooks/pipeline-failure-recovery.md](docs/runbooks/pipeline-failure-recovery.md) — covers diagnosis, root-cause categories, and the cascade of jobs to re-run based on the dependency graph. Pipeline jobs are configured fail-loud, no auto-retry (see `.claude/rules/pipeline-error-handling.md`).

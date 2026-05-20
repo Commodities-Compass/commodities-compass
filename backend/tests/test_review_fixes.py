@@ -388,19 +388,32 @@ class TestComputeFinalIndicatorFailsLoud:
     """H16: Missing indicator data raises RuntimeError, not 0.0/MONITOR."""
 
     def test_missing_data_raises(self):
+        import uuid
         from unittest.mock import MagicMock
 
         from scripts.daily_analysis.db_analysis_engine import DBAnalysisEngine
 
+        # _compute_final_indicator now resolves algorithm_version_id first,
+        # then queries pl_indicator_daily. We mock execute() with side_effect
+        # so the first call (version lookup) returns a valid UUID and the
+        # second call (data lookup) returns no rows.
+        algo_result = MagicMock()
+        algo_result.fetchone.return_value = (uuid.uuid4(),)
+
+        data_result = MagicMock()
+        data_result.fetchone.return_value = None
+
         session = MagicMock()
-        # Mock execute to return empty result
-        mock_result = MagicMock()
-        mock_result.fetchone.return_value = None
-        session.execute.return_value = mock_result
+        session.execute.side_effect = [algo_result, data_result]
 
         engine = DBAnalysisEngine.__new__(DBAnalysisEngine)
         engine._session = session
         engine._config = MagicMock()
+        engine._algorithm_version_name = None
+        # Bypass cached resolution so the version lookup runs once before the
+        # data lookup (matches the side_effect order).
+        engine._algorithm_version_id_cache = None
+        engine._algorithm_version_id_resolved = False
 
         with pytest.raises(RuntimeError, match="No indicator data found"):
             engine._compute_final_indicator(date(2026, 4, 28), "CAN26", 0.05)

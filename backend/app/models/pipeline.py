@@ -21,11 +21,13 @@ from sqlalchemy import (
     TIMESTAMP,
     VARCHAR,
     Boolean,
+    Computed,
     ForeignKey,
     Index,
     UniqueConstraint,
     Uuid,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -59,6 +61,7 @@ class PlContractDataDaily(Base):
     # Additional market data
     implied_volatility: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
     stock_us: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
+    stock_eu_bags60kg: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
     com_net_us: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
 
     # Display date = next trading day after session date.
@@ -397,4 +400,115 @@ class PlSentimentFeature(Base):
     zscore: Mapped[Optional[float]] = mapped_column(DECIMAL(6, 3))
     zscore_delta: Mapped[Optional[float]] = mapped_column(DECIMAL(6, 3))
     min_periods_met: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+
+
+class PlExternalIndicator(Base):
+    """ENSO + FX time series, commodity-agnostic, keyed on date only.
+
+    Shared by 2 scrapers (cc-enso-scraper monthly + cc-fx-scraper daily). Each
+    scraper writes its own columns via UPSERT; ENSO writes monthly rows at
+    YYYY-MM-01, FX writes daily rows at business-day dates. No conflict — the
+    engine ensemble joins this table via merge_asof.
+
+    Lag policy (applied at compute-time, not here):
+      * ENSO: 14 days (NOAA publishes mid-month for prior month).
+      * FX: none (ECB publishes ~16:00 CET, business days).
+    """
+
+    __tablename__ = "pl_external_indicator"
+    __table_args__ = (
+        UniqueConstraint("date", name="uq_external_indicator_date"),
+        Index("ix_external_indicator_date", "date"),
+    )
+
+    # server_default required because db_writer.py uses raw INSERT VALUES
+    # without specifying id (partial UPSERT pattern). Python-side default
+    # only fires through the ORM.
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    date: Mapped[date] = mapped_column(DATE, nullable=False)
+
+    # ENSO (monthly publication, date = 1st of month, lag applied at compute-time)
+    enso_oni_month: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 4))
+    enso_nino34_anomaly: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 4))
+
+    # FX (daily business-days — written by cc-fx-scraper, see P1-scraper-fx.md)
+    fx_dxy_proxy: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
+    fx_gbpusd: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
+    fx_eurusd: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
+    fx_gbpeur: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
+
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+
+
+class PlCotEuWeekly(Base):
+    """ICE COT Europe weekly positioning (cocoa London #7 + multi-market ready).
+
+    Source: ICE public CSV ``publicdocs/futures/COTHistYYYY.csv`` (one file
+    per year, ~250 rows for ~52 weeks × 5 markets). Each row is one weekly
+    snapshot. We filter for "ICE Cocoa Futures - ICE Futures Europe" rows
+    where ``FutOnly_or_Combined='FutOnly'`` (standard CFTC convention).
+
+    Schema chosen per docs/user-stories/P1-scrapers-stock-cot-eu.md §4.1
+    (revised 2026-05-19): dedicated table rather than columns on
+    ``pl_contract_data_daily`` because the data is weekly, not daily.
+
+    ``prod_merc_net`` and ``m_money_net`` are GENERATED columns (Postgres
+    auto-computed) — never write to them directly.
+
+    Z-scores (26w) and percentiles are computed at engine time (rolling
+    normalization, not stored here).
+    """
+
+    __tablename__ = "pl_cot_eu_weekly"
+    __table_args__ = (
+        UniqueConstraint("release_date", "contract_market", name="uq_cot_eu_weekly"),
+        Index("ix_cot_eu_weekly_report_date", "report_date"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    # When ICE published the report (Friday for Tuesday snapshot, conventionally).
+    release_date: Mapped[date] = mapped_column(DATE, nullable=False)
+    # The Tuesday the report covers (CSV column "As_of_Date_Form_MM/DD/YYYY").
+    report_date: Mapped[date] = mapped_column(DATE, nullable=False)
+    # Multi-market ready (default 'cocoa', extensible to coffee/sugar later).
+    contract_market: Mapped[str] = mapped_column(
+        VARCHAR(50), nullable=False, server_default="cocoa"
+    )
+
+    # Producer / Merchant / Processor / User (commercial hedgers)
+    prod_merc_long: Mapped[Optional[int]] = mapped_column(INTEGER)
+    prod_merc_short: Mapped[Optional[int]] = mapped_column(INTEGER)
+    prod_merc_net: Mapped[Optional[int]] = mapped_column(
+        INTEGER,
+        Computed("prod_merc_long - prod_merc_short", persisted=True),
+    )
+
+    # Managed Money (non-commercial speculative — the R&D signal driver)
+    m_money_long: Mapped[Optional[int]] = mapped_column(INTEGER)
+    m_money_short: Mapped[Optional[int]] = mapped_column(INTEGER)
+    m_money_net: Mapped[Optional[int]] = mapped_column(
+        INTEGER,
+        Computed("m_money_long - m_money_short", persisted=True),
+    )
+
+    # Other Reportables + Non-Reportable (audit-only categories)
+    other_rept_long: Mapped[Optional[int]] = mapped_column(INTEGER)
+    other_rept_short: Mapped[Optional[int]] = mapped_column(INTEGER)
+    non_rept_long: Mapped[Optional[int]] = mapped_column(INTEGER)
+    non_rept_short: Mapped[Optional[int]] = mapped_column(INTEGER)
+
+    # Total OI on the report — used for %OI normalization downstream
+    open_interest: Mapped[Optional[int]] = mapped_column(INTEGER)
+
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())

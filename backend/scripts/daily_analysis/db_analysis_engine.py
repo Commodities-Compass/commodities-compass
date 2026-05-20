@@ -36,6 +36,26 @@ from scripts.daily_analysis.prompts import build_call1_prompt, build_call2_promp
 logger = logging.getLogger(__name__)
 
 
+class AlgorithmVersionNotFoundError(RuntimeError):
+    """Raised when --algorithm-version targets a name with no matching row.
+
+    Fail-loud per `.claude/rules/pipeline-error-handling.md`. The job exits
+    non-zero so the operator notices and fixes the deploy.yml flag rather
+    than silently falling back to is_active=TRUE (which would defeat the
+    purpose of pinning).
+    """
+
+
+class AnalysisWriteError(RuntimeError):
+    """Raised when the LLM analysis run writes nothing to pl_indicator_daily.
+
+    Fail-loud per `.claude/rules/pipeline-error-handling.md`. A run that
+    succeeds at LLM calls but cannot persist results (because the target
+    row doesn't exist — typically compute-indicators hasn't run yet) must
+    NOT exit 0. Otherwise the cron green-checkmark masks a silent failure.
+    """
+
+
 @dataclass
 class AnalysisResult:
     """Full output of the DB-first daily analysis pipeline."""
@@ -57,6 +77,7 @@ class DBAnalysisEngine:
         session: Session,
         *,
         algorithm_config: AlgorithmConfig = LEGACY_V1,
+        algorithm_version_name: str | None = None,
         llm_provider: str = "openai",
         llm_model: str | None = None,
         call1_temperature: float = 1.0,
@@ -66,9 +87,62 @@ class DBAnalysisEngine:
         self._reader = DBReader(session)
         self._llm = LLMClient(provider=llm_provider, model=llm_model)
         self._config = algorithm_config
+        # When set, _resolve_algorithm_version_id() targets the named version
+        # instead of resolving via is_active=TRUE. Prevents LLM overwrites of
+        # other versions' rows (e.g., C5 ensemble) when this version is the
+        # active one. See P2-daily-analysis-version-flag.md.
+        self._algorithm_version_name = algorithm_version_name
+
+        # Cached `algorithm_version_id` — resolved once per engine instance to
+        # avoid (1) a second DB roundtrip on every run() and (2) a race where
+        # `is_active` rotates between the read in _compute_final_indicator and
+        # the write in _write_results.
+        self._algorithm_version_id_cache: uuid.UUID | None = None
+        self._algorithm_version_id_resolved: bool = False
 
         self._call1_temperature = call1_temperature
         self._call2_temperature = call2_temperature
+
+    def _resolve_algorithm_version_id(self) -> uuid.UUID | None:
+        """Return the algorithm_version_id this job is allowed to UPDATE.
+
+        Cached after first call to ensure read+write target the same row even
+        if `is_active` is rotated mid-run.
+
+        Behavior:
+          * If `algorithm_version_name` was provided at init time, look up the
+            row by name and return its id even when `is_active=FALSE`. Raise
+            `AlgorithmVersionNotFoundError` if no row exists (fail-loud).
+          * Otherwise (backward compat), return the row where `is_active=TRUE`
+            or None if no active version exists.
+        """
+        if self._algorithm_version_id_resolved:
+            return self._algorithm_version_id_cache
+
+        if self._algorithm_version_name is not None:
+            row = self._session.execute(
+                text(
+                    "SELECT id FROM pl_algorithm_version WHERE name = :name "
+                    "ORDER BY is_active DESC, created_at DESC LIMIT 1"
+                ),
+                {"name": self._algorithm_version_name},
+            ).fetchone()
+            if row is None:
+                raise AlgorithmVersionNotFoundError(
+                    f"No row in pl_algorithm_version with name='{self._algorithm_version_name}'. "
+                    "Check the --algorithm-version flag in deploy.yml or DB state."
+                )
+            self._algorithm_version_id_cache = row[0]
+        else:
+            row = self._session.execute(
+                text(
+                    "SELECT id FROM pl_algorithm_version WHERE is_active = true LIMIT 1"
+                ),
+            ).fetchone()
+            self._algorithm_version_id_cache = row[0] if row else None
+
+        self._algorithm_version_id_resolved = True
+        return self._algorithm_version_id_cache
 
     def run(
         self,
@@ -174,7 +248,23 @@ class DBAnalysisEngine:
         Reads z-scores and momentum from pl_indicator_daily (written by
         compute-indicators). Only recomputes final_indicator and decision
         — does NOT recompute or overwrite technical indicators.
+
+        Scoped to ``algorithm_version_id`` (same resolution rule as the
+        UPDATE in ``_write_results``). When multiple versions coexist for
+        the same date (e.g. C5 ensemble + legacy), the legacy run must
+        read the legacy z-scores, not an arbitrary version's. Without this
+        filter ``LIMIT 1`` is non-deterministic.
         """
+        algo_version_id = self._resolve_algorithm_version_id()
+        if algo_version_id is None:
+            # No active version at all → can't read z-scores deterministically.
+            # Fail-loud per .claude/rules/pipeline-error-handling.md.
+            raise RuntimeError(
+                "No active algorithm_version_id resolved — cannot read "
+                "z-scores deterministically. Check pl_algorithm_version "
+                "for is_active=true rows, or pass --algorithm-version."
+            )
+
         result = self._session.execute(
             text("""
                 SELECT
@@ -183,17 +273,24 @@ class DBAnalysisEngine:
                     i.momentum
                 FROM pl_indicator_daily i
                 JOIN ref_contract c ON i.contract_id = c.id
-                WHERE i.date = :target_date AND c.code = :contract_code
+                WHERE i.date = :target_date
+                  AND c.code = :contract_code
+                  AND i.algorithm_version_id = :algo_version_id
                 LIMIT 1
             """),
-            {"target_date": target_date, "contract_code": contract_code},
+            {
+                "target_date": target_date,
+                "contract_code": contract_code,
+                "algo_version_id": algo_version_id,
+            },
         )
         row = result.fetchone()
 
         if not row:
             raise RuntimeError(
-                f"No indicator data found for {target_date} / {contract_code} — "
-                f"compute-indicators may not have run. Cannot produce trading signal."
+                f"No indicator data found for {target_date} / {contract_code} "
+                f"/ algo_version={algo_version_id} — compute-indicators may "
+                f"not have run for this version. Cannot produce trading signal."
             )
 
         today = dict(zip(result.keys(), row))
@@ -235,10 +332,7 @@ class DBAnalysisEngine:
             return
         contract_id = contract_row[0]
 
-        algo_row = self._session.execute(
-            text("SELECT id FROM pl_algorithm_version WHERE is_active = true LIMIT 1"),
-        ).fetchone()
-        algo_version_id = algo_row[0] if algo_row else None
+        algo_version_id = self._resolve_algorithm_version_id()
 
         # Update pl_indicator_daily with LLM outputs only.
         # Technical indicators (momentum, z-scores) are owned by compute-indicators
@@ -275,11 +369,11 @@ class DBAnalysisEngine:
             },
         )
         if result.rowcount == 0:
-            logger.warning(
-                "pl_indicator_daily UPDATE matched 0 rows for date=%s contract=%s — "
-                "row may not exist yet (compute-indicators not run?)",
-                target_date,
-                contract_code,
+            raise AnalysisWriteError(
+                f"pl_indicator_daily UPDATE matched 0 rows for date={target_date} "
+                f"contract={contract_code} algorithm_version_id={algo_version_id} "
+                "— compute-indicators must run first to create the row. "
+                "Re-run cc-compute-indicators, then re-run cc-daily-analysis."
             )
 
         # Update macroeco signal component with LLM-provided values

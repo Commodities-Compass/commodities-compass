@@ -44,6 +44,37 @@ locals {
       description = "Generate structured brief and upload to Google Drive"
       schedule    = "30 19 * * 1-5"
     }
+    # External-data scrapers for Campaign 5 ensemble.
+    enso-scraper = {
+      description = "Scrape NOAA PSL ENSO indices (ONI + Niño 3.4)"
+      # Day 20 of month at 22:00 UTC — NOAA publishes mid-month for prior month.
+      # IMPORTANT: when both dom and dow are specified in cron, Cloud Scheduler
+      # uses OR semantics (fires on day-20 OR any weekday). We need ONLY the
+      # 20th of each month → dow MUST be '*'. If the 20th lands on a weekend
+      # NOAA data is still available and the upsert is idempotent for a
+      # manual rescrape: `gcloud run jobs execute cc-enso-scraper`.
+      schedule = "0 22 20 * *"
+    }
+    fx-scraper = {
+      description = "Scrape ECB SDMX FX rates (USD/EUR + GBP/EUR → DXY proxy + GBPUSD)"
+      # 18:30 UTC business days — ECB publishes ~16:00 CET, before cc-ensemble-compute (19:18).
+      schedule = "30 18 * * 1-5"
+    }
+    ice-cot-eu-scraper = {
+      description = "Scrape ICE Europe COT cocoa positioning (weekly snapshot)"
+      # Daily 22:10 UTC weekdays — ICE publishes Friday ~21:30 CET for prior
+      # Tuesday's snapshot. UPSERT is idempotent on (release_date,
+      # contract_market) so the daily cron catches late publishes without
+      # coupling the job schedule to ICE's exact publication time.
+      schedule = "10 22 * * 1-5"
+    }
+    barchart-stocks-eu-scraper = {
+      description = "Scrape ICE Europe certified cocoa stocks (60kg bags) from Barchart cmdty"
+      # 19:10 UTC weekdays — 10 min after cc-barchart-scraper (19:00) so the
+      # OHLCV row exists before the UPDATE. Barchart publishes daily on
+      # business days, native unit is "60 Kg Bag" (no conversion).
+      schedule = "10 19 * * 1-5"
+    }
   }
 }
 

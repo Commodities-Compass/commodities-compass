@@ -11,8 +11,9 @@ project's ``pipeline-error-handling.md`` rule.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 
 from bs4 import BeautifulSoup
@@ -27,6 +28,16 @@ logger = logging.getLogger(__name__)
 
 class BarchartStocksEuParseError(ValueError):
     """Raised when the Barchart cmdty page HTML is malformed or unexpected."""
+
+
+# Regex to extract the Highcharts chart data series. The page embeds ~18
+# months of (timestamp_ms, value) pairs in the format:
+#     options.series[0].data = [ [1731369600000,283696],[1731456000000,283404],... ];
+_CHART_DATA_RE = re.compile(
+    r"options\.series\[0\]\.data\s*=\s*\[(?P<body>[^;]+)\]\s*;",
+    re.DOTALL,
+)
+_PAIR_RE = re.compile(r"\[\s*(?P<ts>\d+)\s*,\s*(?P<val>-?\d+(?:\.\d+)?)\s*\]")
 
 
 @dataclass(frozen=True)
@@ -147,3 +158,45 @@ def parse_barchart_stocks_eu_html(html: str | None) -> StockEuObservation:
         value_bags60kg=most_recent_value,
         history=history,
     )
+
+
+def parse_barchart_history_series(html: str) -> list[tuple[date, Decimal]]:
+    """Extract the Highcharts chart data series from the cmdty page HTML.
+
+    Barchart embeds ~18 months of history as
+    ``options.series[0].data = [[timestamp_ms, value], ...]``. This is the
+    cheap source for the one-shot backfill (single HTTP request).
+
+    Returns a list of ``(date, Decimal)`` sorted ascending by date.
+
+    Raises:
+        BarchartStocksEuParseError: if the chart data block isn't found, or
+        if it contains no parseable pairs (Barchart format change → fail-loud).
+    """
+    if not isinstance(html, str):
+        raise BarchartStocksEuParseError(
+            f"parse_barchart_history_series expects str, got {type(html).__name__}"
+        )
+
+    match = _CHART_DATA_RE.search(html)
+    if match is None:
+        raise BarchartStocksEuParseError(
+            "Highcharts series data block not found in HTML "
+            "(`options.series[0].data = [...]`). Barchart format drift."
+        )
+
+    body = match.group("body")
+    rows: list[tuple[date, Decimal]] = []
+    for pair_match in _PAIR_RE.finditer(body):
+        ts_ms = int(pair_match.group("ts"))
+        value = pair_match.group("val")
+        d = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc).date()
+        rows.append((d, Decimal(value)))
+
+    if not rows:
+        raise BarchartStocksEuParseError(
+            "Highcharts series block found but contained no (timestamp,value) pairs."
+        )
+
+    rows.sort(key=lambda pair: pair[0])
+    return rows

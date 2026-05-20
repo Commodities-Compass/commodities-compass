@@ -74,15 +74,38 @@ export default function EditorialTabs({
         .editorial-tab[data-active="false"]:not(:disabled):hover {
           color: var(--ink-mid) !important;
         }
+        .editorial-tablist {
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+        }
+        .editorial-tablist::-webkit-scrollbar {
+          display: none;
+        }
+        @media (max-width: 639px) {
+          .editorial-tab {
+            font-size: 13px !important;
+            padding: 8px 0 !important;
+          }
+          .editorial-tab-badge {
+            display: none !important;
+          }
+          .editorial-tablist {
+            gap: 18px !important;
+          }
+        }
       `}</style>
       <div
         role="tablist"
         aria-orientation="horizontal"
+        className="editorial-tablist"
         style={{
           display: 'flex',
-          flexWrap: 'wrap',
+          flexWrap: 'nowrap',
           gap,
           borderBottom: '1px solid var(--rule)',
+          overflowX: 'auto',
+          WebkitOverflowScrolling: 'touch',
+          scrollSnapType: 'x proximity',
         }}
       >
         {tabs.map((t, idx) => {
@@ -99,7 +122,7 @@ export default function EditorialTabs({
               tabIndex={isActive ? 0 : -1}
               onClick={() => !t.disabled && select(t.id)}
               onKeyDown={(e) => onKey(e, idx)}
-              className="editorial-tab inline-flex items-baseline gap-2"
+              className="editorial-tab inline-flex items-baseline gap-2 shrink-0"
               data-active={isActive ? 'true' : 'false'}
               style={{
                 fontFamily: 'var(--font-display)',
@@ -119,12 +142,14 @@ export default function EditorialTabs({
                 borderBottom: isActive ? `${underline}px solid var(--ink)` : `${underline}px solid transparent`,
                 marginBottom: -1,
                 transition: 'color 150ms ease, border-color 150ms ease',
+                whiteSpace: 'nowrap',
+                scrollSnapAlign: 'start',
               }}
             >
               {t.label}
               {t.badge && (
                 <span
-                  className="tabular-nums"
+                  className="editorial-tab-badge tabular-nums"
                   style={{
                     fontFamily: 'var(--font-mono)',
                     fontSize: density === 'sm' ? 8 : 9,

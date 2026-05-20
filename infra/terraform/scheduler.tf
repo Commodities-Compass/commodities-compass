@@ -60,6 +60,21 @@ locals {
       # 18:30 UTC business days — ECB publishes ~16:00 CET, before cc-ensemble-compute (19:18).
       schedule = "30 18 * * 1-5"
     }
+    ice-cot-eu-scraper = {
+      description = "Scrape ICE Europe COT cocoa positioning (weekly snapshot)"
+      # Daily 22:10 UTC weekdays — ICE publishes Friday ~21:30 CET for prior
+      # Tuesday's snapshot. UPSERT is idempotent on (release_date,
+      # contract_market) so the daily cron catches late publishes without
+      # coupling the job schedule to ICE's exact publication time.
+      schedule = "10 22 * * 1-5"
+    }
+    barchart-stocks-eu-scraper = {
+      description = "Scrape ICE Europe certified cocoa stocks (60kg bags) from Barchart cmdty"
+      # 19:10 UTC weekdays — 10 min after cc-barchart-scraper (19:00) so the
+      # OHLCV row exists before the UPDATE. Barchart publishes daily on
+      # business days, native unit is "60 Kg Bag" (no conversion).
+      schedule = "10 19 * * 1-5"
+    }
   }
 }
 

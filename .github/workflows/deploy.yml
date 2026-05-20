@@ -215,3 +215,9 @@ jobs:
           # docs/user-stories/P1-scraper-{enso,fx}.md.
           deploy_job cc-enso-scraper         512Mi "enso-scraper"
           deploy_job cc-fx-scraper           512Mi "fx-scraper"
+          # EU positioning + stock scrapers for Campaign 5 ensemble. See
+          # docs/user-stories/P1-scrapers-stock-cot-eu.md.
+          # COT EU writes to pl_cot_eu_weekly (weekly snapshot, ICE publishes Friday).
+          # Stock EU updates pl_contract_data_daily.stock_eu_bags60kg.
+          deploy_job cc-ice-cot-eu-scraper   512Mi "ice-cot-eu-scraper"
+          deploy_job cc-barchart-stocks-eu-scraper 512Mi "barchart-stocks-eu-scraper"

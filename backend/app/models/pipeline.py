@@ -61,6 +61,7 @@ class PlContractDataDaily(Base):
     # Additional market data
     implied_volatility: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
     stock_us: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
+    stock_eu_bags60kg: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
     com_net_us: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
 
     # Display date = next trading day after session date.

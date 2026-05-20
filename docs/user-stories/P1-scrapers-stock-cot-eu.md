@@ -75,16 +75,23 @@ Conséquence pour Optimizer :
 ### 3.1 Stock EU — Barchart cmdty
 
 - **URL** : `https://www.barchart.com/cmdty/data/fundamental/explore/IC345DRW.CS`
-- **Donnée** : Stocks certifiés ICE Europe cocoa (sacs 60kg ou tonnes selon la page)
-- **Format** : Angular SPA Barchart (même infra que `barchart_scraper`). Probablement Playwright nécessaire (anti-bot + rendu JS).
-- **Cadence publication** : à confirmer au scrape exploratoire — par défaut on suppose quotidien jour ouvré, comme la page OHLCV.
-- **Unité cible** : `bags60kg` (cohérent avec le nom de colonne `stock_eu_bags60kg`). Si Barchart publie en tonnes → conversion `tonnes / 0.06`.
-- **Identifiant Barchart** : `IC345DRW.CS` (à valider lors du dev — la convention Barchart utilise un suffixe `.CS` pour "Cocoa Stocks").
+- **Donnée** : Stocks certifiés ICE Europe cocoa
+- **Format** : HTML server-rendered, **pas d'auth nécessaire** (spike 2026-05-20).
+- **Cadence publication** : Daily (ouvré), confirmé par la page (`Frequency: Daily`).
+- **Unité cible** : `bags60kg` — **natif** sur Barchart (`Unit: 60 Kg Bag`, `Multiplier: 1`). Pas de conversion.
+- **Identifiant Barchart** : `IC345DRW.CS` (suffixe `.CS` = Cocoa Stocks). Historique depuis 2012-02-07.
 
-**Risques d'implémentation :**
-- Authentification Barchart pour cmdty pages (peut nécessiter session ou login que le scraper OHLCV existant n'a pas — à explorer en spike 0.5j début de US).
-- Format de page différent du `quotes/CAxxxx/overview` existant — pas garantie de pouvoir réutiliser tel quel les helpers Playwright.
-- Rate limiting Barchart : à respecter strictement (déjà géré par `barchart_scraper`).
+**Spike result (2026-05-20)** : `curl -A "Mozilla/5.0..."` → HTTP 200, ~90 KB HTML, données en clair dans 2 tables `<table class="cmdty-quote-table">` :
+- Table 1 = métadonnées (Most Recent Value/Date, Frequency, Unit, Multiplier, Prior Value/Date, First Value/Date)
+- Table 2 = série historique 7 jours (`<th>MM-DD-YYYY</th><td>621,116</td>`)
+- Format value : `621,116` (commas, integer, parser via `int(s.replace(",", ""))`)
+- Format date : `MM-DD-YYYY`
+
+**Décision tooling** : `httpx` + `BeautifulSoup` (deps déjà présentes). **Pas de Playwright** — image de container reste légère, scraper rapide.
+
+**Risques d'implémentation** :
+- Le HTML structure peut changer (Barchart pourrait renommer `cmdty-quote-table`) — fail-loud avec message clair si parse échoue.
+- Rate limiting Barchart : User-Agent réaliste, 1 seule requête par run (low impact).
 
 ### 3.2 COT Europe — ICE report 122
 

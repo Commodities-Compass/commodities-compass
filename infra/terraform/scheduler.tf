@@ -75,6 +75,17 @@ locals {
       # business days, native unit is "60 Kg Bag" (no conversion).
       schedule = "10 19 * * 1-5"
     }
+    ensemble-compute = {
+      description = "C5 ensemble: soft-gate + Compass wrapper daily decision (shadow mode v1.0.0)"
+      # 19:18 UTC weekdays — sandwiched between cc-compute-indicators (19:15)
+      # and cc-daily-analysis (19:20). The ensemble reads pl_derived_indicators
+      # which compute-indicators must have written first, and daily-analysis
+      # reads pl_indicator_daily which ensemble-compute writes here (legacy
+      # version flag prevents overwrite, see deploy.yml).
+      schedule = "18 19 * * 1-5"
+    }
+    # NB: cc-ensemble-bootstrap-artifacts is deployed without a scheduler.
+    # Triggered manually via gcloud when R&D ships a new frozen artefact pack.
   }
 }
 

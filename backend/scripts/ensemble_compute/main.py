@@ -40,6 +40,10 @@ from scripts._shared.logging import configure_logging
 from scripts._shared.sentry import bootstrap_scraper
 from scripts.contract_resolver import resolve_active, resolve_active_at_date
 from scripts.ensemble_compute.cluster_mapping_loader import load_cluster_mapping
+from scripts.ensemble_compute.compass_wrapper import (
+    DEFAULT_DISPERSION_WITH_ACC_THRESHOLD,
+    CompassTransitionWrapper,
+)
 from scripts.ensemble_compute.db_loader import (
     load_macro_signal,
     load_market_history,
@@ -190,9 +194,22 @@ def main() -> int:
                 training_month=training_month,
                 cluster_mapping=cluster_mapping,
             )
+            # Swap the vendor wrapper for the Compass override. The vendor
+            # combines its 4 detectors with a pure OR — empirically too
+            # aggressive: cluster_dispersion alone vetoed 28/63 commits on the
+            # 2026 backfill while running_acc_5d averaged 0.981. The Compass
+            # wrapper relaxes the dispersion-only veto when running_acc is
+            # healthy. See compass_wrapper.py for the full rule.
+            vendor_wrapper = pipeline.wrapper
+            pipeline.wrapper = CompassTransitionWrapper(
+                config=vendor_wrapper.config,
+                cluster_mapping=vendor_wrapper.cluster_mapping,
+                dispersion_with_acc_threshold=DEFAULT_DISPERSION_WITH_ACC_THRESHOLD,
+            )
             logger.info(
-                "Pipeline assembled: %d specialists + soft-gate + wrapper",
+                "Pipeline assembled: %d specialists + soft-gate + Compass wrapper (threshold=%.2f)",
                 len(pipeline.specialists),
+                DEFAULT_DISPERSION_WITH_ACC_THRESHOLD,
             )
 
             market = load_market_history(

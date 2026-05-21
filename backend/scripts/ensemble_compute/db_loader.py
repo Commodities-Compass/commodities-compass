@@ -337,10 +337,15 @@ def load_macro_signal(
     scores ``today``. The layer applies the ``confidence >= 0.70`` filter
     internally — no need to pre-filter here.
 
-    Fail-soft path: if no segments are returned at all, or if ``today`` has
-    no high-confidence segments, returns a neutral ``MacroSignal(0, 0.0, 0.0)``
-    so the soft-gate keeps running with the macro multiplier at ×1.0 (same
-    behavior as a real macro-quiet day).
+    Fail-loud per pipeline-error-handling.md: an empty 90d window means
+    press-review-agent failed silently or the data is missing. We refuse
+    to run the ensemble blind with a stub macro signal — the upstream
+    issue must be diagnosed and the job rerun manually.
+
+    The MacroEventLayer itself returns a neutral ``MacroSignal(0, 0, 0)``
+    on its own when ``today`` has zero high-confidence segments but the
+    window had prior segments — that semantic ("real macro-quiet day")
+    is preserved.
     """
     start_date = today - timedelta(days=lookback_days)
     rows = session.execute(
@@ -349,19 +354,11 @@ def load_macro_signal(
     ).fetchall()
 
     if not rows:
-        logger.warning(
-            "load_macro_signal: no pl_article_segment rows in [%s, %s] — "
-            "returning neutral MacroSignal",
-            start_date,
-            today,
+        raise EnsembleLoaderError(
+            f"pl_article_segment empty for [{start_date}, {today}] — "
+            "press-review-agent likely failed; diagnose upstream then "
+            "rerun cc-ensemble-compute."
         )
-        try:
-            import sentry_sdk
-
-            sentry_sdk.set_tag("macro_empty_window", "true")
-        except ImportError:
-            pass
-        return MacroSignal(direction=0, surprise=0.0, confidence=0.0)
 
     df = pd.DataFrame([dict(r._mapping) for r in rows])
     df["sentiment_score"] = pd.to_numeric(df["sentiment_score"], errors="coerce")

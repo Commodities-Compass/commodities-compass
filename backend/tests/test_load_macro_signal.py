@@ -16,7 +16,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.models.pipeline import PlArticleSegment, PlFundamentalArticle
-from scripts.ensemble_compute.db_loader import load_macro_signal
+from scripts.ensemble_compute.db_loader import EnsembleLoaderError, load_macro_signal
 
 
 def _seed_article(session: Session, *, on_date: date) -> uuid.UUID:
@@ -59,15 +59,13 @@ def _seed_segment(
 
 
 @pytest.mark.unit
-def test_load_macro_signal_empty_window_returns_neutral(
+def test_load_macro_signal_empty_window_raises(
     sync_db_session: Session,
 ) -> None:
-    """No segments in [today-90d, today] → neutral MacroSignal."""
+    """No segments in [today-90d, today] → fail-loud (press-review failed upstream)."""
     today = date(2026, 5, 15)
-    signal = load_macro_signal(sync_db_session, today=today)
-    assert signal.direction == 0
-    assert signal.surprise == 0.0
-    assert signal.confidence == 0.0
+    with pytest.raises(EnsembleLoaderError, match="pl_article_segment empty"):
+        load_macro_signal(sync_db_session, today=today)
 
 
 @pytest.mark.unit

@@ -64,6 +64,11 @@ class CompassTransitionWrapper(TransitionProtectionWrapper):
         if wrapped.empty:
             return wrapped, diag_df
 
+        # Defensive copy: super().apply() returns a freshly-built frame in
+        # the current vendor implementation, but we mutate it below — copy
+        # to keep the override side-effect-free if the vendor ever caches.
+        wrapped = wrapped.copy()
+
         threshold = self.dispersion_with_acc_threshold
 
         # Release condition: only dispersion fired, no other detector. When

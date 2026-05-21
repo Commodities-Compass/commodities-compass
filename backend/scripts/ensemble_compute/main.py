@@ -203,6 +203,22 @@ def main() -> int:
             # per north-star rule #4) — see migration o9j0k1l2m3n4.
             compass_threshold = load_compass_wrapper_threshold(session, algo_version_id)
             vendor_wrapper = pipeline.wrapper
+            # _build_diagnostics() below hardcodes fired_trend=False and
+            # fired_three_way=False — only safe while these detectors are
+            # disabled in the wrapper config. Fail-loud if a future tuning
+            # round flips them on without updating the writer plumbing.
+            if vendor_wrapper.config.use_trend_conflict:
+                raise RuntimeError(
+                    "wrapper_config.use_trend_conflict=True but _build_diagnostics "
+                    "still hardcodes fired_trend=False — update the writer to read "
+                    "the actual value from the wrapper diagnostic frame."
+                )
+            if vendor_wrapper.config.use_three_way_disagreement:
+                raise RuntimeError(
+                    "wrapper_config.use_three_way_disagreement=True but "
+                    "_build_diagnostics still hardcodes fired_three_way=False — "
+                    "update the writer to read the actual value."
+                )
             pipeline.wrapper = CompassTransitionWrapper(
                 config=vendor_wrapper.config,
                 cluster_mapping=vendor_wrapper.cluster_mapping,
@@ -305,22 +321,28 @@ def main() -> int:
         return 1
 
 
-def _build_diagnostics(decision, recent_decisions) -> dict:
+def _build_diagnostics(decision, recent_decisions: pd.DataFrame) -> dict[str, object]:
     """Pull supplementary fields not on EnsembleDecision into a flat dict.
 
     Used by db_writer to populate pl_orchestrator_decision diagnostics
     columns that aren't directly exposed on EnsembleDecision (weights_sum,
     n_committed_specialists, fired_trend, fired_three_way, etc.).
+
+    ``wrapper_active`` is derived from the wrapped decision changing the
+    soft-gate decision — NOT from the raw fired_* flags. This way the
+    Compass override of dispersion-only vetoes is correctly reflected:
+    the fired_* flags stay TRUE in audit (the detectors did fire), but
+    wrapper_active is FALSE when Compass released the veto and the
+    original decision was kept. Without this rule, every released row
+    would falsely report wrapper_active=TRUE.
     """
+    _ = recent_decisions  # kept for ABI compat; future detectors may use it
     sg = decision.soft_gate_decision
     return {
         # From soft-gate decision object (read defensively — names may shift)
         "weights_sum": getattr(sg, "weights_sum", None),
         "n_committed_specialists": getattr(sg, "n_committed_specialists", None),
-        "wrapper_active": (
-            decision.wrapper_fired_running_acc
-            or decision.wrapper_fired_cluster_dispersion
-        ),
+        "wrapper_active": decision.wrapped_decision != sg.decision,
         # Detectors absent in v1.0.0 (use_trend_conflict=False,
         # use_three_way_disagreement=False per tuned_configs JSON). Storing
         # ``False`` is acceptable since the column is NOT NULL — they truly

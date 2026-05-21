@@ -94,9 +94,7 @@ def resolve_active_at_date(session: Session, target_date) -> uuid.UUID:
             f"No pl_contract_data_daily row for date={target_date} "
             "— cannot resolve historical front-month contract"
         )
-    import logging
-
-    logging.getLogger(__name__).info(
+    log.info(
         "Historical front-month for %s: contract_id=%s (oi=%s, volume=%s)",
         target_date,
         row[0],

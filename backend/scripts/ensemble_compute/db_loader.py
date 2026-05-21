@@ -143,29 +143,31 @@ SELECT
     o.prior_monitor                                                         AS prior_monitor,
     -- ``committed`` here means "this row can be scored by the wrapper's
     -- running_acc detector" — i.e. soft-gate took a directional bet AND the
-    -- 6d forward horizon is realized. Pending horizon rows are marked
-    -- uncommitted so the wrapper skips them (R&D Protocol docstring:
-    -- "running-acc detector treats NULL as a non-committed day and skips it").
+    -- 6d forward horizon is realized on the front-month chain. Pending
+    -- horizon rows are marked uncommitted so the wrapper skips them.
+    -- Uses v_contract_data_chained so rolls don't truncate the horizon.
     (
       o.soft_gate_decision <> 'MONITOR'
       AND (
-        SELECT 1 FROM pl_contract_data_daily f
-        WHERE f.contract_id = o.contract_id AND f.date > o.date
+        SELECT 1 FROM v_contract_data_chained f
+        WHERE f.date > o.date
         ORDER BY f.date ASC OFFSET 5 LIMIT 1
       ) IS NOT NULL
     )                                                                       AS committed,
-    -- 6-business-day forward return from same contract's close. NULL when
-    -- the 6-day horizon hasn't realized yet (the wrapper's running_acc
-    -- detector handles NULL as a non-committed day and skips it).
+    -- 6-business-day forward return on the front-month-by-OI chain.
+    -- Reads ``cur.close`` from the same chained VIEW so the t=0 close
+    -- matches what the soft-gate saw at decide-time (the VIEW is what
+    -- load_market_history feeds to specialists). The forward close is
+    -- the chained VIEW row at OFFSET 5 (i.e. 6th future row).
     (
       SELECT (fut.close / cur.close) - 1.0
-      FROM pl_contract_data_daily cur
+      FROM v_contract_data_chained cur
       JOIN LATERAL (
-          SELECT close FROM pl_contract_data_daily f
-          WHERE f.contract_id = cur.contract_id AND f.date > cur.date
+          SELECT close FROM v_contract_data_chained f
+          WHERE f.date > cur.date
           ORDER BY f.date ASC OFFSET 5 LIMIT 1
       ) fut ON TRUE
-      WHERE cur.contract_id = o.contract_id AND cur.date = o.date
+      WHERE cur.date = o.date
     )                                                                       AS forward_return
 FROM pl_orchestrator_decision o
 WHERE o.contract_id = :contract_id

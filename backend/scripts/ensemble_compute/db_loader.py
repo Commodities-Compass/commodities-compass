@@ -222,14 +222,24 @@ def load_recent_orchestrator_decisions(
     # evaluates itself, locking it into MONITOR forever after the first override
     # (observed live on 2026-05-07 → 2026-05-20). R&D's in-sample analysis
     # confirms `correct` is computed from the soft-gate prediction.
-    df["correct"] = ((df["decision"] == "HEDGE") & (df["forward_return"] < 0)) | (
-        (df["decision"] == "OPEN") & (df["forward_return"] > 0)
-    )
+    # When forward_return is NaN (6d horizon not realized yet), set
+    # ``correct`` to pd.NA so the wrapper treats the row as "unknown" instead
+    # of False. ``NaN < 0`` evaluates False in pandas, which would silently
+    # mark open-horizon rows as "incorrect" and re-trigger the wrapper's
+    # auto-protection loop (rule §0 #3: NULL > silent False placeholder).
+    has_return = df["forward_return"].notna()
+    df["correct"] = pd.array([pd.NA] * len(df), dtype="boolean")
+    hedge_mask = has_return & (df["decision"] == "HEDGE")
+    open_mask = has_return & (df["decision"] == "OPEN")
+    monitor_mask = has_return & (df["decision"] == "MONITOR")
+    df.loc[hedge_mask, "correct"] = (df.loc[hedge_mask, "forward_return"] < 0).values
+    df.loc[open_mask, "correct"] = (df.loc[open_mask, "forward_return"] > 0).values
+    df.loc[monitor_mask, "correct"] = False
     df = df.sort_values("date").reset_index(drop=True)
     return df
 
 
-_RECENT_VOTES_SELECT = """
+_RECENT_VOTES_WINDOWED_SELECT = """
 SELECT
     date::DATE          AS date,
     specialist_name     AS specialist_name,
@@ -237,7 +247,7 @@ SELECT
 FROM pl_specialist_prediction
 WHERE contract_id = :contract_id
   AND algorithm_version_id = :algorithm_version_id
-  AND date < :end_date
+  AND date BETWEEN :start_date AND (:end_date - INTERVAL '1 day')::DATE
 ORDER BY date DESC, specialist_name ASC
 """
 
@@ -259,12 +269,7 @@ def load_recent_specialist_votes(
     # all returned together (LIMIT alone would truncate mid-day).
     start_date = end_date - timedelta(days=lookback_days)
     rows = session.execute(
-        text(
-            _RECENT_VOTES_SELECT.replace(
-                "< :end_date",
-                "BETWEEN :start_date AND (:end_date - INTERVAL '1 day')::DATE",
-            )
-        ),
+        text(_RECENT_VOTES_WINDOWED_SELECT),
         {
             "contract_id": contract_id,
             "algorithm_version_id": algorithm_version_id,
@@ -286,7 +291,7 @@ def load_macro_signal(
     *,
     today: date_cls,
 ) -> MacroSignal:
-    """Stub MacroSignal for now.
+    """Stub MacroSignal for now (sentiment pipeline not yet wired).
 
     The full MacroEventLayer needs frozen weights (long_run priors + macro
     config) AND a few months of trailing pl_article_segment rows. Since
@@ -295,8 +300,25 @@ def load_macro_signal(
     neutral macro signal so the soft-gate's macro factor contributes
     zero — the model still runs cleanly, just without macro tilt.
 
+    Logged at WARNING so the diagnostic rows in pl_orchestrator_decision
+    are auditable post-hoc — a future query can join on
+    "macro_stub_active" Sentry tag to filter rows where macro=neutral
+    came from this stub vs a real neutral macro reading.
+
     TODO: when the sentiment pipeline is activated and has enough trailing
     coverage, replace this with the real MacroEventLayer.predict call.
     """
     _ = session, today  # unused for the neutral stub
+    logger.warning(
+        "load_macro_signal: stub active for %s — sentiment pipeline not wired; "
+        "returning neutral MacroSignal(0, 0.0, 0.0). pl_orchestrator_decision "
+        "row will have macro_direction=0 indistinguishable from real flat-macro.",
+        today,
+    )
+    try:
+        import sentry_sdk
+
+        sentry_sdk.set_tag("macro_stub_active", "true")
+    except ImportError:
+        pass
     return MacroSignal(direction=0, surprise=0.0, confidence=0.0)

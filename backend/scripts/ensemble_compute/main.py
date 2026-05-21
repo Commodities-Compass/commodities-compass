@@ -38,7 +38,7 @@ from sqlalchemy import text
 from scripts._shared.cli import build_base_argparser
 from scripts._shared.logging import configure_logging
 from scripts._shared.sentry import bootstrap_scraper
-from scripts.contract_resolver import resolve_active
+from scripts.contract_resolver import resolve_active, resolve_active_at_date
 from scripts.ensemble_compute.cluster_mapping_loader import load_cluster_mapping
 from scripts.ensemble_compute.db_loader import (
     load_macro_signal,
@@ -92,6 +92,15 @@ def _parse_args() -> argparse.Namespace:
         type=lambda s: datetime.strptime(s, "%Y-%m-%d").date(),
         default=None,
         help="Target date (default: today UTC, business day)",
+    )
+    parser.add_argument(
+        "--historical",
+        action="store_true",
+        help=(
+            "Resolve the contract via front-month-by-OI on --date instead of "
+            "the current ref_contract.is_active. Use this for backfills where "
+            "the active contract on the target date wasn't yet today's roll."
+        ),
     )
     return parser.parse_args()
 
@@ -155,7 +164,14 @@ def main() -> int:
 
     try:
         with get_session() as session:
-            contract_id = resolve_active(session)
+            if args.historical:
+                contract_id = resolve_active_at_date(session, target_date)
+                logger.info(
+                    "Historical mode: resolved front-month-by-OI for %s",
+                    target_date,
+                )
+            else:
+                contract_id = resolve_active(session)
             algo_version_id = _resolve_algorithm_version_id(session, ALGO_VERSION_NAME)
             training_month = _latest_training_month(session, algo_version_id)
             cluster_mapping = load_cluster_mapping(session, algo_version_id)
@@ -286,7 +302,12 @@ def _build_diagnostics(decision, recent_decisions) -> dict:
             decision.wrapper_fired_running_acc
             or decision.wrapper_fired_cluster_dispersion
         ),
-        # Detectors not exposed individually on EnsembleDecision (off in v1.0.0)
+        # Detectors absent in v1.0.0 (use_trend_conflict=False,
+        # use_three_way_disagreement=False per tuned_configs JSON). Storing
+        # ``False`` is acceptable since the column is NOT NULL — they truly
+        # did not fire because they're not present. If v1.1.0 enables them,
+        # the column will accept actual True/False values; the v1.0.0 rows
+        # are then unambiguously "False because absent".
         "fired_trend": False,
         "fired_three_way": False,
         "macro_half_life_days": None,

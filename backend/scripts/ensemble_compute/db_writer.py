@@ -183,6 +183,11 @@ def write_decision(
 
     # 2) orchestrator
     sg = decision.soft_gate_decision
+    # Note: net_score / weights_sum / n_committed_specialists are NOT NULL by
+    # schema. We pass the computed values through directly. If any of them is
+    # genuinely missing, the INSERT fails-loud at the DB level — per rule §0 #4,
+    # NULL means "not yet computed" but here these columns are mandatory outputs
+    # of every successful soft-gate run.
     session.execute(
         text(_UPSERT_ORCHESTRATOR),
         {
@@ -190,14 +195,11 @@ def write_decision(
             "contract_id": contract_id,
             "algorithm_version_id": algorithm_version_id,
             "soft_gate_decision": str(sg.decision),
-            "net_score": _decimal_or_none(getattr(sg, "net_score", None))
-            or Decimal("0"),
-            "weights_sum": _decimal_or_none(diagnostics.get("weights_sum"))
-            or Decimal("0"),
+            "net_score": _decimal_or_none(getattr(sg, "net_score", None)),
+            "weights_sum": _decimal_or_none(diagnostics.get("weights_sum")),
             "n_committed_specialists": _int_or_none(
                 diagnostics.get("n_committed_specialists")
-            )
-            or 0,
+            ),
             "decision_wrapped": str(decision.wrapped_decision),
             "wrapper_active": bool(diagnostics.get("wrapper_active", False)),
             "fired_running_acc": bool(decision.wrapper_fired_running_acc),

@@ -112,12 +112,20 @@ def main() -> int:
     logger.info("=" * 60)
 
     # Hand off to the R&D tool. We import its `main()` rather than shelling
-    # out so Sentry exceptions surface in our monitor cleanly.
+    # out so Sentry exceptions surface in our monitor cleanly. The env vars
+    # below are scoped to this process and removed in the `finally` block —
+    # the DATABASE_URL contains plaintext credentials and must never leak
+    # into the broader environment (Sentry breadcrumbs, child processes,
+    # debug dumps).
     sys.path.insert(0, str(_VENDOR_DIR / "tools"))
-    os.environ["DATABASE_URL"] = pg_url
-    os.environ["FROZEN_DIR"] = str(_FROZEN_DIR)
-    os.environ["ALGORITHM_VERSION_NAME"] = args.algorithm_version_name
-    os.environ["ALGORITHM_VERSION"] = args.algorithm_version
+    _env_vars_set = {
+        "DATABASE_URL": pg_url,
+        "FROZEN_DIR": str(_FROZEN_DIR),
+        "ALGORITHM_VERSION_NAME": args.algorithm_version_name,
+        "ALGORITHM_VERSION": args.algorithm_version,
+    }
+    for k, v in _env_vars_set.items():
+        os.environ[k] = v
 
     # R&D tool's argparse is its own; pass --dry-run iff we got it.
     rd_argv = ["load_artifacts_to_pg.py"]
@@ -140,6 +148,9 @@ def main() -> int:
         return 1
     finally:
         sys.argv = saved_argv
+        # Wipe the env vars we set so credentials don't linger in the process.
+        for k in _env_vars_set:
+            os.environ.pop(k, None)
 
     sentry_sdk.set_context(
         "bootstrap",

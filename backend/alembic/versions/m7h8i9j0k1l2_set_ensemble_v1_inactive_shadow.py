@@ -51,8 +51,19 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Re-flip ensemble to active. Caller is responsible for also flipping
-    # legacy to inactive if they want a single-active-version state.
+    # Atomic flip: deactivate legacy AND activate ensemble in one go. The
+    # contract_resolver in `backend/app/utils/contract_resolver.py` uses
+    # `scalar_one_or_none()` on `WHERE is_active=TRUE LIMIT 1` — leaving
+    # two rows TRUE simultaneously would cause `MultipleResultsFound` and
+    # take down the 4 dashboard endpoints we tried to protect with this
+    # migration. Asymmetric downgrades are an incident hazard.
+    op.execute(
+        """
+        UPDATE pl_algorithm_version
+        SET is_active = FALSE
+        WHERE name = 'legacy';
+        """
+    )
     op.execute(
         """
         UPDATE pl_algorithm_version

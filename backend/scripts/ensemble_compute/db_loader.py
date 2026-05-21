@@ -127,7 +127,19 @@ SELECT
     o.prior_open                                                            AS prior_open,
     o.prior_hedge                                                           AS prior_hedge,
     o.prior_monitor                                                         AS prior_monitor,
-    (o.soft_gate_decision <> 'MONITOR')                                     AS committed,
+    -- ``committed`` here means "this row can be scored by the wrapper's
+    -- running_acc detector" — i.e. soft-gate took a directional bet AND the
+    -- 6d forward horizon is realized. Pending horizon rows are marked
+    -- uncommitted so the wrapper skips them (R&D Protocol docstring:
+    -- "running-acc detector treats NULL as a non-committed day and skips it").
+    (
+      o.soft_gate_decision <> 'MONITOR'
+      AND (
+        SELECT 1 FROM pl_contract_data_daily f
+        WHERE f.contract_id = o.contract_id AND f.date > o.date
+        ORDER BY f.date ASC OFFSET 5 LIMIT 1
+      ) IS NOT NULL
+    )                                                                       AS committed,
     -- 6-business-day forward return from same contract's close. NULL when
     -- the 6-day horizon hasn't realized yet (the wrapper's running_acc
     -- detector handles NULL as a non-committed day and skips it).
@@ -222,19 +234,16 @@ def load_recent_orchestrator_decisions(
     # evaluates itself, locking it into MONITOR forever after the first override
     # (observed live on 2026-05-07 → 2026-05-20). R&D's in-sample analysis
     # confirms `correct` is computed from the soft-gate prediction.
-    # When forward_return is NaN (6d horizon not realized yet), set
-    # ``correct`` to pd.NA so the wrapper treats the row as "unknown" instead
-    # of False. ``NaN < 0`` evaluates False in pandas, which would silently
-    # mark open-horizon rows as "incorrect" and re-trigger the wrapper's
-    # auto-protection loop (rule §0 #3: NULL > silent False placeholder).
-    has_return = df["forward_return"].notna()
-    df["correct"] = pd.array([pd.NA] * len(df), dtype="boolean")
-    hedge_mask = has_return & (df["decision"] == "HEDGE")
-    open_mask = has_return & (df["decision"] == "OPEN")
-    monitor_mask = has_return & (df["decision"] == "MONITOR")
-    df.loc[hedge_mask, "correct"] = (df.loc[hedge_mask, "forward_return"] < 0).values
-    df.loc[open_mask, "correct"] = (df.loc[open_mask, "forward_return"] > 0).values
-    df.loc[monitor_mask, "correct"] = False
+    # ``correct`` is a plain bool. The wrapper's _running_acc filters to
+    # committed=True before computing the mean, and our SQL above marks
+    # pending-horizon rows as committed=False (forward close missing), so
+    # they're skipped regardless of their `correct` value. Pandas can't
+    # cast pd.NA via .astype(bool) — keep this as a clean boolean and let
+    # the committed filter do the work. NaN < 0 returns False; safe because
+    # those rows are excluded upstream.
+    df["correct"] = ((df["decision"] == "HEDGE") & (df["forward_return"] < 0)) | (
+        (df["decision"] == "OPEN") & (df["forward_return"] > 0)
+    )
     df = df.sort_values("date").reset_index(drop=True)
     return df
 

@@ -512,3 +512,199 @@ class PlCotEuWeekly(Base):
     open_interest: Mapped[Optional[int]] = mapped_column(INTEGER)
 
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+
+
+class PlModelArtifact(Base):
+    """Campaign 5 ensemble — ML artifact registry stored in Postgres as BYTEA.
+
+    Replaces the original `gs://cacaooo-rnd-models/` GCS bucket design with
+    in-DB storage per CAMPAIGN_5_PROD_DEPLOYMENT.md §4.5 + §7. Each row holds
+    ONE serialized payload (pickle / JSON / parquet / CSV) plus full
+    provenance (SHA-256, train range, lib versions). The ensemble pipeline
+    loads artifacts at job time via `ensemble.artifact_io.DBArtifactLoader`,
+    which re-verifies SHA-256 before deserializing (fail-loud rule §0 #1).
+
+    Layout per delivery: ~38 rows
+      * 14 × specialist_model (`.pkl`)
+      * 14 × specialist_hp (`.json`)
+      * 3  × long_run (anomaly, priors, regime_clusters)
+      * 2  × tuned_config (soft_gate, wrapper)
+      * 5  × canonical_snapshot (parquet + csv)
+
+    Unique on (algorithm_version_id, artifact_kind, artifact_name,
+    training_month) so monthly retrains UPSERT new rows alongside the
+    previous month's frozen set.
+    """
+
+    __tablename__ = "pl_model_artifact"
+    __table_args__ = (
+        UniqueConstraint(
+            "algorithm_version_id",
+            "artifact_kind",
+            "artifact_name",
+            "training_month",
+            name="uq_pl_model_artifact",
+        ),
+        Index(
+            "ix_pl_model_artifact_kind",
+            "algorithm_version_id",
+            "artifact_kind",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    algorithm_version_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("pl_algorithm_version.id"), nullable=False
+    )
+
+    # Allowed values validated app-side (see ensemble.artifact_io):
+    #   specialist_model, specialist_hp,
+    #   long_run_anomaly, long_run_priors, long_run_regime_clusters,
+    #   soft_gate_config, wrapper_config, canonical_snapshot.
+    artifact_kind: Mapped[str] = mapped_column(VARCHAR(64), nullable=False)
+    artifact_name: Mapped[str] = mapped_column(VARCHAR(128), nullable=False)
+
+    # 'YYYY-MM' for specialist_*; NULL for long_run/config/canonical artifacts
+    # that don't refit monthly.
+    training_month: Mapped[Optional[str]] = mapped_column(VARCHAR(7))
+
+    payload: Mapped[bytes] = mapped_column(nullable=False)
+    payload_encoding: Mapped[str] = mapped_column(VARCHAR(16), nullable=False)
+    sha256: Mapped[str] = mapped_column(VARCHAR(64), nullable=False)
+    n_bytes: Mapped[int] = mapped_column(INTEGER, nullable=False)
+
+    # Provenance (rule §0 #3 — pipeline-continuity, every column traceable)
+    fit_train_start: Mapped[Optional[date]] = mapped_column(DATE)
+    fit_train_end: Mapped[Optional[date]] = mapped_column(DATE)
+    n_train: Mapped[Optional[int]] = mapped_column(INTEGER)
+    class_balance: Mapped[Optional[dict]] = mapped_column(JSONB)
+    git_sha: Mapped[str] = mapped_column(VARCHAR(40), nullable=False)
+    python_version: Mapped[str] = mapped_column(VARCHAR(20), nullable=False)
+    lib_versions: Mapped[dict] = mapped_column(JSONB, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+
+
+class PlSpecialistPrediction(Base):
+    """Campaign 5 ensemble — per-specialist daily vote audit.
+
+    One row per (date, contract_id, algorithm_version_id, specialist_name).
+    Feeds the wrapper's cluster-dispersion detector and Phase 5 post-hoc
+    analysis ("which specialists were wrong on day X?"). `forward_return_6d`
+    is back-filled once the h=6 horizon expires.
+    """
+
+    __tablename__ = "pl_specialist_prediction"
+    __table_args__ = (
+        UniqueConstraint(
+            "date",
+            "contract_id",
+            "algorithm_version_id",
+            "specialist_name",
+            name="uq_specialist_prediction",
+        ),
+        Index(
+            "ix_specialist_prediction_date_version",
+            "date",
+            "algorithm_version_id",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    date: Mapped[date] = mapped_column(DATE, nullable=False)
+    contract_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("ref_contract.id"), nullable=False
+    )
+    algorithm_version_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("pl_algorithm_version.id"), nullable=False
+    )
+    specialist_name: Mapped[str] = mapped_column(VARCHAR(64), nullable=False)
+    # 12 (baseline/TB/calibrated-TB) or 24 (GARCH) — per R&D pool config.
+    window_months: Mapped[int] = mapped_column(INTEGER, nullable=False)
+    # "OPEN" | "HEDGE" | "MONITOR"
+    pred: Mapped[str] = mapped_column(VARCHAR(10), nullable=False)
+    n_features_used: Mapped[Optional[int]] = mapped_column(INTEGER)
+    forward_return_6d: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+
+
+class PlOrchestratorDecision(Base):
+    """Campaign 5 ensemble — soft-gate + wrapper audit trail.
+
+    One row per (date, contract_id, algorithm_version_id). Captures both
+    decision layers: the raw soft-gate output (``soft_gate_decision``) and
+    the final wrapped output (``decision_wrapped``) that
+    ``pl_indicator_daily`` mirrors.
+
+    Every diagnostic column is NULLABLE so day-1 / data-edge cases write
+    NULL rather than the silent 0.0 placeholder that rule §0 #3 forbids
+    (pipeline-continuity).
+    """
+
+    __tablename__ = "pl_orchestrator_decision"
+    __table_args__ = (
+        UniqueConstraint(
+            "date",
+            "contract_id",
+            "algorithm_version_id",
+            name="uq_orchestrator_decision",
+        ),
+        Index(
+            "ix_orchestrator_decision_date_version",
+            "date",
+            "algorithm_version_id",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    date: Mapped[date] = mapped_column(DATE, nullable=False)
+    contract_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("ref_contract.id"), nullable=False
+    )
+    algorithm_version_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("pl_algorithm_version.id"), nullable=False
+    )
+
+    # Soft-gate layer
+    soft_gate_decision: Mapped[str] = mapped_column(VARCHAR(10), nullable=False)
+    net_score: Mapped[Decimal] = mapped_column(DECIMAL(15, 6), nullable=False)
+    weights_sum: Mapped[Decimal] = mapped_column(DECIMAL(15, 6), nullable=False)
+    n_committed_specialists: Mapped[int] = mapped_column(INTEGER, nullable=False)
+
+    # Wrapper layer (final decision mirrored to pl_indicator_daily)
+    decision_wrapped: Mapped[str] = mapped_column(VARCHAR(10), nullable=False)
+    wrapper_active: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    fired_running_acc: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    fired_trend: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    fired_dispersion: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    fired_three_way: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+    # Diagnostics (all NULLABLE — write NULL on missing, never silent 0.0)
+    running_acc_5d: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 6))
+    realized_return_5d: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
+    winter_vote_signed: Mapped[Optional[int]] = mapped_column(INTEGER)
+    spring_vote_signed: Mapped[Optional[int]] = mapped_column(INTEGER)
+    macro_direction: Mapped[Optional[int]] = mapped_column(INTEGER)
+    macro_surprise: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 6))
+    macro_half_life_days: Mapped[Optional[int]] = mapped_column(INTEGER)
+    anomaly_score_z: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
+    prior_open: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 6))
+    prior_hedge: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 6))
+    prior_monitor: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 6))
+
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())

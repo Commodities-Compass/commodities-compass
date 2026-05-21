@@ -335,6 +335,7 @@ Four LLM-powered agents run as GCP Cloud Run Jobs, each generating content for P
  7:05 PM UTC  -- ICE stocks + CFTC      -> pl_contract_data_daily (STOCK US, COM NET US)
  7:05 PM UTC  -- Press review agent     -> pl_fundamental_article (needs CLOSE)
  7:15 PM UTC  -- Compute indicators     -> pl_derived_indicators + pl_indicator_daily
+ 7:18 PM UTC  -- Ensemble compute       -> pl_specialist_prediction + pl_orchestrator_decision + pl_indicator_daily (shadow mode)
  7:20 PM UTC  -- Daily analysis          -> pl_indicator_daily (LLM decision + score)
  7:30 PM UTC  -- Compass brief          -> Google Drive (.txt for NotebookLM)
 ```
@@ -368,6 +369,18 @@ Four LLM-powered agents run as GCP Cloud Run Jobs, each generating content for P
 - **Purpose**: Generates structured `.txt` brief from pl_* tables, uploads to Google Drive Shared Drive for NotebookLM audio podcast generation
 - **Output**: `YYYYMMDD-CompassBrief.txt` uploaded to Drive (idempotent — updates existing file for same date)
 - **Cron**: `30 19 * * 1-5` — **CLI**: `poetry run compass-brief`
+
+### Ensemble Compute — Campaign 5 (`backend/scripts/ensemble_compute/`)
+
+- **Purpose**: Daily C5 ensemble decision combining 14 LightGBM/GARCH specialists, a Bayesian soft-gate orchestrator, and a Compass-side transition wrapper. Replaces the legacy LLM-based daily-analysis decision (in shadow mode for v1.0.0; dashboard still reads legacy).
+- **Vendored R&D code**: `backend/vendor/campaign5_ensemble_v1.0.0/` — read-only delivery, never patched in-place. Override path is subclassing (see `compass_wrapper.py`).
+- **Algorithm version**: `ensemble_v1_softgate_wrapper` v1.0.0 in `pl_algorithm_version`. Currently `is_active=FALSE, compute_enabled=FALSE` (shadow mode, migration `m7h8i9j0k1l2`). Bascule live = downgrade that migration (atomic flip with legacy).
+- **Inputs**: `v_contract_data_chained` VIEW (front-month-by-OI chain for GARCH lookback) × `pl_derived_indicators` for market_history; `pl_orchestrator_decision` + `pl_specialist_prediction` for the wrapper trailing window; `pl_article_segment` (confidence ≥ 0.70 segments, 90d window) for the macro signal via `MacroEventLayer`.
+- **Outputs**: 14 rows in `pl_specialist_prediction` + 1 row in `pl_orchestrator_decision` (soft-gate + wrapper diagnostics) + 1 row UPSERT in `pl_indicator_daily` (decision = wrapped_decision).
+- **Compass wrapper override** (`compass_wrapper.py`): the vendor OR-combines its 4 detectors → every fire becomes MONITOR. Empirically this vetoed 73% of soft-gate commits when `running_acc_5d=0.981`. The Compass subclass adds an AND-gated release: dispersion-only veto is released when `running_acc_5d ≥ threshold` (or NaN bootstrap). Threshold stored in `pl_algorithm_config.compass_wrapper_dispersion_with_acc_threshold` = 0.60 (config-as-data, migration `o9j0k1l2m3n4`). On 2026 backfill: WR coverage 17% → 49% (beats R&D 46.1%), WR accuracy 100% → 76% (target ≥ 80%; gap is cold-start NaN, accepted).
+- **Bootstrap**: `cc-ensemble-bootstrap-artifacts` (deployed without scheduler, manual trigger) seeds 38 BYTEA rows in `pl_model_artifact` from the frozen R&D pack. Re-run only when R&D ships v1.1.0+.
+- **Cron**: `18 19 * * 1-5` — **CLI**: `poetry run ensemble-compute [--date YYYY-MM-DD] [--historical] [--dry-run]`
+- **Failure recovery**: [docs/runbooks/ensemble-failure-recovery.md](docs/runbooks/ensemble-failure-recovery.md).
 
 ## Code Quality
 

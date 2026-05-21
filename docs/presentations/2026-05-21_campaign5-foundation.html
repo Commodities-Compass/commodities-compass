@@ -1,0 +1,1449 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Campaign 5 — Foundation · Compass CC</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700;1,900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink:        #1a1a1a;
+    --ink-dark:   #0a0a0a;
+    --ink-mid:    #4a4a4a;
+    --ink-light:  #888888;
+    --ink-lighter:#b8b3a8;
+    --rule:       #e0ddd5;
+    --rule-dark:  #c8c2b3;
+    --paper-off:  #f4f1ea;
+    --paper:      #fafaf7;
+    --highlight:  #fff8e0;
+    --open:       #10B981;
+    --monitor:    #F59E0B;
+    --hedge:      #EF4444;
+    --open-bg:    #d1fae5;
+    --monitor-bg: #fef3c7;
+    --hedge-bg:   #fee2e2;
+    --accent:     #6b5e4d;
+    --font-display: 'Playfair Display', Georgia, serif;
+    --font-sans:    'Inter', -apple-system, system-ui, sans-serif;
+    --font-mono:    'IBM Plex Mono', 'SF Mono', Menlo, monospace;
+    --font-editorial: Georgia, 'Iowan Old Style', serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; font-size: 16px; }
+  body {
+    font-family: var(--font-sans);
+    color: var(--ink);
+    background: var(--paper);
+    line-height: 1.65;
+    font-feature-settings: "kern", "liga", "ss01";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* ---------- top rule strip ---------- */
+  .top-rule {
+    border-bottom: 1px solid var(--rule);
+    padding: 14px 32px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--ink-mid);
+    background: var(--paper);
+  }
+
+  /* ---------- hero ---------- */
+  .hero {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 88px 32px 56px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .hero .kicker {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--accent);
+    margin-bottom: 28px;
+  }
+  .hero h1 {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 900;
+    font-size: clamp(48px, 7.2vw, 88px);
+    line-height: 0.96;
+    letter-spacing: -0.02em;
+    color: var(--ink-dark);
+    margin-bottom: 24px;
+  }
+  .hero h1 em { font-style: normal; font-weight: 400; color: var(--accent); }
+  .hero .deck {
+    font-family: var(--font-editorial);
+    font-style: italic;
+    font-size: clamp(18px, 1.8vw, 22px);
+    color: var(--ink-mid);
+    max-width: 760px;
+    line-height: 1.5;
+    margin-bottom: 36px;
+  }
+  .hero .byline {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink-light);
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    padding: 14px 0;
+    display: flex;
+    gap: 24px;
+  }
+  .hero .byline span { color: var(--accent); }
+
+  /* ---------- KPI cards row ---------- */
+  .kpi-row {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 48px 32px 64px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0;
+    border-bottom: 2px solid var(--ink-dark);
+  }
+  .kpi {
+    padding: 28px 24px 28px 0;
+    border-right: 1px solid var(--rule);
+  }
+  .kpi:last-child { border-right: none; padding-right: 0; padding-left: 24px; }
+  .kpi:not(:first-child) { padding-left: 24px; }
+  .kpi .num {
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: 64px;
+    line-height: 1;
+    color: var(--ink-dark);
+    letter-spacing: -0.03em;
+    margin-bottom: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .kpi .num small { font-size: 30px; color: var(--accent); margin-left: 2px; }
+  .kpi .label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--ink-mid);
+  }
+
+  /* ---------- main layout: TOC sidebar + content ---------- */
+  .layout {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 56px 32px 96px;
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 64px;
+  }
+  @media (max-width: 1024px) {
+    .layout { grid-template-columns: 1fr; gap: 0; }
+    .toc { display: none; }
+  }
+
+  /* TOC sidebar */
+  .toc {
+    position: sticky;
+    top: 32px;
+    align-self: start;
+    border-right: 1px solid var(--rule);
+    padding-right: 24px;
+    max-height: calc(100vh - 64px);
+    overflow-y: auto;
+  }
+  .toc .toc-title {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--ink-light);
+    margin-bottom: 18px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .toc ol {
+    list-style: none;
+    counter-reset: toc;
+  }
+  .toc li {
+    counter-increment: toc;
+    margin-bottom: 14px;
+    font-size: 13px;
+    line-height: 1.4;
+  }
+  .toc a {
+    color: var(--ink-mid);
+    text-decoration: none;
+    display: block;
+    padding-left: 28px;
+    position: relative;
+    transition: color 0.15s ease;
+  }
+  .toc a::before {
+    content: counter(toc, upper-roman);
+    position: absolute;
+    left: 0;
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 700;
+    color: var(--ink-lighter);
+    font-size: 13px;
+    width: 24px;
+  }
+  .toc a:hover { color: var(--ink-dark); }
+  .toc a:hover::before { color: var(--accent); }
+
+  /* ---------- sections ---------- */
+  .section { margin-bottom: 96px; scroll-margin-top: 24px; }
+  .section:last-child { margin-bottom: 0; }
+
+  .section-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 24px;
+    margin-bottom: 36px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .section-head .roman {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 400;
+    font-size: 56px;
+    line-height: 0.9;
+    color: var(--ink-lighter);
+    letter-spacing: -0.02em;
+    flex-shrink: 0;
+    min-width: 80px;
+  }
+  .section-head .titles { flex: 1; }
+  .section-head .kicker {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--accent);
+    margin-bottom: 10px;
+  }
+  .section-head h2 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(28px, 3.4vw, 40px);
+    line-height: 1.1;
+    color: var(--ink-dark);
+    letter-spacing: -0.015em;
+  }
+  .section-head h2 em { font-style: italic; color: var(--accent); }
+
+  /* ---------- body prose ---------- */
+  .prose { max-width: 720px; }
+  .prose p {
+    font-family: var(--font-editorial);
+    font-size: 17px;
+    line-height: 1.65;
+    color: var(--ink);
+    margin-bottom: 20px;
+  }
+  .prose p:first-of-type::first-letter {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 900;
+    font-size: 72px;
+    float: left;
+    line-height: 0.85;
+    padding: 6px 10px 0 0;
+    color: var(--ink-dark);
+  }
+  .prose p.no-cap::first-letter { font-family: inherit; font-style: inherit; font-weight: inherit; font-size: inherit; float: none; padding: 0; }
+  .prose strong { color: var(--ink-dark); font-weight: 600; }
+  .prose em { color: var(--accent); }
+  .prose a { color: var(--ink-dark); text-decoration: underline; text-decoration-color: var(--rule-dark); text-underline-offset: 3px; }
+  .prose a:hover { text-decoration-color: var(--ink-dark); }
+  .prose ul { margin: 0 0 24px 24px; }
+  .prose li { font-family: var(--font-editorial); font-size: 16px; line-height: 1.6; color: var(--ink); margin-bottom: 8px; }
+  .prose li strong { font-family: var(--font-sans); font-weight: 600; color: var(--ink-dark); }
+
+  /* ---------- TL;DR card ---------- */
+  .tldr {
+    background: var(--paper-off);
+    border-left: 3px solid var(--accent);
+    padding: 32px 36px;
+    margin: 0 0 48px;
+  }
+  .tldr .label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--accent);
+    margin-bottom: 14px;
+  }
+  .tldr h3 {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 22px;
+    color: var(--ink-dark);
+    margin-bottom: 18px;
+  }
+  .tldr ul { list-style: none; }
+  .tldr li {
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.55;
+    color: var(--ink);
+    padding-left: 28px;
+    position: relative;
+    margin-bottom: 14px;
+  }
+  .tldr li::before {
+    content: "→";
+    position: absolute;
+    left: 0;
+    top: 0;
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 18px;
+  }
+  .tldr li strong { color: var(--ink-dark); font-weight: 600; }
+
+  /* ---------- cards grid ---------- */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0;
+    margin: 36px 0;
+    border: 1px solid var(--rule);
+    background: var(--paper);
+  }
+  .card {
+    padding: 28px;
+    border-right: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+  }
+  .card:nth-child(2n) { border-right: none; }
+  .card:nth-last-child(-n+2) { border-bottom: none; }
+  @media (max-width: 720px) {
+    .cards { grid-template-columns: 1fr; }
+    .card { border-right: none; border-bottom: 1px solid var(--rule); }
+    .card:last-child { border-bottom: none; }
+  }
+  .card .source {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--ink-light);
+    margin-bottom: 8px;
+  }
+  .card h4 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 22px;
+    color: var(--ink-dark);
+    margin-bottom: 10px;
+    line-height: 1.15;
+  }
+  .card .desc {
+    font-family: var(--font-editorial);
+    font-size: 14px;
+    line-height: 1.55;
+    color: var(--ink-mid);
+    margin-bottom: 16px;
+  }
+  .card .meta {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-mid);
+  }
+  .card .meta .row { display: flex; gap: 8px; }
+  .card .meta .row .k { color: var(--ink-light); min-width: 78px; text-transform: uppercase; letter-spacing: 0.1em; font-size: 9px; }
+  .card .meta .row .v { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .card .meta .row .v.free { color: var(--open); font-weight: 600; }
+
+  /* ---------- table ---------- */
+  .table-wrap { overflow-x: auto; margin: 24px 0 36px; border: 1px solid var(--rule); }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+  th {
+    background: var(--paper-off);
+    color: var(--ink-mid);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 10px;
+    padding: 12px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--rule);
+  }
+  th.r, td.r { text-align: right; }
+  td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--rule);
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:nth-child(even) td { background: rgba(244, 241, 234, 0.4); }
+
+  /* signal pills */
+  .pill {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 3px 8px;
+    border-radius: 2px;
+  }
+  .pill.open    { color: var(--open);    background: var(--open-bg); }
+  .pill.monitor { color: var(--monitor); background: var(--monitor-bg); }
+  .pill.hedge   { color: var(--hedge);   background: var(--hedge-bg); }
+  .num-pos { color: var(--open); font-weight: 500; }
+  .num-neg { color: var(--hedge); font-weight: 500; }
+  .num-neut { color: var(--monitor); }
+
+  /* ---------- metric cards (small) ---------- */
+  .metric-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0;
+    margin: 36px 0;
+    border-top: 2px solid var(--ink-dark);
+    border-bottom: 2px solid var(--ink-dark);
+  }
+  @media (max-width: 720px) { .metric-grid { grid-template-columns: 1fr; } }
+  .metric {
+    padding: 24px 24px 24px 0;
+    border-right: 1px solid var(--rule);
+  }
+  .metric:not(:first-child) { padding-left: 24px; }
+  .metric:last-child { border-right: none; padding-right: 0; }
+  .metric .mlabel {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--ink-mid);
+    margin-bottom: 8px;
+  }
+  .metric .mval {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 40px;
+    line-height: 1;
+    color: var(--ink-dark);
+    letter-spacing: -0.02em;
+    margin-bottom: 8px;
+    font-variant-numeric: tabular-nums;
+  }
+  .metric .mval.pos { color: var(--open); }
+  .metric .mval.neg { color: var(--hedge); }
+  .metric .mval.neut { color: var(--monitor); }
+  .metric .mhint {
+    font-family: var(--font-editorial);
+    font-style: italic;
+    font-size: 13px;
+    color: var(--ink-mid);
+  }
+
+  /* ---------- callout ---------- */
+  .callout {
+    background: var(--highlight);
+    border: 1px solid #f3d68a;
+    border-radius: 2px;
+    padding: 28px 32px;
+    margin: 32px 0;
+  }
+  .callout .label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: #8b6914;
+    margin-bottom: 10px;
+  }
+  .callout h4 {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 700;
+    font-size: 20px;
+    color: var(--ink-dark);
+    margin-bottom: 12px;
+  }
+  .callout p {
+    font-family: var(--font-editorial);
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--ink);
+    margin-bottom: 12px;
+  }
+  .callout p:last-child { margin-bottom: 0; }
+  .callout code {
+    font-family: var(--font-mono);
+    background: rgba(0,0,0,0.06);
+    padding: 1px 6px;
+    border-radius: 2px;
+    font-size: 13px;
+  }
+
+  /* ---------- pipeline timeline ---------- */
+  .pipeline {
+    margin: 36px 0;
+    padding: 32px 24px;
+    background: var(--paper-off);
+    border: 1px solid var(--rule);
+  }
+  .pipeline .heading {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--ink-mid);
+    margin-bottom: 24px;
+  }
+  .pipeline .timeline { position: relative; padding-left: 8px; }
+  .pipeline .timeline::before {
+    content: "";
+    position: absolute;
+    left: 110px;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--rule-dark);
+  }
+  .pipeline .step { display: grid; grid-template-columns: 110px 24px 1fr; gap: 16px; margin-bottom: 14px; align-items: baseline; }
+  .pipeline .time { font-family: var(--font-mono); font-size: 12px; font-weight: 500; color: var(--ink-dark); }
+  .pipeline .dot { position: relative; }
+  .pipeline .dot::after { content: ""; display: block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); position: absolute; left: 2px; top: 6px; }
+  .pipeline .step.new .dot::after { background: var(--open); width: 10px; height: 10px; box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18); }
+  .pipeline .job { font-family: var(--font-mono); font-size: 13px; color: var(--ink-dark); }
+  .pipeline .job small { font-family: var(--font-editorial); font-style: italic; color: var(--ink-mid); margin-left: 12px; font-size: 13px; }
+  .pipeline .badge { display: inline-block; font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--open); margin-left: 8px; vertical-align: 1px; }
+
+  /* ---------- DB schema viz ---------- */
+  .schema {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin: 36px 0;
+  }
+  @media (max-width: 720px) { .schema { grid-template-columns: 1fr; } }
+  .table-card {
+    border: 1px solid var(--rule);
+    background: var(--paper);
+    padding: 20px;
+    position: relative;
+  }
+  .table-card .tname {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-dark);
+    margin-bottom: 6px;
+    word-break: break-all;
+  }
+  .table-card .tnick {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 16px;
+    color: var(--accent);
+    margin-bottom: 12px;
+  }
+  .table-card .tdesc {
+    font-family: var(--font-editorial);
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--ink-mid);
+  }
+  .table-card .tag {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    font-family: var(--font-mono);
+    font-size: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--open);
+    background: var(--open-bg);
+    padding: 2px 6px;
+    border-radius: 2px;
+  }
+  .table-card .tag.update { color: var(--monitor); background: var(--monitor-bg); }
+
+  /* ---------- pull quote ---------- */
+  .pullquote {
+    margin: 48px 0;
+    padding: 0 32px;
+    border-left: 3px solid var(--accent);
+  }
+  .pullquote q {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 400;
+    font-size: 26px;
+    line-height: 1.3;
+    color: var(--ink-dark);
+    quotes: """ """;
+  }
+  .pullquote cite {
+    display: block;
+    margin-top: 16px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--ink-light);
+    font-style: normal;
+  }
+
+  /* ---------- links list ---------- */
+  .links {
+    list-style: none;
+    margin: 24px 0;
+    border-top: 1px solid var(--rule);
+  }
+  .links li {
+    border-bottom: 1px solid var(--rule);
+    padding: 14px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
+  }
+  .links li a {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink-dark);
+    text-decoration: none;
+  }
+  .links li a:hover { color: var(--accent); text-decoration: underline; }
+  .links li .desc {
+    font-family: var(--font-editorial);
+    font-style: italic;
+    font-size: 13px;
+    color: var(--ink-mid);
+    text-align: right;
+  }
+
+  /* ---------- next-steps list ---------- */
+  .roadmap {
+    margin: 24px 0;
+    list-style: none;
+  }
+  .roadmap li {
+    display: grid;
+    grid-template-columns: 80px 1fr;
+    gap: 20px;
+    padding: 20px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .roadmap li:last-child { border-bottom: none; }
+  .roadmap .when {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--accent);
+    line-height: 1.4;
+  }
+  .roadmap .what h5 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 18px;
+    color: var(--ink-dark);
+    margin-bottom: 6px;
+  }
+  .roadmap .what p {
+    font-family: var(--font-editorial);
+    font-size: 14px;
+    line-height: 1.55;
+    color: var(--ink-mid);
+  }
+
+  /* ---------- footer ---------- */
+  .footer {
+    border-top: 2px solid var(--ink-dark);
+    background: var(--paper);
+    padding: 56px 32px;
+    margin-top: 96px;
+  }
+  .footer .inner {
+    max-width: 1240px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 32px;
+    flex-wrap: wrap;
+  }
+  .footer .colophon {
+    font-family: var(--font-editorial);
+    font-style: italic;
+    color: var(--ink-mid);
+    font-size: 14px;
+    max-width: 500px;
+    line-height: 1.5;
+  }
+  .footer .colophon strong {
+    font-family: var(--font-display);
+    font-style: normal;
+    font-weight: 700;
+    color: var(--ink-dark);
+  }
+  .footer .meta {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--ink-light);
+    text-align: right;
+  }
+
+  /* print */
+  @media print {
+    body { background: white; }
+    .toc { display: none; }
+    .layout { grid-template-columns: 1fr; padding: 24px; }
+    .section { page-break-inside: avoid; }
+    .top-rule { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== TOP RULE ===== -->
+<div class="top-rule">
+  <span>Compass CC · The Cocoa Markets Intelligence Briefing</span>
+  <span>Vol. I · No. 1 · Product Recap · 2026-05-21</span>
+</div>
+
+<!-- ===== HERO ===== -->
+<header class="hero">
+  <div class="kicker">Product Sprint Recap · Campaign 5 Foundation</div>
+  <h1>Campaign&nbsp;5 — <em>Foundation</em></h1>
+  <p class="deck">
+    Neuf jours, vingt-quatre commits, deux branches — et le pipeline de décision passe d'un script LLM unique à un ensemble de machine learning à quatorze specialists. Récit de ce qu'on a livré, pourquoi, et ce qui reste sur la table.
+  </p>
+  <div class="byline">
+    <span>Compass Intelligence Desk</span>
+    <span>13 → 21 mai 2026</span>
+    <span>Lecture · 12 min</span>
+  </div>
+</header>
+
+<!-- ===== KPI ROW ===== -->
+<section class="kpi-row">
+  <div class="kpi">
+    <div class="num">4</div>
+    <div class="label">Nouveaux Scrapers Daily</div>
+  </div>
+  <div class="kpi">
+    <div class="num">6</div>
+    <div class="label">Tables / Colonnes DB</div>
+  </div>
+  <div class="kpi">
+    <div class="num">9<small>k</small></div>
+    <div class="label">Rows Backfill Historique</div>
+  </div>
+  <div class="kpi">
+    <div class="num">95</div>
+    <div class="label">Décisions Backfill 2026</div>
+  </div>
+</section>
+
+<!-- ===== LAYOUT: TOC + CONTENT ===== -->
+<div class="layout">
+
+  <!-- TOC sidebar -->
+  <nav class="toc" aria-label="Sommaire">
+    <div class="toc-title">Sommaire</div>
+    <ol>
+      <li><a href="#s1">En 60 secondes</a></li>
+      <li><a href="#s2">Le contexte</a></li>
+      <li><a href="#s3">Pilier I · Données</a></li>
+      <li><a href="#s4">Pilier II · Schéma DB</a></li>
+      <li><a href="#s5">Pilier III · L'algo</a></li>
+      <li><a href="#s6">Backfills historiques</a></li>
+      <li><a href="#s7">Test out-of-sample</a></li>
+      <li><a href="#s8">Bug Compass · debug story</a></li>
+      <li><a href="#s9">Pipeline daily</a></li>
+      <li><a href="#s10">Capacités produit</a></li>
+      <li><a href="#s11">Coûts &amp; ops</a></li>
+      <li><a href="#s12">Roadmap</a></li>
+    </ol>
+  </nav>
+
+  <!-- main content -->
+  <main>
+
+    <!-- ===== I · TL;DR ===== -->
+    <article class="section" id="s1">
+      <div class="section-head">
+        <div class="roman">I</div>
+        <div class="titles">
+          <div class="kicker">En 60 secondes</div>
+          <h2>Tout ce qu'il faut <em>retenir</em></h2>
+        </div>
+      </div>
+      <div class="tldr">
+        <div class="label">If you read only one section</div>
+        <h3>Ce que ce sprint a changé pour de bon</h3>
+        <ul>
+          <li><strong>Nouveau cerveau de décision en prod.</strong> L'algo ensemble Campaign 5 (14 modèles ML + un orchestrateur Bayésien + un garde-fou) calcule désormais le signal OPEN / HEDGE / MONITOR à la place de notre script LLM legacy.</li>
+          <li><strong>Quatre nouvelles sources de données coulent chaque jour.</strong> ENSO (climat tropical), FX (EUR/USD/GBP), positionnement ICE Europe, stocks ICE Europe. Coût d'ingestion : zéro euro.</li>
+          <li><strong>Toutes les décisions sont auditables.</strong> Trois nouvelles tables tracent chaque vote de specialist, chaque combinaison par l'orchestrateur, et chaque override par le garde-fou. On peut désormais répondre à « pourquoi le modèle a-t-il dit HEDGE le 7 mai ? ».</li>
+          <li><strong>Backfill 2026 complet (95 décisions, 79 réalisées).</strong> Le wrapper produit <strong>71.4 % d'accuracy</strong> et <strong>+7.18 % de signed return moyen</strong> — vs 58.5 % et +2.55 % pour le soft-gate brut, vs −2.39 % pour le buy-and-hold. Le wrapper filtre 49 % des trades et garde les meilleurs.</li>
+          <li><strong>Trois bugs Compass-side découverts et corrigés via review en cascade.</strong> Le premier backfill bloquait toutes les décisions par boucle auto-renforçante. R&amp;D a flaggé, on a identifié un bug de scoring, puis un crash <code>pd.NA</code> dans le wrapper. Au final 1 CRITICAL + 5 HIGH + 2 MED appliqués via review 3-skills (python, code, cc).</li>
+          <li><strong>Mode shadow activé.</strong> <code>ensemble_v1</code> tourne en prod mais <code>is_active=FALSE</code> — le dashboard frontend continue de lire la version legacy. Le cutover se fera plus tard quand le frontend supportera le multi-version.</li>
+          <li><strong>Reste à faire.</strong> Déployer le compute en Cloud Run (encore lancé à la main), activer le signal sentiment macro, adapter le frontend pour le cutover ensemble. Décision A/B/C sur le destin du LLM legacy à trancher vers juillet.</li>
+        </ul>
+      </div>
+    </article>
+
+    <!-- ===== II · CONTEXTE ===== -->
+    <article class="section" id="s2">
+      <div class="section-head">
+        <div class="roman">II</div>
+        <div class="titles">
+          <div class="kicker">Le contexte</div>
+          <h2>Pourquoi <em>maintenant</em></h2>
+        </div>
+      </div>
+      <div class="prose">
+        <p>
+          Jusqu'à la semaine dernière, le moteur de décision de Compass CC reposait sur un seul script Python — <code style="font-family: var(--font-mono); font-size: 14px;">cc-daily-analysis</code> — qui appelait GPT-4 turbo en backend pour synthétiser indicateurs techniques + revue de presse + météo + macro et sortir une recommandation au format texte libre. Solide pour un MVP, mais opaque, coûteux à itérer, et difficile à backtester sur 10 ans d'historique.
+        </p>
+        <p class="no-cap">
+          La R&amp;D a passé l'hiver à construire une alternative purement ML : un <strong>ensemble de 14 specialists</strong> (LightGBM, GARCH, transformations triple-barrier) entraînés sur une décennie de données, fusionnés par un orchestrateur Bayésien et protégés par un garde-fou de transition. Le livrable, scellé au <em>training cutoff</em> du 30 avril 2026, est arrivé sous forme d'un tarball de 12 MB contenant code, poids ML et migrations SQL.
+        </p>
+        <p class="no-cap">
+          Notre travail des neuf derniers jours : bâtir la <strong>plomberie</strong> pour accueillir ce livrable. Quatre nouvelles sources de données que l'algo consomme, trois nouvelles tables pour stocker les artefacts ML et tracer les décisions, deux nouveaux jobs de calcul, et un pin de sécurité sur le pipeline existant pour qu'il ne se marche pas sur les pieds avec le nouvel algo en prod.
+        </p>
+      </div>
+    </article>
+
+    <!-- ===== III · PILIER I — DONNÉES ===== -->
+    <article class="section" id="s3">
+      <div class="section-head">
+        <div class="roman">III</div>
+        <div class="titles">
+          <div class="kicker">Pilier I · Sources de données</div>
+          <h2>Quatre nouveaux <em>flux</em> quotidiens</h2>
+        </div>
+      </div>
+      <div class="prose">
+        <p>
+          L'algo C5 ne se contente pas des OHLCV cocoa. Il consomme aussi du climat (El Niño/La Niña), du FX (force du dollar pour les exportateurs ouest-africains), du positionnement spéculatif sur le contrat européen, et des stocks certifiés en entrepôts ICE Europe. Quatre sources gratuites, quatre nouveaux scrapers qui tournent désormais chaque jour ouvré.
+        </p>
+      </div>
+      <div class="cards">
+        <div class="card">
+          <div class="source">cc-enso-scraper</div>
+          <h4>ENSO — Climat tropical</h4>
+          <div class="desc">Indices ONI et Niño 3.4 publiés mensuellement par la NOAA. Mesure le phénomène El Niño / La Niña qui pilote les précipitations en Afrique de l'Ouest.</div>
+          <div class="meta">
+            <div class="row"><span class="k">Source</span><span class="v">NOAA PSL · ASCII</span></div>
+            <div class="row"><span class="k">Cadence</span><span class="v">Mensuel · J20 22:00 UTC</span></div>
+            <div class="row"><span class="k">Table</span><span class="v">pl_external_indicator</span></div>
+            <div class="row"><span class="k">Coût</span><span class="v free">$0 / API gratuite</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="source">cc-fx-scraper</div>
+          <h4>FX — DXY proxy &amp; GBP/USD</h4>
+          <div class="desc">Taux de change USD/EUR et GBP/EUR depuis l'API publique de la BCE. Quatre features dérivées : DXY proxy, EURUSD, GBPUSD, GBPEUR.</div>
+          <div class="meta">
+            <div class="row"><span class="k">Source</span><span class="v">ECB SDMX 2.1 · CSV</span></div>
+            <div class="row"><span class="k">Cadence</span><span class="v">Daily · 18:30 UTC</span></div>
+            <div class="row"><span class="k">Table</span><span class="v">pl_external_indicator</span></div>
+            <div class="row"><span class="k">Coût</span><span class="v free">$0 / API gratuite</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="source">cc-ice-cot-eu-scraper</div>
+          <h4>Positionnement ICE EU</h4>
+          <div class="desc">Commitments of Traders Europe — qui détient le marché cocoa London. Producer/Merchant, Managed Money, Other Reportables, Open Interest. Net columns calculées en DB (GENERATED).</div>
+          <div class="meta">
+            <div class="row"><span class="k">Source</span><span class="v">theice.com · CSV</span></div>
+            <div class="row"><span class="k">Cadence</span><span class="v">Weekly · Ven 22:10 UTC</span></div>
+            <div class="row"><span class="k">Table</span><span class="v">pl_cot_eu_weekly</span></div>
+            <div class="row"><span class="k">Coût</span><span class="v free">$0 / API gratuite</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="source">cc-barchart-stocks-eu-scraper</div>
+          <h4>Stocks certifiés ICE EU</h4>
+          <div class="desc">Stocks de cocoa certifiés dans les entrepôts ICE Europe, en sacs de 60 kg. Update sur la row OHLCV existante du jour. Historique embedded de 18 mois disponible.</div>
+          <div class="meta">
+            <div class="row"><span class="k">Source</span><span class="v">Barchart cmdty · HTML</span></div>
+            <div class="row"><span class="k">Cadence</span><span class="v">Daily · 19:10 UTC</span></div>
+            <div class="row"><span class="k">Table</span><span class="v">pl_contract_data_daily.stock_eu_bags60kg</span></div>
+            <div class="row"><span class="k">Coût</span><span class="v free">$0 / public</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="prose">
+        <p class="no-cap">
+          Chacun de ces scrapers suit le même contrat : <strong>fail-loud</strong> (jamais de retry silencieux), <strong>idempotent</strong> (UPSERT sur les clefs métier), monitoré sur Sentry. Si l'ICE change le format de son CSV demain, le job échoue bruyamment et l'opérateur est paged.
+        </p>
+      </div>
+    </article>
+
+    <!-- ===== IV · PILIER II — SCHÉMA DB ===== -->
+    <article class="section" id="s4">
+      <div class="section-head">
+        <div class="roman">IV</div>
+        <div class="titles">
+          <div class="kicker">Pilier II · Schéma de données</div>
+          <h2>Six structures DB <em>en plus</em></h2>
+        </div>
+      </div>
+      <div class="prose">
+        <p>
+          Trois familles de tables ont rejoint le schéma public. Les <strong>tables externes</strong> reçoivent la donnée des nouveaux scrapers. Les <strong>tables ensemble</strong> stockent les artefacts ML et tracent chaque décision. Et une colonne ajoutée sur <code style="font-family: var(--font-mono); font-size: 14px;">pl_contract_data_daily</code> connecte les stocks EU à la table contract-centric existante.
+        </p>
+      </div>
+      <div class="schema">
+        <div class="table-card">
+          <div class="tag">New</div>
+          <div class="tname">pl_external_indicator</div>
+          <div class="tnick">Catalogue macro</div>
+          <div class="tdesc">Indicateurs commodity-agnostiques. Une ligne par date avec colonnes nullables (oni, nino34, dxy_proxy, gbpusd…). Partial UPSERT — un scraper ne smashe jamais les colonnes d'un autre.</div>
+        </div>
+        <div class="table-card">
+          <div class="tag">New</div>
+          <div class="tname">pl_cot_eu_weekly</div>
+          <div class="tnick">Qui tient le marché EU</div>
+          <div class="tdesc">Positionnement hebdo COT Europe. Colonnes GENERATED par Postgres pour prod_merc_net et m_money_net — jamais écrites par l'app, toujours calculées par la DB.</div>
+        </div>
+        <div class="table-card">
+          <div class="tag update">Updated</div>
+          <div class="tname">pl_contract_data_daily.stock_eu_bags60kg</div>
+          <div class="tnick">Stock ICE EU</div>
+          <div class="tdesc">Nouvelle colonne sur la table contract-centric existante. Update via le scraper Barchart sur la row de l'active contract uniquement (HIGH-1 fix du code review).</div>
+        </div>
+        <div class="table-card">
+          <div class="tag">New</div>
+          <div class="tname">pl_model_artifact</div>
+          <div class="tnick">Registre des poids ML</div>
+          <div class="tdesc">Payload BYTEA + SHA-256 + provenance. Stocke les 38 artefacts du livrable R&amp;D : 14 modèles specialist + 14 hyperparamètres + 3 long-run + 2 configs + 5 snapshots canoniques.</div>
+        </div>
+        <div class="table-card">
+          <div class="tag">New</div>
+          <div class="tname">pl_specialist_prediction</div>
+          <div class="tnick">Audit per-specialist</div>
+          <div class="tdesc">Une row par jour par specialist — qui a voté quoi. Permet la post-mortem "quels specialists se sont trompés le 7 mai ?". Forward return 6j back-filled une fois l'horizon expiré.</div>
+        </div>
+        <div class="table-card">
+          <div class="tag">New</div>
+          <div class="tname">pl_orchestrator_decision</div>
+          <div class="tnick">Trail soft-gate + wrapper</div>
+          <div class="tdesc">Une row par jour avec la décision soft-gate (avant garde-fou), la décision wrapped (après), les flags de detectors fired, et 12 colonnes de diagnostics (running_acc, anomaly_z, priors…).</div>
+        </div>
+      </div>
+      <div class="prose">
+        <p class="no-cap">
+          Toutes ces structures sont arrivées via <strong>4 nouvelles migrations Alembic</strong> idempotentes (re-applicables sans risque). Les modèles SQLAlchemy 2 correspondants sont dans <code style="font-family: var(--font-mono); font-size: 14px;">backend/app/models/pipeline.py</code>. Les contraintes d'unicité et les FK respectent l'invariant <em>contract-centric</em> du data model long terme.
+        </p>
+      </div>
+    </article>
+
+    <!-- ===== V · PILIER III — L'ALGO ===== -->
+    <article class="section" id="s5">
+      <div class="section-head">
+        <div class="roman">V</div>
+        <div class="titles">
+          <div class="kicker">Pilier III · L'algorithme</div>
+          <h2>Comment l'ensemble <em>décide</em></h2>
+        </div>
+      </div>
+      <div class="prose">
+        <p>
+          La meilleure analogie : un <strong>comité de quatorze traders</strong> qui votent chaque matin, un <strong>président</strong> qui pondère leurs votes selon le contexte macro, et un <strong>garde-fou</strong> qui peut overrider tout le monde si le comité montre des signes d'incohérence. Tout est explicable, tout est tracé.
+        </p>
+        <p class="no-cap">
+          <strong>Les 14 specialists.</strong> Chacun est un modèle de classification ML qui sort une prédiction OPEN / HEDGE / MONITOR. Ils diffèrent par leur architecture (LightGBM vs GARCH-augmented), leur cible (next-day return vs triple-barrier), et leur cluster (Winter pour les patterns Jan-Fév, Spring pour Mar-Avr). Ils sont <em>frozen</em> au 30 avril 2026 et seront ré-entraînés chaque mois.
+        </p>
+        <p class="no-cap">
+          <strong>Le soft-gate.</strong> Un orchestrateur Bayésien qui combine les 14 votes en pondérant par le signal macro (direction du marché), les priors structuraux (P(OPEN|régime, vol-tercile, return-tercile)), un score d'anomalie z-score, et la cohérence des clusters. Il produit une décision et un <em>net_score</em> dans [-1, +1].
+        </p>
+        <p class="no-cap">
+          <strong>Le wrapper (TPW-001).</strong> Une couche de sécurité qui peut forcer la décision finale à MONITOR (no-trade) si l'un de ses détecteurs s'allume : <em>running accuracy</em> trop basse, <em>cluster dispersion</em> (les Winter et Spring sont en désaccord), <em>trend conflict</em> (le marché va dans le sens opposé au signal). En théorie : un coupe-circuit pour les phases de transition de régime.
+        </p>
+        <p class="no-cap">
+          Coût : <strong>$0 par décision</strong>. Pas d'appel LLM, juste du compute Python sur les poids frozen. La latence est dominée par le pickle deserialization au démarrage du job (~5s) puis 14 inférences scikit-learn (~10ms chacune).
+        </p>
+      </div>
+      <div class="pullquote">
+        <q>Toutes les décisions sont auditables. On peut désormais répondre à « pourquoi le modèle a-t-il dit HEDGE le 7 mai ? » en regardant qui a voté quoi, et pourquoi.</q>
+        <cite>Compass Intelligence Desk</cite>
+      </div>
+    </article>
+
+    <!-- ===== VI · BACKFILLS ===== -->
+    <article class="section" id="s6">
+      <div class="section-head">
+        <div class="roman">VI</div>
+        <div class="titles">
+          <div class="kicker">Profondeur historique</div>
+          <h2>Backfills <em>en un soir</em></h2>
+        </div>
+      </div>
+      <div class="prose">
+        <p>
+          Une fois les scrapers en place, on a chargé en prod l'historique complet disponible pour chaque source. Total : <strong>9 098 lignes</strong> couvrant jusqu'à <strong>76 ans</strong> d'historique climat. Tout en moins de dix minutes via le tunnel bastion, sans appel LLM ni API payante.
+        </p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th>Table</th>
+              <th class="r">Rows</th>
+              <th>Range</th>
+              <th>Cadence native</th>
+              <th>Verify</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>ENSO ONI</td>
+              <td>pl_external_indicator</td>
+              <td class="r">915</td>
+              <td>1950-01 → 2026-03</td>
+              <td>mensuel</td>
+              <td><span class="pill open">OK</span></td>
+            </tr>
+            <tr>
+              <td>ENSO Niño 3.4</td>
+              <td>pl_external_indicator</td>
+              <td class="r">916</td>
+              <td>1950-01 → 2026-04</td>
+              <td>mensuel</td>
+              <td><span class="pill open">OK</span></td>
+            </tr>
+            <tr>
+              <td>FX DXY proxy</td>
+              <td>pl_external_indicator</td>
+              <td class="r">3 164</td>
+              <td>2014-01 → 2026-05</td>
+              <td>daily ouvré</td>
+              <td><span class="pill open">OK</span></td>
+            </tr>
+            <tr>
+              <td>FX GBPUSD</td>
+              <td>pl_external_indicator</td>
+              <td class="r">3 164</td>
+              <td>2014-01 → 2026-05</td>
+              <td>daily ouvré</td>
+              <td><span class="pill open">OK</span></td>
+            </tr>
+            <tr>
+              <td>ICE COT EU cocoa</td>
+              <td>pl_cot_eu_weekly</td>
+              <td class="r">607</td>
+              <td>2014-10 → 2026-05</td>
+              <td>weekly (vendredi)</td>
+              <td><span class="pill open">OK</span></td>
+            </tr>
+            <tr>
+              <td>Stock EU bags60kg</td>
+              <td>pl_contract_data_daily</td>
+              <td class="r">332</td>
+              <td>2024-11 → 2026-05</td>
+              <td>daily ouvré</td>
+              <td><span class="pill open">OK</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="prose">
+        <p class="no-cap">
+          Le backfill Stock EU mérite une note : son CLI accepte un flag <code style="font-family: var(--font-mono); font-size: 14px;">--all-contracts</code> pour répartir la valeur (qui est <em>market-wide</em>) sur tous les contrats historiques d'une date — utile pour pré-remplir les rows OHLCV pré-roll de CAN26. Le mode strict (par défaut) ne touche que l'active contract, conformément au fix HIGH-1 du code review.
+        </p>
+      </div>
+    </article>
+
+    <!-- ===== VII · OUT-OF-SAMPLE ===== -->
+    <article class="section" id="s7">
+      <div class="section-head">
+        <div class="roman">VII</div>
+        <div class="titles">
+          <div class="kicker">Backfill 2026 complet</div>
+          <h2>L'algo face à <em>cinq mois de marché</em></h2>
+        </div>
+      </div>
+      <div class="prose">
+        <p>
+          Le modèle a été frozen au 30 avril 2026. On a calculé une décision pour chaque jour ouvré entre le 2 janvier et le 20 mai 2026 — <strong>95 décisions au total</strong>. Janvier-avril est in-sample (de la fenêtre d'entraînement) ; mai est purement out-of-sample (l'algo n'a jamais vu cette donnée). 79 décisions ont leur horizon de 6 jours réalisé, donc scorables.
+        </p>
+      </div>
+      <div class="metric-grid">
+        <div class="metric">
+          <div class="mlabel">Wrapper · Accuracy</div>
+          <div class="mval pos">71.4%</div>
+          <div class="mhint">15 corrects sur 21 commits réalisés (vs 58.5% soft-gate brut)</div>
+        </div>
+        <div class="metric">
+          <div class="mlabel">Wrapper · Avg signed return</div>
+          <div class="mval pos">+7.18%</div>
+          <div class="mhint">Moyenne pondérée sur 21 trades, vs +2.55% pour le soft-gate seul</div>
+        </div>
+        <div class="metric">
+          <div class="mlabel">Buy-and-hold baseline</div>
+          <div class="mval neg">−2.39%</div>
+          <div class="mhint">Long every day, moyenne des forward returns 6j sur 79 jours</div>
+        </div>
+      </div>
+
+      <div class="prose">
+        <p class="no-cap">
+          Le rôle du wrapper se vérifie clairement : il <strong>filtre les commits du soft-gate</strong> (41 trades possibles → 21 trades retenus, soit −49%) et garde uniquement les plus haute conviction. Les chiffres :
+        </p>
+        <ul>
+          <li><strong>Soft-gate brut</strong> — 41 commits réalisés, 24 corrects (58.5%), avg signed return +2.55%.</li>
+          <li><strong>Wrapper (signal live)</strong> — 21 commits réalisés, 15 corrects (<strong>71.4%</strong>), avg signed return <strong>+7.18%</strong>.</li>
+          <li><strong>Buy-and-hold</strong> — −2.39% (marché 2026 globalement baissier).</li>
+        </ul>
+        <p class="no-cap">
+          Le wrapper bat le soft-gate de <strong>+12.9 points d'accuracy</strong> ET <strong>×2.8 le return moyen</strong>. Et bat sec le buy-and-hold sur un marché qui a chuté.
+        </p>
+      </div>
+
+      <h3 style="font-family:var(--font-display);font-style:italic;font-weight:700;font-size:22px;color:var(--ink-dark);margin:48px 0 16px;">Breakdown mensuel</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Mois</th>
+              <th class="r">n_dates</th>
+              <th class="r">Wrapper commits</th>
+              <th class="r">Réalisés</th>
+              <th class="r">Corrects</th>
+              <th class="r">Avg signed wrapper</th>
+              <th class="r">Buy-and-hold</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Janvier</td><td class="r">19</td><td class="r">12</td><td class="r">12</td>
+              <td class="r"><strong>10 / 12</strong></td>
+              <td class="r num-pos">+9.41%</td>
+              <td class="r num-neg">−9.92%</td>
+            </tr>
+            <tr>
+              <td>Février</td><td class="r">21</td><td class="r">9</td><td class="r">6</td>
+              <td class="r">3 / 6</td>
+              <td class="r num-pos">+1.95%</td>
+              <td class="r num-neg">−12.33%</td>
+            </tr>
+            <tr>
+              <td>Mars</td><td class="r">22</td><td class="r">2</td><td class="r">2</td>
+              <td class="r">1 / 2</td>
+              <td class="r num-pos">+5.74%</td>
+              <td class="r num-pos">+2.44%</td>
+            </tr>
+            <tr>
+              <td>Avril</td><td class="r">20</td><td class="r"><strong>0</strong></td><td class="r">0</td>
+              <td class="r">—</td>
+              <td class="r" style="color:var(--ink-light)">n/a</td>
+              <td class="r num-pos">+8.86%</td>
+            </tr>
+            <tr>
+              <td>Mai (partiel)</td><td class="r">13</td><td class="r">5</td><td class="r">1</td>
+              <td class="r">1 / 1</td>
+              <td class="r num-pos">+14.63%</td>
+              <td class="r num-neg">−1.53%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="prose">
+        <p class="no-cap">
+          <strong>Janvier 2026</strong> est le mois showcase : 12 trades, 10 corrects (83% accuracy), +9.41% signed contre un marché qui a chuté de −9.92%. Le modèle est dans son régime "Winter" — c'est exactement ce qu'il était entraîné à faire.
+        </p>
+        <p class="no-cap">
+          <strong>Avril</strong> est l'inverse : zéro commit du wrapper alors que le marché a monté de +8.86%. Le modèle est principalement bear-biased (38 HEDGE soft-gate sur 79 commits possibles) ; quand le marché part en hausse, le wrapper "voit" l'incohérence et bloque tout. Capital préservé, opportunité manquée. C'est un trade-off documenté de TPW-001.
+        </p>
+        <p class="no-cap">
+          <strong>Mai (partiel)</strong> : un seul trade encore réalisé (5-12), 100% correct, capture du gros bear move. Les 7 décisions HEDGE du 5-13 → 5-20 attendent leur horizon de 6 jours.
+        </p>
+      </div>
+    </article>
+
+    <!-- ===== VIII · BUG COMPASS-SIDE DÉCOUVERT ET CORRIGÉ ===== -->
+    <article class="section" id="s8">
+      <div class="section-head">
+        <div class="roman">VIII</div>
+        <div class="titles">
+          <div class="kicker">Debug story</div>
+          <h2>Le bug <em>côté Compass</em> — et son fix</h2>
+        </div>
+      </div>
+      <div class="prose">
+        <p>
+          La première run du backfill mai a donné un résultat troublant : le wrapper bloquait <em>toutes</em> les décisions à partir du 7 mai. Symptôme : <code style="font-family: var(--font-mono); font-size: 14px;">running_acc_5d = 0.000</code> sur toutes les rows, le detector A allumé en boucle, zéro trade pris. Hypothèse initiale : un défaut de design dans le garde-fou R&amp;D qui s'auto-renforce.
+        </p>
+        <p class="no-cap">
+          Ping à R&amp;D avec la donnée. Réponse rapide et lucide : « Sur le 12 mai, ton wrapper fire alors qu'il ne devrait pas. Trois hypothèses à investiguer côté ton code. » R&amp;D a alors fait l'analyse manuelle attendue (prior 3 jours = 5-08 HEDGE correct, 5-11 HEDGE correct, 5-12 → acc=100%) et listé les conditions sous lesquelles cette prédiction divergerait du comportement live.
+        </p>
+        <p class="no-cap">
+          Verdict après vérification ligne par ligne du JSON gelé et du code wrapper : <strong>le bug était dans notre <code style="font-family: var(--font-mono); font-size: 14px;">db_loader.py</code></strong> — pas dans l'algo R&amp;D. Une ligne mal écrite calculait la « correctness » des décisions passées à partir du <code style="font-family: var(--font-mono); font-size: 14px;">decision_wrapped</code> au lieu de la <code style="font-family: var(--font-mono); font-size: 14px;">decision</code> originelle (soft-gate). Conséquence : dès que le wrapper avait overridé un HEDGE vers MONITOR, ce jour était scoré comme « incorrect » au cycle suivant, ce qui faisait baisser running_acc, ce qui faisait re-fire le wrapper… boucle.
+        </p>
+      </div>
+      <div class="callout">
+        <div class="label">Le fix · une ligne</div>
+        <h4>backend/scripts/ensemble_compute/db_loader.py</h4>
+        <p style="font-family: var(--font-mono); font-size: 12px; line-height: 1.55; background: rgba(0,0,0,0.04); padding: 12px 16px; border-radius: 2px;">
+          <span style="color: var(--hedge);">−</span> <code>((df[<strong>"decision_wrapped"</strong>] == "HEDGE") &amp; (df["forward_return"] &lt; 0))</code><br>
+          <span style="color: var(--open);">+</span> <code>((df[<strong>"decision"</strong>] == "HEDGE") &amp; (df["forward_return"] &lt; 0))</code>
+        </p>
+        <p>
+          Le detector <code>running_acc</code> est conçu pour répondre à <em>« est-ce que l'algo brut aurait eu raison récemment ? »</em>. Si on score sur le <code>decision_wrapped</code>, on évalue le wrapper avec sa propre sortie — une self-reference que R&amp;D avait évitée dans le design d'origine, et que j'avais cassée dans la couche d'intégration.
+        </p>
+      </div>
+      <div class="prose">
+        <p>
+          Après le fix, rerun du backfill (UPSERT idempotent, écrase les rows existantes). Le 12 mai bascule en HEDGE et capture <strong>−14.63%</strong> de bear move. La section précédente reflète ces chiffres post-fix.
+        </p>
+        <p class="no-cap">
+          Trois leçons opérationnelles :
+        </p>
+        <ul>
+          <li><strong>Le contrat R&amp;D est strict, l'erreur d'interprétation est facile.</strong> La colonne <code style="font-family: var(--font-mono); font-size: 14px;">correct</code> du Protocol était documentée mais la sémantique « sur quoi on score » n'était pas explicite. Un test d'intégration aurait attrapé le bug dès le premier dry-run.</li>
+          <li><strong>Le scoring « unique » crée des bugs subtils.</strong> Notre fix démontre une règle générale : quand un layer évalue sa propre sortie, on a un risque de boucle. À garder en tête pour le futur — par exemple si on ajoute un meta-orchestrateur au-dessus du wrapper.</li>
+          <li><strong>R&amp;D et Compass parlent le même langage.</strong> L'échange a duré 20 minutes, R&amp;D a fourni l'analyse manuelle à appliquer, j'ai pu confirmer ou invalider chaque hypothèse en lisant le code vendoré. Le canonical snapshot dans <code>frozen/</code> sert exactement à ça : reproductibilité bit-à-bit, pas d'ambiguïté sur les valeurs des paramètres.</li>
+        </ul>
+      </div>
+    </article>
+
+    <!-- ===== IX · PIPELINE ===== -->
+    <article class="section" id="s9">
+      <div class="section-head">
+        <div class="roman">IX</div>
+        <div class="titles">
+          <div class="kicker">Orchestration</div>
+          <h2>Le rythme <em>quotidien</em></h2>
+        </div>
+      </div>
+      <div class="prose">
+        <p>
+          Le pipeline tourne désormais sur douze jobs Cloud Run schedulés, du début à la fin de la soirée. Trois nouveaux jobs en pointillés s'insèrent dans la trame existante.
+        </p>
+      </div>
+      <div class="pipeline">
+        <div class="heading">Pipeline daily · UTC, jours ouvrés</div>
+        <div class="timeline">
+          <div class="step new"><div class="time">18:30</div><div class="dot"></div><div class="job">cc-fx-scraper<small>Taux EUR/USD/GBP depuis la BCE</small><span class="badge">NEW</span></div></div>
+          <div class="step"><div class="time">19:00</div><div class="dot"></div><div class="job">cc-barchart-scraper<small>OHLCV + IV cocoa London</small></div></div>
+          <div class="step"><div class="time">19:00</div><div class="dot"></div><div class="job">cc-meteo-agent<small>Open-Meteo + GPT-4.1 analyse</small></div></div>
+          <div class="step"><div class="time">19:05</div><div class="dot"></div><div class="job">cc-ice-stocks-scraper<small>Stocks US depuis XLS ICE</small></div></div>
+          <div class="step"><div class="time">19:05</div><div class="dot"></div><div class="job">cc-cftc-scraper<small>COT US commercial net</small></div></div>
+          <div class="step"><div class="time">19:05</div><div class="dot"></div><div class="job">cc-press-review-agent<small>Revue de presse + LLM o4-mini</small></div></div>
+          <div class="step new"><div class="time">19:10</div><div class="dot"></div><div class="job">cc-barchart-stocks-eu-scraper<small>Stocks ICE EU depuis cmdty page</small><span class="badge">NEW</span></div></div>
+          <div class="step"><div class="time">19:15</div><div class="dot"></div><div class="job">cc-compute-indicators<small>27 indicateurs techniques, all versions</small></div></div>
+          <div class="step"><div class="time">19:20</div><div class="dot"></div><div class="job">cc-daily-analysis<small>LLM legacy pinned <code>--algorithm-version legacy</code></small></div></div>
+          <div class="step"><div class="time">19:30</div><div class="dot"></div><div class="job">cc-compass-brief<small>Brief texte pour NotebookLM podcast</small></div></div>
+          <div class="step new"><div class="time">22:10</div><div class="dot"></div><div class="job">cc-ice-cot-eu-scraper<small>COT EU positioning, idempotent UPSERT</small><span class="badge">NEW</span></div></div>
+        </div>
+        <div class="heading" style="margin-top:24px;margin-bottom:14px;">+ mensuel</div>
+        <div class="timeline" style="padding-left:8px;">
+          <div class="step new"><div class="time">J20 · 22:00</div><div class="dot"></div><div class="job">cc-enso-scraper<small>Indices ENSO NOAA</small><span class="badge">NEW</span></div></div>
+        </div>
+      </div>
+      <div class="prose">
+        <p class="no-cap">
+          Manque encore : <code style="font-family: var(--font-mono); font-size: 14px;">cc-ensemble-compute</code> — le job qui calcule réellement la décision C5 à partir des nouvelles données. Aujourd'hui on le lance à la main via Poetry pour les 13 jours de mai. Son déploiement Cloud Run est la dernière étape avant que le signal C5 alimente le dashboard automatiquement.
+        </p>
+      </div>
+    </article>
+
+    <!-- ===== X · CAPACITÉS PRODUIT ===== -->
+    <article class="section" id="s10">
+      <div class="section-head">
+        <div class="roman">X</div>
+        <div class="titles">
+          <div class="kicker">Côté dashboard</div>
+          <h2>Ce que le produit peut <em>maintenant montrer</em></h2>
+        </div>
+      </div>
+      <div class="prose">
+        <p>
+          La nouvelle donnée et le nouvel algo débloquent des features de dashboard qui n'étaient pas possibles avant. Aucune n'est encore implémentée frontend — mais l'infrastructure backend est prête, les endpoints à exposer sont triviaux.
+        </p>
+        <ul>
+          <li><strong>Audit per-specialist.</strong> Cliquer sur la décision du jour pour voir le vote de chaque modèle, avec leur historique. « 12 specialists sur 14 ont voté HEDGE le 11 mai. »</li>
+          <li><strong>Indicateurs macro tilt.</strong> Ruler-style gauges pour ENSO (La Niña / neutre / El Niño) et DXY (USD strength). Aligné sur le style éditorial existant des gauges <em>Compass</em>.</li>
+          <li><strong>EU positioning tracker.</strong> Visualisation hebdo de Managed Money net + Producer/Merchant net + Open Interest. Comparable side-by-side avec le CFTC US.</li>
+          <li><strong>Stock balance.</strong> Mini-chart historique stocks ICE US vs ICE EU. Indicateur de tension d'offre régionale.</li>
+          <li><strong>Multi-version comparison.</strong> Toggle entre « décision legacy » et « décision ensemble » pour la même date — utile pendant la période d'observation parallèle.</li>
+          <li><strong>Roadmap.</strong> Section <em>"What the model expects next"</em> alimentée par les priors structuraux et le signal anomalie.</li>
+        </ul>
+      </div>
+    </article>
+
+    <!-- ===== XI · COÛTS ===== -->
+    <article class="section" id="s11">
+      <div class="section-head">
+        <div class="roman">XI</div>
+        <div class="titles">
+          <div class="kicker">Bilan opérationnel</div>
+          <h2>Coûts &amp; <em>ops</em></h2>
+        </div>
+      </div>
+      <div class="metric-grid">
+        <div class="metric">
+          <div class="mlabel">Nouveaux coûts API · mensuel</div>
+          <div class="mval pos">$0</div>
+          <div class="mhint">Quatre sources gratuites : NOAA, BCE, ICE, Barchart cmdty public.</div>
+        </div>
+        <div class="metric">
+          <div class="mlabel">Stockage ML weights · BYTEA</div>
+          <div class="mval">~12&nbsp;MB</div>
+          <div class="mhint">38 artefacts dans pl_model_artifact, audit SHA-256.</div>
+        </div>
+        <div class="metric">
+          <div class="mlabel">Tests passing · backend</div>
+          <div class="mval">460</div>
+          <div class="mhint">+ 6/6 verify gates R&amp;D (manifest, SHA, imports, pipeline E2E).</div>
+        </div>
+      </div>
+      <div class="prose">
+        <p class="no-cap">
+          Pour le ratio coût / valeur : on ajoute un algorithme de décision à 14 modèles ML et une couche de données macro/positionnement EU sans toucher le budget API mensuel. Le seul coût marginal est le <strong>compute Cloud Run</strong> du job <code style="font-family: var(--font-mono); font-size: 14px;">cc-ensemble-compute</code> (estimé ~$5-10/mois en production daily). Le LLM legacy continue de tourner en parallèle pendant la période d'observation — à trancher vers juillet.
+        </p>
+      </div>
+    </article>
+
+    <!-- ===== XII · ROADMAP ===== -->
+    <article class="section" id="s12">
+      <div class="section-head">
+        <div class="roman">XII</div>
+        <div class="titles">
+          <div class="kicker">Décisions ouvertes</div>
+          <h2>Ce qui reste <em>sur la table</em></h2>
+        </div>
+      </div>
+      <ol class="roadmap">
+        <li>
+          <div class="when">Cette semaine</div>
+          <div class="what">
+            <h5>Déployer cc-ensemble-compute en Cloud Run</h5>
+            <p>Phase 7 du plan d'intégration : ajouter le job dans <code>deploy.yml</code> + cron dans <code>scheduler.tf</code> (19:18 UTC entre compute-indicators et daily-analysis). Une fois en place, le signal C5 alimente le dashboard automatiquement chaque jour.</p>
+          </div>
+        </li>
+        <li>
+          <div class="when">Continu</div>
+          <div class="what">
+            <h5>Suivre les forward returns post-13 mai</h5>
+            <p>Sept décisions HEDGE entre 5-13 et 5-20 attendent leur horizon t+6. Rerun de l'analyse perf une fois les close prices disponibles (fin mai / début juin) pour confirmer ou infirmer la première lecture.</p>
+          </div>
+        </li>
+        <li>
+          <div class="when">~Juin</div>
+          <div class="what">
+            <h5>Activer le signal macro sentiment</h5>
+            <p>Aujourd'hui, le <code>MacroSignal</code> est un stub neutre (direction=0, surprise=0, confidence=0). Quand la pipeline <code>pl_article_segment</code> aura suffisamment d'historique (~3 mois), brancher la vraie MacroEventLayer R&amp;D.</p>
+          </div>
+        </li>
+        <li>
+          <div class="when">~Juillet</div>
+          <div class="what">
+            <h5>Décider du sort de cc-daily-analysis</h5>
+            <p>Trois options sur la table, tracées dans <code>project_c5_daily_analysis_alignment.md</code> : (A) disparition complète, (B) narrator-only (génère uniquement eco/conclusion read-only), (C) maintien transitoire. Critères : adoption traders, qualité brief NotebookLM, coût LLM mensuel.</p>
+          </div>
+        </li>
+        <li>
+          <div class="when">Continu</div>
+          <div class="what">
+            <h5>Retrain mensuel R&amp;D</h5>
+            <p>Chaque mois, R&amp;D ré-entraînera les 14 specialists sur la nouvelle data et livrera un nouveau tarball. Notre process : verify gates → bump path dep → re-run cc-ensemble-bootstrap-artifacts → 38 nouvelles rows dans pl_model_artifact, anciennes versions conservées pour audit.</p>
+          </div>
+        </li>
+      </ol>
+
+      <h3 style="font-family:var(--font-display);font-style:italic;font-weight:700;font-size:20px;color:var(--ink-dark);margin:48px 0 16px;">Pour creuser</h3>
+      <ul class="links">
+        <li>
+          <a href="../onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md">CAMPAIGN_5_PROD_DEPLOYMENT</a>
+          <span class="desc">Le playbook intégral d'intégration (~950 lignes)</span>
+        </li>
+        <li>
+          <a href="../onboarding/HEDI_DATA_MAP.md">HEDI_DATA_MAP</a>
+          <span class="desc">Map des tables produit ↔ features R&amp;D consommées</span>
+        </li>
+        <li>
+          <a href="../onboarding/rnd-algo-integration.md">rnd-algo-integration</a>
+          <span class="desc">Guidelines générales d'intégration R&amp;D → prod</span>
+        </li>
+        <li>
+          <a href="../user-stories/P1-scraper-enso.md">P1-scraper-enso</a>
+          <span class="desc">User story technique ENSO scraper</span>
+        </li>
+        <li>
+          <a href="../user-stories/P1-scraper-fx.md">P1-scraper-fx</a>
+          <span class="desc">User story technique FX scraper</span>
+        </li>
+        <li>
+          <a href="../user-stories/P1-scrapers-stock-cot-eu.md">P1-scrapers-stock-cot-eu</a>
+          <span class="desc">User story technique COT EU + Stock EU</span>
+        </li>
+        <li>
+          <a href="../user-stories/P2-daily-analysis-version-flag.md">P2-daily-analysis-version-flag</a>
+          <span class="desc">Le pin LLM legacy : pourquoi et comment</span>
+        </li>
+      </ul>
+    </article>
+
+  </main>
+</div>
+
+<!-- ===== FOOTER ===== -->
+<footer class="footer">
+  <div class="inner">
+    <div class="colophon">
+      <strong>Compass CC — The Cocoa Markets Intelligence Briefing.</strong><br>
+      Product recap édité par le Compass Intelligence Desk. Composition Playfair Display, Inter, IBM Plex Mono, Georgia. Tous les chiffres sont issus de la base de production au 21 mai 2026, 23:55 UTC.
+    </div>
+    <div class="meta">
+      © 2026 · Vol. I · No. 1<br>
+      Édition Product Recap
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -53,3 +53,52 @@ def resolve_active_code(session: Session) -> str:
     if result is None:
         raise ContractResolverError("No active contract found in ref_contract")
     return result.code
+
+
+def resolve_active_at_date(session: Session, target_date) -> uuid.UUID:
+    """Resolve the front-month contract on a historical date.
+
+    Picks the contract with the highest open interest on ``target_date``.
+    This is the "front-month-by-OI" convention used by R&D when assembling
+    the canonical training dataset — the most liquid contract on any given
+    day is the one whose OHLCV reflects the market.
+
+    Used by: ensemble-compute backfill (historical dates pre-current-roll).
+    The live cc-ensemble-compute job uses ``resolve_active`` (is_active=TRUE
+    from ref_contract) for today's run.
+
+    Raises ContractResolverError if no row exists in pl_contract_data_daily
+    for the given date.
+    """
+    from sqlalchemy import text as sa_text
+
+    # Deterministic tiebreak: (OI desc, volume desc, contract_id asc). On a
+    # roll-boundary date where two contracts have identical OI, the contract_id
+    # sort guarantees reproducibility across reruns. R&D's training set used
+    # the same convention.
+    row = session.execute(
+        sa_text(
+            "SELECT contract_id, COALESCE(oi, 0) AS oi_val, "
+            "       COALESCE(volume, 0) AS vol_val "
+            "FROM pl_contract_data_daily "
+            "WHERE date = :d "
+            "ORDER BY COALESCE(oi, 0) DESC, "
+            "         COALESCE(volume, 0) DESC, "
+            "         contract_id ASC "
+            "LIMIT 1"
+        ),
+        {"d": target_date},
+    ).fetchone()
+    if row is None:
+        raise ContractResolverError(
+            f"No pl_contract_data_daily row for date={target_date} "
+            "— cannot resolve historical front-month contract"
+        )
+    log.info(
+        "Historical front-month for %s: contract_id=%s (oi=%s, volume=%s)",
+        target_date,
+        row[0],
+        row[1],
+        row[2],
+    )
+    return row[0]

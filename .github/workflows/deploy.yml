@@ -221,3 +221,11 @@ jobs:
           # Stock EU updates pl_contract_data_daily.stock_eu_bags60kg.
           deploy_job cc-ice-cot-eu-scraper   512Mi "ice-cot-eu-scraper"
           deploy_job cc-barchart-stocks-eu-scraper 512Mi "barchart-stocks-eu-scraper"
+          # Campaign 5 ensemble: daily soft-gate + Compass wrapper decision.
+          # Reads pl_contract_data_daily / pl_derived_indicators / pl_article_segment,
+          # writes 14 specialist_prediction + 1 orchestrator_decision + 1 indicator_daily.
+          # Shadow mode v1.0.0: dashboard ignores via is_active=FALSE (migration m7h8i9j0k1l2).
+          # Bootstrap job (cc-ensemble-bootstrap-artifacts) is deployed without a scheduler
+          # — trigger manually via gcloud when R&D ships a new frozen artefact pack.
+          deploy_job cc-ensemble-bootstrap-artifacts 1Gi  "ensemble-bootstrap-artifacts"
+          deploy_job cc-ensemble-compute             1Gi  "ensemble-compute"

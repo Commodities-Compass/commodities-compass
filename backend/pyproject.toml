@@ -6,7 +6,9 @@ authors = ["Your Name <email@example.com>"]
 packages = [{include = "app"}]
 
 [tool.poetry.dependencies]
-python = "^3.11"
+# Pinned <3.13 to satisfy the vendored campaign5_ensemble package (numpy 1.26.4
+# + arch + hmmlearn lock the upper bound; revisit when R&D bumps numpy 2).
+python = ">=3.11,<3.13"
 # Core
 fastapi = "^0.136.0"
 uvicorn = {version = "^0.44.0", extras = ["standard"]}
@@ -19,9 +21,17 @@ psycopg2-binary = "^2.9.9"
 asyncpg = "^0.29.0"
 greenlet = ">=3.0.0"
 
-# Data Processing
-pandas = "^3.0.0"
-numpy = "^2.0.0"
+# Data Processing — pinned to versions that satisfy both the indicator engine
+# and the vendored Campaign 5 ensemble (R&D requires numpy==1.26.4 + pandas<2.3
+# for reproducibility of the frozen ML artifacts).
+pandas = ">=2.1,<2.3"
+numpy = "==1.26.4"
+scipy = ">=1.11,<1.13"
+scikit-learn = ">=1.4,<1.6"
+lightgbm = ">=4.1,<4.5"
+arch = "^6.3"
+hmmlearn = "^0.3"
+optuna = "^3.5"
 
 # Authentication
 python-jose = {extras = ["cryptography"], version = "^3.3.0"}
@@ -53,6 +63,12 @@ openai = "^2.0.0"
 google-genai = "^1.0.0"
 cachetools = "^7.0.5"
 
+# Campaign 5 ensemble — vendored R&D delivery. Frozen at v1.0.0 (TRAINING_CUTOFF
+# 2026-04-30). Path dep: re-extract tarball + bump path on each new R&D release.
+# Key name "ensemble" must match the R&D package's pyproject `name`.
+ensemble = {path = "vendor/campaign5_ensemble_v1.0.0", develop = false}
+pyarrow = "^24.0.0"
+
 [tool.poetry.group.dev.dependencies]
 pytest = "^9.0.0"
 pytest-asyncio = "^1.0.0"
@@ -80,6 +96,8 @@ ice-cot-eu-scraper = "scripts.ice_cot_eu_scraper.main:main"
 ice-cot-eu-scraper-backfill = "scripts.ice_cot_eu_scraper.backfill:main"
 barchart-stocks-eu-scraper = "scripts.barchart_stocks_eu_scraper.main:main"
 barchart-stocks-eu-scraper-backfill = "scripts.barchart_stocks_eu_scraper.backfill:main"
+ensemble-bootstrap-artifacts = "scripts.ensemble_bootstrap.main:main"
+ensemble-compute = "scripts.ensemble_compute.main:main"
 seed-gcp = "scripts.seed_gcp:main"
 seed-trading-calendar = "scripts.seed_trading_calendar:main"
 seed-historical-csv = "scripts.seed_historical_csv:main"
@@ -89,9 +107,16 @@ roll-contract = "scripts.roll_contract:main"
 watchlist-eval = "scripts.watchlist_eval.main:main"
 backtest-seasonal = "scripts.seasonal_backtest.main:main"
 
+[tool.ruff]
+# Vendored R&D code lives under its own pyproject/ruff settings and ships
+# pre-linted — exclude it from our linting to avoid noise.
+extend-exclude = ["vendor"]
+
 [tool.pyright]
 include = ["app", "tests"]
-exclude = ["scripts"]
+# Vendored R&D code has its own type contract; exclude to avoid duplicating
+# pyright runs and to not block our CI on R&D-side stubs missing.
+exclude = ["scripts", "vendor"]
 pythonVersion = "3.11"
 typeCheckingMode = "basic"
 

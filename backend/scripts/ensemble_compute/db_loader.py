@@ -9,7 +9,7 @@ Data flow per day:
     pl_contract_data_daily ⨝ pl_derived_indicators  → market_history
     pl_orchestrator_decision (trailing N rows)       → recent_decisions
     pl_specialist_prediction (trailing N rows)       → recent_votes
-    pl_article_segment (today only)                  → MacroSignal (via MacroEventLayer)
+    pl_article_segment (trailing 90d)                → MacroSignal (via MacroEventLayer)
 """
 
 from __future__ import annotations
@@ -21,10 +21,15 @@ from datetime import timedelta
 
 import pandas as pd
 from ensemble.data_loader_protocol import MacroSignal
+from ensemble.macro_events.pipeline import MacroEventLayer
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+
+# MacroEventLayer fit window: needs ≥30d for the rolling baseline + buffer.
+# 90d is what R&D used in their backfill (CAMPAIGN_4 §4.4).
+MACRO_FIT_LOOKBACK_DAYS = 90
 
 
 class EnsembleLoaderError(RuntimeError):
@@ -295,39 +300,75 @@ def load_recent_specialist_votes(
     return df
 
 
+_MACRO_SEGMENTS_SELECT = """
+SELECT
+    article_date::DATE   AS article_date,
+    sentiment_score      AS sentiment_score,
+    confidence           AS confidence
+FROM pl_article_segment
+WHERE article_date BETWEEN :start_date AND :end_date
+  AND sentiment_score IS NOT NULL
+  AND confidence IS NOT NULL
+ORDER BY article_date ASC
+"""
+
+
 def load_macro_signal(
     session: Session,
     *,
     today: date_cls,
+    lookback_days: int = MACRO_FIT_LOOKBACK_DAYS,
 ) -> MacroSignal:
-    """Stub MacroSignal for now (sentiment pipeline not yet wired).
+    """Compute today's MacroSignal from pl_article_segment via MacroEventLayer.
 
-    The full MacroEventLayer needs frozen weights (long_run priors + macro
-    config) AND a few months of trailing pl_article_segment rows. Since
-    our article_segment prod table is currently very sparse (sentiment
-    pipeline is shadow-mode per CAMPAIGN_5_PROD_DEPLOYMENT.md), we use a
-    neutral macro signal so the soft-gate's macro factor contributes
-    zero — the model still runs cleanly, just without macro tilt.
+    Loads ``lookback_days`` of segments ending on ``today``, fits the
+    MacroEventLayer (rolling 30d baseline for the surprise z-score), then
+    scores ``today``. The layer applies the ``confidence >= 0.70`` filter
+    internally — no need to pre-filter here.
 
-    Logged at WARNING so the diagnostic rows in pl_orchestrator_decision
-    are auditable post-hoc — a future query can join on
-    "macro_stub_active" Sentry tag to filter rows where macro=neutral
-    came from this stub vs a real neutral macro reading.
-
-    TODO: when the sentiment pipeline is activated and has enough trailing
-    coverage, replace this with the real MacroEventLayer.predict call.
+    Fail-soft path: if no segments are returned at all, or if ``today`` has
+    no high-confidence segments, returns a neutral ``MacroSignal(0, 0.0, 0.0)``
+    so the soft-gate keeps running with the macro multiplier at ×1.0 (same
+    behavior as a real macro-quiet day).
     """
-    _ = session, today  # unused for the neutral stub
-    logger.warning(
-        "load_macro_signal: stub active for %s — sentiment pipeline not wired; "
-        "returning neutral MacroSignal(0, 0.0, 0.0). pl_orchestrator_decision "
-        "row will have macro_direction=0 indistinguishable from real flat-macro.",
-        today,
-    )
-    try:
-        import sentry_sdk
+    start_date = today - timedelta(days=lookback_days)
+    rows = session.execute(
+        text(_MACRO_SEGMENTS_SELECT),
+        {"start_date": start_date, "end_date": today},
+    ).fetchall()
 
-        sentry_sdk.set_tag("macro_stub_active", "true")
-    except ImportError:
-        pass
-    return MacroSignal(direction=0, surprise=0.0, confidence=0.0)
+    if not rows:
+        logger.warning(
+            "load_macro_signal: no pl_article_segment rows in [%s, %s] — "
+            "returning neutral MacroSignal",
+            start_date,
+            today,
+        )
+        try:
+            import sentry_sdk
+
+            sentry_sdk.set_tag("macro_empty_window", "true")
+        except ImportError:
+            pass
+        return MacroSignal(direction=0, surprise=0.0, confidence=0.0)
+
+    df = pd.DataFrame([dict(r._mapping) for r in rows])
+    df["sentiment_score"] = pd.to_numeric(df["sentiment_score"], errors="coerce")
+    df["confidence"] = pd.to_numeric(df["confidence"], errors="coerce")
+
+    layer = MacroEventLayer().fit(df)
+    score = layer.score_for_date(pd.Timestamp(today))
+
+    logger.info(
+        "load_macro_signal: %s direction=%+d surprise=%.3f n_segments=%d confidence=%.3f",
+        today,
+        score.direction,
+        score.surprise,
+        score.n_segments,
+        score.confidence,
+    )
+    return MacroSignal(
+        direction=int(score.direction),
+        surprise=float(score.surprise),
+        confidence=float(score.confidence),
+    )

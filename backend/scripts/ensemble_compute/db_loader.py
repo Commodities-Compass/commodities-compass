@@ -38,6 +38,11 @@ class EnsembleLoaderError(RuntimeError):
 
 # Columns the canonical R&D snapshot exposes on the market_history join.
 # Order kept stable so dtype validation in EnsemblePipeline doesn't drift.
+#
+# Reads from ``v_contract_data_chained`` (front-month-by-OI VIEW) so the
+# 600d GARCH/long-run lookback chains across roll boundaries — see
+# Alembic n8i9j0k1l2m3. Indicators join on (date, contract_id) where
+# contract_id is whichever underlying contract was front-month that day.
 _MARKET_HISTORY_SELECT = """
 SELECT
     pd.date::DATE                       AS date,
@@ -59,11 +64,10 @@ SELECT
     pi.bollinger, pi.bollinger_upper, pi.bollinger_lower, pi.bollinger_width,
     pi.close_pivot_ratio, pi.volume_oi_ratio,
     pi.gain_14d, pi.loss_14d, pi.rs, pi.daily_return
-FROM pl_contract_data_daily pd
+FROM v_contract_data_chained pd
 JOIN pl_derived_indicators pi
     ON pi.date = pd.date AND pi.contract_id = pd.contract_id
-WHERE pd.contract_id = :contract_id
-  AND pd.date BETWEEN :start_date AND :end_date
+WHERE pd.date BETWEEN :start_date AND :end_date
 ORDER BY pd.date ASC
 """
 
@@ -75,21 +79,26 @@ def load_market_history(
     contract_id: uuid.UUID,
     lookback_days: int,
 ) -> pd.DataFrame:
-    """Read trailing ``lookback_days`` of market_history up to ``end_date``.
+    """Read trailing ``lookback_days`` of front-month market_history up to ``end_date``.
 
-    Returns a DataFrame with date column (datetime64) + all R&D-expected
-    columns. Fails-loud if `end_date` is missing or the row count is below
-    the minimum needed for GARCH features (~500 rows).
+    Pulls from ``v_contract_data_chained`` so GARCH/long-run features chain
+    across roll boundaries. ``contract_id`` is kept in the signature for the
+    callsite to embed in the resulting DecideRequest payload, but the SELECT
+    no longer filters on it — the VIEW already picks the front-month-by-OI
+    row per date.
+
+    Fails-loud if `end_date` is missing or the row count is below the
+    minimum needed for GARCH features (~500 rows).
     """
+    _ = contract_id  # kept for ABI; VIEW is contract-agnostic by design
     start_date = end_date - timedelta(days=lookback_days)
     rows = session.execute(
         text(_MARKET_HISTORY_SELECT),
-        {"contract_id": contract_id, "start_date": start_date, "end_date": end_date},
+        {"start_date": start_date, "end_date": end_date},
     ).fetchall()
     if not rows:
         raise EnsembleLoaderError(
-            f"market_history empty for contract_id={contract_id} "
-            f"between {start_date} and {end_date}"
+            f"market_history empty between {start_date} and {end_date}"
         )
 
     df = pd.DataFrame([dict(r._mapping) for r in rows])

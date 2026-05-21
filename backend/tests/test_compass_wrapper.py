@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import math
 from datetime import datetime, timedelta
+from typing import cast
 
 import pandas as pd
 import pytest
@@ -43,13 +44,16 @@ def _cluster_mapping() -> dict[str, str]:
 
 
 def _bidate(n: int) -> list[pd.Timestamp]:
+    """Build N consecutive timestamps from a fixed concrete datetime base.
+
+    Cast is safe — `pd.Timestamp(datetime(...))` never returns NaT for a
+    concrete datetime input; pandas' return type is conservative only
+    because it must cover the NaT input case.
+    """
     base = datetime(2026, 1, 5)
-    out: list[pd.Timestamp] = []
-    for i in range(n):
-        ts = pd.Timestamp(base + timedelta(days=i))
-        assert not pd.isna(ts)
-        out.append(ts)
-    return out
+    return [
+        cast(pd.Timestamp, pd.Timestamp(base + timedelta(days=i))) for i in range(n)
+    ]
 
 
 def _seed_decisions(

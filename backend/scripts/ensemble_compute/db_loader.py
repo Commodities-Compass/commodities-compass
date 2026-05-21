@@ -214,11 +214,17 @@ def load_recent_orchestrator_decisions(
     ):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
-    # Derive ``correct`` from forward_return + decision_wrapped (rule for the
-    # wrapper's running_acc detector — see transition_wrapper.py:340-342).
-    df["correct"] = (
-        (df["decision_wrapped"] == "HEDGE") & (df["forward_return"] < 0)
-    ) | ((df["decision_wrapped"] == "OPEN") & (df["forward_return"] > 0))
+    # Derive ``correct`` from forward_return + the ORIGINAL soft-gate decision
+    # (the Protocol column ``decision``, NOT ``decision_wrapped``). The wrapper's
+    # running_acc detector evaluates "would the algo's raw signal have been right
+    # recently?" to decide whether to trust today's signal. Scoring against the
+    # wrapped output would create a self-referencing loop where the wrapper
+    # evaluates itself, locking it into MONITOR forever after the first override
+    # (observed live on 2026-05-07 → 2026-05-20). R&D's in-sample analysis
+    # confirms `correct` is computed from the soft-gate prediction.
+    df["correct"] = ((df["decision"] == "HEDGE") & (df["forward_return"] < 0)) | (
+        (df["decision"] == "OPEN") & (df["forward_return"] > 0)
+    )
     df = df.sort_values("date").reset_index(drop=True)
     return df
 

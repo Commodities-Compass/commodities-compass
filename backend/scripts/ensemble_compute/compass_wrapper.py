@@ -33,17 +33,22 @@ from ensemble.orchestrator.transition_wrapper import (
 )
 
 
-DEFAULT_DISPERSION_WITH_ACC_THRESHOLD: float = 0.60
-
-
 class CompassTransitionWrapper(TransitionProtectionWrapper):
-    """Vendor wrapper with an AND-gated relaxation of the dispersion veto."""
+    """Vendor wrapper with an AND-gated relaxation of the dispersion veto.
+
+    The ``dispersion_with_acc_threshold`` parameter is required: it is loaded
+    from ``pl_algorithm_config`` (key
+    ``compass_wrapper_dispersion_with_acc_threshold``) by the caller — see
+    ``scripts.ensemble_compute.cluster_mapping_loader.load_compass_wrapper_threshold``.
+    No hardcoded fallback by design (north-star rule #4: config as data).
+    """
 
     def __init__(
         self,
+        *,
+        dispersion_with_acc_threshold: float,
         config: WrapperConfig | None = None,
         cluster_mapping: dict[str, str] | None = None,
-        dispersion_with_acc_threshold: float = DEFAULT_DISPERSION_WITH_ACC_THRESHOLD,
     ) -> None:
         super().__init__(config=config, cluster_mapping=cluster_mapping)
         self.dispersion_with_acc_threshold = float(dispersion_with_acc_threshold)

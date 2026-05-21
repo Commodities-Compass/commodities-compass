@@ -39,11 +39,11 @@ from scripts._shared.cli import build_base_argparser
 from scripts._shared.logging import configure_logging
 from scripts._shared.sentry import bootstrap_scraper
 from scripts.contract_resolver import resolve_active, resolve_active_at_date
-from scripts.ensemble_compute.cluster_mapping_loader import load_cluster_mapping
-from scripts.ensemble_compute.compass_wrapper import (
-    DEFAULT_DISPERSION_WITH_ACC_THRESHOLD,
-    CompassTransitionWrapper,
+from scripts.ensemble_compute.cluster_mapping_loader import (
+    load_cluster_mapping,
+    load_compass_wrapper_threshold,
 )
+from scripts.ensemble_compute.compass_wrapper import CompassTransitionWrapper
 from scripts.ensemble_compute.db_loader import (
     load_macro_signal,
     load_market_history,
@@ -199,17 +199,19 @@ def main() -> int:
             # aggressive: cluster_dispersion alone vetoed 28/63 commits on the
             # 2026 backfill while running_acc_5d averaged 0.981. The Compass
             # wrapper relaxes the dispersion-only veto when running_acc is
-            # healthy. See compass_wrapper.py for the full rule.
+            # healthy. Threshold lives in pl_algorithm_config (config-as-data
+            # per north-star rule #4) — see migration o9j0k1l2m3n4.
+            compass_threshold = load_compass_wrapper_threshold(session, algo_version_id)
             vendor_wrapper = pipeline.wrapper
             pipeline.wrapper = CompassTransitionWrapper(
                 config=vendor_wrapper.config,
                 cluster_mapping=vendor_wrapper.cluster_mapping,
-                dispersion_with_acc_threshold=DEFAULT_DISPERSION_WITH_ACC_THRESHOLD,
+                dispersion_with_acc_threshold=compass_threshold,
             )
             logger.info(
                 "Pipeline assembled: %d specialists + soft-gate + Compass wrapper (threshold=%.2f)",
                 len(pipeline.specialists),
-                DEFAULT_DISPERSION_WITH_ACC_THRESHOLD,
+                compass_threshold,
             )
 
             market = load_market_history(

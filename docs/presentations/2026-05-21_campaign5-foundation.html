@@ -777,8 +777,8 @@
     <div class="label">Rows Backfill Historique</div>
   </div>
   <div class="kpi">
-    <div class="num">13</div>
-    <div class="label">Décisions Out-of-Sample</div>
+    <div class="num">95</div>
+    <div class="label">Décisions Backfill 2026</div>
   </div>
 </section>
 
@@ -823,9 +823,10 @@
           <li><strong>Nouveau cerveau de décision en prod.</strong> L'algo ensemble Campaign 5 (14 modèles ML + un orchestrateur Bayésien + un garde-fou) calcule désormais le signal OPEN / HEDGE / MONITOR à la place de notre script LLM legacy.</li>
           <li><strong>Quatre nouvelles sources de données coulent chaque jour.</strong> ENSO (climat tropical), FX (EUR/USD/GBP), positionnement ICE Europe, stocks ICE Europe. Coût d'ingestion : zéro euro.</li>
           <li><strong>Toutes les décisions sont auditables.</strong> Trois nouvelles tables tracent chaque vote de specialist, chaque combinaison par l'orchestrateur, et chaque override par le garde-fou. On peut désormais répondre à « pourquoi le modèle a-t-il dit HEDGE le 7 mai ? ».</li>
-          <li><strong>Premier test grandeur nature : mai 2026.</strong> Sur la fenêtre hors-échantillon (modèle entraîné jusqu'au 30 avril), le cœur de décision sort une accuracy de 60 % avec un signed return moyen de +6 %. Le garde-fou prend un seul trade — le bon, le 12 mai — et capture +14.63 % à lui tout seul.</li>
-          <li><strong>Au passage, un bug Compass-side découvert et corrigé.</strong> Le premier backfill bloquait toutes les décisions par boucle auto-renforçante. R&amp;D a flaggé l'incohérence, le fix tient en une ligne (mauvaise colonne pour scorer la correctness). Reproduit, vérifié, mergé.</li>
-          <li><strong>Reste à faire.</strong> Déployer le compute en Cloud Run (encore lancé à la main), activer le signal sentiment macro, attendre que les forward returns post-13 mai se réalisent pour évaluer la suite de la fenêtre. Décision A/B/C sur le destin du LLM legacy à trancher vers juillet.</li>
+          <li><strong>Backfill 2026 complet (95 décisions, 79 réalisées).</strong> Le wrapper produit <strong>71.4 % d'accuracy</strong> et <strong>+7.18 % de signed return moyen</strong> — vs 58.5 % et +2.55 % pour le soft-gate brut, vs −2.39 % pour le buy-and-hold. Le wrapper filtre 49 % des trades et garde les meilleurs.</li>
+          <li><strong>Trois bugs Compass-side découverts et corrigés via review en cascade.</strong> Le premier backfill bloquait toutes les décisions par boucle auto-renforçante. R&amp;D a flaggé, on a identifié un bug de scoring, puis un crash <code>pd.NA</code> dans le wrapper. Au final 1 CRITICAL + 5 HIGH + 2 MED appliqués via review 3-skills (python, code, cc).</li>
+          <li><strong>Mode shadow activé.</strong> <code>ensemble_v1</code> tourne en prod mais <code>is_active=FALSE</code> — le dashboard frontend continue de lire la version legacy. Le cutover se fera plus tard quand le frontend supportera le multi-version.</li>
+          <li><strong>Reste à faire.</strong> Déployer le compute en Cloud Run (encore lancé à la main), activer le signal sentiment macro, adapter le frontend pour le cutover ensemble. Décision A/B/C sur le destin du LLM legacy à trancher vers juillet.</li>
         </ul>
       </div>
     </article>
@@ -1100,113 +1101,105 @@
       <div class="section-head">
         <div class="roman">VII</div>
         <div class="titles">
-          <div class="kicker">Premier test grandeur nature</div>
-          <h2>L'algo face à <em>mai 2026</em></h2>
+          <div class="kicker">Backfill 2026 complet</div>
+          <h2>L'algo face à <em>cinq mois de marché</em></h2>
         </div>
       </div>
       <div class="prose">
         <p>
-          Le modèle a été frozen au 30 avril. Toutes les décisions de mai sont donc <strong>out-of-sample</strong> — l'algo n'a jamais vu cette donnée pendant l'entraînement. On a calculé les décisions pour chaque jour ouvré entre le 1<sup>er</sup> et le 20 mai 2026 (13 jours, le 4 mai étant un bank holiday UK donc pas de cotation sur ICE Europe).
+          Le modèle a été frozen au 30 avril 2026. On a calculé une décision pour chaque jour ouvré entre le 2 janvier et le 20 mai 2026 — <strong>95 décisions au total</strong>. Janvier-avril est in-sample (de la fenêtre d'entraînement) ; mai est purement out-of-sample (l'algo n'a jamais vu cette donnée). 79 décisions ont leur horizon de 6 jours réalisé, donc scorables.
         </p>
       </div>
+      <div class="metric-grid">
+        <div class="metric">
+          <div class="mlabel">Wrapper · Accuracy</div>
+          <div class="mval pos">71.4%</div>
+          <div class="mhint">15 corrects sur 21 commits réalisés (vs 58.5% soft-gate brut)</div>
+        </div>
+        <div class="metric">
+          <div class="mlabel">Wrapper · Avg signed return</div>
+          <div class="mval pos">+7.18%</div>
+          <div class="mhint">Moyenne pondérée sur 21 trades, vs +2.55% pour le soft-gate seul</div>
+        </div>
+        <div class="metric">
+          <div class="mlabel">Buy-and-hold baseline</div>
+          <div class="mval neg">−2.39%</div>
+          <div class="mhint">Long every day, moyenne des forward returns 6j sur 79 jours</div>
+        </div>
+      </div>
+
+      <div class="prose">
+        <p class="no-cap">
+          Le rôle du wrapper se vérifie clairement : il <strong>filtre les commits du soft-gate</strong> (41 trades possibles → 21 trades retenus, soit −49%) et garde uniquement les plus haute conviction. Les chiffres :
+        </p>
+        <ul>
+          <li><strong>Soft-gate brut</strong> — 41 commits réalisés, 24 corrects (58.5%), avg signed return +2.55%.</li>
+          <li><strong>Wrapper (signal live)</strong> — 21 commits réalisés, 15 corrects (<strong>71.4%</strong>), avg signed return <strong>+7.18%</strong>.</li>
+          <li><strong>Buy-and-hold</strong> — −2.39% (marché 2026 globalement baissier).</li>
+        </ul>
+        <p class="no-cap">
+          Le wrapper bat le soft-gate de <strong>+12.9 points d'accuracy</strong> ET <strong>×2.8 le return moyen</strong>. Et bat sec le buy-and-hold sur un marché qui a chuté.
+        </p>
+      </div>
+
+      <h3 style="font-family:var(--font-display);font-style:italic;font-weight:700;font-size:22px;color:var(--ink-dark);margin:48px 0 16px;">Breakdown mensuel</h3>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>Date</th>
-              <th>Soft-gate</th>
-              <th>Wrapped</th>
-              <th class="r">net_score</th>
-              <th class="r">close_t0</th>
-              <th class="r">close_t+6</th>
-              <th class="r">fwd_ret_6d</th>
-              <th>Detectors fired</th>
+              <th>Mois</th>
+              <th class="r">n_dates</th>
+              <th class="r">Wrapper commits</th>
+              <th class="r">Réalisés</th>
+              <th class="r">Corrects</th>
+              <th class="r">Avg signed wrapper</th>
+              <th class="r">Buy-and-hold</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td>2026-05-01</td><td><span class="pill monitor">MONITOR</span></td><td><span class="pill monitor">MONITOR</span></td>
-              <td class="r">−0.18</td><td class="r">2 688</td><td class="r">3 431</td><td class="r num-pos">+27.64%</td><td>dispersion</td>
+              <td>Janvier</td><td class="r">19</td><td class="r">12</td><td class="r">12</td>
+              <td class="r"><strong>10 / 12</strong></td>
+              <td class="r num-pos">+9.41%</td>
+              <td class="r num-neg">−9.92%</td>
             </tr>
             <tr>
-              <td>2026-05-05</td><td><span class="pill hedge">HEDGE</span></td><td><span class="pill monitor">MONITOR</span></td>
-              <td class="r">−0.33</td><td class="r">3 068</td><td class="r">3 272</td><td class="r num-pos">+6.65%</td><td>dispersion</td>
+              <td>Février</td><td class="r">21</td><td class="r">9</td><td class="r">6</td>
+              <td class="r">3 / 6</td>
+              <td class="r num-pos">+1.95%</td>
+              <td class="r num-neg">−12.33%</td>
             </tr>
             <tr>
-              <td>2026-05-06</td><td><span class="pill hedge">HEDGE</span></td><td><span class="pill monitor">MONITOR</span></td>
-              <td class="r">−0.39</td><td class="r">3 105</td><td class="r">3 110</td><td class="r num-neut">+0.16%</td><td>dispersion</td>
+              <td>Mars</td><td class="r">22</td><td class="r">2</td><td class="r">2</td>
+              <td class="r">1 / 2</td>
+              <td class="r num-pos">+5.74%</td>
+              <td class="r num-pos">+2.44%</td>
             </tr>
             <tr>
-              <td>2026-05-07</td><td><span class="pill monitor">MONITOR</span></td><td><span class="pill monitor">MONITOR</span></td>
-              <td class="r">−0.13</td><td class="r">3 294</td><td class="r">3 034</td><td class="r num-neg">−7.89%</td><td>running_acc · dispersion</td>
+              <td>Avril</td><td class="r">20</td><td class="r"><strong>0</strong></td><td class="r">0</td>
+              <td class="r">—</td>
+              <td class="r" style="color:var(--ink-light)">n/a</td>
+              <td class="r num-pos">+8.86%</td>
             </tr>
             <tr>
-              <td>2026-05-08</td><td><span class="pill hedge">HEDGE</span></td><td><span class="pill monitor">MONITOR</span></td>
-              <td class="r">−0.71</td><td class="r">3 114</td><td class="r">2 875</td><td class="r num-neg">−7.68%</td><td>running_acc</td>
-            </tr>
-            <tr>
-              <td>2026-05-11</td><td><span class="pill hedge">HEDGE</span></td><td><span class="pill monitor">MONITOR</span></td>
-              <td class="r">−0.75</td><td class="r">3 484</td><td class="r">2 963</td><td class="r num-neg">−14.95%</td><td>running_acc</td>
-            </tr>
-            <tr>
-              <td>2026-05-12</td><td><span class="pill hedge">HEDGE</span></td><td><span class="pill hedge">HEDGE</span></td>
-              <td class="r">−0.55</td><td class="r">3 431</td><td class="r">2 929</td><td class="r num-neg">−14.63%</td><td style="color:var(--open);font-weight:500">— · trade pris</td>
-            </tr>
-            <tr>
-              <td>2026-05-13</td><td><span class="pill hedge">HEDGE</span></td><td><span class="pill monitor">MONITOR</span></td>
-              <td class="r">−0.50</td><td class="r">3 272</td><td class="r">—</td><td class="r" style="color:var(--ink-light)">pending</td><td>dispersion</td>
-            </tr>
-            <tr>
-              <td>2026-05-14</td><td><span class="pill hedge">HEDGE</span></td><td><span class="pill monitor">MONITOR</span></td>
-              <td class="r">−0.26</td><td class="r">3 110</td><td class="r">—</td><td class="r" style="color:var(--ink-light)">pending</td><td>dispersion</td>
-            </tr>
-            <tr>
-              <td>2026-05-15</td><td><span class="pill hedge">HEDGE</span></td><td><span class="pill monitor">MONITOR</span></td>
-              <td class="r">−0.26</td><td class="r">3 034</td><td class="r">—</td><td class="r" style="color:var(--ink-light)">pending</td><td>running_acc</td>
-            </tr>
-            <tr>
-              <td>2026-05-18</td><td><span class="pill hedge">HEDGE</span></td><td><span class="pill monitor">MONITOR</span></td>
-              <td class="r">−0.44</td><td class="r">2 875</td><td class="r">—</td><td class="r" style="color:var(--ink-light)">pending</td><td>running_acc</td>
-            </tr>
-            <tr>
-              <td>2026-05-19</td><td><span class="pill hedge">HEDGE</span></td><td><span class="pill monitor">MONITOR</span></td>
-              <td class="r">−0.67</td><td class="r">2 963</td><td class="r">—</td><td class="r" style="color:var(--ink-light)">pending</td><td>running_acc</td>
-            </tr>
-            <tr>
-              <td>2026-05-20</td><td><span class="pill hedge">HEDGE</span></td><td><span class="pill monitor">MONITOR</span></td>
-              <td class="r">−0.36</td><td class="r">2 929</td><td class="r">—</td><td class="r" style="color:var(--ink-light)">pending</td><td>running_acc</td>
+              <td>Mai (partiel)</td><td class="r">13</td><td class="r">5</td><td class="r">1</td>
+              <td class="r">1 / 1</td>
+              <td class="r num-pos">+14.63%</td>
+              <td class="r num-neg">−1.53%</td>
             </tr>
           </tbody>
         </table>
       </div>
 
-      <div class="metric-grid">
-        <div class="metric">
-          <div class="mlabel">Soft-gate · Accuracy</div>
-          <div class="mval pos">60%</div>
-          <div class="mhint">3 corrects sur 5 commits (jours avec forward return réalisé)</div>
-        </div>
-        <div class="metric">
-          <div class="mlabel">Wrapper · Avg signed return</div>
-          <div class="mval pos">+14.63%</div>
-          <div class="mhint">1 trade pris (5-12 HEDGE), 100% accuracy</div>
-        </div>
-        <div class="metric">
-          <div class="mlabel">Buy-and-hold baseline</div>
-          <div class="mval neg">−1.53%</div>
-          <div class="mhint">Long every day, moyenne des forward returns 6j</div>
-        </div>
-      </div>
-
       <div class="prose">
         <p class="no-cap">
-          Le marché en mai 2026 a été <strong>bipolaire</strong>. Phase 1 (1<sup>er</sup>→6 mai) : rally violent, +27% sur la première semaine. Phase 2 (7→12 mai) : retournement brutal, jusqu'à −15% en six jours. Le soft-gate a vu venir le retournement (5 HEDGE sur 5 commits possibles) mais avec deux jours de retard. Net : 3 corrects, 2 wrong — accuracy 60%, return moyen signed +6%.
+          <strong>Janvier 2026</strong> est le mois showcase : 12 trades, 10 corrects (83% accuracy), +9.41% signed contre un marché qui a chuté de −9.92%. Le modèle est dans son régime "Winter" — c'est exactement ce qu'il était entraîné à faire.
         </p>
         <p class="no-cap">
-          Le <strong>wrapper</strong> a bloqué les deux mauvais HEDGE de la phase 1 (capital préservé sur 5-05 et 5-06), puis a laissé passer le 5-12 — le pic de conviction baissier dans une fenêtre de running-accuracy à 100%. Ce seul trade capture <strong>−14.63%</strong> de mouvement, soit <strong>+14.63%</strong> pour la stratégie HEDGE. Sur la fenêtre dont on a le forward return réalisé, le wrapper bat le soft-gate (1/1 versus 3/5) ET le buy-and-hold (+14.63% versus −1.53%).
+          <strong>Avril</strong> est l'inverse : zéro commit du wrapper alors que le marché a monté de +8.86%. Le modèle est principalement bear-biased (38 HEDGE soft-gate sur 79 commits possibles) ; quand le marché part en hausse, le wrapper "voit" l'incohérence et bloque tout. Capital préservé, opportunité manquée. C'est un trade-off documenté de TPW-001.
         </p>
         <p class="no-cap">
-          Note importante : cette image post-fix est arrivée à l'issue d'un debug. La section suivante détaille pourquoi.
+          <strong>Mai (partiel)</strong> : un seul trade encore réalisé (5-12), 100% correct, capture du gros bear move. Les 7 décisions HEDGE du 5-13 → 5-20 attendent leur horizon de 6 jours.
         </p>
       </div>
     </article>

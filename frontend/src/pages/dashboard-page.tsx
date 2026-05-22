@@ -6,7 +6,14 @@ import PodcastPlayer from '@/components/podcast-player';
 import PriceChart from '@/components/price-chart';
 import WeatherUpdateCard from '@/components/weather-update-card';
 import MacroPositioningCard from '@/components/macro-positioning-card';
-import EnsembleAuditCard from '@/components/ensemble-audit-card';
+import EnsembleAuditCard, { type EnsembleAuditVariant } from '@/components/ensemble-audit-card';
+
+// Phase 3 local-only knob: flip while reviewing the audit panel in the browser.
+// Persist as a constant (no env churn). User chooses after visual review.
+//   'full'      → 4 sub-blocks (default) — soft-gate + cluster cols + detectors + macro
+//   'condensed' → single recap strip + detector rail
+//   'minimal'   → one-line meta + decision badge
+const ENSEMBLE_AUDIT_VARIANT: EnsembleAuditVariant = 'full';
 import { DashboardErrorBoundary } from '@/components/DashboardErrorBoundary';
 import { useDashboardDate } from '@/hooks/useDashboardDate';
 import { usePositionStatus } from '@/hooks/useDashboard';
@@ -57,6 +64,7 @@ export default function DashboardPage() {
         <EnsembleAuditCard
           targetDate={currentDate}
           sourceAlgorithm={positionStatus?.source_algorithm}
+          variant={ENSEMBLE_AUDIT_VARIANT}
         />
       </DashboardErrorBoundary>
     </div>

@@ -10,11 +10,20 @@ import type {
   SpecialistVotesResponse,
 } from '@/types/dashboard';
 
+export type EnsembleAuditVariant = 'full' | 'condensed' | 'minimal';
+
 interface EnsembleAuditCardProps {
   /** Resolved by parent dashboard — when this isn't 'ensemble_v1_softgate_wrapper' the card stays hidden. */
   sourceAlgorithm?: string | null;
   targetDate?: string;
   className?: string;
+  /**
+   * Visual density. `full` = 4 sub-blocks with cluster columns + detector grid
+   * (current default). `condensed` = single recap row + collapsible details.
+   * `minimal` = tiny meta line + link to a future /admin/ensemble-audit route.
+   * UX iteration in Phase 3 (local-only) — user picks after visual review.
+   */
+  variant?: EnsembleAuditVariant;
 }
 
 const SIGNAL_HEX: Record<'OPEN' | 'HEDGE' | 'MONITOR', string> = {
@@ -503,10 +512,162 @@ function renderDiagnostics(diag: EnsembleDiagnosticsResponse, votes?: Specialist
   );
 }
 
+function renderCondensed(diag: EnsembleDiagnosticsResponse, votes?: SpecialistVotesResponse) {
+  // Single recap strip + small detector rail. No cluster columns, no priors bar.
+  const dispReleased = diag.fired_dispersion && !diag.wrapper_active;
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'minmax(0, 1.6fr) minmax(0, 1fr)',
+        gap: 24,
+      }}
+      className="audit-grid"
+    >
+      <div
+        style={{
+          border: '1px solid var(--ink)',
+          padding: 14,
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+          gap: 14,
+        }}
+      >
+        <div>
+          <Eyebrow tone="muted" size={9}>
+            Soft-gate
+          </Eyebrow>
+          <div style={{ marginTop: 4 }}>
+            <DecisionBadge pred={diag.soft_gate_decision} />
+          </div>
+        </div>
+        <div>
+          <Eyebrow tone="muted" size={9}>
+            Wrapped
+          </Eyebrow>
+          <div style={{ marginTop: 4 }}>
+            <DecisionBadge pred={diag.decision_wrapped} />
+          </div>
+        </div>
+        <div>
+          <Eyebrow tone="muted" size={9}>
+            Net score
+          </Eyebrow>
+          <div style={{ marginTop: 4 }}>
+            <DataValue size={13}>{formatNumber(diag.net_score, 3)}</DataValue>
+          </div>
+        </div>
+        <div>
+          <Eyebrow tone="muted" size={9}>
+            Committed
+          </Eyebrow>
+          <div style={{ marginTop: 4 }}>
+            <DataValue size={13}>{diag.n_committed_specialists}/14</DataValue>
+          </div>
+        </div>
+        <div>
+          <Eyebrow tone="muted" size={9}>
+            Running acc 5d
+          </Eyebrow>
+          <div style={{ marginTop: 4 }}>
+            <DataValue size={13}>{formatNumber(diag.running_acc_5d, 3)}</DataValue>
+          </div>
+        </div>
+        {votes && (
+          <div>
+            <Eyebrow tone="muted" size={9}>
+              W/S signed
+            </Eyebrow>
+            <div style={{ marginTop: 4 }}>
+              <DataValue size={13}>
+                {formatSigned(votes.winter_signed)} / {formatSigned(votes.spring_signed)}
+              </DataValue>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div
+        style={{
+          border: '1px solid var(--rule)',
+          padding: 14,
+          display: 'grid',
+          gridTemplateColumns: '1fr',
+          rowGap: 8,
+        }}
+      >
+        <Eyebrow tone="primary" size={10}>
+          Detectors
+        </Eyebrow>
+        <div className="flex items-center justify-between">
+          <span style={rowLabel}>Running acc</span>
+          <StatusPill label={diag.fired_running_acc ? 'FIRED' : 'PASS'} active={diag.fired_running_acc} />
+        </div>
+        <div className="flex items-center justify-between">
+          <span style={rowLabel}>Dispersion</span>
+          <StatusPill
+            label={dispReleased ? 'RELEASED' : diag.fired_dispersion ? 'FIRED' : 'PASS'}
+            active={diag.fired_dispersion}
+          />
+        </div>
+        <div className="flex items-center justify-between">
+          <span style={rowLabel}>Trend</span>
+          <StatusPill label="INACTIVE" active={false} inactive />
+        </div>
+        <div className="flex items-center justify-between">
+          <span style={rowLabel}>Three-way</span>
+          <StatusPill label="INACTIVE" active={false} inactive />
+        </div>
+      </div>
+
+      <style>{`
+        @media (max-width: 767px) {
+          .audit-grid { grid-template-columns: 1fr !important; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function renderMinimal(diag: EnsembleDiagnosticsResponse) {
+  // Tiny meta strip — single line + decision badges. Use this when full audit is
+  // considered too dense for the regular dashboard.
+  const dispReleased = diag.fired_dispersion && !diag.wrapper_active;
+  return (
+    <div
+      style={{
+        border: '1px solid var(--rule)',
+        padding: '12px 16px',
+        display: 'flex',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: 16,
+        background: 'var(--paper-off)',
+      }}
+    >
+      <Eyebrow tone="muted" size={10}>
+        Ensemble decision
+      </Eyebrow>
+      <DecisionBadge pred={diag.decision_wrapped} />
+      <span style={rowLabel}>net</span>
+      <DataValue>{formatNumber(diag.net_score, 3)}</DataValue>
+      <span style={rowLabel}>committed</span>
+      <DataValue>{diag.n_committed_specialists}/14</DataValue>
+      <span style={rowLabel}>running 5d</span>
+      <DataValue>{formatNumber(diag.running_acc_5d, 3)}</DataValue>
+      <StatusPill
+        label={dispReleased ? 'DISP RELEASED' : diag.fired_dispersion ? 'DISP FIRED' : 'CLUSTERS OK'}
+        active={diag.fired_dispersion}
+      />
+    </div>
+  );
+}
+
 export default function EnsembleAuditCard({
   sourceAlgorithm,
   targetDate,
   className,
+  variant = 'full',
 }: EnsembleAuditCardProps) {
   // Section is conditional on the date producing an ensemble decision.
   const isEnsembleDate = sourceAlgorithm === 'ensemble_v1_softgate_wrapper';
@@ -530,7 +691,11 @@ export default function EnsembleAuditCard({
           <span className="text-sm">Chargement de l'audit ensemble...</span>
         </div>
       ) : diagQ.data ? (
-        renderDiagnostics(diagQ.data, votesQ.data)
+        variant === 'minimal'
+          ? renderMinimal(diagQ.data)
+          : variant === 'condensed'
+            ? renderCondensed(diagQ.data, votesQ.data)
+            : renderDiagnostics(diagQ.data, votesQ.data)
       ) : (
         <p style={{ fontSize: 13, color: 'var(--ink-light)' }}>
           Aucune ligne d'audit ensemble pour cette date.

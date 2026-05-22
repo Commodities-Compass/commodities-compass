@@ -1,5 +1,13 @@
 import { Loader2 } from 'lucide-react';
 import { usePositionStatus, useRecommendations } from '@/hooks/useDashboard';
+import Eyebrow from '@/components/editorial/Eyebrow';
+
+function algoBadgeLabel(name?: string | null): string | null {
+  if (!name) return null;
+  if (name === 'ensemble_v1_softgate_wrapper') return 'Powered by Ensemble v1';
+  if (name === 'legacy') return 'Powered by Legacy v1.0.1';
+  return `Powered by ${name}`;
+}
 
 interface SignalHeroProps {
   targetDate?: string;
@@ -108,6 +116,17 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
         }}
       >
         <div>
+          {algoBadgeLabel(pos.source_algorithm) && (
+            <Eyebrow
+              as="div"
+              size={9}
+              tone="subtle"
+              tracking="0.22em"
+              style={{ marginBottom: 6 }}
+            >
+              {algoBadgeLabel(pos.source_algorithm)}
+            </Eyebrow>
+          )}
           <div
             className="uppercase mb-3"
             style={{

@@ -1,6 +1,20 @@
 import { useQuery } from '@tanstack/react-query';
 import { dashboardApi, PositionStatusResponse } from '@/api/dashboard';
-import type { IndicatorsGridResponse, RecommendationsResponse, ChartDataResponse, NewsResponse, NewsSentimentResponse, WeatherResponse, AudioResponse, NonTradingDaysResponse } from '@/types/dashboard';
+import type {
+  IndicatorsGridResponse,
+  RecommendationsResponse,
+  ChartDataResponse,
+  NewsResponse,
+  NewsSentimentResponse,
+  WeatherResponse,
+  AudioResponse,
+  NonTradingDaysResponse,
+  MacroPanelResponse,
+  PositioningResponse,
+  EnsembleDiagnosticsResponse,
+  SpecialistVotesResponse,
+} from '@/types/dashboard';
+import axios from 'axios';
 
 const DAILY_QUERY_OPTIONS = {
   staleTime: 24 * 60 * 60 * 1000,
@@ -80,6 +94,59 @@ export const useNonTradingDays = (year: number) => {
   return useQuery<NonTradingDaysResponse>({
     queryKey: ['non-trading-days', year],
     queryFn: () => dashboardApi.getNonTradingDays(year),
+    ...DAILY_QUERY_OPTIONS,
+  });
+};
+
+// Ensemble first ships on 2025-12-15 — earlier dates have no orchestrator row.
+const ENSEMBLE_FIRST_DATE = '2025-12-15';
+
+const isOnOrAfterEnsembleStart = (targetDate?: string): boolean => {
+  if (!targetDate) return true; // latest data → assume potentially ensemble
+  return targetDate >= ENSEMBLE_FIRST_DATE;
+};
+
+export const useMacroPanel = (targetDate?: string) => {
+  return useQuery<MacroPanelResponse>({
+    queryKey: ['macro-panel', targetDate],
+    queryFn: () => dashboardApi.getMacroPanel(targetDate),
+    ...DAILY_QUERY_OPTIONS,
+  });
+};
+
+export const usePositioning = (targetDate?: string) => {
+  return useQuery<PositioningResponse>({
+    queryKey: ['positioning', targetDate],
+    queryFn: () => dashboardApi.getPositioning(targetDate),
+    ...DAILY_QUERY_OPTIONS,
+  });
+};
+
+// Retries kill the ergonomics of the 404-on-legacy contract: a 404 is the
+// signal to hide the section, not an error to surface or retry.
+const shouldRetry404 = (failureCount: number, error: unknown): boolean => {
+  if (axios.isAxiosError(error) && error.response?.status === 404) return false;
+  return failureCount < 2;
+};
+
+export const useEnsembleDiagnostics = (targetDate?: string) => {
+  const enabled = isOnOrAfterEnsembleStart(targetDate);
+  return useQuery<EnsembleDiagnosticsResponse>({
+    queryKey: ['ensemble-diagnostics', targetDate],
+    queryFn: () => dashboardApi.getEnsembleDiagnostics(targetDate),
+    enabled,
+    retry: shouldRetry404,
+    ...DAILY_QUERY_OPTIONS,
+  });
+};
+
+export const useSpecialistVotes = (targetDate?: string) => {
+  const enabled = isOnOrAfterEnsembleStart(targetDate);
+  return useQuery<SpecialistVotesResponse>({
+    queryKey: ['specialist-votes', targetDate],
+    queryFn: () => dashboardApi.getSpecialistVotes(targetDate),
+    enabled,
+    retry: shouldRetry404,
     ...DAILY_QUERY_OPTIONS,
   });
 };

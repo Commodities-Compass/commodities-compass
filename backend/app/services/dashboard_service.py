@@ -443,6 +443,21 @@ async def _build_indicators_dict(
 # ---------------------------------------------------------------------------
 
 
+# Heuristic to detect the cc-ensemble-compute debug-string conclusion until the
+# Phase 8 refactor of cc-daily-analysis writes a real ensemble-aligned narrative.
+# Format observed: "C5 ensemble decision=OPEN (soft-gate=OPEN, wrapper_fired=[...], ...)"
+_ENSEMBLE_DEBUG_PREFIX = "C5 ensemble decision="
+
+
+def _is_usable_narrative(text: Optional[str]) -> bool:
+    """True when the conclusion looks like a real LLM narrative (not the
+    ensemble compute debug string).
+    """
+    if not text:
+        return False
+    return not text.strip().startswith(_ENSEMBLE_DEBUG_PREFIX)
+
+
 async def get_latest_recommendations(
     db: AsyncSession,
     target_date: Optional[date] = None,
@@ -463,6 +478,11 @@ async def get_latest_recommendations(
     so on ensemble dates the conclusion comes from the legacy row while the
     decision was produced by ensemble. The endpoint exposes
     ``source_algorithm`` so the frontend can disclose this dissonance.
+
+    A row whose conclusion is the cc-ensemble-compute debug string (see
+    ``_is_usable_narrative``) is treated as "no narrative" for fallback
+    purposes — Phase 8 will replace that debug string with a real
+    ensemble-aligned LLM narrative.
     """
     if contract_id is None:
         if target_date:
@@ -488,6 +508,8 @@ async def get_latest_recommendations(
         query = query.where(PlIndicatorDaily.date == target_date)
     query = query.order_by(desc(PlIndicatorDaily.date)).limit(1)
     row = (await db.execute(query)).one_or_none()
+    if row is not None and not _is_usable_narrative(row.conclusion):
+        row = None
 
     # Step 2: relax contract filter (any contract, this algo, this date)
     if (not row or not row.conclusion) and target_date:
@@ -503,8 +525,10 @@ async def get_latest_recommendations(
             .limit(1)
         )
         row = (await db.execute(q)).one_or_none()
+        if row is not None and not _is_usable_narrative(row.conclusion):
+            row = None
 
-    # Step 3: relax algo filter (this contract, ANY algo with conclusion, this date)
+    # Step 3: relax algo filter (this contract, ANY algo with usable narrative, this date)
     if (not row or not row.conclusion) and target_date:
         q = (
             base_select.where(
@@ -512,6 +536,7 @@ async def get_latest_recommendations(
                     PlIndicatorDaily.date == target_date,
                     PlIndicatorDaily.contract_id == contract_id,
                     PlIndicatorDaily.conclusion.isnot(None),
+                    PlIndicatorDaily.conclusion.notlike(f"{_ENSEMBLE_DEBUG_PREFIX}%"),
                 )
             )
             .order_by(desc(PlIndicatorDaily.date))
@@ -519,13 +544,14 @@ async def get_latest_recommendations(
         )
         row = (await db.execute(q)).one_or_none()
 
-    # Step 4: fully relaxed (any contract, any algo, this date)
+    # Step 4: fully relaxed (any contract, any algo with usable narrative, this date)
     if (not row or not row.conclusion) and target_date:
         q = (
             base_select.where(
                 and_(
                     PlIndicatorDaily.date == target_date,
                     PlIndicatorDaily.conclusion.isnot(None),
+                    PlIndicatorDaily.conclusion.notlike(f"{_ENSEMBLE_DEBUG_PREFIX}%"),
                 )
             )
             .order_by(desc(PlIndicatorDaily.date))

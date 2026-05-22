@@ -17,8 +17,10 @@ RUN pip install poetry
 # Set work directory
 WORKDIR /app
 
-# Copy poetry files
+# Copy poetry files + vendored R&D packages (referenced by pyproject as
+# path-deps, must exist on disk before `poetry install` resolves them).
 COPY pyproject.toml poetry.lock ./
+COPY vendor/ ./vendor/
 
 # Install dependencies (without creating virtualenv)
 RUN poetry config virtualenvs.create false && \

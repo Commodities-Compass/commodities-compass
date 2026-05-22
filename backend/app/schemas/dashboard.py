@@ -39,6 +39,14 @@ class PositionStatusResponse(BaseModel):
     ytd_performance: float = Field(
         ..., description="Year-to-date performance percentage"
     )
+    source_algorithm: Optional[str] = Field(
+        None,
+        description=(
+            "Algorithm version that produced this decision for the date — "
+            "e.g. 'ensemble_v1_softgate_wrapper' or 'legacy'. Resolved per "
+            "(date, contract) via the date-aware resolver."
+        ),
+    )
 
 
 class IndicatorData(BaseModel):
@@ -66,6 +74,10 @@ class IndicatorsGridResponse(BaseModel):
     indicators: dict[str, CommodityIndicator] = Field(
         ..., description="Map of indicator names to their data"
     )
+    source_algorithm: Optional[str] = Field(
+        None,
+        description="Algorithm version that produced the indicators for this date.",
+    )
 
 
 class RecommendationsResponse(BaseModel):
@@ -80,6 +92,14 @@ class RecommendationsResponse(BaseModel):
     )
     raw_score: Optional[str] = Field(
         None, description="Raw score text from technicals table"
+    )
+    source_algorithm: Optional[str] = Field(
+        None,
+        description=(
+            "Algorithm version whose pl_indicator_daily row supplied the "
+            "conclusion narrative. Note: legacy LLM narrative may be served "
+            "alongside an ensemble decision (until v2 narrative ships)."
+        ),
     )
 
 

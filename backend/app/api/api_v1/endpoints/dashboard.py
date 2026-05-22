@@ -41,6 +41,7 @@ from app.services.dashboard_service import (
 from app.utils.contract_resolver import (
     get_active_contract_id,
     get_active_algorithm_version_id,
+    get_algorithm_version_for_date,
 )
 from app.services.dashboard_transformers import (
     transform_to_position_status_response,
@@ -68,6 +69,30 @@ from app.services.audio_service import get_audio_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+async def _resolve_algo_for_date(
+    db: AsyncSession,
+    business_date: Optional[date],
+    contract_id,
+) -> tuple:
+    """Resolve (algorithm_version_id, algorithm_name) for a date.
+
+    Centralizes the date-aware lookup so all dashboard endpoints expose a
+    consistent ``source_algorithm`` field. When no business_date is provided
+    (latest data request), falls back to today — the resolver caches per
+    (date, contract) so this is cheap on a hot path.
+    """
+    resolution_date = business_date or datetime.now(timezone.utc).date()
+    try:
+        algo_id, algo_name = await get_algorithm_version_for_date(
+            db, resolution_date, contract_id=contract_id
+        )
+        return algo_id, algo_name
+    except ValueError:
+        # No version registered at all — fall back to the legacy "active" id.
+        algo_id = await get_active_algorithm_version_id(db)
+        return algo_id, "legacy"
 
 
 async def _parse_and_validate_date(date_str: str, db: AsyncSession) -> date:
@@ -144,9 +169,11 @@ async def get_position_status(
         if target_date:
             business_date = await _parse_and_validate_date(target_date, db)
 
-        # Resolve contract/algo once, pass to both service calls
+        # Resolve contract, then date-aware algo version (ensemble vs legacy)
         contract_id = await get_active_contract_id(db)
-        algo_id = await get_active_algorithm_version_id(db)
+        algo_id, algo_name = await _resolve_algo_for_date(
+            db, business_date, contract_id
+        )
 
         # Get position and YTD performance from service layer
         position = await get_position_from_technicals(
@@ -161,6 +188,7 @@ async def get_position_status(
             position=position,
             ytd_performance=ytd_performance,
             response_date=response_date,
+            source_algorithm=algo_name,
         )
 
     except HTTPException:
@@ -205,8 +233,16 @@ async def get_indicators_grid(
         if target_date:
             business_date = await _parse_and_validate_date(target_date, db)
 
-        # Get indicators data from service layer
-        indicators_data = await get_indicators_with_ranges(db, business_date)
+        # Resolve contract + date-aware algo version so indicators come from the
+        # right version when ensemble has data for that date.
+        contract_id = await get_active_contract_id(db)
+        algo_id, algo_name = await _resolve_algo_for_date(
+            db, business_date, contract_id
+        )
+
+        indicators_data = await get_indicators_with_ranges(
+            db, business_date, contract_id=contract_id, algo_id=algo_id
+        )
 
         if not indicators_data:
             raise HTTPException(status_code=404, detail="No indicators data found")
@@ -217,6 +253,7 @@ async def get_indicators_grid(
         return transform_to_indicators_grid_response(
             indicators_data=indicators_data,
             response_date=response_date,
+            source_algorithm=algo_name,
         )
 
     except HTTPException:
@@ -262,9 +299,18 @@ async def get_recommendations(
         if target_date:
             business_date = await _parse_and_validate_date(target_date, db)
 
-        # Get recommendations from service layer
+        # Resolve contract + date-aware algo version. Recommendations narrative
+        # currently always comes from the legacy LLM job — even when ensemble
+        # produced the decision, the conclusion text is still legacy-generated.
+        # source_algorithm reflects which version's pl_indicator_daily row was
+        # picked so the frontend can disclose the dissonance.
+        contract_id = await get_active_contract_id(db)
+        algo_id, algo_name = await _resolve_algo_for_date(
+            db, business_date, contract_id
+        )
+
         recommendations, raw_score, rec_date = await get_latest_recommendations(
-            db, business_date
+            db, business_date, contract_id=contract_id, algo_id=algo_id
         )
 
         if not recommendations and not raw_score:
@@ -277,6 +323,7 @@ async def get_recommendations(
             recommendations=recommendations,
             raw_score=raw_score,
             response_date=response_date,
+            source_algorithm=algo_name,
         )
 
     except HTTPException:

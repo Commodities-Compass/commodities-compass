@@ -452,9 +452,17 @@ async def get_latest_recommendations(
 ) -> tuple[List[str], Optional[str], Optional[date]]:
     """Get the latest recommendations from pl_indicator_daily.conclusion.
 
-    Cross-contract fallback: if the resolved contract has no conclusion
-    for the target date, tries any contract that does (transition days
-    where both old and new contract have rows but only one has a conclusion).
+    Fallback chain (each step relaxes a filter, narrative quality > strict source):
+      1. (contract_id, algo_id, date)
+      2. (any contract, algo_id, date)             — transition days
+      3. (contract_id, any algo with conclusion, date) — ensemble dates
+         where ensemble decision has no LLM conclusion yet
+      4. (any contract, any algo with conclusion, date)
+
+    The narrative text is still authored by the legacy cc-daily-analysis job,
+    so on ensemble dates the conclusion comes from the legacy row while the
+    decision was produced by ensemble. The endpoint exposes
+    ``source_algorithm`` so the frontend can disclose this dissonance.
     """
     if contract_id is None:
         if target_date:
@@ -466,27 +474,25 @@ async def get_latest_recommendations(
     if algo_id is None:
         algo_id = await get_active_algorithm_version_id(db)
 
-    query = select(PlIndicatorDaily.conclusion, PlIndicatorDaily.date).where(
+    base_select = select(PlIndicatorDaily.conclusion, PlIndicatorDaily.date)
+
+    # Step 1: contract + algo + (date)
+    query = base_select.where(
         and_(
             PlIndicatorDaily.contract_id == contract_id,
             PlIndicatorDaily.algorithm_version_id == algo_id,
             PlIndicatorDaily.conclusion.isnot(None),
         )
     )
-
     if target_date:
         query = query.where(PlIndicatorDaily.date == target_date)
-
     query = query.order_by(desc(PlIndicatorDaily.date)).limit(1)
-    result = await db.execute(query)
-    row = result.one_or_none()
+    row = (await db.execute(query)).one_or_none()
 
-    # Cross-contract fallback: if no conclusion found for resolved contract,
-    # try any contract for that date (handles transition days)
+    # Step 2: relax contract filter (any contract, this algo, this date)
     if (not row or not row.conclusion) and target_date:
-        fallback_query = (
-            select(PlIndicatorDaily.conclusion, PlIndicatorDaily.date)
-            .where(
+        q = (
+            base_select.where(
                 and_(
                     PlIndicatorDaily.date == target_date,
                     PlIndicatorDaily.algorithm_version_id == algo_id,
@@ -496,8 +502,36 @@ async def get_latest_recommendations(
             .order_by(desc(PlIndicatorDaily.date))
             .limit(1)
         )
-        fallback_result = await db.execute(fallback_query)
-        row = fallback_result.one_or_none()
+        row = (await db.execute(q)).one_or_none()
+
+    # Step 3: relax algo filter (this contract, ANY algo with conclusion, this date)
+    if (not row or not row.conclusion) and target_date:
+        q = (
+            base_select.where(
+                and_(
+                    PlIndicatorDaily.date == target_date,
+                    PlIndicatorDaily.contract_id == contract_id,
+                    PlIndicatorDaily.conclusion.isnot(None),
+                )
+            )
+            .order_by(desc(PlIndicatorDaily.date))
+            .limit(1)
+        )
+        row = (await db.execute(q)).one_or_none()
+
+    # Step 4: fully relaxed (any contract, any algo, this date)
+    if (not row or not row.conclusion) and target_date:
+        q = (
+            base_select.where(
+                and_(
+                    PlIndicatorDaily.date == target_date,
+                    PlIndicatorDaily.conclusion.isnot(None),
+                )
+            )
+            .order_by(desc(PlIndicatorDaily.date))
+            .limit(1)
+        )
+        row = (await db.execute(q)).one_or_none()
 
     if not row or not row.conclusion:
         return [], None, None

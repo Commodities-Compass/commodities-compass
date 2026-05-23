@@ -1,13 +1,13 @@
 # C5 Frontend Rollback — `feat/c5-frontend-integration`
 
-> Branch shipped to prod on 2026-05-23. Merge SHA: `<TO_BE_STAMPED_POST_MERGE>`.
+> Branch shipped to prod on 2026-05-23. Merge SHA: `bd4c27cc2fa0fe0617e23ffd11784492dd169496`.
 > If something breaks in prod, this is the page that gets you back to the previous UI.
 
 ## TL;DR
 
 ```bash
 # From a clean main checkout
-git revert -m 1 <MERGE_SHA>
+git revert -m 1 bd4c27cc2fa0fe0617e23ffd11784492dd169496
 git push origin main
 # CI/CD redeploys frontend + backend with the old configuration.
 ```

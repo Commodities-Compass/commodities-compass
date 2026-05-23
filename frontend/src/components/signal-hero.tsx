@@ -335,7 +335,6 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
   const meta = SIGNAL_META[pos.position];
   const sessionDate = pos.date ?? targetDate ?? null;
   const week = weekOfYear(sessionDate);
-  const ytd = pos.ytd_performance;
 
   const deck = (recs?.recommendations ?? [])
     .slice(0, 2)
@@ -583,56 +582,6 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
         </aside>
       </div>
 
-      {/* ============== Full-width YTD banner — magazine stat strip ============== */}
-      <div
-        className="ytd-banner"
-        style={{
-          marginTop: 24,
-          paddingTop: 20,
-          paddingBottom: 4,
-          borderTop: '1px dotted var(--rule)',
-          display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1fr) auto',
-          alignItems: 'baseline',
-          gap: 24,
-        }}
-      >
-        <div>
-          <Eyebrow as="div" tone="muted" size={11} tracking="0.24em">
-            Performance YTD
-          </Eyebrow>
-          <div
-            style={{
-              fontFamily: 'var(--font-display)',
-              fontStyle: 'italic',
-              fontSize: 14,
-              color: 'var(--ink-light)',
-              marginTop: 6,
-            }}
-          >
-            Depuis le 1<sup>er</sup> janvier {yearOf(sessionDate) ?? new Date().getFullYear()} —
-            cumul des décisions notées contre le prix du jour suivant.
-          </div>
-        </div>
-        <div
-          className="tabular-nums"
-          style={{
-            fontFamily: 'var(--font-display)',
-            fontWeight: 700,
-            fontSize: 'clamp(40px, 5vw, 64px)',
-            lineHeight: 1,
-            letterSpacing: '-0.02em',
-            color:
-              ytd != null && ytd >= 0
-                ? 'var(--color-signal-open)'
-                : 'var(--color-signal-hedge)',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {ytd != null ? `${ytd >= 0 ? '+' : ''}${ytd.toFixed(2)}%` : '—'}
-        </div>
-      </div>
-
       <style>{`
         @media (max-width: 767px) {
           .hero-grid {
@@ -640,10 +589,6 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
           }
           .hero-score-panel {
             width: 100% !important;
-          }
-          .ytd-banner {
-            grid-template-columns: 1fr !important;
-            text-align: left;
           }
         }
       `}</style>

@@ -252,13 +252,7 @@ async def calculate_ytd_performance(
     the front-month contract per date (highest OI), so YTD scoring spans
     contract rolls seamlessly.
     """
-    # TODO: ROLLBACK — temporary hardcoded YTD, remove this short-circuit to restore real computation.
-    logger.warning(
-        "YTD Performance: returning HARDCODED value 84.18%% (rollback pending)"
-    )
-    return 84.18
-
-    if reference_date is None:  # pragma: no cover - unreachable while hardcoded
+    if reference_date is None:
         reference_date = date.today()
 
     from sqlalchemy import text as sa_text

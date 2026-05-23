@@ -12,10 +12,13 @@ export interface CommodityIndicator {
   ranges?: IndicatorRange[];
 }
 
+export type AlgorithmName = 'ensemble_v1_softgate_wrapper' | 'legacy' | string;
+
 export interface PositionStatusResponse {
   date: string;
   position: 'OPEN' | 'HEDGE' | 'MONITOR';
   ytd_performance: number;
+  source_algorithm?: AlgorithmName | null;
 }
 
 export interface IndicatorsGridResponse {
@@ -23,12 +26,14 @@ export interface IndicatorsGridResponse {
   indicators: {
     [key: string]: CommodityIndicator;
   };
+  source_algorithm?: AlgorithmName | null;
 }
 
 export interface RecommendationsResponse {
   date: string;
   recommendations: string[];
   raw_score: string | null;
+  source_algorithm?: AlgorithmName | null;
 }
 
 export interface ChartDataPoint {
@@ -115,6 +120,88 @@ export interface WeatherResponse {
   stress_history?: LocationStressHistory[];
   impact_score?: number | null;
   harmattan?: HarmattanStatus | null;
+}
+
+// ---------------------------------------------------------------------------
+// Section VI — Macro & Positioning
+// ---------------------------------------------------------------------------
+
+export interface MacroPanelResponse {
+  date: string;
+  fx_dxy_proxy: number | null;
+  fx_gbpusd: number | null;
+  fx_eurusd: number | null;
+  fx_gbpeur: number | null;
+  enso_oni_month: number | null;
+  enso_nino34_anomaly: number | null;
+  enso_reference_date: string | null;
+  macro_direction: number | null;
+  macro_surprise: number | null;
+  macro_half_life_days: number | null;
+  source_algorithm?: AlgorithmName | null;
+}
+
+export interface PositioningResponse {
+  date: string;
+  cot_managed_money_net: number | null;
+  cot_managed_money_long: number | null;
+  cot_managed_money_short: number | null;
+  cot_producer_merchant_net: number | null;
+  cot_open_interest: number | null;
+  cot_report_date: string | null;
+  cot_release_date: string | null;
+  stock_eu_bags60kg: number | null;
+  stock_us: number | null;
+  stock_eu_us_ratio: number | null;
+  com_net_us: number | null;
+}
+
+// ---------------------------------------------------------------------------
+// Section VII — Ensemble Audit
+// ---------------------------------------------------------------------------
+
+export type SpecialistCluster = 'winter' | 'spring' | 'unmapped';
+
+export interface SpecialistVote {
+  specialist_name: string;
+  cluster: SpecialistCluster;
+  pred: 'OPEN' | 'HEDGE' | 'MONITOR';
+  window_months: number;
+  n_features_used: number | null;
+}
+
+export interface SpecialistVotesResponse {
+  date: string;
+  algorithm_version: string;
+  votes: SpecialistVote[];
+  winter_signed: number | null;
+  spring_signed: number | null;
+}
+
+export interface EnsembleDiagnosticsResponse {
+  date: string;
+  algorithm_version: string;
+  soft_gate_decision: 'OPEN' | 'HEDGE' | 'MONITOR';
+  net_score: number;
+  weights_sum: number;
+  n_committed_specialists: number;
+  decision_wrapped: 'OPEN' | 'HEDGE' | 'MONITOR';
+  wrapper_active: boolean;
+  fired_running_acc: boolean;
+  fired_trend: boolean;
+  fired_dispersion: boolean;
+  fired_three_way: boolean;
+  running_acc_5d: number | null;
+  realized_return_5d: number | null;
+  winter_vote_signed: number | null;
+  spring_vote_signed: number | null;
+  macro_direction: number | null;
+  macro_surprise: number | null;
+  macro_half_life_days: number | null;
+  anomaly_score_z: number | null;
+  prior_open: number | null;
+  prior_hedge: number | null;
+  prior_monitor: number | null;
 }
 
 export interface AudioResponse {

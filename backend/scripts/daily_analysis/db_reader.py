@@ -42,11 +42,51 @@ class ContextData:
 
 
 @dataclass
+class EnsembleDiagnostics:
+    """C5 ensemble orchestrator audit for a (date, contract) pair.
+
+    Read from ``pl_orchestrator_decision`` for the ensemble_v1_softgate_wrapper
+    algorithm_version. Populated only when ensemble produced a decision for the
+    target date (typically 2025-12-15 onward). The narrative-generating prompt
+    branches on whether this is present:
+      * present  → align narrative on ensemble's ``decision_wrapped`` and inject
+        diagnostics into the prompt so the LLM justifies the ensemble decision.
+      * absent   → keep legacy behavior (rationalise the engine's composite
+        ``final_indicator`` decision).
+    """
+
+    algorithm_version_id: str
+    algorithm_version_name: str
+    soft_gate_decision: str
+    decision_wrapped: str
+    net_score: float
+    n_committed_specialists: int
+    weights_sum: float
+    wrapper_active: bool
+    fired_running_acc: bool
+    fired_dispersion: bool
+    fired_trend: bool
+    fired_three_way: bool
+    running_acc_5d: float | None
+    realized_return_5d: float | None
+    winter_vote_signed: int | None
+    spring_vote_signed: int | None
+    macro_direction: int | None
+    macro_surprise: float | None
+    macro_half_life_days: int | None
+    anomaly_score_z: float | None
+    prior_open: float | None
+    prior_hedge: float | None
+    prior_monitor: float | None
+
+
+@dataclass
 class PipelineInputs:
     """All inputs needed by the analysis engine."""
 
     technicals: TechnicalsData
     context: ContextData
+    ensemble: EnsembleDiagnostics | None = None
 
 
 # Mapping from DB column → LLM variable name prefix.
@@ -92,12 +132,76 @@ class DBReader:
             contract_code: Active contract code.
 
         Returns:
-            PipelineInputs with technicals + context ready for prompts.
+            PipelineInputs with technicals + context + ensemble diagnostics.
         """
         technicals = self._read_technicals(target_date, contract_code)
         context = self._read_context(target_date)
+        ensemble = self._read_ensemble_diagnostics(target_date, contract_code)
 
-        return PipelineInputs(technicals=technicals, context=context)
+        return PipelineInputs(technicals=technicals, context=context, ensemble=ensemble)
+
+    def _read_ensemble_diagnostics(
+        self, target_date: date, contract_code: str
+    ) -> EnsembleDiagnostics | None:
+        """Read pl_orchestrator_decision for the ensemble_v1_softgate_wrapper row.
+
+        Returns None on dates with no ensemble row (pre-2025-12-15 or future).
+        Filters by ``contract_code`` to handle contract rolls.
+        """
+        result = self._session.execute(
+            text("""
+                SELECT
+                    o.algorithm_version_id, v.name AS algo_name,
+                    o.soft_gate_decision, o.decision_wrapped,
+                    o.net_score, o.n_committed_specialists, o.weights_sum,
+                    o.wrapper_active,
+                    o.fired_running_acc, o.fired_dispersion,
+                    o.fired_trend, o.fired_three_way,
+                    o.running_acc_5d, o.realized_return_5d,
+                    o.winter_vote_signed, o.spring_vote_signed,
+                    o.macro_direction, o.macro_surprise, o.macro_half_life_days,
+                    o.anomaly_score_z,
+                    o.prior_open, o.prior_hedge, o.prior_monitor
+                FROM pl_orchestrator_decision o
+                JOIN pl_algorithm_version v ON v.id = o.algorithm_version_id
+                JOIN ref_contract c ON c.id = o.contract_id
+                WHERE o.date = :target_date
+                  AND c.code = :contract_code
+                  AND v.name = 'ensemble_v1_softgate_wrapper'
+                LIMIT 1
+            """),
+            {"target_date": target_date, "contract_code": contract_code},
+        )
+        row = result.fetchone()
+        if row is None:
+            return None
+
+        d = dict(zip(result.keys(), row))
+        return EnsembleDiagnostics(
+            algorithm_version_id=str(d["algorithm_version_id"]),
+            algorithm_version_name=str(d["algo_name"]),
+            soft_gate_decision=str(d["soft_gate_decision"]),
+            decision_wrapped=str(d["decision_wrapped"]),
+            net_score=float(d["net_score"]),
+            n_committed_specialists=int(d["n_committed_specialists"]),
+            weights_sum=float(d["weights_sum"]),
+            wrapper_active=bool(d["wrapper_active"]),
+            fired_running_acc=bool(d["fired_running_acc"]),
+            fired_dispersion=bool(d["fired_dispersion"]),
+            fired_trend=bool(d["fired_trend"]),
+            fired_three_way=bool(d["fired_three_way"]),
+            running_acc_5d=_opt_float(d.get("running_acc_5d")),
+            realized_return_5d=_opt_float(d.get("realized_return_5d")),
+            winter_vote_signed=_opt_int(d.get("winter_vote_signed")),
+            spring_vote_signed=_opt_int(d.get("spring_vote_signed")),
+            macro_direction=_opt_int(d.get("macro_direction")),
+            macro_surprise=_opt_float(d.get("macro_surprise")),
+            macro_half_life_days=_opt_int(d.get("macro_half_life_days")),
+            anomaly_score_z=_opt_float(d.get("anomaly_score_z")),
+            prior_open=_opt_float(d.get("prior_open")),
+            prior_hedge=_opt_float(d.get("prior_hedge")),
+            prior_monitor=_opt_float(d.get("prior_monitor")),
+        )
 
     def _read_technicals(self, target_date: date, contract_code: str) -> TechnicalsData:
         """Read last 2 days of technicals + derived indicators from DB."""
@@ -298,3 +402,15 @@ def _format_value(value: object) -> str:
     if isinstance(value, (float, Decimal)):
         return f"{float(value):g}"
     return str(value)
+
+
+def _opt_float(value: object) -> float | None:
+    if value is None:
+        return None
+    return float(value)  # type: ignore[arg-type]
+
+
+def _opt_int(value: object) -> int | None:
+    if value is None:
+        return None
+    return int(value)  # type: ignore[arg-type]

@@ -36,6 +36,7 @@ def transform_to_position_status_response(
     position: Optional[str],
     ytd_performance: float,
     response_date,
+    source_algorithm: Optional[str] = None,
 ) -> PositionStatusResponse:
     """Transform position data to PositionStatusResponse."""
     original = position
@@ -55,12 +56,14 @@ def transform_to_position_status_response(
         date=response_date,
         position=position,
         ytd_performance=ytd_performance,
+        source_algorithm=source_algorithm,
     )
 
 
 def transform_to_indicators_grid_response(
     indicators_data: Dict[str, Dict[str, Any]],
     response_date: date,
+    source_algorithm: Optional[str] = None,
 ) -> IndicatorsGridResponse:
     """Transform indicators data to IndicatorsGridResponse."""
     indicators = {}
@@ -90,6 +93,7 @@ def transform_to_indicators_grid_response(
     return IndicatorsGridResponse(
         date=response_datetime,
         indicators=indicators,
+        source_algorithm=source_algorithm,
     )
 
 
@@ -97,6 +101,7 @@ def transform_to_recommendations_response(
     recommendations: List[str],
     raw_score: Optional[str],
     response_date: date,
+    source_algorithm: Optional[str] = None,
 ) -> RecommendationsResponse:
     """Transform recommendations data to RecommendationsResponse."""
     from datetime import datetime
@@ -107,6 +112,7 @@ def transform_to_recommendations_response(
         date=response_datetime,
         recommendations=recommendations,
         raw_score=raw_score,
+        source_algorithm=source_algorithm,
     )
 
 

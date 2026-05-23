@@ -27,6 +27,11 @@ from app.schemas.dashboard import (
     WeatherEnrichedResponse,
     ChartDataResponse,
     AudioResponse,
+    MacroPanelResponse,
+    PositioningResponse,
+    EnsembleDiagnosticsResponse,
+    SpecialistVotesResponse,
+    SpecialistVote,
 )
 from app.services.dashboard_service import (
     calculate_ytd_performance,
@@ -41,6 +46,7 @@ from app.services.dashboard_service import (
 from app.utils.contract_resolver import (
     get_active_contract_id,
     get_active_algorithm_version_id,
+    get_algorithm_version_for_date,
 )
 from app.services.dashboard_transformers import (
     transform_to_position_status_response,
@@ -50,6 +56,13 @@ from app.services.dashboard_transformers import (
     transform_market_research_to_news,
     transform_to_weather_enriched_response,
 )
+from app.services.macro_panel_service import get_macro_panel
+from app.services.positioning_service import get_positioning
+from app.services.ensemble_diagnostics_service import (
+    get_ensemble_diagnostics,
+    get_specialist_votes,
+)
+from app.utils.contract_resolver import ENSEMBLE_VERSION_NAME
 from app.services.weather_service import (
     get_current_campaign,
     get_harmattan_status,
@@ -68,6 +81,30 @@ from app.services.audio_service import get_audio_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+async def _resolve_algo_for_date(
+    db: AsyncSession,
+    business_date: Optional[date],
+    contract_id,
+) -> tuple:
+    """Resolve (algorithm_version_id, algorithm_name) for a date.
+
+    Centralizes the date-aware lookup so all dashboard endpoints expose a
+    consistent ``source_algorithm`` field. When no business_date is provided
+    (latest data request), falls back to today — the resolver caches per
+    (date, contract) so this is cheap on a hot path.
+    """
+    resolution_date = business_date or datetime.now(timezone.utc).date()
+    try:
+        algo_id, algo_name = await get_algorithm_version_for_date(
+            db, resolution_date, contract_id=contract_id
+        )
+        return algo_id, algo_name
+    except ValueError:
+        # No version registered at all — fall back to the legacy "active" id.
+        algo_id = await get_active_algorithm_version_id(db)
+        return algo_id, "legacy"
 
 
 async def _parse_and_validate_date(date_str: str, db: AsyncSession) -> date:
@@ -144,9 +181,11 @@ async def get_position_status(
         if target_date:
             business_date = await _parse_and_validate_date(target_date, db)
 
-        # Resolve contract/algo once, pass to both service calls
+        # Resolve contract, then date-aware algo version (ensemble vs legacy)
         contract_id = await get_active_contract_id(db)
-        algo_id = await get_active_algorithm_version_id(db)
+        algo_id, algo_name = await _resolve_algo_for_date(
+            db, business_date, contract_id
+        )
 
         # Get position and YTD performance from service layer
         position = await get_position_from_technicals(
@@ -161,6 +200,7 @@ async def get_position_status(
             position=position,
             ytd_performance=ytd_performance,
             response_date=response_date,
+            source_algorithm=algo_name,
         )
 
     except HTTPException:
@@ -205,8 +245,16 @@ async def get_indicators_grid(
         if target_date:
             business_date = await _parse_and_validate_date(target_date, db)
 
-        # Get indicators data from service layer
-        indicators_data = await get_indicators_with_ranges(db, business_date)
+        # Resolve contract + date-aware algo version so indicators come from the
+        # right version when ensemble has data for that date.
+        contract_id = await get_active_contract_id(db)
+        algo_id, algo_name = await _resolve_algo_for_date(
+            db, business_date, contract_id
+        )
+
+        indicators_data = await get_indicators_with_ranges(
+            db, business_date, contract_id=contract_id, algo_id=algo_id
+        )
 
         if not indicators_data:
             raise HTTPException(status_code=404, detail="No indicators data found")
@@ -217,6 +265,7 @@ async def get_indicators_grid(
         return transform_to_indicators_grid_response(
             indicators_data=indicators_data,
             response_date=response_date,
+            source_algorithm=algo_name,
         )
 
     except HTTPException:
@@ -262,9 +311,18 @@ async def get_recommendations(
         if target_date:
             business_date = await _parse_and_validate_date(target_date, db)
 
-        # Get recommendations from service layer
+        # Resolve contract + date-aware algo version. Recommendations narrative
+        # currently always comes from the legacy LLM job — even when ensemble
+        # produced the decision, the conclusion text is still legacy-generated.
+        # source_algorithm reflects which version's pl_indicator_daily row was
+        # picked so the frontend can disclose the dissonance.
+        contract_id = await get_active_contract_id(db)
+        algo_id, algo_name = await _resolve_algo_for_date(
+            db, business_date, contract_id
+        )
+
         recommendations, raw_score, rec_date = await get_latest_recommendations(
-            db, business_date
+            db, business_date, contract_id=contract_id, algo_id=algo_id
         )
 
         if not recommendations and not raw_score:
@@ -277,6 +335,7 @@ async def get_recommendations(
             recommendations=recommendations,
             raw_score=raw_score,
             response_date=response_date,
+            source_algorithm=algo_name,
         )
 
     except HTTPException:
@@ -657,6 +716,191 @@ async def get_non_trading_days(
         return {"dates": [], "latest_trading_day": None}
     except Exception as e:
         logger.error("Error fetching non-trading days: %s", e)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/macro-panel", response_model=MacroPanelResponse)
+@limiter.limit("60/minute")
+async def get_macro_panel_endpoint(
+    request: Request,
+    target_date: Optional[str] = Query(
+        default=None, description="Date for macro panel (YYYY-MM-DD format)"
+    ),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> MacroPanelResponse:
+    """FX + ENSO + ensemble macro context.
+
+    Returns FX values (most recent business day on/before the date), ENSO
+    (most recent monthly publication, lag-corrected), and ensemble macro
+    diagnostics when available. Macro context fields are NULL on legacy dates.
+    """
+    try:
+        business_date = None
+        if target_date:
+            business_date = await _parse_and_validate_date(target_date, db)
+        resolution_date = business_date or datetime.now(timezone.utc).date()
+
+        contract_id = await get_active_contract_id(db)
+        algo_id, algo_name = await _resolve_algo_for_date(
+            db, business_date, contract_id
+        )
+
+        data = await get_macro_panel(
+            db, resolution_date, contract_id=contract_id, algo_id=algo_id
+        )
+        return MacroPanelResponse(**data, source_algorithm=algo_name)
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error getting macro panel: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/positioning", response_model=PositioningResponse)
+@limiter.limit("60/minute")
+async def get_positioning_endpoint(
+    request: Request,
+    target_date: Optional[str] = Query(
+        default=None, description="Date for positioning (YYYY-MM-DD format)"
+    ),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> PositioningResponse:
+    """COT EU (Managed Money + Producer/Merchant nets) + Stock EU/US.
+
+    Stock EU is the principal signal (60kg bags). Stock US is retained as a
+    secondary metric and is used to compute the EU/US ratio in tonnes.
+    """
+    try:
+        business_date = None
+        if target_date:
+            business_date = await _parse_and_validate_date(target_date, db)
+        resolution_date = business_date or datetime.now(timezone.utc).date()
+
+        contract_id = await get_active_contract_id(db)
+
+        data = await get_positioning(db, resolution_date, contract_id=contract_id)
+        return PositioningResponse(**data)
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error getting positioning: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/ensemble-diagnostics", response_model=EnsembleDiagnosticsResponse)
+@limiter.limit("60/minute")
+async def get_ensemble_diagnostics_endpoint(
+    request: Request,
+    target_date: Optional[str] = Query(
+        default=None, description="Date for ensemble diagnostics (YYYY-MM-DD format)"
+    ),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> EnsembleDiagnosticsResponse:
+    """Soft-gate + wrapper audit row for an ensemble date.
+
+    Returns 404 on dates without an ensemble row (pre-2025-12-15 or future
+    dates) — the frontend conditionally hides Section VII in that case.
+    """
+    try:
+        business_date = None
+        if target_date:
+            business_date = await _parse_and_validate_date(target_date, db)
+        resolution_date = business_date or datetime.now(timezone.utc).date()
+
+        contract_id = await get_active_contract_id(db)
+        algo_id, algo_name = await _resolve_algo_for_date(
+            db, business_date, contract_id
+        )
+        if algo_name != ENSEMBLE_VERSION_NAME:
+            raise HTTPException(
+                status_code=404,
+                detail="No ensemble diagnostics available for this date",
+            )
+
+        data = await get_ensemble_diagnostics(
+            db,
+            resolution_date,
+            contract_id=contract_id,
+            algo_id=algo_id,
+            algo_name=algo_name,
+        )
+        if data is None:
+            raise HTTPException(
+                status_code=404,
+                detail="No ensemble diagnostics row found for this date",
+            )
+        return EnsembleDiagnosticsResponse(**data)
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error getting ensemble diagnostics: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/specialist-votes", response_model=SpecialistVotesResponse)
+@limiter.limit("60/minute")
+async def get_specialist_votes_endpoint(
+    request: Request,
+    target_date: Optional[str] = Query(
+        default=None, description="Date for specialist votes (YYYY-MM-DD format)"
+    ),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> SpecialistVotesResponse:
+    """14 specialist votes + cluster mapping for an ensemble date.
+
+    Returns 404 on legacy dates (no ensemble row).
+    """
+    try:
+        business_date = None
+        if target_date:
+            business_date = await _parse_and_validate_date(target_date, db)
+        resolution_date = business_date or datetime.now(timezone.utc).date()
+
+        contract_id = await get_active_contract_id(db)
+        algo_id, algo_name = await _resolve_algo_for_date(
+            db, business_date, contract_id
+        )
+        if algo_name != ENSEMBLE_VERSION_NAME:
+            raise HTTPException(
+                status_code=404,
+                detail="No specialist votes available for this date",
+            )
+
+        data = await get_specialist_votes(
+            db,
+            resolution_date,
+            contract_id=contract_id,
+            algo_id=algo_id,
+            algo_name=algo_name,
+        )
+        if data is None:
+            raise HTTPException(
+                status_code=404,
+                detail="No specialist vote rows found for this date",
+            )
+        return SpecialistVotesResponse(
+            date=data["date"],
+            algorithm_version=data["algorithm_version"],
+            votes=[SpecialistVote(**v) for v in data["votes"]],
+            winter_signed=data["winter_signed"],
+            spring_signed=data["spring_signed"],
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error getting specialist votes: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

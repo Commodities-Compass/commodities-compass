@@ -4,6 +4,8 @@ import {
   usePositionStatus,
   useChartData,
   useIndicatorsGrid,
+  useMacroPanel,
+  usePositioning,
 } from '@/hooks/useDashboard';
 import { Eyebrow, DotSeparator, DataValue } from '@/components/editorial';
 
@@ -32,6 +34,21 @@ function fmtNum(n: number | null | undefined, digits = 2): string {
 function fmtInt(n: number | null | undefined): string {
   if (n == null) return '—';
   return Math.round(n).toLocaleString('en-GB');
+}
+
+function fmtCompact(n: number | null | undefined): string {
+  if (n == null) return '—';
+  const abs = Math.abs(n);
+  const sign = n < 0 ? '-' : '';
+  if (abs >= 1_000_000) return `${sign}${(abs / 1_000_000).toFixed(2)}M`;
+  if (abs >= 1_000) return `${sign}${(abs / 1_000).toFixed(1)}k`;
+  return n.toFixed(0);
+}
+
+function fmtSignedCompact(n: number | null | undefined): string {
+  if (n == null) return '—';
+  const formatted = fmtCompact(n);
+  return n >= 0 ? `+${formatted}` : formatted;
 }
 
 interface TickerItem {
@@ -72,6 +89,8 @@ export default function LiveSignalStrip() {
   const { data: pos } = usePositionStatus(currentDate);
   const { data: chart } = useChartData(5, currentDate);
   const { data: grid } = useIndicatorsGrid(currentDate);
+  const { data: macro } = useMacroPanel(currentDate);
+  const { data: positioning } = usePositioning(currentDate);
 
   const sortedPoints = (chart?.data ?? [])
     .filter((p) => p.close != null)
@@ -118,6 +137,27 @@ export default function LiveSignalStrip() {
     { key: 'pk', label: '%K', value: fmtNum(percentK) },
     { key: 'atr', label: 'ATR', value: fmtNum(atr) },
     { key: 'voi', label: 'V/OI', value: fmtNum(volOi) },
+    {
+      key: 'stockEu',
+      label: 'Stock EU',
+      value: positioning?.stock_eu_bags60kg != null ? `${fmtCompact(positioning.stock_eu_bags60kg)} bags` : '—',
+    },
+    {
+      key: 'fxDxy',
+      label: 'FX DXY',
+      value: fmtNum(macro?.fx_dxy_proxy, 3),
+    },
+    {
+      key: 'cotMm',
+      label: 'COT MM',
+      value: fmtSignedCompact(positioning?.cot_managed_money_net),
+      valueColor:
+        positioning?.cot_managed_money_net == null
+          ? undefined
+          : positioning.cot_managed_money_net >= 0
+            ? 'var(--color-signal-open)'
+            : 'var(--color-signal-hedge)',
+    },
     {
       key: 'ytd',
       label: 'YTD',

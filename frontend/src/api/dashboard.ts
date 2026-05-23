@@ -1,5 +1,19 @@
 import { apiClient } from './client';
-import type { PositionStatusResponse, IndicatorsGridResponse, RecommendationsResponse, ChartDataResponse, NewsResponse, NewsSentimentResponse, WeatherResponse, AudioResponse, NonTradingDaysResponse } from '@/types/dashboard';
+import type {
+  PositionStatusResponse,
+  IndicatorsGridResponse,
+  RecommendationsResponse,
+  ChartDataResponse,
+  NewsResponse,
+  NewsSentimentResponse,
+  WeatherResponse,
+  AudioResponse,
+  NonTradingDaysResponse,
+  MacroPanelResponse,
+  PositioningResponse,
+  EnsembleDiagnosticsResponse,
+  SpecialistVotesResponse,
+} from '@/types/dashboard';
 
 export type { PositionStatusResponse };
 
@@ -57,6 +71,40 @@ export const dashboardApi = {
     const params: Record<string, number> = { year };
     if (month !== undefined) params.month = month;
     const response = await apiClient.get<NonTradingDaysResponse>('/dashboard/non-trading-days', { params });
+    return response.data;
+  },
+
+  // ---- Section VI — Macro & Positioning -------------------------------
+  getMacroPanel: async (targetDate?: string): Promise<MacroPanelResponse> => {
+    const params = targetDate ? { target_date: targetDate } : {};
+    const response = await apiClient.get<MacroPanelResponse>('/dashboard/macro-panel', { params });
+    return response.data;
+  },
+
+  getPositioning: async (targetDate?: string): Promise<PositioningResponse> => {
+    const params = targetDate ? { target_date: targetDate } : {};
+    const response = await apiClient.get<PositioningResponse>('/dashboard/positioning', { params });
+    return response.data;
+  },
+
+  // ---- Section VII — Ensemble Audit -----------------------------------
+  getEnsembleDiagnostics: async (
+    targetDate?: string,
+  ): Promise<EnsembleDiagnosticsResponse> => {
+    const params = targetDate ? { target_date: targetDate } : {};
+    const response = await apiClient.get<EnsembleDiagnosticsResponse>(
+      '/dashboard/ensemble-diagnostics',
+      { params },
+    );
+    return response.data;
+  },
+
+  getSpecialistVotes: async (targetDate?: string): Promise<SpecialistVotesResponse> => {
+    const params = targetDate ? { target_date: targetDate } : {};
+    const response = await apiClient.get<SpecialistVotesResponse>(
+      '/dashboard/specialist-votes',
+      { params },
+    );
     return response.data;
   },
 };

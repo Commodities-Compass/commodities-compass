@@ -39,6 +39,14 @@ class PositionStatusResponse(BaseModel):
     ytd_performance: float = Field(
         ..., description="Year-to-date performance percentage"
     )
+    source_algorithm: Optional[str] = Field(
+        None,
+        description=(
+            "Algorithm version that produced this decision for the date — "
+            "e.g. 'ensemble_v1_softgate_wrapper' or 'legacy'. Resolved per "
+            "(date, contract) via the date-aware resolver."
+        ),
+    )
 
 
 class IndicatorData(BaseModel):
@@ -66,6 +74,10 @@ class IndicatorsGridResponse(BaseModel):
     indicators: dict[str, CommodityIndicator] = Field(
         ..., description="Map of indicator names to their data"
     )
+    source_algorithm: Optional[str] = Field(
+        None,
+        description="Algorithm version that produced the indicators for this date.",
+    )
 
 
 class RecommendationsResponse(BaseModel):
@@ -80,6 +92,14 @@ class RecommendationsResponse(BaseModel):
     )
     raw_score: Optional[str] = Field(
         None, description="Raw score text from technicals table"
+    )
+    source_algorithm: Optional[str] = Field(
+        None,
+        description=(
+            "Algorithm version whose pl_indicator_daily row supplied the "
+            "conclusion narrative. Note: legacy LLM narrative may be served "
+            "alongside an ensemble decision (until v2 narrative ships)."
+        ),
     )
 
 
@@ -243,6 +263,196 @@ class ChartDataResponse(BaseModel):
     """Response schema for chart data endpoint."""
 
     data: List[ChartDataPoint] = Field(..., description="Historical chart data points")
+
+
+# ---------------------------------------------------------------------------
+# Section VI — Macro & Positioning (FX + ENSO + COT EU + Stock EU)
+# ---------------------------------------------------------------------------
+
+
+class MacroPanelResponse(BaseModel):
+    """FX + ENSO + macro context for a given date.
+
+    Sources:
+      * ``pl_external_indicator`` for FX (daily) and ENSO (monthly, lagged).
+      * ``pl_orchestrator_decision`` for the ensemble-derived macro signal
+        (direction / surprise / half-life). NULL on legacy-only dates.
+    """
+
+    date: str = Field(..., description="Date in YYYY-MM-DD format")
+    # FX (ECB business days)
+    fx_dxy_proxy: Optional[float] = Field(
+        None, description="USD strength proxy (1 / EUR per USD)"
+    )
+    fx_gbpusd: Optional[float] = Field(None, description="USD per 1 GBP")
+    fx_eurusd: Optional[float] = Field(None, description="USD per 1 EUR")
+    fx_gbpeur: Optional[float] = Field(None, description="GBP per 1 EUR (audit)")
+    # ENSO (monthly NOAA, look-back to most recent rowto reflect lag)
+    enso_oni_month: Optional[float] = Field(
+        None, description="ENSO Oceanic Niño Index (monthly average, lagged 14d)"
+    )
+    enso_nino34_anomaly: Optional[float] = Field(
+        None, description="Niño 3.4 SST anomaly (monthly)"
+    )
+    enso_reference_date: Optional[str] = Field(
+        None, description="Date of the ENSO row actually used (lag-corrected)"
+    )
+    # Ensemble-derived macro context (NULL on legacy dates)
+    macro_direction: Optional[int] = Field(
+        None, description="Ensemble macro direction (-1 / 0 / +1)"
+    )
+    macro_surprise: Optional[float] = Field(
+        None, description="Ensemble macro surprise magnitude"
+    )
+    macro_half_life_days: Optional[int] = Field(
+        None, description="Ensemble macro signal half-life"
+    )
+    source_algorithm: Optional[str] = Field(
+        None, description="Source algorithm of the macro context"
+    )
+
+
+class PositioningResponse(BaseModel):
+    """COT EU positioning + Stock EU/US fundamentals.
+
+    Sources:
+      * ``pl_cot_eu_weekly`` for COT EU Managed Money + Producer/Merchant nets.
+        Weekly cadence, lagged ~3 days from snapshot Tuesday.
+      * ``pl_contract_data_daily`` for stocks (EU 60kg bags, US tonnes) and the
+        legacy CFTC US commercial net.
+    """
+
+    date: str = Field(..., description="Date in YYYY-MM-DD format")
+    # COT EU (weekly, Managed Money is the R&D signal driver)
+    cot_managed_money_net: Optional[int] = Field(
+        None, description="Managed Money net (long - short)"
+    )
+    cot_managed_money_long: Optional[int] = Field(
+        None, description="Managed Money long"
+    )
+    cot_managed_money_short: Optional[int] = Field(
+        None, description="Managed Money short"
+    )
+    cot_producer_merchant_net: Optional[int] = Field(
+        None, description="Producer/Merchant net (commercial hedgers)"
+    )
+    cot_open_interest: Optional[int] = Field(
+        None, description="ICE EU total open interest on report"
+    )
+    cot_report_date: Optional[str] = Field(
+        None, description="Tuesday the report covers"
+    )
+    cot_release_date: Optional[str] = Field(
+        None, description="ICE publication date (Friday)"
+    )
+    # Stocks (Stock EU is the principal signal per North Star)
+    stock_eu_bags60kg: Optional[float] = Field(
+        None, description="ICE Europe certified stocks in 60kg bags"
+    )
+    stock_us: Optional[float] = Field(
+        None, description="ICE US certified stocks (tonnes)"
+    )
+    stock_eu_us_ratio: Optional[float] = Field(
+        None,
+        description=(
+            "Ratio of EU stocks (converted to tonnes via 60kg) to US stocks. "
+            "Higher = more EU coverage relative to US."
+        ),
+    )
+    # Legacy CFTC US commercial net (kept for backwards compat with old gauges)
+    com_net_us: Optional[float] = Field(
+        None, description="CFTC US Producer/Merchant net (legacy)"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Section VII — Ensemble Decision Audit (full transparency)
+# ---------------------------------------------------------------------------
+
+
+class SpecialistVote(BaseModel):
+    """One specialist's signed vote for a date."""
+
+    specialist_name: str = Field(
+        ..., description="Specialist identifier (e.g. wm_h1_a)"
+    )
+    cluster: str = Field(..., description="winter | spring | unmapped")
+    pred: str = Field(..., description="OPEN | HEDGE | MONITOR")
+    window_months: int = Field(..., description="Lookback window in months (12 or 24)")
+    n_features_used: Optional[int] = Field(
+        None, description="Features actually consumed at predict-time"
+    )
+
+
+class SpecialistVotesResponse(BaseModel):
+    """14 specialist votes for a date, with cluster mapping resolved server-side."""
+
+    date: str = Field(..., description="Date in YYYY-MM-DD format")
+    algorithm_version: str = Field(
+        ..., description="ensemble_v1_softgate_wrapper expected"
+    )
+    votes: List[SpecialistVote] = Field(
+        default_factory=list, description="14 specialist votes, cluster-tagged"
+    )
+    winter_signed: Optional[int] = Field(
+        None,
+        description=(
+            "Signed sum across the Winter cluster (OPEN = +1, HEDGE = -1, "
+            "MONITOR = 0). NULL if cluster mapping is empty."
+        ),
+    )
+    spring_signed: Optional[int] = Field(
+        None, description="Signed sum across the Spring cluster"
+    )
+
+
+class EnsembleDiagnosticsResponse(BaseModel):
+    """Soft-gate + wrapper + detector diagnostics for an ensemble date.
+
+    Mirrors ``pl_orchestrator_decision``. Returns 404 on dates with no
+    ensemble row (pre-2025-12-15) — the frontend conditionally hides
+    Section VII in that case.
+    """
+
+    date: str = Field(..., description="Date in YYYY-MM-DD format")
+    algorithm_version: str = Field(..., description="ensemble_v1_softgate_wrapper")
+
+    # Soft-gate
+    soft_gate_decision: str = Field(..., description="OPEN | HEDGE | MONITOR")
+    net_score: float = Field(..., description="Soft-gate net score (range ~[-1, +1])")
+    weights_sum: float = Field(..., description="Sum of committed specialist weights")
+    n_committed_specialists: int = Field(
+        ..., description="Number of committed specialists (out of 14)"
+    )
+
+    # Wrapper
+    decision_wrapped: str = Field(
+        ..., description="Final wrapped decision (mirrored to pl_indicator_daily)"
+    )
+    wrapper_active: bool = Field(
+        ..., description="True if the Compass wrapper modified the soft-gate output"
+    )
+    fired_running_acc: bool = Field(..., description="Running-accuracy gate fired")
+    fired_trend: bool = Field(
+        ..., description="Trend-conflict detector fired (inactive v1.0.0)"
+    )
+    fired_dispersion: bool = Field(..., description="Cluster-dispersion detector fired")
+    fired_three_way: bool = Field(
+        ..., description="Three-way disagreement detector fired (inactive v1.0.0)"
+    )
+
+    # Diagnostics (every column NULLABLE — see pipeline-continuity rule)
+    running_acc_5d: Optional[float] = Field(None)
+    realized_return_5d: Optional[float] = Field(None)
+    winter_vote_signed: Optional[int] = Field(None)
+    spring_vote_signed: Optional[int] = Field(None)
+    macro_direction: Optional[int] = Field(None)
+    macro_surprise: Optional[float] = Field(None)
+    macro_half_life_days: Optional[int] = Field(None)
+    anomaly_score_z: Optional[float] = Field(None)
+    prior_open: Optional[float] = Field(None)
+    prior_hedge: Optional[float] = Field(None)
+    prior_monitor: Optional[float] = Field(None)
 
 
 class AudioResponse(BaseModel):

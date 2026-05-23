@@ -23,7 +23,10 @@ from sqlalchemy.orm import Session
 from app.engine.composite import compute_decision, compute_score
 from app.utils.converters import to_float
 from app.engine.types import AlgorithmConfig, LEGACY_V1
-from scripts.daily_analysis.db_reader import DBReader, PipelineInputs
+from scripts.daily_analysis.db_reader import (
+    DBReader,
+    PipelineInputs,
+)
 from scripts.daily_analysis.llm_client import LLMClient, LLMResponse
 from scripts.daily_analysis.output_parser import (
     MacroAnalysisOutput,
@@ -31,7 +34,11 @@ from scripts.daily_analysis.output_parser import (
     parse_macro_output,
     parse_trading_output,
 )
-from scripts.daily_analysis.prompts import build_call1_prompt, build_call2_prompt
+from scripts.daily_analysis.prompts import (
+    build_call1_prompt,
+    build_call2_prompt,
+    build_call2_prompt_ensemble,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +74,10 @@ class AnalysisResult:
     call1_response: LLMResponse
     call2_response: LLMResponse
     target_date: date
+    # True when this run aligned itself on the ensemble row for the date
+    # (diagnostics injected into Call#2, narrative + decision written to the
+    # ensemble row). False = legacy path (historical date or no ensemble row).
+    ensemble_aligned: bool = False
 
 
 class DBAnalysisEngine:
@@ -151,12 +162,43 @@ class DBAnalysisEngine:
         *,
         dry_run: bool = False,
     ) -> AnalysisResult:
-        """Execute the full pipeline for a given date."""
+        """Execute the full pipeline for a given date.
+
+        Behavior depends on whether the ensemble produced a decision for the
+        (date, contract):
+          * Ensemble row present (default for 2025-12-15 onward): the run
+            "aligns" itself on ensemble — Call#2 receives the ensemble
+            diagnostics block, the decision is pinned to ``decision_wrapped``,
+            and the narrative is written to the ensemble row. This is what
+            keeps the dashboard, brief and podcast coherent with ensemble.
+          * No ensemble row: legacy path unchanged — composite final_indicator
+            drives the decision, narrative is written to the legacy row.
+
+        ``--algorithm-version`` CLI flag still works as an explicit override:
+        when set, the run targets that named version regardless of ensemble
+        presence (used for historical backfills or operator interventions).
+        """
 
         # --- Step 1: Read inputs from DB ---
         logger.info("Step 1: Reading data from database...")
         inputs = self._reader.read_all(target_date, contract_code=contract_code)
         self._log_inputs(inputs)
+
+        # Auto-align on ensemble when present AND no explicit override was set.
+        ensemble = inputs.ensemble
+        align_on_ensemble = (
+            ensemble is not None and self._algorithm_version_name is None
+        )
+        if align_on_ensemble:
+            # Pin the cached algorithm_version_id to ensemble's row so reads
+            # and writes target it (instead of the legacy is_active=TRUE row).
+            self._algorithm_version_id_cache = uuid.UUID(ensemble.algorithm_version_id)
+            self._algorithm_version_id_resolved = True
+            logger.info(
+                "Ensemble row detected for %s — aligning narrative on ensemble decision %s",
+                target_date,
+                ensemble.decision_wrapped,
+            )
 
         # --- Step 2: LLM Call #1 — Macro/Weather analysis ---
         logger.info("Step 2: LLM Call #1 — Macro/Weather analysis...")
@@ -178,26 +220,47 @@ class DBAnalysisEngine:
         )
 
         # --- Step 3: Compute FINAL_INDICATOR from DB (no Sheets!) ---
+        # Always compute it — even on ensemble dates — because it keeps
+        # populating ``final_indicator`` + ``macroeco_score`` columns and
+        # the macroeco signal component. The ``final_conclusion`` is only
+        # used to drive Call#2 when no ensemble decision is available.
         logger.info("Step 3: Computing FINAL_INDICATOR from engine...")
-        final_indicator, final_conclusion = self._compute_final_indicator(
+        final_indicator, computed_conclusion = self._compute_final_indicator(
             target_date,
             contract_code,
             macro.macroeco_bonus,
         )
-        logger.info(
-            "Engine result: FINAL_INDICATOR=%.4f CONCLUSION=%s",
-            final_indicator,
-            final_conclusion,
-        )
+        if align_on_ensemble and ensemble is not None:
+            final_conclusion = ensemble.decision_wrapped
+            logger.info(
+                "Engine result: FINAL_INDICATOR=%.4f COMPUTED=%s (overridden by ensemble → %s)",
+                final_indicator,
+                computed_conclusion,
+                final_conclusion,
+            )
+        else:
+            final_conclusion = computed_conclusion
+            logger.info(
+                "Engine result: FINAL_INDICATOR=%.4f CONCLUSION=%s",
+                final_indicator,
+                final_conclusion,
+            )
 
         # --- Step 4: LLM Call #2 — Trading decision ---
         logger.info("Step 4: LLM Call #2 — Trading decision...")
-        call2_prompt = build_call2_prompt(
-            technicals_today=inputs.technicals.today,
-            technicals_yesterday=inputs.technicals.yesterday,
-            final_indicator=final_indicator,
-            final_conclusion=final_conclusion,
-        )
+        if align_on_ensemble and ensemble is not None:
+            call2_prompt = build_call2_prompt_ensemble(
+                technicals_today=inputs.technicals.today,
+                technicals_yesterday=inputs.technicals.yesterday,
+                ensemble=ensemble,
+            )
+        else:
+            call2_prompt = build_call2_prompt(
+                technicals_today=inputs.technicals.today,
+                technicals_yesterday=inputs.technicals.yesterday,
+                final_indicator=final_indicator,
+                final_conclusion=final_conclusion,
+            )
         call2_response = self._llm.call(
             call2_prompt,
             temperature=self._call2_temperature,
@@ -210,6 +273,24 @@ class DBAnalysisEngine:
             trading.confiance,
             trading.direction,
         )
+
+        # Sanity-check: when aligning on ensemble, the LLM MUST echo the
+        # ensemble decision. If it drifts (rare with the new prompt), log a
+        # warning and force the decision back to the ensemble value so the
+        # dashboard and the audit trail stay coherent.
+        if align_on_ensemble and ensemble is not None:
+            if trading.decision != ensemble.decision_wrapped:
+                logger.warning(
+                    "LLM returned decision=%s but ensemble said %s — forcing alignment",
+                    trading.decision,
+                    ensemble.decision_wrapped,
+                )
+                trading = TradingDecisionOutput(
+                    decision=ensemble.decision_wrapped,
+                    confiance=trading.confiance,
+                    direction=trading.direction,
+                    conclusion=trading.conclusion,
+                )
 
         # --- Step 5: Write results to DB ---
         if not dry_run:
@@ -235,6 +316,7 @@ class DBAnalysisEngine:
             call1_response=call1_response,
             call2_response=call2_response,
             target_date=target_date,
+            ensemble_aligned=align_on_ensemble,
         )
 
     def _compute_final_indicator(

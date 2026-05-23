@@ -341,7 +341,15 @@ async def get_indicators_with_ranges(
     contract_id: Optional[uuid.UUID] = None,
     algo_id: Optional[uuid.UUID] = None,
 ) -> Dict[str, Dict[str, Any]]:
-    """Get all indicators with their ranges for a given date."""
+    """Get all indicators with their ranges for a given date.
+
+    Fallback when the resolved algo row has NULL norms (e.g. ensemble dates
+    where cc-ensemble-compute writes a row with diagnostics + decision but no
+    z-scores — the norms are owned by cc-compute-indicators which only fills
+    the legacy row). Without this, indicators-grid 404s the moment the
+    date-aware resolver picks ensemble for a recent date. We pick the first
+    row across (contract, algo) that has a non-null rsi_norm.
+    """
     if contract_id is None:
         if target_date:
             contract_id = await _resolve_contract_for_date(db, target_date)
@@ -352,21 +360,53 @@ async def get_indicators_with_ranges(
     if algo_id is None:
         algo_id = await get_active_algorithm_version_id(db)
 
+    # Step 1: try the resolved (contract, algo, date) — that's the most
+    # specific match and preserves macroeco_score from that algo's LLM run.
     query = select(PlIndicatorDaily).where(
         and_(
             PlIndicatorDaily.contract_id == contract_id,
             PlIndicatorDaily.algorithm_version_id == algo_id,
+            PlIndicatorDaily.rsi_norm.is_not(None),
         )
     )
-
     if target_date:
         query = query.where(PlIndicatorDaily.date == target_date)
-
     query = query.order_by(desc(PlIndicatorDaily.date)).limit(1)
-    result = await db.execute(query)
-    indicator = result.scalars().first()
+    indicator = (await db.execute(query)).scalars().first()
 
-    if not indicator:
+    # Step 2: same date + contract, ANY algo with non-null norms (typically
+    # falls back to legacy which is where compute-indicators writes norms).
+    if indicator is None and target_date:
+        fallback = (
+            select(PlIndicatorDaily)
+            .where(
+                and_(
+                    PlIndicatorDaily.contract_id == contract_id,
+                    PlIndicatorDaily.date == target_date,
+                    PlIndicatorDaily.rsi_norm.is_not(None),
+                )
+            )
+            .order_by(desc(PlIndicatorDaily.date))
+            .limit(1)
+        )
+        indicator = (await db.execute(fallback)).scalars().first()
+
+    # Step 3: cross-contract fallback (handles contract roll edges).
+    if indicator is None and target_date:
+        fallback = (
+            select(PlIndicatorDaily)
+            .where(
+                and_(
+                    PlIndicatorDaily.date == target_date,
+                    PlIndicatorDaily.rsi_norm.is_not(None),
+                )
+            )
+            .order_by(desc(PlIndicatorDaily.date))
+            .limit(1)
+        )
+        indicator = (await db.execute(fallback)).scalars().first()
+
+    if indicator is None:
         return {}
 
     return await _build_indicators_dict(
@@ -443,6 +483,21 @@ async def _build_indicators_dict(
 # ---------------------------------------------------------------------------
 
 
+# Heuristic to detect the cc-ensemble-compute debug-string conclusion until the
+# Phase 8 refactor of cc-daily-analysis writes a real ensemble-aligned narrative.
+# Format observed: "C5 ensemble decision=OPEN (soft-gate=OPEN, wrapper_fired=[...], ...)"
+_ENSEMBLE_DEBUG_PREFIX = "C5 ensemble decision="
+
+
+def _is_usable_narrative(text: Optional[str]) -> bool:
+    """True when the conclusion looks like a real LLM narrative (not the
+    ensemble compute debug string).
+    """
+    if not text:
+        return False
+    return not text.strip().startswith(_ENSEMBLE_DEBUG_PREFIX)
+
+
 async def get_latest_recommendations(
     db: AsyncSession,
     target_date: Optional[date] = None,
@@ -452,9 +507,22 @@ async def get_latest_recommendations(
 ) -> tuple[List[str], Optional[str], Optional[date]]:
     """Get the latest recommendations from pl_indicator_daily.conclusion.
 
-    Cross-contract fallback: if the resolved contract has no conclusion
-    for the target date, tries any contract that does (transition days
-    where both old and new contract have rows but only one has a conclusion).
+    Fallback chain (each step relaxes a filter, narrative quality > strict source):
+      1. (contract_id, algo_id, date)
+      2. (any contract, algo_id, date)             — transition days
+      3. (contract_id, any algo with conclusion, date) — ensemble dates
+         where ensemble decision has no LLM conclusion yet
+      4. (any contract, any algo with conclusion, date)
+
+    The narrative text is still authored by the legacy cc-daily-analysis job,
+    so on ensemble dates the conclusion comes from the legacy row while the
+    decision was produced by ensemble. The endpoint exposes
+    ``source_algorithm`` so the frontend can disclose this dissonance.
+
+    A row whose conclusion is the cc-ensemble-compute debug string (see
+    ``_is_usable_narrative``) is treated as "no narrative" for fallback
+    purposes — Phase 8 will replace that debug string with a real
+    ensemble-aligned LLM narrative.
     """
     if contract_id is None:
         if target_date:
@@ -466,27 +534,27 @@ async def get_latest_recommendations(
     if algo_id is None:
         algo_id = await get_active_algorithm_version_id(db)
 
-    query = select(PlIndicatorDaily.conclusion, PlIndicatorDaily.date).where(
+    base_select = select(PlIndicatorDaily.conclusion, PlIndicatorDaily.date)
+
+    # Step 1: contract + algo + (date)
+    query = base_select.where(
         and_(
             PlIndicatorDaily.contract_id == contract_id,
             PlIndicatorDaily.algorithm_version_id == algo_id,
             PlIndicatorDaily.conclusion.isnot(None),
         )
     )
-
     if target_date:
         query = query.where(PlIndicatorDaily.date == target_date)
-
     query = query.order_by(desc(PlIndicatorDaily.date)).limit(1)
-    result = await db.execute(query)
-    row = result.one_or_none()
+    row = (await db.execute(query)).one_or_none()
+    if row is not None and not _is_usable_narrative(row.conclusion):
+        row = None
 
-    # Cross-contract fallback: if no conclusion found for resolved contract,
-    # try any contract for that date (handles transition days)
+    # Step 2: relax contract filter (any contract, this algo, this date)
     if (not row or not row.conclusion) and target_date:
-        fallback_query = (
-            select(PlIndicatorDaily.conclusion, PlIndicatorDaily.date)
-            .where(
+        q = (
+            base_select.where(
                 and_(
                     PlIndicatorDaily.date == target_date,
                     PlIndicatorDaily.algorithm_version_id == algo_id,
@@ -496,8 +564,40 @@ async def get_latest_recommendations(
             .order_by(desc(PlIndicatorDaily.date))
             .limit(1)
         )
-        fallback_result = await db.execute(fallback_query)
-        row = fallback_result.one_or_none()
+        row = (await db.execute(q)).one_or_none()
+        if row is not None and not _is_usable_narrative(row.conclusion):
+            row = None
+
+    # Step 3: relax algo filter (this contract, ANY algo with usable narrative, this date)
+    if (not row or not row.conclusion) and target_date:
+        q = (
+            base_select.where(
+                and_(
+                    PlIndicatorDaily.date == target_date,
+                    PlIndicatorDaily.contract_id == contract_id,
+                    PlIndicatorDaily.conclusion.isnot(None),
+                    PlIndicatorDaily.conclusion.notlike(f"{_ENSEMBLE_DEBUG_PREFIX}%"),
+                )
+            )
+            .order_by(desc(PlIndicatorDaily.date))
+            .limit(1)
+        )
+        row = (await db.execute(q)).one_or_none()
+
+    # Step 4: fully relaxed (any contract, any algo with usable narrative, this date)
+    if (not row or not row.conclusion) and target_date:
+        q = (
+            base_select.where(
+                and_(
+                    PlIndicatorDaily.date == target_date,
+                    PlIndicatorDaily.conclusion.isnot(None),
+                    PlIndicatorDaily.conclusion.notlike(f"{_ENSEMBLE_DEBUG_PREFIX}%"),
+                )
+            )
+            .order_by(desc(PlIndicatorDaily.date))
+            .limit(1)
+        )
+        row = (await db.execute(q)).one_or_none()
 
     if not row or not row.conclusion:
         return [], None, None

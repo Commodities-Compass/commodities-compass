@@ -237,3 +237,234 @@ def build_call2_prompt(
     variables["FINAL_CONCLUSION"] = final_conclusion
 
     return CALL_2_PROMPT.format(**variables)
+
+
+# ---------------------------------------------------------------------------
+# Call #2 — Ensemble-aligned variant
+# Used when an ensemble_v1_softgate_wrapper row exists for (date, contract).
+# The decision is no longer derived from FINAL_INDICATOR threshold — it comes
+# straight from the ensemble's ``decision_wrapped``. The diagnostics block
+# is injected so the LLM justifies the ensemble decision with the right
+# vocabulary (consensus / conviction / safety net / cluster divergence)
+# instead of treating it as an opaque composite score.
+# ---------------------------------------------------------------------------
+
+
+ENSEMBLE_DIAGNOSTICS_BLOCK = """\
+🤖 CONTEXTE DÉCISIONNEL — C5 ENSEMBLE V1
+
+La décision du jour ({DECISION_WRAPPED}) provient de l'ensemble Compass v1.0.0,
+un orchestrateur bayésien qui agrège 14 spécialistes ML (Winter + Spring
+clusters). Tu DOIS la justifier en t'appuyant sur les diagnostics suivants —
+PAS sur un score composite technique.
+
+Diagnostics ensemble pour ce jour :
+\t•\tDécision soft-gate brute : {SOFT_GATE_DECISION}
+\t•\tDécision finale (après filet de sécurité) : {DECISION_WRAPPED}
+\t•\tConviction (net_score, intervalle [-1, +1]) : {NET_SCORE}
+\t•\tConsensus : {N_COMMITTED}/14 spécialistes ont voté avec confiance (poids cumulés {WEIGHTS_SUM})
+\t•\tCluster Winter (régime bear-dominant) — score signé : {WINTER_SIGNED}
+\t•\tCluster Spring (régime bull/transition) — score signé : {SPRING_SIGNED}
+\t•\tFilet de sécurité (wrapper) actif : {WRAPPER_ACTIVE}
+\t•\tDétecteur "précision récente" déclenché : {FIRED_RUNNING_ACC} (running_acc 5j = {RUNNING_ACC_5D})
+\t•\tDétecteur "divergence régimes" déclenché : {FIRED_DISPERSION} {DISPERSION_HINT}
+\t•\tDirection macro (signal LLM filtré conf≥0.70) : {MACRO_DIRECTION} (surprise={MACRO_SURPRISE}, half-life={MACRO_HALF_LIFE_DAYS}j)
+\t•\tAnomalie marché (z-score régime long-run) : {ANOMALY_SCORE_Z}
+\t•\tPriors décisionnels : OPEN={PRIOR_OPEN} · HEDGE={PRIOR_HEDGE} · MONITOR={PRIOR_MONITOR}
+
+Vocabulaire à utiliser :
+\t•\t"X spécialistes sur 14 confirment…" (parle de consensus, pas de score composite)
+\t•\t"Conviction forte/modérée/faible" selon abs(net_score)
+\t•\t"Le filet de sécurité a été relâché" si fired_dispersion=True et wrapper_active=False
+\t•\t"Le filet de sécurité s'est activé par prudence" si wrapper_active=True
+\t•\t"Régime atypique" si abs(anomaly_score_z) > 2
+
+"""
+
+
+CALL_2_PROMPT_ENSEMBLE = (
+    """\
+Tu es un trader expert du marché cacao à Londres. Tu rédiges une synthèse de marché destinée à des exportateurs d'Afrique de l'Ouest, avec des recommandations claires, chiffrées et actionnables pour la journée.
+
+"""
+    + ENSEMBLE_DIAGNOSTICS_BLOCK
+    + """\
+
+Tu disposes également des données techniques (comparées entre aujourd'hui et hier) :
+
+\t•\tCLOSE aujourd'hui : {CLOSETOD} ; hier : {CLOSEYES}
+\t•\tHIGH aujourd'hui : {HIGHTOD} ; hier : {HIGHYES}
+\t•\tLOW aujourd'hui : {LOWTOD} ; hier : {LOWYES}
+\t•\tVOLUME aujourd'hui : {VOLTOD} ; hier : {VOLYES}
+\t•\tOPEN INTEREST aujourd'hui : {OITOD} ; hier : {OIYES}
+\t•\tIMPLIED VOLATILITY aujourd'hui : {VOLIMPTOD} ; hier : {VOLIMPYES}
+\t•\tSTOCK EU aujourd'hui : {STOCKTOD} ; hier : {STOCKYES}
+\t•\tCOM NET aujourd'hui : {COMNETTOD} ; hier : {COMNETYES}
+\t•\tPIVOT aujourd'hui : {PIVOTTOD} ; hier : {PIVOTYES}
+\t•\tSUPPORT 1 aujourd'hui : {S1TOD} ; hier : {S1YES}
+\t•\tRESISTANCE 1 aujourd'hui : {R1TOD} ; hier : {R1YES}
+\t•\tEMA9 aujourd'hui : {EMA9TOD} ; hier : {EMA9YES}
+\t•\tEMA21 aujourd'hui : {EMA21TOD} ; hier : {EMA21YES}
+\t•\tMACD aujourd'hui : {MACDTOD} ; hier : {MACDYES}
+\t•\tSIGNAL aujourd'hui : {SIGNTOD} ; hier : {SIGNYES}
+\t•\tRSI aujourd'hui : {RSI14TOD} ; hier : {RSI14YES}
+\t•\tStochastic %K aujourd'hui : {pctKTOD} ; hier : {pctKYES}
+\t•\tStochastic %D aujourd'hui : {pctDTOD} ; hier : {pctDYES}
+\t•\tATR aujourd'hui : {ATRTOD} ; hier : {ATRYES}
+\t•\tBOLLINGER SUP aujourd'hui : {BSUPTOD} ; hier : {BSUPYES}
+\t•\tBOLLINGER INF aujourd'hui : {BBINFTOD} ; hier : {BBINFYES}
+
+Procède en 4 étapes :
+
+---
+
+**A. Justifie la décision ensemble**
+
+La décision {DECISION_WRAPPED} est imposée par l'ensemble. Rédige 1 ou 2 phrases brèves en utilisant le vocabulaire ensemble (consensus N/14, conviction, filet de sécurité) — PAS un score composite.
+
+---
+
+**B. Analyse des mouvements clés** (chiffrés, en alerte)
+
+Structure la réponse en phrases brèves :
+- CLOSE : indique la direction et son ampleur
+- VOLUME / OPEN INTEREST : engagement du marché
+- RSI / MACD / %K / %D : signaux haussiers ou baissiers
+- COM NET : interprétation de la variation
+- VOLATILITÉ / ATR : tension du marché
+- STOCK EU : hausse = pression baissière ; baisse = signal haussier
+
+---
+
+**C. CONCLUSION ACTIONNABLE**
+
+Rédige une recommandation claire alignée sur {DECISION_WRAPPED} en identifiant les signaux dominants. Ne contredis jamais la décision ensemble.
+\t•\tSi OPEN → cite les signaux forts cohérents avec un achat immédiat
+\t•\tSi MONITOR → liste les seuils techniques précis à surveiller
+\t•\tSi HEDGE → expose les signaux de repli dominants
+
+---
+
+**D. À SURVEILLER AUJOURD'HUI**
+
+Exactement 3 alertes techniques pour demain. Chaque alerte DOIT contenir :
+1. Un indicateur précis (CLOSE, RSI, SUPPORT 1, RESISTANCE 1, MACD, ATR, %K, OI, BOLLINGER)
+2. Un seuil numérique chiffré
+3. Une direction explicite (haussier/baissière)
+4. Une conséquence si le seuil est franchi
+
+RÈGLES STRICTES :
+- Au moins 1 alerte DOIT porter sur SUPPORT 1 ou RESISTANCE 1
+- N'utilise PAS VOLUME ni SIGNAL seuls comme indicateurs d'alerte
+- Ne commence JAMAIS par "Monitorer" ou "Surveiller" sans direction
+- Pour RSI : seuils proches de la valeur actuelle ({RSI14TOD}), pas 30/40/70/80
+
+FORMAT : "[Direction] si [INDICATEUR] [franchit/passe sous/dépasse] [SEUIL] — [conséquence]"
+
+Exemples :
+\t•\tBaissier si CLOSE clôture sous SUPPORT 1 à 2484 — objectif S2 à 2380
+\t•\tHaussier si CLOSE dépasse RESISTANCE 1 à 6520 — confirmation de tendance haussière
+\t•\tBaissier si RSI passe sous 45 (actuellement à 52) — accélération de la pression vendeuse
+
+---
+
+E **IMPORTANT** Format final OBLIGATOIRE ET STRICT :
+
+Tu DOIS répondre UNIQUEMENT avec un objet JSON valide, sans texte autour.
+
+Le champ "decision" doit être EXACTEMENT {DECISION_WRAPPED} (aucune autre valeur acceptée).
+Le champ "conclusion" doit OBLIGATOIREMENT suivre ce format :
+- Ligne 1 : commence par "> " suivi d'une phrase résumé qui mentionne le consensus ensemble
+- Lignes suivantes : chaque indicateur analysé sur sa propre ligne, commençant par "        • "
+- Section "A SURVEILLER" : "> A SURVEILLER AUJOURD'HUI:" suivie de 3 lignes "        • " avec seuils chiffrés
+- Pas de Markdown. Pas de phrases vagues. Chaque phrase concise avec des chiffres.
+
+{{"decision": "{DECISION_WRAPPED}", "confiance": 3, "direction": "HAUSSIERE ou BAISSIERE ou NEUTRE", "conclusion": "> {N_COMMITTED} spécialistes sur 14 confirment la position {DECISION_WRAPPED}, conviction nette (net_score {NET_SCORE}).\\n        • Le CLOSE est passé de X à Y, indiquant Z.\\n        • Le VOLUME a baissé de X à Y.\\n        • OPEN INTEREST a réduit de X à Y.\\n        • Le RSI est à X, signifiant Z.\\n        • MACD à X, signal Z.\\n        • La volatilité implicite est à X%.\\n        • Le STOCK EU a augmenté de X à Y.\\n> A SURVEILLER AUJOURD'HUI:\\n        • Baissier si CLOSE clôture sous SUPPORT 1 à X — objectif S2 à Y.\\n        • Haussier si CLOSE dépasse RESISTANCE 1 à X — poursuite de la tendance.\\n        • Baissier si RSI passe sous X (actuellement à Y) — pression vendeuse accrue."}}
+"""
+)
+
+
+def _format_optional(value: object, digits: int | None = None) -> str:
+    """Format an optional float/int for prompt injection. None → 'n/a'."""
+    if value is None:
+        return "n/a"
+    if isinstance(value, bool):
+        return "oui" if value else "non"
+    if isinstance(value, float) and digits is not None:
+        return f"{value:.{digits}f}"
+    return str(value)
+
+
+def build_call2_prompt_ensemble(
+    technicals_today: dict[str, str],
+    technicals_yesterday: dict[str, str],
+    ensemble: object,  # EnsembleDiagnostics from db_reader (avoid circular import)
+) -> str:
+    """Build the ensemble-aware Call #2 prompt.
+
+    Pulls the diagnostics block in front of the technical analysis steps and
+    pins the decision to ``ensemble.decision_wrapped``. The LLM still emits
+    the same JSON shape, so the downstream parser is unchanged.
+    """
+    variables: dict[str, str] = {}
+    for key, val in technicals_today.items():
+        safe_key = key.replace("%K", "pctK").replace("%D", "pctD")
+        variables[safe_key] = val
+    for key, val in technicals_yesterday.items():
+        safe_key = key.replace("%K", "pctK").replace("%D", "pctD")
+        variables[safe_key] = val
+
+    # Diagnostics block — attribute access via getattr to avoid the circular import.
+    fired_disp = bool(getattr(ensemble, "fired_dispersion", False))
+    wrapper_active = bool(getattr(ensemble, "wrapper_active", False))
+    dispersion_hint = ""
+    if fired_disp and not wrapper_active:
+        dispersion_hint = "→ relâché grâce à la précision récente"
+    elif wrapper_active:
+        dispersion_hint = "→ a forcé MONITOR par prudence"
+
+    variables.update(
+        {
+            "DECISION_WRAPPED": str(getattr(ensemble, "decision_wrapped", "MONITOR")),
+            "SOFT_GATE_DECISION": str(
+                getattr(ensemble, "soft_gate_decision", "MONITOR")
+            ),
+            "NET_SCORE": _format_optional(getattr(ensemble, "net_score", None), 3),
+            "N_COMMITTED": str(getattr(ensemble, "n_committed_specialists", 0)),
+            "WEIGHTS_SUM": _format_optional(getattr(ensemble, "weights_sum", None), 2),
+            "WINTER_SIGNED": _format_optional(
+                getattr(ensemble, "winter_vote_signed", None)
+            ),
+            "SPRING_SIGNED": _format_optional(
+                getattr(ensemble, "spring_vote_signed", None)
+            ),
+            "WRAPPER_ACTIVE": _format_optional(wrapper_active),
+            "FIRED_RUNNING_ACC": _format_optional(
+                bool(getattr(ensemble, "fired_running_acc", False))
+            ),
+            "RUNNING_ACC_5D": _format_optional(
+                getattr(ensemble, "running_acc_5d", None), 3
+            ),
+            "FIRED_DISPERSION": _format_optional(fired_disp),
+            "DISPERSION_HINT": dispersion_hint,
+            "MACRO_DIRECTION": _format_optional(
+                getattr(ensemble, "macro_direction", None)
+            ),
+            "MACRO_SURPRISE": _format_optional(
+                getattr(ensemble, "macro_surprise", None), 3
+            ),
+            "MACRO_HALF_LIFE_DAYS": _format_optional(
+                getattr(ensemble, "macro_half_life_days", None)
+            ),
+            "ANOMALY_SCORE_Z": _format_optional(
+                getattr(ensemble, "anomaly_score_z", None), 2
+            ),
+            "PRIOR_OPEN": _format_optional(getattr(ensemble, "prior_open", None), 2),
+            "PRIOR_HEDGE": _format_optional(getattr(ensemble, "prior_hedge", None), 2),
+            "PRIOR_MONITOR": _format_optional(
+                getattr(ensemble, "prior_monitor", None), 2
+            ),
+        }
+    )
+
+    return CALL_2_PROMPT_ENSEMBLE.format(**variables)

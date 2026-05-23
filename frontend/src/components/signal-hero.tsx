@@ -1,5 +1,45 @@
 import { Loader2 } from 'lucide-react';
-import { usePositionStatus, useRecommendations } from '@/hooks/useDashboard';
+import { usePositionStatus, useRecommendations, useEnsembleDiagnostics } from '@/hooks/useDashboard';
+import Eyebrow from '@/components/editorial/Eyebrow';
+import { buildEnsembleExplanation } from '@/utils/ensemble-explanation';
+import type { EnsembleDiagnosticsResponse } from '@/types/dashboard';
+
+function algoBadgeLabel(name?: string | null): string | null {
+  if (!name) return null;
+  if (name === 'ensemble_v1_softgate_wrapper') return 'Powered by Ensemble v1';
+  if (name === 'legacy') return 'Powered by Legacy v1.0.1';
+  return `Powered by ${name}`;
+}
+
+function horizonShortLabel(name?: string | null): string {
+  if (name === 'ensemble_v1_softgate_wrapper') return '~5-6 J';
+  return 'J+1';
+}
+
+function convictionWord(netScore: number): string {
+  const abs = Math.abs(netScore);
+  if (abs >= 0.6) return 'Forte';
+  if (abs >= 0.249) return 'Marquée';
+  return 'Mesurée';
+}
+
+function macroWord(direction: number | null | undefined): {
+  label: string;
+  arrow: string;
+  color: string;
+} {
+  if (direction == null)
+    return { label: 'Indéfini', arrow: '·', color: 'var(--ink-light)' };
+  if (direction > 0)
+    return { label: 'Porteur', arrow: '↑', color: 'var(--color-signal-open)' };
+  if (direction < 0)
+    return {
+      label: 'Défavorable',
+      arrow: '↓',
+      color: 'var(--color-signal-hedge)',
+    };
+  return { label: 'Neutre', arrow: '→', color: 'var(--ink-mid)' };
+}
 
 interface SignalHeroProps {
   targetDate?: string;
@@ -53,9 +93,223 @@ function yearOf(iso?: string | null): number | null {
   return Number.isFinite(y) ? y : null;
 }
 
+/* ===================================================================
+ * Conviction breakdown — left "by the numbers" magazine sidebar.
+ * 4 KPI tiles in a 4-col grid separated by 1px vertical hairlines.
+ * Sharp corners, no card borders, no shadows. Magazine codes.
+ * =================================================================== */
+function ConvictionBreakdown({
+  diag,
+  signalColor,
+}: {
+  diag: EnsembleDiagnosticsResponse;
+  signalColor: string;
+}) {
+  const macro = macroWord(diag.macro_direction);
+  const accPct =
+    diag.running_acc_5d != null ? Math.round(diag.running_acc_5d * 100) : null;
+  const scoreStr = `${diag.net_score >= 0 ? '+' : ''}${diag.net_score.toFixed(2)}`;
+
+  const tiles = [
+    {
+      eyebrow: 'Conviction',
+      big: convictionWord(diag.net_score),
+      italic: true,
+      color: signalColor,
+      caption: `${scoreStr} score net`,
+    },
+    {
+      eyebrow: 'Consensus',
+      big: `${diag.n_committed_specialists} / 14`,
+      italic: false,
+      color: 'var(--ink)',
+      caption: 'spécialistes engagés',
+    },
+    {
+      eyebrow: 'Macro',
+      big: macro.label,
+      italic: true,
+      color: macro.color,
+      caption: `${macro.arrow} direction`,
+    },
+    {
+      eyebrow: 'Précision 5j',
+      big: accPct != null ? `${accPct}%` : '—',
+      italic: false,
+      color:
+        accPct != null && accPct >= 60 ? 'var(--color-signal-open)' : 'var(--ink)',
+      caption: 'running accuracy',
+    },
+  ];
+
+  return (
+    <div style={{ marginTop: 28, marginBottom: 16 }}>
+      <Eyebrow
+        as="div"
+        tone="muted"
+        size={9}
+        tracking="0.24em"
+        style={{ marginBottom: 12 }}
+      >
+        Conviction breakdown
+      </Eyebrow>
+
+      <div
+        className="conviction-grid"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+          borderTop: '1px solid var(--ink)',
+          borderBottom: '1px solid var(--rule)',
+        }}
+      >
+        {tiles.map((tile, i) => (
+          <div
+            key={tile.eyebrow}
+            style={{
+              padding: '14px 16px 12px',
+              borderLeft: i === 0 ? 'none' : '1px solid var(--rule)',
+            }}
+          >
+            <Eyebrow as="div" tone="subtle" size={9} tracking="0.2em">
+              {tile.eyebrow}
+            </Eyebrow>
+            <div
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontStyle: tile.italic ? 'italic' : 'normal',
+                fontWeight: 700,
+                fontSize: 'clamp(20px, 2.4vw, 28px)',
+                lineHeight: 1.1,
+                color: tile.color,
+                marginTop: 6,
+              }}
+            >
+              {tile.big}
+            </div>
+            <div
+              className="uppercase"
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 9,
+                letterSpacing: '0.15em',
+                color: 'var(--ink-light)',
+                marginTop: 4,
+              }}
+            >
+              {tile.caption}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <style>{`
+        @media (max-width: 767px) {
+          .conviction-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+          .conviction-grid > div:nth-child(2) {
+            border-left: 1px solid var(--rule) !important;
+          }
+          .conviction-grid > div:nth-child(3) {
+            border-left: none !important;
+            border-top: 1px solid var(--rule);
+          }
+          .conviction-grid > div:nth-child(4) {
+            border-top: 1px solid var(--rule);
+          }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+/* ===================================================================
+ * Score panel 2x2 KPI — replaces the previous horizon block on the right.
+ * =================================================================== */
+function ScorePanelKpis({
+  diag,
+  sourceAlgorithm,
+  signalColor,
+}: {
+  diag: EnsembleDiagnosticsResponse;
+  sourceAlgorithm: string | null | undefined;
+  signalColor: string;
+}) {
+  const accPct =
+    diag.running_acc_5d != null ? Math.round(diag.running_acc_5d * 100) : null;
+  const scoreStr = `${diag.net_score >= 0 ? '+' : ''}${diag.net_score.toFixed(2)}`;
+
+  const cells = [
+    { eyebrow: 'Net score', value: scoreStr, color: signalColor },
+    {
+      eyebrow: 'Consensus',
+      value: `${diag.n_committed_specialists}/14`,
+      color: 'var(--ink)',
+    },
+    {
+      eyebrow: 'Précision 5j',
+      value: accPct != null ? `${accPct}%` : '—',
+      color: 'var(--ink)',
+    },
+    {
+      eyebrow: 'Horizon',
+      value: horizonShortLabel(sourceAlgorithm),
+      color: 'var(--ink)',
+    },
+  ];
+
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr',
+        borderTop: '1px solid var(--ink)',
+        borderBottom: '1px solid var(--rule)',
+        marginTop: 16,
+      }}
+    >
+      {cells.map((cell, i) => (
+        <div
+          key={cell.eyebrow}
+          style={{
+            padding: '12px 14px',
+            borderLeft: i % 2 === 0 ? 'none' : '1px solid var(--rule)',
+            borderTop: i >= 2 ? '1px solid var(--rule)' : 'none',
+            textAlign: 'center',
+          }}
+        >
+          <Eyebrow as="div" tone="subtle" size={9} tracking="0.18em">
+            {cell.eyebrow}
+          </Eyebrow>
+          <div
+            className="tabular-nums"
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontWeight: 700,
+              fontSize: 22,
+              lineHeight: 1.1,
+              color: cell.color,
+              marginTop: 4,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {cell.value}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function SignalHero({ targetDate, className }: SignalHeroProps) {
   const { data: pos, isLoading: posLoading, error: posErr } = usePositionStatus(targetDate);
   const { data: recs, isLoading: recsLoading } = useRecommendations(targetDate);
+  const { data: diag } = useEnsembleDiagnostics(targetDate);
+  const ensembleAligned =
+    pos?.source_algorithm === 'ensemble_v1_softgate_wrapper' && Boolean(diag);
+  const explanationSentences =
+    ensembleAligned && diag ? buildEnsembleExplanation(diag) : null;
 
   if (posLoading || recsLoading) {
     return (
@@ -107,7 +361,19 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
           gap: 40,
         }}
       >
+        {/* ============================= LEFT ============================= */}
         <div>
+          {algoBadgeLabel(pos.source_algorithm) && (
+            <Eyebrow
+              as="div"
+              size={9}
+              tone="subtle"
+              tracking="0.22em"
+              style={{ marginBottom: 6 }}
+            >
+              {algoBadgeLabel(pos.source_algorithm)}
+            </Eyebrow>
+          )}
           <div
             className="uppercase mb-3"
             style={{
@@ -168,6 +434,11 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
             </p>
           )}
 
+          {/* Conviction breakdown — only on ensemble dates */}
+          {ensembleAligned && diag && (
+            <ConvictionBreakdown diag={diag} signalColor={meta.color} />
+          )}
+
           <p
             className="uppercase"
             style={{
@@ -181,6 +452,7 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
           </p>
         </div>
 
+        {/* ============================= RIGHT ============================= */}
         <aside
           className="hero-score-panel"
           style={{
@@ -234,43 +506,131 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
                 fontSize: 10,
                 letterSpacing: '0.18em',
                 color: 'var(--ink-mid)',
-                marginBottom: 16,
+                marginBottom: 4,
               }}
             >
               {meta.kicker}
             </div>
+
+            {ensembleAligned && diag ? (
+              <>
+                <ScorePanelKpis
+                  diag={diag}
+                  sourceAlgorithm={pos.source_algorithm}
+                  signalColor={meta.color}
+                />
+
+                {explanationSentences && (
+                  <div style={{ marginTop: 14 }}>
+                    <Eyebrow
+                      as="div"
+                      tone="muted"
+                      size={9}
+                      tracking="0.18em"
+                      style={{ marginBottom: 8, textAlign: 'center' }}
+                    >
+                      Pourquoi cette décision
+                    </Eyebrow>
+                    {explanationSentences.map((s, i) => (
+                      <p
+                        key={i}
+                        style={{
+                          fontFamily: 'var(--font-editorial)',
+                          fontStyle: 'italic',
+                          fontSize: 12,
+                          lineHeight: 1.55,
+                          color: 'var(--ink-dark)',
+                          margin: i === 0 ? '0 0 6px' : '0',
+                          textAlign: 'left',
+                        }}
+                      >
+                        {s}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              // Legacy / no diagnostics — minimal fallback (horizon line)
+              <div
+                style={{
+                  marginTop: 12,
+                  paddingTop: 12,
+                  borderTop: '1px dotted var(--rule)',
+                  textAlign: 'center',
+                }}
+              >
+                <Eyebrow as="div" tone="muted" size={9} tracking="0.22em">
+                  Horizon de projection
+                </Eyebrow>
+                <div
+                  style={{
+                    fontFamily: 'var(--font-display)',
+                    fontStyle: 'italic',
+                    fontSize: 13,
+                    color: 'var(--ink-dark)',
+                    marginTop: 4,
+                  }}
+                >
+                  {pos.source_algorithm === 'ensemble_v1_softgate_wrapper'
+                    ? '~5-6 jours boursiers · 1 semaine'
+                    : 'Session suivante · J+1'}
+                </div>
+              </div>
+            )}
           </div>
 
-          <div
-            className="border-t pt-3"
-            style={{ borderColor: 'var(--rule)' }}
-          >
-            <div className="flex justify-between items-baseline">
-              <span
-                className="uppercase"
-                style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 10,
-                  letterSpacing: '0.15em',
-                  color: 'var(--ink-mid)',
-                }}
-              >
-                Performance YTD
-              </span>
-              <span
-                className="tabular-nums"
-                style={{
-                  fontFamily: 'var(--font-display)',
-                  fontWeight: 700,
-                  fontSize: 24,
-                  color: ytd != null && ytd >= 0 ? 'var(--color-signal-open)' : 'var(--color-signal-hedge)',
-                }}
-              >
-                {ytd != null ? `${ytd >= 0 ? '+' : ''}${ytd.toFixed(2)}%` : '—'}
-              </span>
-            </div>
-          </div>
         </aside>
+      </div>
+
+      {/* ============== Full-width YTD banner — magazine stat strip ============== */}
+      <div
+        className="ytd-banner"
+        style={{
+          marginTop: 24,
+          paddingTop: 20,
+          paddingBottom: 4,
+          borderTop: '1px dotted var(--rule)',
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 1fr) auto',
+          alignItems: 'baseline',
+          gap: 24,
+        }}
+      >
+        <div>
+          <Eyebrow as="div" tone="muted" size={11} tracking="0.24em">
+            Performance YTD
+          </Eyebrow>
+          <div
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontStyle: 'italic',
+              fontSize: 14,
+              color: 'var(--ink-light)',
+              marginTop: 6,
+            }}
+          >
+            Depuis le 1<sup>er</sup> janvier {yearOf(sessionDate) ?? new Date().getFullYear()} —
+            cumul des décisions notées contre le prix du jour suivant.
+          </div>
+        </div>
+        <div
+          className="tabular-nums"
+          style={{
+            fontFamily: 'var(--font-display)',
+            fontWeight: 700,
+            fontSize: 'clamp(40px, 5vw, 64px)',
+            lineHeight: 1,
+            letterSpacing: '-0.02em',
+            color:
+              ytd != null && ytd >= 0
+                ? 'var(--color-signal-open)'
+                : 'var(--color-signal-hedge)',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {ytd != null ? `${ytd >= 0 ? '+' : ''}${ytd.toFixed(2)}%` : '—'}
+        </div>
       </div>
 
       <style>{`
@@ -280,6 +640,10 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
           }
           .hero-score-panel {
             width: 100% !important;
+          }
+          .ytd-banner {
+            grid-template-columns: 1fr !important;
+            text-align: left;
           }
         }
       `}</style>

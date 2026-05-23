@@ -77,6 +77,16 @@ const MACRO_RANGES: Record<string, { min: number; max: number; ranges: Indicator
       { range_low: 500_000, range_high: 2_000_000, area: 'GREEN' },
     ],
   },
+  // Stock US certified (tonnes) — high stocks bearish, like EU
+  STOCK_US: {
+    min: 50_000,
+    max: 350_000,
+    ranges: [
+      { range_low: 250_000, range_high: 350_000, area: 'RED' },
+      { range_low: 150_000, range_high: 250_000, area: 'ORANGE' },
+      { range_low: 50_000, range_high: 150_000, area: 'GREEN' },
+    ],
+  },
 };
 
 function fmtCompactInt(v?: number | null): string {
@@ -209,13 +219,23 @@ function Watchlist({ items }: { items: string[] }) {
   );
 }
 
-const rowLabel: React.CSSProperties = {
-  fontFamily: 'var(--font-mono)',
-  fontSize: 10,
-  textTransform: 'uppercase',
-  letterSpacing: '0.12em',
-  color: 'var(--ink-mid)',
+const inlineCell: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'baseline',
+  gap: 8,
+  whiteSpace: 'nowrap',
 };
+
+// Each row stretches its own gauges across the full width.
+const gridStyle = (cols: number): React.CSSProperties => ({
+  display: 'grid',
+  gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+  gap: 24,
+  alignItems: 'start',
+});
+const gridStyle5: React.CSSProperties = gridStyle(5);
+const gridStyle4: React.CSSProperties = gridStyle(4);
+const gridStyle3: React.CSSProperties = gridStyle(3);
 
 export default function MarketAnalysis({ targetDate, className }: MarketAnalysisProps) {
   const { data: gridData, isLoading: gridLoading } = useIndicatorsGrid(targetDate);
@@ -258,21 +278,17 @@ export default function MarketAnalysis({ targetDate, className }: MarketAnalysis
       <section style={{ padding: '32px 0 24px' }}>
         <SectionHeader numeral="II" title="Market Analysis" />
 
-        {/* Sub-block 1 — Compass Gauges (techniques) */}
+        {/* Unified 5-column grid: all sub-blocks align vertically.
+            Each gauge claims the same column width regardless of how many
+            gauges a row contains — leaves empty slots at the right when a
+            row has fewer than 5 (Macro = 4, Positioning = 3). */}
+        {/* Sub-block 1 — Technicals (5 gauges) */}
         <div style={{ marginBottom: 28 }}>
           <Eyebrow as="div" tone="muted" size={10} style={{ marginBottom: 14, letterSpacing: '0.22em' }}>
-            Compass Gauges · Techniques
+            Technicals
           </Eyebrow>
           {indicators ? (
-            <div
-              className="gauges-row"
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
-                gap: 24,
-                alignItems: 'start',
-              }}
-            >
+            <div className="gauges-row" style={gridStyle5}>
               {INDICATOR_KEYS.map((key) =>
                 indicators[key] ? (
                   <GaugeIndicator
@@ -293,20 +309,12 @@ export default function MarketAnalysis({ targetDate, className }: MarketAnalysis
           )}
         </div>
 
-        {/* Sub-block 2 — Macro & FX */}
+        {/* Sub-block 2 — Macro & FX (4 gauges, fills row) */}
         <div style={{ marginBottom: 28 }}>
           <Eyebrow as="div" tone="muted" size={10} style={{ marginBottom: 14, letterSpacing: '0.22em' }}>
             Macro & FX
           </Eyebrow>
-          <div
-            className="macro-row"
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-              gap: 24,
-              alignItems: 'start',
-            }}
-          >
+          <div className="gauges-row" style={gridStyle4}>
             <GaugeIndicator
               value={macro?.fx_dxy_proxy ?? MACRO_RANGES.FX_DXY.min}
               min={MACRO_RANGES.FX_DXY.min}
@@ -345,20 +353,12 @@ export default function MarketAnalysis({ targetDate, className }: MarketAnalysis
           )}
         </div>
 
-        {/* Sub-block 3 — Positioning & Supply */}
+        {/* Sub-block 3 — Positioning & Supply (3 gauges, fills row) */}
         <div style={{ marginBottom: 28 }}>
           <Eyebrow as="div" tone="muted" size={10} style={{ marginBottom: 14, letterSpacing: '0.22em' }}>
             Positioning & Supply
           </Eyebrow>
-          <div
-            className="positioning-row"
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.4fr)',
-              gap: 24,
-              alignItems: 'start',
-            }}
-          >
+          <div className="gauges-row" style={gridStyle3}>
             <GaugeIndicator
               value={positioning?.cot_managed_money_net ?? 0}
               min={MACRO_RANGES.COT_MM.min}
@@ -373,50 +373,51 @@ export default function MarketAnalysis({ targetDate, className }: MarketAnalysis
               label="STOCK EU"
               ranges={MACRO_RANGES.STOCK_EU.ranges}
             />
-            <div
-              style={{
-                border: '1px solid var(--rule)',
-                padding: '14px 16px',
-              }}
-            >
-              <Eyebrow as="div" tone="muted" size={9} style={{ marginBottom: 10 }}>
-                Stocks & flux
-              </Eyebrow>
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr auto',
-                  gap: '8px 12px',
-                  rowGap: 8,
-                  fontSize: 11,
-                }}
-              >
-                <span style={rowLabel}>Stock US (tonnes)</span>
-                <DataValue>{fmtCompactInt(positioning?.stock_us)}</DataValue>
+            <GaugeIndicator
+              value={positioning?.stock_us ?? MACRO_RANGES.STOCK_US.min}
+              min={MACRO_RANGES.STOCK_US.min}
+              max={MACRO_RANGES.STOCK_US.max}
+              label="STOCK US"
+              ranges={MACRO_RANGES.STOCK_US.ranges}
+            />
+          </div>
 
-                <span style={rowLabel}>Stock EU (60kg bags)</span>
-                <DataValue>{fmtCompactInt(positioning?.stock_eu_bags60kg)}</DataValue>
-
-                <span style={rowLabel}>Ratio EU/US (tonnes)</span>
-                <DataValue>{fmtNum(positioning?.stock_eu_us_ratio, 2)}</DataValue>
-
-                <span style={rowLabel}>COT MM long</span>
-                <DataValue>{fmtCompactInt(positioning?.cot_managed_money_long)}</DataValue>
-
-                <span style={rowLabel}>COT MM short</span>
-                <DataValue>{fmtCompactInt(positioning?.cot_managed_money_short)}</DataValue>
-
-                <span style={rowLabel}>COT Prod/Merch net</span>
-                <DataValue>{fmtCompactInt(positioning?.cot_producer_merchant_net)}</DataValue>
-              </div>
-              {(positioning?.cot_release_date || positioning?.cot_report_date) && (
-                <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--rule)' }}>
-                  <Eyebrow tone="subtle" size={9}>
-                    COT release {fmtDate(positioning?.cot_release_date)} · report {fmtDate(positioning?.cot_report_date)}
-                  </Eyebrow>
-                </div>
-              )}
-            </div>
+          {/* Thin caption row — supplementary positioning context, no card */}
+          <div
+            className="positioning-caption"
+            style={{
+              marginTop: 18,
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'baseline',
+              columnGap: 24,
+              rowGap: 8,
+              borderTop: '1px dotted var(--rule)',
+              paddingTop: 12,
+            }}
+          >
+            <span style={inlineCell}>
+              <Eyebrow tone="subtle" size={9}>COT MM long</Eyebrow>
+              <DataValue size={11}>{fmtCompactInt(positioning?.cot_managed_money_long)}</DataValue>
+            </span>
+            <span style={inlineCell}>
+              <Eyebrow tone="subtle" size={9}>COT MM short</Eyebrow>
+              <DataValue size={11}>{fmtCompactInt(positioning?.cot_managed_money_short)}</DataValue>
+            </span>
+            <span style={inlineCell}>
+              <Eyebrow tone="subtle" size={9}>COT Prod/Merch net</Eyebrow>
+              <DataValue size={11}>{fmtCompactInt(positioning?.cot_producer_merchant_net)}</DataValue>
+            </span>
+            <span style={inlineCell}>
+              <Eyebrow tone="subtle" size={9}>Ratio EU/US (tonnes)</Eyebrow>
+              <DataValue size={11}>{fmtNum(positioning?.stock_eu_us_ratio, 2)}</DataValue>
+            </span>
+            {positioning?.cot_release_date && (
+              <span style={inlineCell}>
+                <Eyebrow tone="subtle" size={9}>COT release</Eyebrow>
+                <DataValue size={11} color="var(--ink-mid)">{fmtDate(positioning?.cot_release_date)}</DataValue>
+              </span>
+            )}
           </div>
         </div>
 

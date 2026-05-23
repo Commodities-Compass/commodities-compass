@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { LogOutIcon, MenuIcon, UserIcon } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth } from '@/hooks/useAuth';
@@ -12,6 +13,7 @@ import {
 import { useDashboardDate } from '@/hooks/useDashboardDate';
 import DateSelector from '@/components/date-selector';
 import LiveSignalStrip from '@/components/live-signal-strip';
+import MastheadPulse from '@/components/masthead-pulse';
 import compassIcon from '@/assets/compass-icon.png';
 
 interface DashboardLayoutProps {
@@ -39,6 +41,17 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     .join('');
 
   const now = new Date();
+
+  // On mount/refresh AND every date change, drop the page just below the top
+  // utility bar so the masthead title is the first thing the user sees.
+  // Instant (not smooth) so the user doesn't perceive a load-time jump.
+  // Locking the scroll on the masthead on date change ensures the whole front
+  // re-anchors there while the new session's data loads — no mid-page jumps
+  // caused by skeletons + actual content swapping heights.
+  const mastheadTitleRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    mastheadTitleRef.current?.scrollIntoView({ behavior: 'auto', block: 'start' });
+  }, [currentDate]);
 
   return (
     <div
@@ -116,7 +129,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           </div>
 
           {/* Title block: horizontal lockup desktop, vertical stack on phones */}
-          <div className="masthead-title flex items-center justify-center gap-6 md:gap-9">
+          <div
+            ref={mastheadTitleRef}
+            className="masthead-title flex items-center justify-center gap-6 md:gap-9"
+          >
             <div className="masthead-text text-center md:text-right">
               <h1
                 className="masthead-wordmark leading-none"
@@ -166,6 +182,17 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               }
             }
           `}</style>
+
+          {/* Compass Pulse — sparkline + YTD + inline stats, single thin row */}
+          <div
+            style={{
+              marginTop: 12,
+              paddingTop: 10,
+              borderTop: '1px dotted var(--rule)',
+            }}
+          >
+            <MastheadPulse />
+          </div>
 
           {/* Signal legend (compact, just below title block) */}
           <div

@@ -341,7 +341,15 @@ async def get_indicators_with_ranges(
     contract_id: Optional[uuid.UUID] = None,
     algo_id: Optional[uuid.UUID] = None,
 ) -> Dict[str, Dict[str, Any]]:
-    """Get all indicators with their ranges for a given date."""
+    """Get all indicators with their ranges for a given date.
+
+    Fallback when the resolved algo row has NULL norms (e.g. ensemble dates
+    where cc-ensemble-compute writes a row with diagnostics + decision but no
+    z-scores — the norms are owned by cc-compute-indicators which only fills
+    the legacy row). Without this, indicators-grid 404s the moment the
+    date-aware resolver picks ensemble for a recent date. We pick the first
+    row across (contract, algo) that has a non-null rsi_norm.
+    """
     if contract_id is None:
         if target_date:
             contract_id = await _resolve_contract_for_date(db, target_date)
@@ -352,21 +360,53 @@ async def get_indicators_with_ranges(
     if algo_id is None:
         algo_id = await get_active_algorithm_version_id(db)
 
+    # Step 1: try the resolved (contract, algo, date) — that's the most
+    # specific match and preserves macroeco_score from that algo's LLM run.
     query = select(PlIndicatorDaily).where(
         and_(
             PlIndicatorDaily.contract_id == contract_id,
             PlIndicatorDaily.algorithm_version_id == algo_id,
+            PlIndicatorDaily.rsi_norm.is_not(None),
         )
     )
-
     if target_date:
         query = query.where(PlIndicatorDaily.date == target_date)
-
     query = query.order_by(desc(PlIndicatorDaily.date)).limit(1)
-    result = await db.execute(query)
-    indicator = result.scalars().first()
+    indicator = (await db.execute(query)).scalars().first()
 
-    if not indicator:
+    # Step 2: same date + contract, ANY algo with non-null norms (typically
+    # falls back to legacy which is where compute-indicators writes norms).
+    if indicator is None and target_date:
+        fallback = (
+            select(PlIndicatorDaily)
+            .where(
+                and_(
+                    PlIndicatorDaily.contract_id == contract_id,
+                    PlIndicatorDaily.date == target_date,
+                    PlIndicatorDaily.rsi_norm.is_not(None),
+                )
+            )
+            .order_by(desc(PlIndicatorDaily.date))
+            .limit(1)
+        )
+        indicator = (await db.execute(fallback)).scalars().first()
+
+    # Step 3: cross-contract fallback (handles contract roll edges).
+    if indicator is None and target_date:
+        fallback = (
+            select(PlIndicatorDaily)
+            .where(
+                and_(
+                    PlIndicatorDaily.date == target_date,
+                    PlIndicatorDaily.rsi_norm.is_not(None),
+                )
+            )
+            .order_by(desc(PlIndicatorDaily.date))
+            .limit(1)
+        )
+        indicator = (await db.execute(fallback)).scalars().first()
+
+    if indicator is None:
         return {}
 
     return await _build_indicators_dict(

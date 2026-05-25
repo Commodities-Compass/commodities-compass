@@ -248,8 +248,14 @@ async def calculate_ytd_performance(
 ) -> float:
     """Calculate YTD performance by replicating the CONCLUSION scoring server-side.
 
-    Cross-contract: uses a raw SQL subquery with DISTINCT ON (date) to pick
-    the front-month contract per date (highest OI), so YTD scoring spans
+    Date-aware decision source — uses the SAME decision that the system would
+    have shipped live each day:
+      * For dates with an ensemble row: ensemble's ``decision`` (which mirrors
+        the orchestrator's ``decision_wrapped`` — i.e. post-Compass override).
+      * For older dates: legacy decision.
+
+    Cross-contract: uses a DISTINCT ON (date) subquery to pick the
+    front-month contract per date (highest OI), so YTD scoring spans
     contract rolls seamlessly.
     """
     if reference_date is None:
@@ -257,11 +263,23 @@ async def calculate_ytd_performance(
 
     from sqlalchemy import text as sa_text
 
-    algo_id = await get_active_algorithm_version_id(db)
+    from app.utils.contract_resolver import (
+        ENSEMBLE_VERSION_NAME,
+        LEGACY_VERSION_NAME,
+        _get_version_id_by_name,
+    )
+
+    ensemble_id = await _get_version_id_by_name(db, ENSEMBLE_VERSION_NAME)
+    legacy_id = await _get_version_id_by_name(db, LEGACY_VERSION_NAME)
+    if ensemble_id is None and legacy_id is None:
+        # Fall back to the historical "active" lookup as a defensive default.
+        legacy_id = await get_active_algorithm_version_id(db)
+
     start_of_year = get_year_start_date(reference_date)
 
     # Cross-contract query: for each date, pick the contract with highest OI
-    # then join to pl_indicator_daily for the decision
+    # then COALESCE the ensemble decision over the legacy one (decision shipped
+    # live to the user each day).
     query = sa_text("""
         WITH front_month AS (
             SELECT DISTINCT ON (cd.date) cd.date, cd.close, cd.contract_id
@@ -269,18 +287,30 @@ async def calculate_ytd_performance(
             WHERE cd.date >= :start AND cd.date <= :end_date
             ORDER BY cd.date, cd.oi DESC NULLS LAST
         )
-        SELECT fm.date, fm.close, i.decision
+        SELECT
+            fm.date,
+            fm.close,
+            COALESCE(ens.decision, leg.decision) AS decision
         FROM front_month fm
-        JOIN pl_indicator_daily i
-          ON i.date = fm.date
-         AND i.contract_id = fm.contract_id
-         AND i.algorithm_version_id = :algo_id
+        LEFT JOIN pl_indicator_daily ens
+               ON ens.date = fm.date
+              AND ens.contract_id = fm.contract_id
+              AND ens.algorithm_version_id = :ensemble_id
+        LEFT JOIN pl_indicator_daily leg
+               ON leg.date = fm.date
+              AND leg.contract_id = fm.contract_id
+              AND leg.algorithm_version_id = :legacy_id
         ORDER BY fm.date ASC
     """)
 
     result = await db.execute(
         query,
-        {"start": start_of_year, "end_date": reference_date, "algo_id": str(algo_id)},
+        {
+            "start": start_of_year,
+            "end_date": reference_date,
+            "ensemble_id": str(ensemble_id) if ensemble_id is not None else None,
+            "legacy_id": str(legacy_id) if legacy_id is not None else None,
+        },
     )
     rows = result.all()
 

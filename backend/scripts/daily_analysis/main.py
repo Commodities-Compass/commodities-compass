@@ -9,7 +9,7 @@ Usage:
 import argparse
 import logging
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 import sentry_sdk
@@ -43,7 +43,11 @@ def _parse_args() -> argparse.Namespace:
         "--date",
         type=str,
         default=None,
-        help="Target date YYYY-MM-DD (default: today). Enables backfill.",
+        help=(
+            "Target session date YYYY-MM-DD. Default: next_session_date(today) "
+            "per P2b — writes are tagged to the upcoming trading session. "
+            "Manual --date bypasses the eve-of-trading-day gate (backfill)."
+        ),
     )
     parser.add_argument("--dry-run", action="store_true", help="Log only, no writes")
     parser.add_argument("--force", action="store_true", help="Overwrite existing data")
@@ -71,9 +75,16 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _resolve_date(date_str: str | None) -> datetime:
+    """P2b: default = upcoming trading session, NOT today.
+
+    Explicit --date YYYY-MM-DD always takes precedence (used by backfills).
+    """
     if date_str:
         return datetime.strptime(date_str, "%Y-%m-%d")
-    return datetime.now(timezone.utc)
+    from scripts.db import get_next_session_date
+
+    next_session = get_next_session_date()
+    return datetime(next_session.year, next_session.month, next_session.day)
 
 
 @monitor(monitor_slug="daily-analysis")
@@ -83,11 +94,16 @@ def main() -> int:
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    # Skip on non-trading days unless --force
-    from scripts.db import should_skip_non_trading_day
+    # P2b gate: skip cleanly when the upcoming day is not a trading session.
+    # --date or --force bypass the gate (backfills, manual reruns).
+    from scripts.db import is_eve_of_trading_day
 
-    if should_skip_non_trading_day(force=args.force):
-        return 0
+    if not args.force and args.date is None:
+        if not is_eve_of_trading_day():
+            logger.info(
+                "Phase-B gate: tomorrow is not a trading day — skipping cleanly."
+            )
+            return 0
 
     target_date = _resolve_date(args.date)
 
@@ -101,22 +117,27 @@ def main() -> int:
             contract_code = resolve_active_code(session)
         logger.info("Resolved active contract from DB: %s", contract_code)
 
-    # Pre-flight: verify upstream data exists before making LLM calls
-    from scripts.db import has_contract_data_for_date
+    # Pre-flight: P2b — check for OHLCV on the PREVIOUS trading session,
+    # not the upcoming one. target_date is the upcoming session (no data yet);
+    # we need the most recent completed close.
+    from scripts.db import get_previous_session_date, has_contract_data_for_date
 
-    check_date = (
+    target_only_date = (
         target_date.date() if isinstance(target_date, datetime) else target_date
     )
+    check_date = get_previous_session_date(target_only_date)
     if not has_contract_data_for_date(check_date):
         if args.force:
             logger.warning(
-                "No data in pl_contract_data_daily for %s — continuing anyway (--force)",
+                "No data in pl_contract_data_daily for previous session %s "
+                "— continuing anyway (--force)",
                 check_date,
             )
         else:
             logger.warning(
-                "No data in pl_contract_data_daily for %s — skipping analysis "
-                "(upstream scraper may not have run). Use --force to override.",
+                "No data in pl_contract_data_daily for previous session %s "
+                "— skipping analysis (upstream scraper may not have run). "
+                "Use --force to override.",
                 check_date,
             )
             return 0

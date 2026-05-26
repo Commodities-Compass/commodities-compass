@@ -63,6 +63,16 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Run even on non-trading days (for backfills/debugging)",
     )
+    parser.add_argument(
+        "--target-date",
+        type=date_type.fromisoformat,
+        default=None,
+        help=(
+            "Trading session date the brief should be tagged to (YYYY-MM-DD). "
+            "Drives the YYYYMMDD-CompassBrief.txt filename + header. "
+            "Defaults to get_next_session_date(today()) per P2b."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -73,15 +83,23 @@ def main() -> int:
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    # Skip on non-trading days unless --force
-    from scripts.db import should_skip_non_trading_day
+    # P2b gate: skip cleanly when tomorrow is not a trading session.
+    # --force / --target-date bypass the gate (backfills, manual reruns).
+    from scripts.db import get_next_session_date, is_eve_of_trading_day
 
-    if should_skip_non_trading_day(force=args.force):
-        return 0
+    target_date: date_type = args.target_date or get_next_session_date()
+
+    if not args.force and args.target_date is None:
+        if not is_eve_of_trading_day():
+            logger.info(
+                "Phase-B gate: tomorrow is not a trading day — skipping cleanly."
+            )
+            return 0
 
     logger.info("=" * 60)
     logger.info("Compass Brief Generator")
     logger.info("Mode: %s", "DRY RUN" if args.dry_run else "UPLOAD")
+    logger.info("Target session: %s", target_date)
     logger.info("=" * 60)
 
     try:
@@ -102,23 +120,38 @@ def main() -> int:
         # 2. Generate brief text
         brief = generate_brief(data)
 
-        # 3. Derive filename from today's date
-        dt = datetime.strptime(data.today.date, "%m/%d/%Y")
-        filename = f"{dt.strftime('%Y%m%d')}-CompassBrief.txt"
+        # 3. Derive filename from target_date (upcoming session — P2b).
+        # The data inside the brief still reflects data.today / data.yesterday
+        # (the last two completed sessions), but the filename matches the
+        # session the brief informs.
+        filename = f"{target_date.strftime('%Y%m%d')}-CompassBrief.txt"
 
         logger.info("Generated brief: %s (%d chars)", filename, len(brief))
-        logger.info("Today: %s | Yesterday: %s", data.today.date, data.yesterday.date)
+        logger.info(
+            "Target session: %s | Data: today=%s, yesterday=%s",
+            target_date,
+            data.today.date,
+            data.yesterday.date,
+        )
 
-        # 3b. Stale-data guard: don't overwrite existing briefs with old data
-        data_date = dt.date()
-        today = date_type.today()
+        # 3b. Stale-data guard: the upstream technical data must be from the
+        # last completed session (= the trading day immediately before
+        # target_date). If older than that we'd publish a brief built on
+        # stale market data; skip the upload to avoid overwriting a good
+        # one. Caller can re-run with --force after the upstream catch-up.
+        data_date = datetime.strptime(data.today.date, "%m/%d/%Y").date()
+        from scripts.db import get_previous_session_date
+
+        previous_session = get_previous_session_date(target_date)
         skip_upload = False
-        if data_date < today and not args.force:
+        if data_date < previous_session and not args.force:
             logger.warning(
-                "Brief data date %s is older than today %s — skipping upload "
-                "to avoid overwriting existing brief. Use --force to override.",
+                "Brief data date %s is older than previous session %s "
+                "(target=%s) — skipping upload to avoid overwriting an "
+                "existing brief. Use --force to override.",
                 data_date,
-                today,
+                previous_session,
+                target_date,
             )
             skip_upload = True
 

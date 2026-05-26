@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import logging
 import sys
+from datetime import date as date_type
 from pathlib import Path
 
 import sentry_sdk
@@ -57,17 +58,34 @@ def main() -> int:
         action="store_true",
         help="Backfill seasonal scores for current campaign from Open-Meteo history, then exit",
     )
+    parser.add_argument(
+        "--target-date",
+        type=date_type.fromisoformat,
+        default=None,
+        help=(
+            "Trading session date the observation should be tagged to "
+            "(YYYY-MM-DD). Defaults to get_next_session_date(today()) — the "
+            "upcoming trading session per P2b calendar-aware timing."
+        ),
+    )
 
     args = parser.parse_args()
 
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    # Skip on non-trading days unless --force
-    from scripts.db import should_skip_non_trading_day
+    # P2b: target_date = upcoming trading session. --force or explicit
+    # --target-date bypass the gate (backfills, manual reruns).
+    from scripts.db import get_next_session_date, is_eve_of_trading_day
 
-    if should_skip_non_trading_day(force=args.force):
-        return 0
+    target_date: date_type = args.target_date or get_next_session_date()
+
+    if not args.force and args.target_date is None:
+        if not is_eve_of_trading_day():
+            logger.info(
+                "Phase-B gate: tomorrow is not a trading day — skipping cleanly."
+            )
+            return 0
 
     # Bootstrap mode — compute and store seasonal scores, then exit
     if args.bootstrap_memory:
@@ -76,6 +94,7 @@ def main() -> int:
     logger.info("=" * 60)
     logger.info("Meteo Agent - Cocoa Weather Analysis")
     logger.info("Mode: %s", "DRY RUN" if args.dry_run else "LIVE")
+    logger.info("Target session: %s", target_date)
     logger.info("=" * 60)
 
     try:
@@ -86,7 +105,6 @@ def main() -> int:
 
         # Step 2: Build campaign memory + Harmattan context from DB
         logger.info("Step 2: Loading campaign memory...")
-        from datetime import datetime, timezone
 
         from scripts.meteo_agent.seasonal_memory import (
             build_campaign_memory,
@@ -97,15 +115,18 @@ def main() -> int:
 
         campaign_memory = ""
         harmattan_context = ""
-        campaign = get_campaign(datetime.now(timezone.utc).date())
+        # P2b: campaign membership keyed on target_date (upcoming session)
+        # rather than today; matters on month-boundary eve-of-Nov-1 cases.
+        campaign = get_campaign(target_date)
         try:
             from scripts.db import get_session
 
             with get_session() as session:
                 campaign_memory = build_campaign_memory(session)
                 harmattan_days = get_campaign_harmattan_days(session, campaign)
+                # P2b: harmattan/seasonal context aligned with target_date.month.
                 harmattan_context = build_harmattan_context(
-                    harmattan_days, datetime.now(timezone.utc).month
+                    harmattan_days, target_date.month
                 )
             if campaign_memory:
                 logger.info("Campaign memory: %d chars", len(campaign_memory))
@@ -133,7 +154,9 @@ def main() -> int:
 
         # Step 3: Build prompt and call LLM
         logger.info("Step 3: Calling OpenAI for analysis...")
-        current_month = datetime.now(timezone.utc).month
+        # P2b: seasonal context tied to target_date.month so eve-of-November-1
+        # runs see November thresholds, not the previous month's.
+        current_month = target_date.month
         seasonal_context = build_seasonal_context(current_month)
         system_prompt = SYSTEM_PROMPT_TEMPLATE.format(seasonal_context=seasonal_context)
         memory_block = f"\n\n{campaign_memory}" if campaign_memory else ""
@@ -171,7 +194,14 @@ def main() -> int:
         from scripts.meteo_agent.db_writer import write_llm_call, write_observation
 
         with get_session() as session:
-            write_observation(session, result.parsed, dry_run=args.dry_run)
+            # P2b: explicit observation_date = target_date (upcoming session)
+            # — was previously implicit date.today() inside write_observation.
+            write_observation(
+                session,
+                result.parsed,
+                observation_date=target_date,
+                dry_run=args.dry_run,
+            )
             write_llm_call(
                 session, result.usage, result.latency_ms, dry_run=args.dry_run
             )

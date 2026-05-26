@@ -331,6 +331,7 @@ class TestEngineEnsembleAlignment:
             result = engine.run(
                 target_date=seed_market_data["today"],
                 contract_code=ref_chain["contract"].code,
+                data_date=seed_market_data["today"],
             )
 
         assert result.ensemble_aligned is True
@@ -409,6 +410,7 @@ class TestEngineEnsembleAlignment:
             result = engine.run(
                 target_date=seed_market_data["today"],
                 contract_code=ref_chain["contract"].code,
+                data_date=seed_market_data["today"],
             )
 
         assert result.ensemble_aligned is False
@@ -453,6 +455,7 @@ class TestEngineEnsembleAlignment:
             result = engine.run(
                 target_date=seed_market_data["today"],
                 contract_code=ref_chain["contract"].code,
+                data_date=seed_market_data["today"],
             )
 
         assert result.ensemble_aligned is False
@@ -492,6 +495,7 @@ class TestEngineEnsembleAlignment:
             result = engine.run(
                 target_date=seed_market_data["today"],
                 contract_code=ref_chain["contract"].code,
+                data_date=seed_market_data["today"],
             )
 
         # Engine forces back to ensemble.decision_wrapped
@@ -555,6 +559,7 @@ class TestEnsembleAlignmentWithVotes:
             engine.run(
                 target_date=seed_market_data["today"],
                 contract_code=ref_chain["contract"].code,
+                data_date=seed_market_data["today"],
             )
 
         second_prompt = mock_instance.call.call_args_list[1].args[0]

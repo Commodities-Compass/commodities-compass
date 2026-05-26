@@ -218,20 +218,37 @@ def _read_technicals_snapshot(
 
 
 def read_explainer_inputs(
-    session: Session, target_date: date, contract_id: Any
+    session: Session,
+    target_date: date,
+    contract_id: Any,
+    *,
+    data_date: date | None = None,
 ) -> ExplainerInputs:
     """Read all inputs needed for the LLM prompt. Fail-loud if ensemble rows
-    are missing — the explainer cannot work without them."""
+    are missing — the explainer cannot work without them.
+
+    Args:
+        target_date: Upcoming session the narrative addresses (used for
+            press/meteo lookups which are P2b-keyed to the upcoming session).
+        contract_id: Active contract.
+        data_date: Last completed session — where ensemble-compute wrote
+            pl_orchestrator_decision + pl_specialist_prediction + the
+            ensemble row of pl_indicator_daily. Defaults to ``target_date``
+            for backward compatibility.
+    """
+    effective_data_date = data_date or target_date
     algo_id = _resolve_algorithm_version_id(session)
     orchestrator = _read_orchestrator_decision(
-        session, target_date, contract_id, algo_id
+        session, effective_data_date, contract_id, algo_id
     )
-    specialists = _read_specialists(session, target_date, contract_id, algo_id)
+    specialists = _read_specialists(session, effective_data_date, contract_id, algo_id)
     press_summary, press_impact, press_sentiment = _read_latest_press(
         session, target_date
     )
     meteo_summary, meteo_impact = _read_latest_meteo(session, target_date)
-    technicals_snapshot = _read_technicals_snapshot(session, target_date, contract_id)
+    technicals_snapshot = _read_technicals_snapshot(
+        session, effective_data_date, contract_id
+    )
 
     logger.info(
         "Explainer inputs: decision=%s specialists=%d press_len=%d meteo_len=%d",

@@ -225,79 +225,65 @@ function ConvictionBreakdown({
 }
 
 /* ===================================================================
- * Score panel 2x2 KPI — replaces the previous horizon block on the right.
+ * Score panel Horizon — the only KPI kept inside the score card.
+ *
+ * Net score / Consensus / Précision 5j are surfaced in the left-side
+ * Conviction Breakdown — duplicating them in the score panel was repetitive.
+ * The Horizon stays here because it qualifies the OPEN/HEDGE/MONITOR call
+ * directly ("acheteuse pour combien de temps ?"). Styled as a single
+ * highlighted block — Playfair italic, prominent.
  * =================================================================== */
-function ScorePanelKpis({
-  diag,
+function ScorePanelHorizon({
   sourceAlgorithm,
   signalColor,
 }: {
-  diag: EnsembleDiagnosticsResponse;
   sourceAlgorithm: string | null | undefined;
   signalColor: string;
 }) {
-  const accPct =
-    diag.running_acc_5d != null ? Math.round(diag.running_acc_5d * 100) : null;
-  const scoreStr = `${diag.net_score >= 0 ? '+' : ''}${diag.net_score.toFixed(2)}`;
-
-  const cells = [
-    { eyebrow: 'Net score', value: scoreStr, color: signalColor },
-    {
-      eyebrow: 'Consensus',
-      value: `${diag.n_committed_specialists}/14`,
-      color: 'var(--ink)',
-    },
-    {
-      eyebrow: 'Précision 5j',
-      value: accPct != null ? `${accPct}%` : '—',
-      color: 'var(--ink)',
-    },
-    {
-      eyebrow: 'Horizon',
-      value: horizonShortLabel(sourceAlgorithm),
-      color: 'var(--ink)',
-    },
-  ];
+  const horizon = horizonShortLabel(sourceAlgorithm);
+  const subtitle =
+    sourceAlgorithm === 'ensemble_v1_softgate_wrapper'
+      ? '4 jours boursiers'
+      : 'Session suivante · J+1';
 
   return (
     <div
       style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
+        marginTop: 16,
+        paddingTop: 16,
+        paddingBottom: 16,
         borderTop: '1px solid var(--ink)',
         borderBottom: '1px solid var(--rule)',
-        marginTop: 16,
+        textAlign: 'center',
       }}
     >
-      {cells.map((cell, i) => (
-        <div
-          key={cell.eyebrow}
-          style={{
-            padding: '12px 14px',
-            borderLeft: i % 2 === 0 ? 'none' : '1px solid var(--rule)',
-            borderTop: i >= 2 ? '1px solid var(--rule)' : 'none',
-            textAlign: 'center',
-          }}
-        >
-          <Eyebrow as="div" tone="subtle" size={9} tracking="0.18em">
-            {cell.eyebrow}
-          </Eyebrow>
-          <div
-            className="tabular-nums"
-            style={{
-              fontFamily: 'var(--font-display)',
-              fontWeight: 700,
-              fontSize: 22,
-              lineHeight: 1.1,
-              color: cell.color,
-              marginTop: 4,
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {cell.value}
-          </div>
-        </div>
-      ))}
+      <Eyebrow as="div" tone="muted" size={10} tracking="0.22em">
+        Horizon de projection
+      </Eyebrow>
+      <div
+        className="tabular-nums"
+        style={{
+          fontFamily: 'var(--font-display)',
+          fontWeight: 700,
+          fontSize: 'clamp(28px, 3.6vw, 38px)',
+          lineHeight: 1,
+          color: signalColor,
+          margin: '8px 0 4px',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {horizon}
+      </div>
+      <div
+        style={{
+          fontFamily: 'var(--font-display)',
+          fontStyle: 'italic',
+          fontSize: 13,
+          color: 'var(--ink-mid)',
+        }}
+      >
+        {subtitle}
+      </div>
     </div>
   );
 }
@@ -513,8 +499,7 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
 
             {ensembleAligned && diag ? (
               <>
-                <ScorePanelKpis
-                  diag={diag}
+                <ScorePanelHorizon
                   sourceAlgorithm={pos.source_algorithm}
                   signalColor={meta.color}
                 />

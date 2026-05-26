@@ -15,7 +15,7 @@ import uuid
 from datetime import date as date_cls
 from typing import Any, Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.pipeline import (
@@ -23,6 +23,7 @@ from app.models.pipeline import (
     PlOrchestratorDecision,
     PlSpecialistPrediction,
 )
+from app.services.dashboard_service import YTD_EVAL_HORIZON_DAYS, _score_day
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,11 @@ async def get_ensemble_diagnostics(
 
     Returns None if no row exists (legacy dates or future dates) — caller
     maps to HTTP 404.
+
+    ``running_acc_5d`` is overridden with a Compass-formula-based computation
+    (5 most recent evaluable decisions × J+horizon scoring) so the dashboard
+    metric stays coherent with the YTD figure rather than displaying the
+    R&D bootstrap NaN on early days.
     """
     q = select(PlOrchestratorDecision).where(
         PlOrchestratorDecision.date == target_date,
@@ -56,6 +62,8 @@ async def get_ensemble_diagnostics(
     row = (await db.execute(q.limit(1))).scalar_one_or_none()
     if row is None:
         return None
+
+    computed_acc = await _compute_running_accuracy(db, target_date, contract_id)
 
     return {
         "date": target_date.isoformat(),
@@ -70,7 +78,11 @@ async def get_ensemble_diagnostics(
         "fired_trend": bool(row.fired_trend),
         "fired_dispersion": bool(row.fired_dispersion),
         "fired_three_way": bool(row.fired_three_way),
-        "running_acc_5d": _to_float(row.running_acc_5d),
+        # Our computed value takes precedence; fall back to the R&D field for
+        # historical rows where the window isn't long enough yet.
+        "running_acc_5d": computed_acc
+        if computed_acc is not None
+        else _to_float(row.running_acc_5d),
         "realized_return_5d": _to_float(row.realized_return_5d),
         "winter_vote_signed": _to_int(row.winter_vote_signed),
         "spring_vote_signed": _to_int(row.spring_vote_signed),
@@ -82,6 +94,83 @@ async def get_ensemble_diagnostics(
         "prior_hedge": _to_float(row.prior_hedge),
         "prior_monitor": _to_float(row.prior_monitor),
     }
+
+
+async def _compute_running_accuracy(
+    db: AsyncSession,
+    target_date: date_cls,
+    contract_id: Optional[uuid.UUID] = None,
+    *,
+    window: int = 5,
+    horizon: int = YTD_EVAL_HORIZON_DAYS,
+) -> Optional[float]:
+    """Compass running accuracy over the last ``window`` evaluable decisions.
+
+    A decision made at T is evaluable on T+horizon. We pick the ``window``
+    most recent decisions D such that D + horizon ≤ target_date, score each
+    with the same formula as the YTD metric, then return the share of
+    positive scores. Cross-contract aware via front-month-by-OI per date,
+    same pattern as ``calculate_ytd_performance``.
+
+    Returns None if fewer than ``window`` evaluable decisions exist in the
+    last ~30 sessions (caller falls back to the upstream R&D value).
+    """
+    query = text("""
+        WITH front_month AS (
+            SELECT DISTINCT ON (cd.date) cd.date, cd.close, cd.contract_id
+            FROM pl_contract_data_daily cd
+            WHERE cd.date <= :ref_date AND cd.date >= :start_date
+            ORDER BY cd.date, cd.oi DESC NULLS LAST
+        )
+        SELECT
+            fm.date,
+            fm.close,
+            COALESCE(ens.decision, leg.decision) AS decision
+        FROM front_month fm
+        LEFT JOIN pl_indicator_daily ens
+               ON ens.date = fm.date
+              AND ens.contract_id = fm.contract_id
+              AND ens.algorithm_version_id = (
+                  SELECT id FROM pl_algorithm_version
+                  WHERE name = 'ensemble_v1_softgate_wrapper'
+                  ORDER BY created_at DESC LIMIT 1)
+        LEFT JOIN pl_indicator_daily leg
+               ON leg.date = fm.date
+              AND leg.contract_id = fm.contract_id
+              AND leg.algorithm_version_id = (
+                  SELECT id FROM pl_algorithm_version
+                  WHERE name = 'legacy'
+                  ORDER BY created_at DESC LIMIT 1)
+        ORDER BY fm.date ASC
+    """)
+    # ~45 calendar days ≈ ~30 trading sessions, plenty to cover horizon + window
+    start_date = date_cls.fromordinal(target_date.toordinal() - 45)
+    rows = (
+        await db.execute(query, {"ref_date": target_date, "start_date": start_date})
+    ).all()
+    if len(rows) <= horizon:
+        return None
+
+    scored: list[float] = []
+    for i in range(len(rows) - horizon):
+        current = rows[i]
+        future = rows[i + horizon]
+        if not current.decision or current.close is None or future.close is None:
+            continue
+        s = _score_day(
+            current.decision.strip().upper(),
+            float(current.close),
+            float(future.close),
+        )
+        if s is not None:
+            scored.append(s)
+
+    if len(scored) < window:
+        return None
+
+    last_window = scored[-window:]
+    wins = sum(1 for s in last_window if s > 0)
+    return wins / window
 
 
 async def get_specialist_votes(

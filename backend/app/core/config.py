@@ -50,6 +50,15 @@ class Settings(BaseSettings):
         "GOOGLE_DRIVE_AUDIO_FOLDER_ID", default="", cast=str
     )
 
+    # Brief version served by /v1/dashboard/audio + /v1/audio/info by default.
+    # Allowed: "legacy" (cc-compass-brief) | "ensemble" (cc-compass-brief-ensemble).
+    # The frontend can override per-request via the `?version=` query param.
+    # Default "legacy" keeps the existing behavior — flip to "ensemble" when
+    # the new brief track is ready to be the primary user-facing brief.
+    BRIEF_DEFAULT_VERSION: str = config(
+        "BRIEF_DEFAULT_VERSION", default="legacy", cast=str
+    )
+
     # External APIs
     WEATHER_API_KEY: str = config("WEATHER_API_KEY", default="", cast=str)
     NEWS_API_KEY: str = config("NEWS_API_KEY", default="", cast=str)

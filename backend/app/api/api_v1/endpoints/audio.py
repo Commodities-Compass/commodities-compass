@@ -47,24 +47,27 @@ def _content_type(filename: str) -> str:
     return "audio/mpeg"
 
 
-async def _fetch_audio_info(parsed_date: Optional[date]) -> dict:
+async def _fetch_audio_info(
+    parsed_date: Optional[date], version: Optional[str] = None
+) -> dict:
     service = get_audio_service()
-    result = await service.get_audio_file_info(parsed_date)
+    result = await service.get_audio_file_info(parsed_date, version=version)
     if not result:
         date_str = (
             parsed_date.strftime("%Y-%m-%d")
             if parsed_date
             else datetime.now(timezone.utc).strftime("%Y-%m-%d")
         )
+        suffix = "-Ensemble" if version == "ensemble" else ""
         filename_base = (
             f"{(parsed_date or datetime.now(timezone.utc).date()).strftime('%Y%m%d')}"
-            "-CompassAudio"
+            f"-CompassAudio{suffix}"
         )
         raise HTTPException(
             status_code=404,
             detail=(
-                f"Audio file not found for date {date_str}. "
-                f"Looking for: {filename_base}.wav, "
+                f"Audio file not found for date {date_str} "
+                f"(version={version or 'default'}). Looking for: {filename_base}.wav, "
                 f"{filename_base}.m4a, or {filename_base}.mp4"
             ),
         )
@@ -78,6 +81,13 @@ async def stream_audio(
         default=None,
         description="Specific date for audio file (YYYY-MM-DD format)",
     ),
+    version: Optional[str] = Query(
+        default=None,
+        description=(
+            "Brief track: 'legacy' | 'ensemble'. Default falls back to "
+            "settings.BRIEF_DEFAULT_VERSION. Used by dual-track rollout."
+        ),
+    ),
 ):
     """Stream audio file from Google Drive through backend proxy.
 
@@ -85,7 +95,7 @@ async def stream_audio(
     """
     try:
         parsed_date = _resolve_date(target_date)
-        result = await _fetch_audio_info(parsed_date)
+        result = await _fetch_audio_info(parsed_date, version=version)
         file_url = _resolve_file_url(result["url"])
         filename = result["filename"]
         media_type = _content_type(filename)
@@ -190,6 +200,13 @@ async def get_audio_info(
         default=None,
         description="Specific date for audio file (YYYY-MM-DD format)",
     ),
+    version: Optional[str] = Query(
+        default=None,
+        description=(
+            "Brief track: 'legacy' | 'ensemble'. Default falls back to "
+            "settings.BRIEF_DEFAULT_VERSION. Used by dual-track rollout."
+        ),
+    ),
     current_user: dict = Depends(get_current_user),
 ):
     """Get audio file information without streaming."""
@@ -205,7 +222,7 @@ async def get_audio_info(
                 )
 
         service = get_audio_service()
-        audio_metadata = await service.get_audio_metadata(parsed_date)
+        audio_metadata = await service.get_audio_metadata(parsed_date, version=version)
 
         if not audio_metadata:
             date_str = (
@@ -213,22 +230,29 @@ async def get_audio_info(
                 if parsed_date
                 else datetime.now(timezone.utc).strftime("%Y-%m-%d")
             )
+            suffix = "-Ensemble" if version == "ensemble" else ""
             filename_base = (
                 f"{(parsed_date or datetime.now(timezone.utc).date()).strftime('%Y%m%d')}"
-                "-CompassAudio"
+                f"-CompassAudio{suffix}"
             )
             raise HTTPException(
                 status_code=404,
                 detail=(
-                    f"Audio file not found for date {date_str}. "
+                    f"Audio file not found for date {date_str} "
+                    f"(version={version or 'default'}). "
                     f"Looking for: {filename_base}.wav, "
                     f"{filename_base}.m4a, or {filename_base}.mp4"
                 ),
             )
 
         stream_url = "/v1/audio/stream"
+        params = []
         if target_date:
-            stream_url += f"?target_date={target_date}"
+            params.append(f"target_date={target_date}")
+        if version:
+            params.append(f"version={version}")
+        if params:
+            stream_url += "?" + "&".join(params)
 
         return {
             "url": stream_url,
@@ -236,6 +260,7 @@ async def get_audio_info(
             "date": audio_metadata["date"],
             "filename": audio_metadata["filename"],
             "google_drive_url": audio_metadata["url"],
+            "version": audio_metadata.get("version"),
         }
 
     except HTTPException:

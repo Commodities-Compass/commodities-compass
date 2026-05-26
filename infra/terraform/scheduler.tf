@@ -117,6 +117,20 @@ locals {
       # silence.
       schedule = "0 16 * * 1-5"
     }
+    # Dual-track brief — ensemble side (Phase B daily cron + in-agent eve gate).
+    # cc-ensemble-explainer enriches the ensemble row with LLM narrative right
+    # after cc-ensemble-compute (19:18) and before cc-daily-analysis (19:20).
+    # cc-compass-brief-ensemble uploads the new 7-section brief to Drive at 19:35,
+    # after the explainer has written. Both run daily with the
+    # is_eve_of_trading_day() gate (skip = exit 0 = Sentry success).
+    ensemble-explainer = {
+      description = "Ensemble brief LLM commentator (enriches ensemble row with eco/confidence/direction/conclusion)"
+      schedule    = "25 19 * * *"
+    }
+    compass-brief-ensemble = {
+      description = "Ensemble brief generator + Drive upload (7-section, J+4 horizon)"
+      schedule    = "35 19 * * *"
+    }
   }
 }
 

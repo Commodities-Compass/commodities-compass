@@ -586,17 +586,26 @@ async def get_audio(
     target_date: Optional[str] = Query(
         default=None, description="Specific date for audio file (YYYY-MM-DD format)"
     ),
+    version: Optional[str] = Query(
+        default=None,
+        description=(
+            "Brief track: 'legacy' | 'ensemble'. Defaults to settings.BRIEF_DEFAULT_VERSION. "
+            "Allows the frontend to preview the ensemble brief without flipping the global default."
+        ),
+    ),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> AudioResponse:
     """
     Get publicly playable audio file link from Google Drive.
 
-    Retrieves the audio file for the specified date in the format
-    YYYYMMDD-CompassAudio.wav and returns a publicly accessible URL.
+    Retrieves the audio file for the specified date and returns a backend
+    streaming URL. The `version` query param selects the brief track
+    (legacy/ensemble) for the dual-track rollout.
 
     Args:
         target_date: Optional specific date. If not provided, returns today's audio.
+        version: Optional brief track override.
         current_user: Authenticated user
 
     Returns:
@@ -611,8 +620,10 @@ async def get_audio(
         if target_date:
             trading_day = await _parse_and_validate_date(target_date, db)
 
-        # Get audio metadata from service
-        audio_metadata = await get_audio_service().get_audio_metadata(trading_day)
+        # Get audio metadata from service (version-aware)
+        audio_metadata = await get_audio_service().get_audio_metadata(
+            trading_day, version=version
+        )
 
         if not audio_metadata:
             # Provide helpful error message
@@ -621,16 +632,29 @@ async def get_audio(
                 if trading_day
                 else datetime.now(timezone.utc).strftime("%Y-%m-%d")
             )
-            filename_base = f"{(trading_day or datetime.now(timezone.utc).date()).strftime('%Y%m%d')}-CompassAudio"
+            suffix = "-Ensemble" if version == "ensemble" else ""
+            filename_base = (
+                f"{(trading_day or datetime.now(timezone.utc).date()).strftime('%Y%m%d')}"
+                f"-CompassAudio{suffix}"
+            )
             raise HTTPException(
                 status_code=404,
-                detail=f"Audio file not found for date {date_str}. Looking for: {filename_base}.wav or {filename_base}.m4a",
+                detail=(
+                    f"Audio file not found for date {date_str} (version="
+                    f"{version or 'default'}). Looking for: {filename_base}.wav "
+                    f"or {filename_base}.m4a"
+                ),
             )
 
-        # Return backend streaming URL with resolved trading day
+        # Return backend streaming URL with resolved trading day + version
         stream_url = "/audio/stream"
+        params = []
         if trading_day:
-            stream_url += f"?target_date={trading_day.isoformat()}"
+            params.append(f"target_date={trading_day.isoformat()}")
+        if version:
+            params.append(f"version={version}")
+        if params:
+            stream_url += "?" + "&".join(params)
 
         return AudioResponse(
             url=stream_url,  # Backend streaming URL

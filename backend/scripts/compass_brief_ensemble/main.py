@@ -91,7 +91,11 @@ def main() -> int:
         logging.getLogger().setLevel(logging.DEBUG)
 
     # P2b gate
-    from scripts.db import get_next_session_date, is_eve_of_trading_day
+    from scripts.db import (
+        get_next_session_date,
+        get_previous_session_date,
+        is_eve_of_trading_day,
+    )
 
     target_date: date_type = args.target_date or get_next_session_date()
     if not args.force and args.target_date is None:
@@ -101,10 +105,16 @@ def main() -> int:
             )
             return 0
 
+    # ``data_date`` = last completed session = the row date in
+    # pl_indicator_daily / pl_orchestrator_decision / pl_specialist_prediction.
+    # ``target_date`` remains the upcoming session for filename + press/meteo
+    # which are P2b-keyed to the upcoming session.
+    data_date: date_type = get_previous_session_date(target_date)
+
     logger.info("=" * 60)
     logger.info("Compass Brief Ensemble")
     logger.info("Mode: %s", "DRY RUN" if args.dry_run else "LIVE UPLOAD")
-    logger.info("Target session: %s", target_date)
+    logger.info("Target session: %s | Data session: %s", target_date, data_date)
     logger.info("=" * 60)
 
     filename = FILENAME_PATTERN.format(date=target_date.strftime("%Y%m%d"))
@@ -118,7 +128,9 @@ def main() -> int:
         with Session(engine) as session:
             contract_id = resolve_active(session)
             logger.info("Active contract id: %s", contract_id)
-            data = read_brief_data(session, target_date, contract_id)
+            data = read_brief_data(
+                session, target_date, contract_id, data_date=data_date
+            )
 
         brief = render_brief(data)
         logger.info("Generated brief: %s (%d chars)", filename, len(brief))

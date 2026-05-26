@@ -124,19 +124,33 @@ class DBReader:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def read_all(self, target_date: date, contract_code: str) -> PipelineInputs:
+    def read_all(
+        self,
+        target_date: date,
+        contract_code: str,
+        *,
+        data_date: date | None = None,
+    ) -> PipelineInputs:
         """Read all inputs for the daily analysis pipeline.
 
         Args:
-            target_date: Business date to analyze.
+            target_date: Upcoming trading session — used for P2b tables
+                (pl_fundamental_article, pl_weather_observation) whose rows
+                are keyed to the session they address.
             contract_code: Active contract code.
+            data_date: Last completed session — used for Phase A tables
+                (pl_indicator_daily, pl_orchestrator_decision,
+                pl_contract_data_daily). Defaults to ``target_date`` for
+                backward compatibility (historical backfills where both
+                were the same date).
 
         Returns:
             PipelineInputs with technicals + context + ensemble diagnostics.
         """
-        technicals = self._read_technicals(target_date, contract_code)
+        effective_data_date = data_date or target_date
+        technicals = self._read_technicals(effective_data_date, contract_code)
         context = self._read_context(target_date)
-        ensemble = self._read_ensemble_diagnostics(target_date, contract_code)
+        ensemble = self._read_ensemble_diagnostics(effective_data_date, contract_code)
 
         return PipelineInputs(technicals=technicals, context=context, ensemble=ensemble)
 

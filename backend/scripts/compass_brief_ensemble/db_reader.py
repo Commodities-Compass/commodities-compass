@@ -279,20 +279,35 @@ def _read_technicals(session: Session, target_date: date, contract_id: Any) -> s
 
 
 def read_brief_data(
-    session: Session, target_date: date, contract_id: Any
+    session: Session,
+    target_date: date,
+    contract_id: Any,
+    *,
+    data_date: date | None = None,
 ) -> EnsembleBriefData:
     """Read all rows needed to render the ensemble brief. Fail-loud if the
     ensemble decision row or orchestrator row is missing (cc-ensemble-compute
-    must have run first)."""
+    must have run first).
+
+    Args:
+        target_date: Upcoming session the brief targets — drives filename and
+            P2b-keyed lookups (press, meteo).
+        contract_id: Active contract.
+        data_date: Last completed session — where the ensemble pipeline
+            (ensemble-compute + ensemble-explainer) wrote the rows we read.
+            Defaults to ``target_date`` for backward compatibility (historical
+            backfills where both were the same date).
+    """
+    effective_data_date = data_date or target_date
     algo_id = _resolve_algorithm_id(session)
-    ind = _read_ensemble_row(session, target_date, contract_id, algo_id)
-    orc = _read_orchestrator(session, target_date, contract_id, algo_id)
-    specialists = _read_specialists(session, target_date, contract_id, algo_id)
+    ind = _read_ensemble_row(session, effective_data_date, contract_id, algo_id)
+    orc = _read_orchestrator(session, effective_data_date, contract_id, algo_id)
+    specialists = _read_specialists(session, effective_data_date, contract_id, algo_id)
     press = _read_press(session, target_date)
     meteo = _read_meteo(session, target_date)
-    technicals = _read_technicals(session, target_date, contract_id)
+    technicals = _read_technicals(session, effective_data_date, contract_id)
     persistence = _read_persistence_days(
-        session, target_date, contract_id, algo_id, ind["decision"]
+        session, effective_data_date, contract_id, algo_id, ind["decision"]
     )
 
     logger.info(

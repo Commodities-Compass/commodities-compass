@@ -160,12 +160,29 @@ class DBAnalysisEngine:
         target_date: date,
         contract_code: str,
         *,
+        data_date: date | None = None,
         dry_run: bool = False,
     ) -> AnalysisResult:
         """Execute the full pipeline for a given date.
 
+        Two distinct dates flow through the engine since the P2b refactor :
+          * ``target_date`` — the upcoming trading session this decision
+            addresses (e.g. Tue eve → Wed session). Used for P2b-keyed
+            tables (pl_fundamental_article, pl_weather_observation) and
+            for human-facing labels.
+          * ``data_date`` — the last completed session (= the row that
+            compute-indicators wrote at 19:15 weekday + ensemble-compute
+            wrote at 19:18 weekday). Used as the WHERE/UPDATE key for
+            Phase A tables (pl_indicator_daily, pl_orchestrator_decision,
+            pl_signal_component). When ``None`` the engine resolves it via
+            ``get_previous_session_date(target_date)``. Tests and historical
+            backfills may pass ``data_date=target_date`` to align both
+            dates (pre-P2b semantics).
+        Without this split the engine queries date=target_date and finds
+        no rows because Phase A has not (and should not) write at T+next.
+
         Behavior depends on whether the ensemble produced a decision for the
-        (date, contract):
+        (data_date, contract):
           * Ensemble row present (default for 2025-12-15 onward): the run
             "aligns" itself on ensemble — Call#2 receives the ensemble
             diagnostics block, the decision is pinned to ``decision_wrapped``,
@@ -179,9 +196,21 @@ class DBAnalysisEngine:
         presence (used for historical backfills or operator interventions).
         """
 
+        if data_date is None:
+            from scripts.db import get_previous_session_date
+
+            data_date = get_previous_session_date(target_date)
+        logger.info(
+            "Date semantics: target_date=%s (upcoming session) | data_date=%s (last completed session)",
+            target_date,
+            data_date,
+        )
+
         # --- Step 1: Read inputs from DB ---
         logger.info("Step 1: Reading data from database...")
-        inputs = self._reader.read_all(target_date, contract_code=contract_code)
+        inputs = self._reader.read_all(
+            target_date, contract_code=contract_code, data_date=data_date
+        )
         self._log_inputs(inputs)
 
         # Auto-align on ensemble when present AND no explicit override was set.
@@ -226,7 +255,7 @@ class DBAnalysisEngine:
         # used to drive Call#2 when no ensemble decision is available.
         logger.info("Step 3: Computing FINAL_INDICATOR from engine...")
         final_indicator, computed_conclusion = self._compute_final_indicator(
-            target_date,
+            data_date,
             contract_code,
             macro.macroeco_bonus,
         )
@@ -296,7 +325,7 @@ class DBAnalysisEngine:
         if not dry_run:
             logger.info("Step 5: Writing results to database...")
             self._write_results(
-                target_date=target_date,
+                target_date=data_date,
                 contract_code=contract_code,
                 macro=macro,
                 final_indicator=final_indicator,

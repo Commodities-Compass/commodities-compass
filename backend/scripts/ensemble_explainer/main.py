@@ -153,7 +153,11 @@ def main() -> int:
         logging.getLogger().setLevel(logging.DEBUG)
 
     # P2b gate
-    from scripts.db import get_next_session_date, is_eve_of_trading_day
+    from scripts.db import (
+        get_next_session_date,
+        get_previous_session_date,
+        is_eve_of_trading_day,
+    )
 
     target_date: date_type = args.target_date or get_next_session_date()
     if not args.force and args.target_date is None:
@@ -163,10 +167,17 @@ def main() -> int:
             )
             return 0
 
+    # ``data_date`` = last completed session = where ensemble-compute (19:18
+    # weekday) wrote pl_orchestrator_decision + the ensemble row of
+    # pl_indicator_daily. The explainer reads/UPDATEs against this date,
+    # while ``target_date`` remains the upcoming session the narrative is
+    # written for (used for press/meteo lookups + Sentry context).
+    data_date: date_type = get_previous_session_date(target_date)
+
     logger.info("=" * 60)
     logger.info("Ensemble Explainer")
     logger.info("Mode: %s", "DRY RUN" if args.dry_run else "LIVE")
-    logger.info("Target session: %s", target_date)
+    logger.info("Target session: %s | Data session: %s", target_date, data_date)
     logger.info("=" * 60)
 
     try:
@@ -177,7 +188,9 @@ def main() -> int:
             contract_id = resolve_active(session)
             logger.info("Active contract id: %s", contract_id)
 
-            inputs = read_explainer_inputs(session, target_date, contract_id)
+            inputs = read_explainer_inputs(
+                session, target_date, contract_id, data_date=data_date
+            )
 
             user_prompt = _build_user_prompt(inputs)
             logger.info("Prompt built: %d chars", len(user_prompt))
@@ -207,7 +220,7 @@ def main() -> int:
 
             update_ensemble_narrative(
                 session,
-                target_date,
+                data_date,
                 contract_id,
                 inputs.algorithm_version_id,
                 output,

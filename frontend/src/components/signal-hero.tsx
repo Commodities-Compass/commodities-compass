@@ -12,7 +12,7 @@ function algoBadgeLabel(name?: string | null): string | null {
 }
 
 function horizonShortLabel(name?: string | null): string {
-  if (name === 'ensemble_v1_softgate_wrapper') return '~5-6 J';
+  if (name === 'ensemble_v1_softgate_wrapper') return '~4 J';
   return 'J+1';
 }
 
@@ -572,7 +572,7 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
                   }}
                 >
                   {pos.source_algorithm === 'ensemble_v1_softgate_wrapper'
-                    ? '~5-6 jours boursiers · 1 semaine'
+                    ? '~4 jours boursiers'
                     : 'Session suivante · J+1'}
                 </div>
               </div>

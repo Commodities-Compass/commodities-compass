@@ -86,6 +86,28 @@ locals {
     }
     # NB: cc-ensemble-bootstrap-artifacts is deployed without a scheduler.
     # Triggered manually via gcloud when R&D ships a new frozen artefact pack.
+    # Quarterly fundamentals (low-frequency, calendar-gated).
+    eca-grindings-scraper = {
+      description = "Scrape ECA Western Europe Cocoa Grindings (quarterly, calendar-gated)"
+      # 13:00 UTC weekdays. ECA publishes Thursdays ~14:00 CET on the
+      # ~16th of the month after each quarter end. The agent gates against
+      # ref_publication_calendar and exits 0 if no publication is pending,
+      # so the daily cron is cheap (~250 no-ops/year).
+      schedule = "0 13 * * 1-5"
+    }
+    nca-grindings-scraper = {
+      description = "Scrape NCA North-American Cocoa Grindings (quarterly, calendar-gated)"
+      # 14:00 UTC weekdays. NCA publishes ~mid-day ET on the same window
+      # as ECA. Same calendar-gated pattern as eca-grindings-scraper.
+      schedule = "0 14 * * 1-5"
+    }
+    publication-calendar-watchdog = {
+      description = "Alert on fundamental publications overdue ≥ 21 days"
+      # 16:00 UTC weekdays — runs after both grindings scrapers so any
+      # successful ingestion of the day is reflected before we check for
+      # silence.
+      schedule = "0 16 * * 1-5"
+    }
   }
 }
 

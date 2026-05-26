@@ -1,11 +1,9 @@
 import { Loader2 } from 'lucide-react';
 import { useWeather } from '@/hooks/useDashboard';
-import type { LocationDiagnostic } from '@/types/dashboard';
 import SectionHeader from '@/components/section-header';
 import { Eyebrow } from '@/components/editorial';
 import CampaignBlock from '@/components/weather/CampaignBlock';
 import StressHistoryBlock from '@/components/weather/StressHistoryBlock';
-import HarmattanBlock from '@/components/weather/HarmattanBlock';
 
 interface WeatherUpdateCardProps {
   targetDate?: string;
@@ -38,7 +36,9 @@ export default function WeatherUpdateCard({ targetDate, className }: WeatherUpda
     );
   }
 
-  const diagnostics: LocationDiagnostic[] = data.daily_diagnostics ?? data.diagnostics ?? [];
+  const harmattanByLocation: Record<string, number | null> = Object.fromEntries(
+    (data.diagnostics ?? []).map((d) => [d.location_name, d.harmattan_days ?? null]),
+  );
 
   return (
     <section className={className} style={{ padding: '24px 0' }}>
@@ -53,10 +53,11 @@ export default function WeatherUpdateCard({ targetDate, className }: WeatherUpda
       )}
 
       {data.stress_history && data.stress_history.length > 0 && (
-        <StressHistoryBlock history={data.stress_history} />
+        <StressHistoryBlock
+          history={data.stress_history}
+          harmattanByLocation={harmattanByLocation}
+        />
       )}
-
-      <HarmattanBlock harmattan={data.harmattan} diagnostics={diagnostics} />
 
       {data.description && (
         <div

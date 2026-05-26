@@ -76,9 +76,16 @@ function StatusPill({ status }: { status: LocationStressHistory['current_status'
   );
 }
 
-function StressCard({ zone }: { zone: LocationStressHistory }) {
+function StressCard({
+  zone,
+  harmattanDays,
+}: {
+  zone: LocationStressHistory;
+  harmattanDays?: number | null;
+}) {
   const isStress = zone.current_status === 'stress';
   const trend = trendArrow(zone.trend);
+  const harmattan = formatHarmattan(harmattanDays);
   return (
     <li
       style={{
@@ -129,12 +136,30 @@ function StressCard({ zone }: { zone: LocationStressHistory }) {
           {zone.streak_days > 1 ? `Streak ${zone.streak_days}j` : 'Streak —'}
         </span>
         <span style={{ color: trend.color, fontSize: 14, fontWeight: 600 }}>{trend.glyph}</span>
+        <span style={{ color: harmattan.color }}>Harmattan {harmattan.label}</span>
       </div>
     </li>
   );
 }
 
-export default function StressHistoryBlock({ history }: { history: LocationStressHistory[] }) {
+interface StressHistoryBlockProps {
+  history: LocationStressHistory[];
+  harmattanByLocation?: Record<string, number | null | undefined>;
+}
+
+function formatHarmattan(days: number | null | undefined): {
+  label: string;
+  color: string;
+} {
+  if (days == null) return { label: '—', color: 'var(--ink-light)' };
+  if (days === 0) return { label: '0j', color: 'var(--ink-light)' };
+  return { label: `${days}j`, color: 'var(--ink-dark)' };
+}
+
+export default function StressHistoryBlock({
+  history,
+  harmattanByLocation = {},
+}: StressHistoryBlockProps) {
   const ordered = [...history].sort((a, b) => {
     if (a.country !== b.country) return a.country.localeCompare(b.country);
     return a.location_name.localeCompare(b.location_name);
@@ -164,6 +189,7 @@ export default function StressHistoryBlock({ history }: { history: LocationStres
               <th style={thStyle('left')}>Tendance 7j</th>
               <th style={thStyle('left')}>Streak</th>
               <th style={thStyle('left')}>Trend</th>
+              <th style={thStyle('left')}>Harmattan</th>
               <th style={thStyle('right')}>Statut</th>
             </tr>
           </thead>
@@ -171,6 +197,7 @@ export default function StressHistoryBlock({ history }: { history: LocationStres
             {ordered.map((z) => {
               const isStress = z.current_status === 'stress';
               const trend = trendArrow(z.trend);
+              const harmattan = formatHarmattan(harmattanByLocation[z.location_name]);
               return (
                 <tr key={z.location_name} style={{ borderBottom: '1px dotted var(--rule)' }}>
                   <td
@@ -220,6 +247,17 @@ export default function StressHistoryBlock({ history }: { history: LocationStres
                   >
                     {trend.glyph}
                   </td>
+                  <td
+                    className="tabular-nums"
+                    style={{
+                      padding: '12px',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 12,
+                      color: harmattan.color,
+                    }}
+                  >
+                    {harmattan.label}
+                  </td>
                   <td style={{ padding: '12px 0 12px 12px', textAlign: 'right' }}>
                     <StatusPill status={z.current_status} />
                   </td>
@@ -233,7 +271,11 @@ export default function StressHistoryBlock({ history }: { history: LocationStres
       {/* Phone: card list */}
       <ul className="stress-card-list" style={{ margin: 0, padding: 0 }}>
         {ordered.map((z) => (
-          <StressCard key={z.location_name} zone={z} />
+          <StressCard
+            key={z.location_name}
+            zone={z}
+            harmattanDays={harmattanByLocation[z.location_name]}
+          />
         ))}
       </ul>
 

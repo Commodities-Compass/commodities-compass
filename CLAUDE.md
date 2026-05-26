@@ -2,9 +2,23 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 📚 Macro architecture docs (read first if unfamiliar with the codebase)
+
+Three self-contained documents describe the **business logic + data flows** without code details. Read these first to get a holistic view :
+
+- **[docs/architecture/PIPELINE_LEGACY.md](docs/architecture/PIPELINE_LEGACY.md)** — pipeline `cc-daily-analysis` + `cc-compass-brief` (LLM-as-decision-maker, T+1 horizon, operational since 18 months)
+- **[docs/architecture/PIPELINE_ENSEMBLE.md](docs/architecture/PIPELINE_ENSEMBLE.md)** — pipeline ensemble v1.0.0 : 14 ML specialists + soft-gate Bayésien + Compass wrapper + ensemble-explainer + compass-brief-ensemble (J+4-J+5 horizon, dashboard already serves this)
+- **[docs/architecture/JOBS_AND_SCRAPERS.md](docs/architecture/JOBS_AND_SCRAPERS.md)** — exhaustive catalog of all 19 Cloud Run Jobs + 16 schedulers + dependency graph + shared vs specific data tables
+
 ## Project Overview
 
-Commodities Compass is a Business Intelligence application for commodities trading, providing real-time market insights, technical analysis, and trading signals for cocoa (ICE contracts). This is a monorepo with a FastAPI backend and React frontend, using Auth0 for authentication and PostgreSQL (GCP Cloud SQL) for data storage. Deployed on GCP Cloud Run with 8 automated Cloud Run Jobs (scrapers, agents, compute engine). Dashboard reads from `pl_*` tables. Google Sheets is no longer used as a data source — all data flows through PostgreSQL. Google Drive is still used for audio (NotebookLM) and brief uploads.
+Commodities Compass is a Business Intelligence application for commodities trading, providing real-time market insights, technical analysis, and trading signals for cocoa (ICE contracts). This is a monorepo with a FastAPI backend and React frontend, using Auth0 for authentication and PostgreSQL (GCP Cloud SQL) for data storage. Deployed on GCP Cloud Run with 19 automated Cloud Run Jobs (scrapers, agents, compute engine, briefs). Dashboard reads from `pl_*` tables. Google Sheets is no longer used as a data source — all data flows through PostgreSQL. Google Drive is still used for audio (NotebookLM) and brief uploads.
+
+**Two production tracks coexist** :
+- **LEGACY** : `cc-daily-analysis` (LLM) → `pl_indicator_daily` row `legacy` → `cc-compass-brief` → `YYYYMMDD-CompassBrief.txt` → NotebookLM audio (legacy filename)
+- **ENSEMBLE** : `cc-ensemble-compute` (ML) → `pl_indicator_daily` row `ensemble_v1_softgate_wrapper` + `pl_orchestrator_decision` + 14 `pl_specialist_prediction` → `cc-ensemble-explainer` (LLM narrative) → `cc-compass-brief-ensemble` → `YYYYMMDD-CompassBrief-Ensemble.txt` → NotebookLM audio (ensemble filename)
+- Frontend dashboard serves ensemble via `_resolve_algo_for_date()` (row-existence based). Audio is served from legacy by default ; flip `BRIEF_DEFAULT_VERSION=ensemble` env var or `?version=ensemble` query param to switch.
+- Voir [docs/runbooks/brief-dual-track.md](docs/runbooks/brief-dual-track.md) pour les opérations.
 
 ## Development Commands
 
@@ -399,9 +413,26 @@ Four LLM-powered agents run as GCP Cloud Run Jobs, each generating content for P
 - **Output**: `YYYYMMDD-CompassBrief.txt` uploaded to Drive (idempotent — updates existing file for same date)
 - **Cron**: `30 19 * * 1-5` — **CLI**: `poetry run compass-brief`
 
+### Ensemble Explainer (`backend/scripts/ensemble_explainer/`) 🆕 P4
+
+- **Purpose**: enriches the ensemble row of `pl_indicator_daily` with LLM-generated narrative (`eco`, `confidence`, `direction`, `conclusion`) from the structured ensemble diagnostics + press review + meteo. The decision is IMMUTABLE — the LLM cannot change it (validator strict, fail-loud on contradictions).
+- **Inputs**: `pl_orchestrator_decision` + 14× `pl_specialist_prediction` + `pl_fundamental_article` (latest) + `pl_weather_observation` (latest) + `pl_contract_data_daily` (last completed session).
+- **LLM**: 1 call `gpt-4o-mini`, ~$0.001 per call. JSON-strict output, post-LLM validator rejects schema violations + commentary contradictions vs `decision_wrapped`.
+- **Output**: UPDATE `pl_indicator_daily` ensemble row (LLM fields only — decision/conclusion already written by cc-ensemble-compute remain consistent).
+- **Cron**: `25 19 * * *` (P2b daily-gated, after cc-ensemble-compute) — **CLI**: `poetry run ensemble-explainer [--target-date YYYY-MM-DD] [--dry-run]`
+- **US**: see [docs/runbooks/ensemble-explainer-prompt-tuning.md](docs/runbooks/ensemble-explainer-prompt-tuning.md)
+
+### Compass Brief Ensemble (`backend/scripts/compass_brief_ensemble/`) 🆕 P4
+
+- **Purpose**: dual-track companion to `cc-compass-brief`. Renders the new 7-section brief (signal + 14 specialists decomposition + macro radar + LLM eco + weather + technicals + recommendations), keyed on J+4-J+5 horizon. Reads the ensemble row enriched by cc-ensemble-explainer.
+- **Output**: `YYYYMMDD-CompassBrief-Ensemble.txt` uploaded to the same Drive folder as legacy (filename suffix discriminates). NotebookLM produces `YYYYMMDD-CompassAudio-Ensemble.{wav,m4a,mp4}`.
+- **Cron**: `35 19 * * *` (P2b daily-gated) — **CLI**: `poetry run compass-brief-ensemble [--target-date YYYY-MM-DD] [--dry-run]`
+- **Frontend audio routing**: env var `BRIEF_DEFAULT_VERSION=legacy|ensemble` on backend service drives which audio is served by `/v1/dashboard/audio`. Per-request override via `?version=` query param. Both audios coexist on Drive.
+- **Runbooks**: [brief-dual-track.md](docs/runbooks/brief-dual-track.md), [brief-rollback-procedure.md](docs/runbooks/brief-rollback-procedure.md), [brief-ensemble-evolution.md](docs/runbooks/brief-ensemble-evolution.md)
+
 ### Ensemble Compute — Campaign 5 (`backend/scripts/ensemble_compute/`)
 
-- **Purpose**: Daily C5 ensemble decision combining 14 LightGBM/GARCH specialists, a Bayesian soft-gate orchestrator, and a Compass-side transition wrapper. Replaces the legacy LLM-based daily-analysis decision (in shadow mode for v1.0.0; dashboard still reads legacy).
+- **Purpose**: Daily C5 ensemble decision combining 14 LightGBM/GARCH specialists, a Bayesian soft-gate orchestrator, and a Compass-side transition wrapper. **Today the frontend dashboard serves ensemble decisions directly** via `_resolve_algo_for_date()` (row-existence based). The dual-track brief (cc-compass-brief-ensemble + cc-ensemble-explainer) is the latest piece migrating the NotebookLM audio to ensemble while keeping legacy alive in parallel.
 - **Vendored R&D code**: `backend/vendor/campaign5_ensemble_v1.0.0/` — read-only delivery, never patched in-place. Override path is subclassing (see `compass_wrapper.py`).
 - **Algorithm version**: `ensemble_v1_softgate_wrapper` v1.0.0 in `pl_algorithm_version`. Currently `is_active=FALSE, compute_enabled=FALSE` (shadow mode, migration `m7h8i9j0k1l2`). Bascule live = downgrade that migration (atomic flip with legacy).
 - **Inputs**: `v_contract_data_chained` VIEW (front-month-by-OI chain for GARCH lookback) × `pl_derived_indicators` for market_history; `pl_orchestrator_decision` + `pl_specialist_prediction` for the wrapper trailing window; `pl_article_segment` (confidence ≥ 0.70 segments, 90d window) for the macro signal via `MacroEventLayer`.
@@ -533,8 +564,11 @@ P2b — the pipeline is split into two phases:
 # Phase B — daily cron, agent-gated on eve-of-trading-day, keyed to T+next:
 19:00  cc-meteo-agent                 → pl_weather_observation (target_date = next session)
 19:05  cc-press-review-agent          → pl_fundamental_article + pl_article_segment
-19:20  cc-daily-analysis              → pl_indicator_daily (LLM, reads previous_session)
-19:30  cc-compass-brief               → Google Drive (filename = next session YYYYMMDD)
+19:18  cc-ensemble-compute            → pl_orchestrator_decision + 14 specialist_prediction + ensemble row
+19:20  cc-daily-analysis --algorithm-version legacy → pl_indicator_daily LEGACY row (LLM)
+19:25  cc-ensemble-explainer 🆕       → UPDATE pl_indicator_daily ENSEMBLE row (LLM narrative)
+19:30  cc-compass-brief               → Drive: YYYYMMDD-CompassBrief.txt (legacy)
+19:35  cc-compass-brief-ensemble 🆕   → Drive: YYYYMMDD-CompassBrief-Ensemble.txt
 
 # Daytime fundamentals — calendar-gated against ref_publication_calendar:
 13:00  cc-eca-grindings-scraper      → pl_supply_demand_observation (ECA)
@@ -549,6 +583,7 @@ Notes:
 - Phase B daily cron + in-agent gate eliminates the Sun→Mon ~60h freshness gap that Phase B used to have when it was weekday-only. On Sun eve at 19:20 UTC the agents fire and tag their writes to Mon's session date.
 - The ECA + NCA scrapers gate against `ref_publication_calendar` (not the trading calendar) and exit 0 cleanly on the ~250 weekdays per year when no quarterly publication is pending. Watchdog escalates "expected but not ingested" rows past a 21-day grace window.
 - Sentry cron monitors interpret Phase B "skip on non-eve-of-trading-day" as success (exit 0) — no false-positive alerts on weekends + holidays.
+- **Dual-track brief** (legacy + ensemble) : `cc-compass-brief` (LEGACY) et `cc-compass-brief-ensemble` (NEW P4) tournent en parallèle chaque jour de session. 2 audios NotebookLM produits par jour. Audio servi par le frontend dépend de `BRIEF_DEFAULT_VERSION` env var (default `legacy`) — flip via `gcloud run services update backend --update-env-vars BRIEF_DEFAULT_VERSION=ensemble`. Per-request override `?version=ensemble`. Voir [docs/runbooks/brief-dual-track.md](docs/runbooks/brief-dual-track.md).
 
 When a job fails, follow [docs/runbooks/pipeline-failure-recovery.md](docs/runbooks/pipeline-failure-recovery.md) — covers diagnosis, root-cause categories, and the cascade of jobs to re-run based on the dependency graph. Pipeline jobs are configured fail-loud, no auto-retry (see `.claude/rules/pipeline-error-handling.md`).
 

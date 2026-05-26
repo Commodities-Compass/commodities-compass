@@ -68,6 +68,7 @@ cachetools = "^7.0.5"
 # Key name "ensemble" must match the R&D package's pyproject `name`.
 ensemble = {path = "vendor/campaign5_ensemble_v1.0.0", develop = false}
 pyarrow = "^24.0.0"
+pdfplumber = "^0.11.9"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^9.0.0"
@@ -106,6 +107,7 @@ compute-sentiment-features = "scripts.compute_sentiment_features.main:main"
 roll-contract = "scripts.roll_contract:main"
 watchlist-eval = "scripts.watchlist_eval.main:main"
 backtest-seasonal = "scripts.seasonal_backtest.main:main"
+julien-handoff = "scripts.julien_handoff.main:main"
 
 [tool.ruff]
 # Vendored R&D code lives under its own pyproject/ruff settings and ships

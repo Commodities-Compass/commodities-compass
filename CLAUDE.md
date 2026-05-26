@@ -514,27 +514,41 @@ The `PositionStatus` component automatically fetches and plays the audio file:
 
 ### Nightly Pipeline Schedule (UTC, weekdays)
 
+P2b — the pipeline is split into two phases:
+
+**Phase A — Market close** (T 19:00 UTC, Mon-Fri): scrapers + indicator computation. `date` field on every row = session date T.
+
+**Phase B — Next-session refresh** (daily cron, agent-gated on `is_eve_of_trading_day()`): press review, meteo, daily analysis, compass brief. `date` field on every row = next trading session (T+next). On Sun evening Phase B fires for Monday's session; on Fri eve it skips (Sat is non-trading); etc.
+
 ```
-13:00  cc-eca-grindings-scraper      → pl_supply_demand_observation (ECA, calendar-gated)
-14:00  cc-nca-grindings-scraper      → pl_supply_demand_observation (NCA, calendar-gated)
-16:00  cc-publication-calendar-watchdog → Sentry alert if fundamentals overdue ≥ 21d
+# Phase A — weekday-only, keyed to session date T:
 18:30  cc-fx-scraper                  → pl_external_indicator (FX, ECB)
 19:00  cc-barchart-scraper            → pl_contract_data_daily (OHLCV + IV)
-19:00  cc-meteo-agent                 → pl_weather_observation
 19:05  cc-ice-stocks-scraper          → pl_contract_data_daily (STOCK US)
 19:05  cc-cftc-scraper                → pl_contract_data_daily (COM NET US)
-19:05  cc-press-review-agent          → pl_fundamental_article
 19:10  cc-barchart-stocks-eu-scraper  → pl_contract_data_daily (stock_eu_bags60kg)
 19:15  cc-compute-indicators          → pl_derived_indicators + pl_indicator_daily
-19:20  cc-daily-analysis              → pl_indicator_daily (LLM decision + score)
-19:30  cc-compass-brief               → Google Drive (.txt for NotebookLM)
 22:10  cc-ice-cot-eu-scraper          → pl_cot_eu_weekly (ICE EU COT positioning)
+
+# Phase B — daily cron, agent-gated on eve-of-trading-day, keyed to T+next:
+19:00  cc-meteo-agent                 → pl_weather_observation (target_date = next session)
+19:05  cc-press-review-agent          → pl_fundamental_article + pl_article_segment
+19:20  cc-daily-analysis              → pl_indicator_daily (LLM, reads previous_session)
+19:30  cc-compass-brief               → Google Drive (filename = next session YYYYMMDD)
+
+# Daytime fundamentals — calendar-gated against ref_publication_calendar:
+13:00  cc-eca-grindings-scraper      → pl_supply_demand_observation (ECA)
+14:00  cc-nca-grindings-scraper      → pl_supply_demand_observation (NCA)
+16:00  cc-publication-calendar-watchdog → Sentry alert if overdue ≥ 21d
 
 # Monthly:
 22:00 on the 20th  cc-enso-scraper    → pl_external_indicator (ENSO ONI + Niño 3.4)
 ```
 
-Note: the ECA + NCA scrapers gate against `ref_publication_calendar` and exit 0 cleanly on the ~250 weekdays per year when no quarterly publication is pending (only 4 expected fires per source per year). The watchdog escalates "expected but not ingested" rows past a 21-day grace window.
+Notes:
+- Phase B daily cron + in-agent gate eliminates the Sun→Mon ~60h freshness gap that Phase B used to have when it was weekday-only. On Sun eve at 19:20 UTC the agents fire and tag their writes to Mon's session date.
+- The ECA + NCA scrapers gate against `ref_publication_calendar` (not the trading calendar) and exit 0 cleanly on the ~250 weekdays per year when no quarterly publication is pending. Watchdog escalates "expected but not ingested" rows past a 21-day grace window.
+- Sentry cron monitors interpret Phase B "skip on non-eve-of-trading-day" as success (exit 0) — no false-positive alerts on weekends + holidays.
 
 When a job fails, follow [docs/runbooks/pipeline-failure-recovery.md](docs/runbooks/pipeline-failure-recovery.md) — covers diagnosis, root-cause categories, and the cascade of jobs to re-run based on the dependency graph. Pipeline jobs are configured fail-loud, no auto-retry (see `.claude/rules/pipeline-error-handling.md`).
 

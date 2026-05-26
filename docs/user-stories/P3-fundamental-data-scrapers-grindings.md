@@ -1,5 +1,15 @@
 # Scrapers de Données Fondamentales — Chantier 2
 
+**Statut :** Partiellement shippé (ECA + NCA livrés, ICCO différé)
+**Date :** 2026-04-20 (spec) / 2026-05-26 (statut)
+**Owner :** Hedi
+**Cible repo :** `docs/user-stories/P3-fundamental-data-scrapers-grindings.md`
+
+> **2026-05-26 — Statut actuel** :
+> - **Shippé** : scrapers ECA et NCA grindings, calendar-gated via `ref_publication_calendar`, table unifiée `pl_supply_demand_observation` (EAV-style — évite la confusion avec `pl_fundamental_article`). Daily watchdog `cc-publication-calendar-watchdog` qui alerte si une publication attendue n'arrive pas dans les 21 jours. Backfills disponibles (7y ECA, 5y NCA). Voir [CLAUDE.md](../../CLAUDE.md) sections « ECA Grindings Scraper » + « NCA Grindings Scraper » + « Publication Calendar Watchdog ».
+> - **Différé** : ICCO Monthly Review — data structurée (production_kt, grindings_kt, surplus_deficit_kt) est **paywallée** (member-area ICCO). Seul un résumé narratif HTML est public, sans les chiffres. À ré-évaluer si Compass devient membre ICCO ou si la politique change.
+> - **Hors scope cette itération** : CCC arrivages (site instable), COCOBOD (à investiguer), CGA Asia.
+
 ## Context
 
 EXP-014 (validé 14 avril 2026) a montré que les thèmes **production** (p=0.017) et **chocolat** (p=0.025) portent un signal Granger significatif à lag 3-4 dans les deltas de sentiment. Ce signal vient du récit narratif quotidien, pas des data points eux-mêmes.

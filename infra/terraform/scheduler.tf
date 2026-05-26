@@ -25,24 +25,33 @@ locals {
       schedule    = "5 19 * * 1-5"
     }
     press-review-agent = {
-      description = "Generate daily cocoa press review via LLM"
-      schedule    = "5 19 * * 1-5"
+      description = "Generate cocoa press review for upcoming session via LLM (P2b calendar-aware)"
+      # P2b: daily cron — the agent itself gates on is_eve_of_trading_day().
+      # Writes are tagged to the next trading session (Sun eve → Mon session).
+      schedule = "5 19 * * *"
     }
     meteo-agent = {
-      description = "Fetch weather data and generate cocoa impact analysis"
-      schedule    = "0 19 * * 1-5"
+      description = "Fetch weather data + LLM cocoa impact analysis for upcoming session (P2b calendar-aware)"
+      # P2b: daily cron with eve-of-trading-day gate (see press-review-agent).
+      schedule = "0 19 * * *"
     }
     compute-indicators = {
       description = "Compute technical indicators for all enabled algorithm versions"
       schedule    = "15 19 * * 1-5"
     }
     daily-analysis = {
-      description = "Run daily trading analysis with LLM scoring"
-      schedule    = "20 19 * * 1-5"
+      description = "Run trading analysis with LLM scoring, keyed to upcoming session (P2b calendar-aware)"
+      # P2b: daily cron — agent gates on is_eve_of_trading_day(). Reads
+      # pl_contract_data_daily for previous_session(target_date), writes
+      # LLM decision tagged to target_date (upcoming session).
+      schedule = "20 19 * * *"
     }
     compass-brief = {
-      description = "Generate structured brief and upload to Google Drive"
-      schedule    = "30 19 * * 1-5"
+      description = "Generate brief for upcoming session + upload to Drive (P2b calendar-aware)"
+      # P2b: daily cron. Filename keyed on target_date so the audio fetch
+      # path on the dashboard (which looks up by session date) finds the
+      # right brief on Mon morning after a Sun-eve generation.
+      schedule = "30 19 * * *"
     }
     # External-data scrapers for Campaign 5 ensemble.
     enso-scraper = {
@@ -86,6 +95,28 @@ locals {
     }
     # NB: cc-ensemble-bootstrap-artifacts is deployed without a scheduler.
     # Triggered manually via gcloud when R&D ships a new frozen artefact pack.
+    # Quarterly fundamentals (low-frequency, calendar-gated).
+    eca-grindings-scraper = {
+      description = "Scrape ECA Western Europe Cocoa Grindings (quarterly, calendar-gated)"
+      # 13:00 UTC weekdays. ECA publishes Thursdays ~14:00 CET on the
+      # ~16th of the month after each quarter end. The agent gates against
+      # ref_publication_calendar and exits 0 if no publication is pending,
+      # so the daily cron is cheap (~250 no-ops/year).
+      schedule = "0 13 * * 1-5"
+    }
+    nca-grindings-scraper = {
+      description = "Scrape NCA North-American Cocoa Grindings (quarterly, calendar-gated)"
+      # 14:00 UTC weekdays. NCA publishes ~mid-day ET on the same window
+      # as ECA. Same calendar-gated pattern as eca-grindings-scraper.
+      schedule = "0 14 * * 1-5"
+    }
+    publication-calendar-watchdog = {
+      description = "Alert on fundamental publications overdue ≥ 21 days"
+      # 16:00 UTC weekdays — runs after both grindings scrapers so any
+      # successful ingestion of the day is reflected before we check for
+      # silence.
+      schedule = "0 16 * * 1-5"
+    }
   }
 }
 

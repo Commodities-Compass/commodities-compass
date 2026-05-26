@@ -12,6 +12,8 @@ from typing import Optional
 
 from sqlalchemy import (
     DATE,
+    INTEGER,
+    TEXT,
     TIMESTAMP,
     VARCHAR,
     Boolean,
@@ -21,6 +23,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Uuid,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -93,3 +96,52 @@ class RefTradingCalendar(Base):
         ),
         Index("ix_trading_calendar_date", "date"),
     )
+
+
+class RefPublicationCalendar(Base):
+    """Expected publication dates for fundamental data sources.
+
+    Source of truth used by fundamentals scrapers (ECA, NCA, future ICCO)
+    to decide whether to fetch on a given day. Each row represents one
+    expected publication, identified by ``(source, category, period_label)``.
+
+    Scrapers gate on::
+
+        actual_publication_date IS NULL
+        AND today() BETWEEN expected - tolerance AND expected + tolerance
+
+    Once a publication is successfully ingested, the scraper UPDATEs
+    ``actual_publication_date``. The daily watchdog flags rows where
+    ``expected < today() - 7 days`` and ``actual_publication_date IS NULL``.
+    """
+
+    __tablename__ = "ref_publication_calendar"
+    __table_args__ = (
+        UniqueConstraint(
+            "source", "category", "period_label", name="uq_publication_calendar"
+        ),
+        Index(
+            "ix_publication_calendar_lookup",
+            "source",
+            "expected_publication_date",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    source: Mapped[str] = mapped_column(VARCHAR(30), nullable=False)
+    category: Mapped[str] = mapped_column(VARCHAR(30), nullable=False)
+    region: Mapped[Optional[str]] = mapped_column(VARCHAR(30))
+    period_label: Mapped[str] = mapped_column(VARCHAR(20), nullable=False)
+    period_date: Mapped[date] = mapped_column(DATE, nullable=False)
+    expected_publication_date: Mapped[date] = mapped_column(DATE, nullable=False)
+    tolerance_days: Mapped[int] = mapped_column(
+        INTEGER, nullable=False, server_default=text("14")
+    )
+    actual_publication_date: Mapped[Optional[date]] = mapped_column(DATE)
+    notes: Mapped[Optional[str]] = mapped_column(TEXT)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())

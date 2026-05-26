@@ -229,3 +229,10 @@ jobs:
           # — trigger manually via gcloud when R&D ships a new frozen artefact pack.
           deploy_job cc-ensemble-bootstrap-artifacts 1Gi  "ensemble-bootstrap-artifacts"
           deploy_job cc-ensemble-compute             1Gi  "ensemble-compute"
+          # Quarterly fundamentals (P3 user story). Gated on
+          # ref_publication_calendar so the daily cron is cheap when no
+          # publication is pending.
+          deploy_job cc-eca-grindings-scraper        512Mi "eca-grindings-scraper"
+          deploy_job cc-nca-grindings-scraper        512Mi "nca-grindings-scraper"
+          # Daily watchdog: alert on fundamentals publications overdue ≥21 days.
+          deploy_job cc-publication-calendar-watchdog 256Mi "publication-calendar-watchdog"

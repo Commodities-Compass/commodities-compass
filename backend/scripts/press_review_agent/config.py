@@ -307,14 +307,16 @@ Rules:
 - Shorter and accurate is always better than long and speculative
 - Output ONLY the JSON object, no markdown fences, no commentary"""
 
-USER_PROMPT_TEMPLATE = """Date: {date}
+USER_PROMPT_TEMPLATE = """Trading session: {target_date}
+Last completed market close: {close_date} — London Cocoa Close: {close} GBP/t
 Active contract: {contract_code} ({contract_month})
-London Cocoa Close: {close} GBP/t
 
 Sources available today ({source_count} sources scraped):
 {sources_text}
 
-Generate the daily cocoa press review. When referencing the front-month contract, use the
-active contract above (e.g. "{contract_code}"), NOT a different delivery month.
+Generate the cocoa press review for the upcoming trading session ({target_date}). When
+referencing the front-month contract, use the active contract above (e.g. "{contract_code}"),
+NOT a different delivery month. Frame your synthesis as forward-looking context for the
+{target_date} session — do NOT use "aujourd'hui" / "today" referring to the prior close.
 Calibrate depth and length to the richness of the sources above — do not pad with
 unverifiable information."""

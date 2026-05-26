@@ -12,17 +12,33 @@ Use when one or more nightly pipeline jobs fail. Pipeline jobs are configured **
 
 ## Pipeline schedule and dependencies
 
-Reference for sequencing recovery actions:
+Reference for sequencing recovery actions. **P2b split**: Phase A is market-data driven and runs on weekday close (T); Phase B is calendar-aware and runs every evening, agent-gated on `is_eve_of_trading_day()` — writes tagged to the upcoming session (T+next).
 
 ```
-19:00 UTC  cc-barchart-scraper      → pl_contract_data_daily (OHLCV+IV)
-19:00 UTC  cc-meteo-agent           → pl_weather_observation        [INDEPENDENT]
-19:05 UTC  cc-ice-stocks-scraper    → pl_contract_data_daily (STOCK US)
-19:05 UTC  cc-cftc-scraper          → pl_contract_data_daily (COM NET US)
-19:05 UTC  cc-press-review-agent    → pl_fundamental_article
-19:15 UTC  cc-compute-indicators    → pl_derived_indicators + pl_indicator_daily
-19:20 UTC  cc-daily-analysis        → pl_indicator_daily (LLM decision + score)
-19:30 UTC  cc-compass-brief         → Google Drive (.txt for NotebookLM)
+Phase A — weekday-only, writes tagged to session T:
+19:00 UTC  cc-barchart-scraper      → pl_contract_data_daily T (OHLCV+IV)
+19:05 UTC  cc-ice-stocks-scraper    → pl_contract_data_daily T (STOCK US)
+19:05 UTC  cc-cftc-scraper          → pl_contract_data_daily T (COM NET US)
+19:10 UTC  cc-barchart-stocks-eu-scraper → pl_contract_data_daily T (stock_eu_bags60kg)
+19:15 UTC  cc-compute-indicators    → pl_derived_indicators + pl_indicator_daily T
+
+Phase B — daily cron, agent-gated on eve-of-trading-day, writes tagged to T+next:
+19:00 UTC  cc-meteo-agent           → pl_weather_observation T+next   [INDEPENDENT]
+19:05 UTC  cc-press-review-agent    → pl_fundamental_article T+next
+19:20 UTC  cc-daily-analysis        → pl_indicator_daily T+next (LLM, reads T from pl_contract_data_daily)
+19:30 UTC  cc-compass-brief         → Drive YYYYMMDD-CompassBrief.txt (YYYYMMDD = T+next)
+```
+
+**Phase B skip behaviour** (Sentry interprets as success, no alert):
+- Friday eve: tomorrow=Saturday → skip
+- Saturday eve: tomorrow=Sunday → skip
+- Sunday eve: tomorrow=Monday → FIRE, target = Monday
+- Mon eve when Tue is a holiday: tomorrow=Tue-holiday → skip; runs again on holiday eve for Wed
+
+To force-rerun Phase B for a specific session date:
+```bash
+gcloud run jobs execute cc-press-review-agent --region=europe-west9 --project=cacaooo \
+  --args="press-review,--target-date,2026-05-26,--force"
 ```
 
 ### Dependency graph

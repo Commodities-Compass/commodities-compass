@@ -29,7 +29,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import DOUBLE_PRECISION, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
@@ -707,4 +707,54 @@ class PlOrchestratorDecision(Base):
     prior_hedge: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 6))
     prior_monitor: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 6))
 
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+
+
+class PlSupplyDemandObservation(Base):
+    """Unified EAV-style storage for fundamental supply/demand metrics.
+
+    Populated by quarterly grindings scrapers (ECA, NCA) and future
+    fundamentals (ICCO crop forecasts, CCC arrivals, COCOBOD production).
+    Each row stores one (metric_name, value) tuple keyed on
+    ``(publication_date, category, source, region, period_label,
+    metric_name)``. EAV-style chosen over typed columns to absorb new
+    metrics without schema migrations — see P3 user story §2.1.
+
+    Distinct from ``pl_fundamental_article`` (LLM-extracted narrative).
+    """
+
+    __tablename__ = "pl_supply_demand_observation"
+    __table_args__ = (
+        UniqueConstraint(
+            "publication_date",
+            "category",
+            "source",
+            "region",
+            "period_label",
+            "metric_name",
+            name="uq_supply_demand_observation",
+        ),
+        Index(
+            "ix_supply_demand_observation_lookup",
+            "category",
+            "source",
+            "period_date",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    publication_date: Mapped[date] = mapped_column(DATE, nullable=False)
+    period_date: Mapped[date] = mapped_column(DATE, nullable=False)
+    period_label: Mapped[str] = mapped_column(VARCHAR(20), nullable=False)
+    category: Mapped[str] = mapped_column(VARCHAR(30), nullable=False)
+    source: Mapped[str] = mapped_column(VARCHAR(30), nullable=False)
+    region: Mapped[Optional[str]] = mapped_column(VARCHAR(30))
+    metric_name: Mapped[str] = mapped_column(VARCHAR(50), nullable=False)
+    value: Mapped[Optional[float]] = mapped_column(DOUBLE_PRECISION)
+    metadata_json: Mapped[Optional[dict]] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())

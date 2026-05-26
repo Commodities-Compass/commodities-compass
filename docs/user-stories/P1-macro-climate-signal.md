@@ -1,10 +1,12 @@
 # Macro-Climate Signal Integration — Feature Spec
 
-**Statut :** Proposed (non implémenté)
-**Date :** 2026-05-07
-**Owner :** TBD
+**Statut :** Partiellement réalisé (path différent de la spec)
+**Date :** 2026-05-07 (spec) / 2026-05-26 (statut)
+**Owner :** Hedi
 **Slug :** `macro-climate-signal`
-**Cible repo :** `docs/user-stories/macro-climate-signal.md`
+**Cible repo :** `docs/user-stories/P1-macro-climate-signal.md`
+
+> **2026-05-26 — Statut actuel** : le **scraper ENSO** ([backend/scripts/enso_scraper/](../../backend/scripts/enso_scraper/)) est shippé et alimente `pl_external_indicator` avec ONI + Niño 3.4 (ingest_enso.py R&D code adapté). Il est consommé par 6 des 14 spécialistes Campaign 5 — pas par `press_review_agent` ni `daily-analysis`. La table `pl_climate_signal` proposée dans cette spec n'a PAS été créée : on a stocké les indices ENSO directement sur le pattern `pl_external_indicator` partagé avec FX. Le hook côté `daily-analysis` (Call #1 `macroeco_bonus`) ne lit pas explicitement les signaux climat — c'est intentionnel pour cette itération. Ré-évaluation post-launch Campaign 5 (~juillet 2026).
 
 ---
 

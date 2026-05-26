@@ -5,6 +5,7 @@ import asyncio
 import logging
 import sys
 import uuid
+from datetime import date as date_type
 from pathlib import Path
 
 import sentry_sdk
@@ -70,23 +71,42 @@ def main() -> int:
         action="store_true",
         help="Run even on non-trading days (for backfills/debugging)",
     )
+    parser.add_argument(
+        "--target-date",
+        type=date_type.fromisoformat,
+        default=None,
+        help=(
+            "Trading session date the review should be tagged to "
+            "(YYYY-MM-DD). Defaults to get_next_session_date(today()) — the "
+            "upcoming trading session per P2b calendar-aware timing."
+        ),
+    )
 
     args = parser.parse_args()
 
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    # Skip on non-trading days unless --force
-    from scripts.db import should_skip_non_trading_day
+    # P2b: resolve target_date = upcoming trading session.
+    from scripts.db import get_next_session_date, is_eve_of_trading_day
 
-    if should_skip_non_trading_day(force=args.force):
-        return 0
+    target_date: date_type = args.target_date or get_next_session_date()
+
+    # P2b: gate the daily cron on "is tomorrow a trading day?". --force or an
+    # explicit --target-date bypass the gate (backfills, manual reruns).
+    if not args.force and args.target_date is None:
+        if not is_eve_of_trading_day():
+            logger.info(
+                "Phase-B gate: tomorrow is not a trading day — skipping cleanly."
+            )
+            return 0
 
     providers = parse_providers(args.provider)
 
     logger.info("=" * 60)
     logger.info("Press Review Agent - Cocoa Market Analysis")
     logger.info(f"Mode: {'DRY RUN' if args.dry_run else 'LIVE'}")
+    logger.info(f"Target session: {target_date}")
     logger.info(f"Providers: {', '.join(p.value for p in providers)}")
     logger.info("=" * 60)
 
@@ -97,11 +117,12 @@ def main() -> int:
         from scripts.press_review_agent.db_reader import read_latest_close
 
         with get_session() as session:
-            close_price, date_str, contract_code, contract_month = read_latest_close(
-                session
+            close_price, close_date_str, contract_code, contract_month = (
+                read_latest_close(session)
             )
         logger.info(
-            f"CLOSE={close_price}, DATE={date_str}, CONTRACT={contract_code} ({contract_month})"
+            f"CLOSE={close_price}, CLOSE_DATE={close_date_str}, "
+            f"CONTRACT={contract_code} ({contract_month}), TARGET_DATE={target_date}"
         )
 
         # Step 2: Fetch news sources + Google News headlines
@@ -113,8 +134,11 @@ def main() -> int:
         logger.info(f"Google News: {len(headlines)} headlines fetched")
 
         # Step 3: Build prompts (identical for all providers)
+        # P2b: prompt frames the review as "for trading session {target_date}",
+        # distinct from the prior close date used to anchor the technical context.
         user_prompt = USER_PROMPT_TEMPLATE.format(
-            date=date_str,
+            target_date=target_date.isoformat(),
+            close_date=close_date_str,
             close=close_price,
             contract_code=contract_code,
             contract_month=contract_month,
@@ -165,10 +189,13 @@ def main() -> int:
             )
 
             with get_session() as session:
+                # P2b: explicit article_date = target_date (upcoming session)
+                # — was previously implicit date.today() in write_article.
                 article_id = write_article(
                     session,
                     result.provider,
                     result.parsed,
+                    article_date=target_date,
                     dry_run=args.dry_run,
                     source_count=successful_sources,
                     total_sources=len(news_results),
@@ -187,12 +214,14 @@ def main() -> int:
                 # the whole field, which will produce 4 neutral rows).
                 if result.parsed is not None:
                     try:
-                        from datetime import date as date_type
-
+                        # P2b: theme sentiments share the same date as the
+                        # article (target_date). Previous bug used
+                        # date.today() which produced phantom rows on the
+                        # eve-of-trading-day or non-session days.
                         write_theme_sentiments(
                             session,
                             article_id or uuid.uuid4(),
-                            date_type.today(),
+                            target_date,
                             result.parsed.get("theme_sentiments") or {},
                             result.provider,
                             dry_run=args.dry_run,
@@ -211,7 +240,8 @@ def main() -> int:
         sentry_sdk.set_context(
             "press_review",
             {
-                "date": date_str,
+                "target_date": target_date.isoformat(),
+                "close_date": close_date_str,
                 "close": close_price,
                 "sources_fetched": successful_sources,
                 "sources_total": len(news_results),

@@ -19,6 +19,25 @@ logger = logging.getLogger(__name__)
 _FILE_CACHE_TTL = 3600  # 1 hour — audio for a given date doesn't change once uploaded
 _MISS_CACHE_TTL = 300  # 5 min — file may not be uploaded yet (pipeline timing)
 
+# Brief version → filename suffix used by NotebookLM audio output. The legacy
+# brief produces `YYYYMMDD-CompassAudio.{ext}` (no suffix). The ensemble brief
+# produces `YYYYMMDD-CompassAudio-Ensemble.{ext}`. Both can coexist in the same
+# Drive folder.
+_VERSION_FILENAME_SUFFIX = {
+    "legacy": "",
+    "ensemble": "-Ensemble",
+}
+
+
+def _normalize_version(version: Optional[str]) -> str:
+    if version is None or version == "":
+        return settings.BRIEF_DEFAULT_VERSION
+    if version not in _VERSION_FILENAME_SUFFIX:
+        raise ValueError(
+            f"Unknown brief version {version!r}; expected one of {list(_VERSION_FILENAME_SUFFIX)}"
+        )
+    return version
+
 
 class AudioService:
     """Service for handling audio files from Google Drive."""
@@ -62,27 +81,47 @@ class AudioService:
             self.drive_service = None
 
     async def get_audio_metadata(
-        self, target_date: Optional[date] = None
+        self,
+        target_date: Optional[date] = None,
+        version: Optional[str] = None,
     ) -> Optional[dict]:
-        """Get metadata for audio file including URL and title."""
-        result = await self.get_audio_file_info(target_date)
+        """Get metadata for audio file including URL and title.
+
+        ``version`` selects which brief track's audio to fetch:
+          - ``"legacy"`` (default from settings): ``YYYYMMDD-CompassAudio.{ext}``
+          - ``"ensemble"``: ``YYYYMMDD-CompassAudio-Ensemble.{ext}``
+        If ``version`` is None, falls back to ``settings.BRIEF_DEFAULT_VERSION``.
+        """
+        resolved_version = _normalize_version(version)
+        result = await self.get_audio_file_info(target_date, version=resolved_version)
 
         if not result:
             return None
 
         display_date = target_date if target_date else datetime.now(timezone.utc).date()
 
+        version_label = "Ensemble" if resolved_version == "ensemble" else ""
+        title_suffix = f" ({version_label})" if version_label else ""
         return {
             "url": result["url"],
-            "title": f"Compass Bulletin - {display_date.strftime('%B %d, %Y')}",
+            "title": (
+                f"Compass Bulletin{title_suffix} - {display_date.strftime('%B %d, %Y')}"
+            ),
             "date": display_date.isoformat(),
             "filename": result["filename"],
+            "version": resolved_version,
         }
 
     async def get_audio_file_info(
-        self, target_date: Optional[date] = None
+        self,
+        target_date: Optional[date] = None,
+        version: Optional[str] = None,
     ) -> Optional[dict]:
         """Get audio file info including URL and filename.
+
+        ``version`` is the brief track to fetch (``legacy`` or ``ensemble``).
+        Defaults to ``settings.BRIEF_DEFAULT_VERSION`` when None. The cache is
+        keyed on ``(date, version)`` so both tracks coexist without conflict.
 
         Returns dict with url and filename, or None if not found.
         """
@@ -93,7 +132,10 @@ class AudioService:
         if target_date is None:
             target_date = datetime.now(timezone.utc).date()
 
-        cache_key = target_date.isoformat()
+        resolved_version = _normalize_version(version)
+        suffix = _VERSION_FILENAME_SUFFIX[resolved_version]
+
+        cache_key = f"{target_date.isoformat()}::{resolved_version}"
         cached = self._file_cache.get(cache_key)
         if cached is not None:
             result, cached_at = cached
@@ -102,7 +144,7 @@ class AudioService:
                 return result
             del self._file_cache[cache_key]
 
-        filename_base = f"{target_date.strftime('%Y%m%d')}-CompassAudio"
+        filename_base = f"{target_date.strftime('%Y%m%d')}-CompassAudio{suffix}"
 
         try:
             query = (

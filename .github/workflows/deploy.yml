@@ -237,3 +237,12 @@ jobs:
           # Daily watchdog: alert on fundamentals publications overdue ≥21 days.
           # 512Mi minimum required by Cloud Run gen2 + always-allocated CPU.
           deploy_job cc-publication-calendar-watchdog 512Mi "publication-calendar-watchdog"
+          # Dual-track brief — ensemble side. cc-ensemble-explainer enriches the
+          # ensemble row of pl_indicator_daily with LLM narrative (eco/confidence/
+          # direction/conclusion). cc-compass-brief-ensemble assembles the new
+          # 7-section brief and uploads to Drive with `-Ensemble` suffix. Both
+          # run independently of the legacy track (cc-daily-analysis + cc-compass-brief
+          # which remain active for the legacy brief on the same dates).
+          # See docs/runbooks/brief-dual-track.md.
+          deploy_job cc-ensemble-explainer       1Gi  "ensemble-explainer"
+          deploy_job cc-compass-brief-ensemble   1Gi  "compass-brief-ensemble"

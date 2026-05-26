@@ -1,5 +1,5 @@
 import { Loader2 } from 'lucide-react';
-import { usePositionStatus, useRecommendations, useEnsembleDiagnostics } from '@/hooks/useDashboard';
+import { usePositionStatus, useRecommendations, useEnsembleDiagnostics, useNonTradingDays } from '@/hooks/useDashboard';
 import Eyebrow from '@/components/editorial/Eyebrow';
 import { buildEnsembleExplanation } from '@/utils/ensemble-explanation';
 import type { EnsembleDiagnosticsResponse } from '@/types/dashboard';
@@ -14,6 +14,51 @@ function algoBadgeLabel(name?: string | null): string | null {
 function horizonShortLabel(name?: string | null): string {
   if (name === 'ensemble_v1_softgate_wrapper') return '~4 J';
   return 'J+1';
+}
+
+const FR_MONTHS_LONG = [
+  'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+  'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre',
+];
+
+/**
+ * Returns the ISO date that is `n` *trading* days after `iso`.
+ * Skips weekends AND any ISO date present in `nonTradingDays` (exchange
+ * holidays fetched from /v1/dashboard/non-trading-days). This is the exact
+ * counterpart of the backend J+horizon evaluation — the user can verify
+ * the target close on the price chart for the displayed date.
+ */
+function addTradingDays(
+  iso: string | null | undefined,
+  n: number,
+  nonTradingDays: Set<string>,
+): string | null {
+  if (!iso) return null;
+  const d = new Date(iso.slice(0, 10) + 'T00:00:00');
+  if (Number.isNaN(d.getTime())) return null;
+  let remaining = n;
+  while (remaining > 0) {
+    d.setDate(d.getDate() + 1);
+    const dow = d.getDay();
+    if (dow === 0 || dow === 6) continue;
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const isoDay = `${y}-${m}-${day}`;
+    if (nonTradingDays.has(isoDay)) continue;
+    remaining -= 1;
+  }
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function formatLongFR(iso: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso + 'T00:00:00');
+  if (Number.isNaN(d.getTime())) return iso;
+  return `${d.getDate()} ${FR_MONTHS_LONG[d.getMonth()]} ${d.getFullYear()}`;
 }
 
 function convictionWord(netScore: number): string {
@@ -236,15 +281,24 @@ function ConvictionBreakdown({
 function ScorePanelHorizon({
   sourceAlgorithm,
   signalColor,
+  sessionDate,
+  nonTradingDays,
 }: {
   sourceAlgorithm: string | null | undefined;
   signalColor: string;
+  sessionDate: string | null;
+  nonTradingDays: Set<string>;
 }) {
   const horizon = horizonShortLabel(sourceAlgorithm);
+  const horizonDays =
+    sourceAlgorithm === 'ensemble_v1_softgate_wrapper' ? 4 : 1;
+  const targetDate = addTradingDays(sessionDate, horizonDays, nonTradingDays);
   const subtitle =
-    sourceAlgorithm === 'ensemble_v1_softgate_wrapper'
-      ? '4 jours boursiers'
-      : 'Session suivante · J+1';
+    targetDate != null
+      ? `Évaluée au close du ${formatLongFR(targetDate)}`
+      : sourceAlgorithm === 'ensemble_v1_softgate_wrapper'
+        ? '4 jours boursiers'
+        : 'Session suivante · J+1';
 
   return (
     <div
@@ -292,6 +346,16 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
   const { data: pos, isLoading: posLoading, error: posErr } = usePositionStatus(targetDate);
   const { data: recs, isLoading: recsLoading } = useRecommendations(targetDate);
   const { data: diag } = useEnsembleDiagnostics(targetDate);
+  // Non-trading days for the current year — used to compute the exact close
+  // date evaluated at T+horizon (skip weekends AND exchange holidays).
+  const sessionYear = (() => {
+    const iso = pos?.date ?? targetDate ?? null;
+    if (!iso) return new Date().getFullYear();
+    const y = Number(iso.slice(0, 4));
+    return Number.isFinite(y) ? y : new Date().getFullYear();
+  })();
+  const { data: nonTradingDaysData } = useNonTradingDays(sessionYear);
+  const nonTradingDays = new Set(nonTradingDaysData?.dates ?? []);
   const ensembleAligned =
     pos?.source_algorithm === 'ensemble_v1_softgate_wrapper' && Boolean(diag);
   const explanationSentences =
@@ -502,6 +566,8 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
                 <ScorePanelHorizon
                   sourceAlgorithm={pos.source_algorithm}
                   signalColor={meta.color}
+                  sessionDate={sessionDate}
+                  nonTradingDays={nonTradingDays}
                 />
 
                 {explanationSentences && (

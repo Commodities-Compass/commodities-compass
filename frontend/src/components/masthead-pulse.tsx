@@ -74,14 +74,6 @@ export default function MastheadPulse() {
     [chartData, currentYear],
   );
 
-  // Count sessions in current year (with valid close)
-  const sessionsCount = useMemo(() => {
-    if (!chartData) return null;
-    return chartData.filter(
-      (p) => p.close != null && Number(p.date.slice(0, 4)) === currentYear,
-    ).length;
-  }, [chartData, currentYear]);
-
   if (!pos) return null;
 
   const ytd = pos.ytd_performance;
@@ -157,26 +149,6 @@ export default function MastheadPulse() {
         )}
       </span>
 
-      <DotSeparator />
-
-      {/* Sessions count */}
-      <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 8 }}>
-        <span
-          className="tabular-nums"
-          style={{
-            fontFamily: 'var(--font-display)',
-            fontWeight: 600,
-            fontSize: 18,
-            lineHeight: 1,
-            color: 'var(--ink)',
-          }}
-        >
-          {sessionsCount ?? '—'}
-        </span>
-        <Eyebrow tone="muted" size={10} tracking="0.22em">
-          Sessions notées
-        </Eyebrow>
-      </span>
     </div>
   );
 }

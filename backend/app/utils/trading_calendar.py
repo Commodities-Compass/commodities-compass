@@ -226,6 +226,38 @@ def get_next_trading_day_sync(
     return trading_day
 
 
+def get_previous_trading_day_sync(
+    session: Session,
+    target_date: Optional[date] = None,
+    exchange_code: str = "IFEU",
+) -> date:
+    """First trading day strictly BEFORE target_date (sync variant).
+
+    Mirrors ``get_next_trading_day_sync`` direction-wise. Used by P2b
+    Phase-B agents (daily-analysis precondition checks the LAST completed
+    market session before the upcoming one).
+    """
+    if target_date is None:
+        target_date = date.today()
+    exchange_id = _resolve_exchange_id_sync(session, exchange_code)
+    result = session.execute(
+        select(RefTradingCalendar.date)
+        .where(
+            RefTradingCalendar.exchange_id == exchange_id,
+            RefTradingCalendar.date < target_date,
+            RefTradingCalendar.is_trading_day.is_(True),
+        )
+        .order_by(RefTradingCalendar.date.desc())
+        .limit(1)
+    )
+    trading_day = result.scalar_one_or_none()
+    if trading_day is None:
+        raise TradingCalendarError(
+            f"No trading day found before {target_date} for {exchange_code}"
+        )
+    return trading_day
+
+
 def is_trading_day_sync(
     session: Session,
     target_date: Optional[date] = None,

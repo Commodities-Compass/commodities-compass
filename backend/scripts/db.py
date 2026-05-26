@@ -85,6 +85,64 @@ def has_contract_data_for_date(target_date: date) -> bool:
         return row is not None
 
 
+def get_next_session_date(
+    target_date: date | None = None,
+    exchange_code: str = "IFEU",
+) -> date:
+    """Return the next trading session strictly AFTER target_date (default: today).
+
+    Alias of :func:`get_display_date` but named for the P2b Phase B agents
+    (press_review, meteo, daily_analysis, compass_brief) — these write data
+    keyed to the upcoming session, not "today". On weekends and holidays
+    this skips ahead to the next IFEU trading day automatically.
+    """
+    from app.utils.trading_calendar import get_next_trading_day_sync
+
+    check_date = target_date or date.today()
+    with get_session() as session:
+        return get_next_trading_day_sync(session, check_date, exchange_code)
+
+
+def is_eve_of_trading_day(
+    today: date | None = None,
+    exchange_code: str = "IFEU",
+) -> bool:
+    """Return True iff TOMORROW is a trading day.
+
+    Gate used by P2b Phase B daily cron jobs to decide whether to fire.
+    The cron pattern is ``M H * * *`` (every day), and each agent calls
+    this at startup to skip cleanly when there is no upcoming session
+    (e.g. Friday → Saturday eve, or Sunday → bank-holiday-Monday eve).
+
+    Pure-local question — never refers to upstream history, so every
+    holiday pattern self-corrects without special-casing.
+    """
+    from datetime import timedelta
+
+    from app.utils.trading_calendar import is_trading_day_sync
+
+    today = today or date.today()
+    tomorrow = today + timedelta(days=1)
+    with get_session() as session:
+        return is_trading_day_sync(session, tomorrow, exchange_code)
+
+
+def get_previous_session_date(
+    target_date: date,
+    exchange_code: str = "IFEU",
+) -> date:
+    """Return the last trading session strictly BEFORE target_date.
+
+    Used by daily-analysis Call #1/#2 to read upstream technicals
+    (the most recent completed market session) when its own
+    ``target_date`` is the NEXT trading day.
+    """
+    from app.utils.trading_calendar import get_previous_trading_day_sync
+
+    with get_session() as session:
+        return get_previous_trading_day_sync(session, target_date, exchange_code)
+
+
 def should_skip_non_trading_day(
     force: bool = False,
     target_date: date | None = None,

@@ -1,17 +1,8 @@
-"""One-shot backfill of ECA grindings into pl_supply_demand_observation.
+"""One-shot backfill of NCA grindings into pl_supply_demand_observation.
 
-Walks the entire ECA listing page (currently ~7 years of quarterly PDFs from
-2019 to 2026), fetches and parses every PDF, UPSERTs the records, and
-populates ``actual_publication_date`` on every matching calendar row.
-
-Usage:
-    poetry run eca-grindings-scraper-backfill
-    poetry run eca-grindings-scraper-backfill --dry-run
-    poetry run eca-grindings-scraper-backfill --verify
-
-The ``--verify`` flag re-fetches and re-parses each PDF, then asserts the
-results match the row already written (within a 0.5 tolerance for floats).
-Used after the initial backfill to detect silent parser drift.
+Walks the chocolatecouncil.org listing page (~5-6 years of quarterly PDFs
+hosted on candyusa.com), fetches and parses every PDF, UPSERTs the records,
+and populates ``actual_publication_date`` on every matching calendar row.
 """
 
 from __future__ import annotations
@@ -25,10 +16,10 @@ import sentry_sdk
 from scripts._shared.cli import build_base_argparser
 from scripts._shared.logging import configure_logging
 from scripts._shared.sentry import bootstrap_scraper
-from scripts.eca_grindings_scraper.db_writer import upsert_eca_records
-from scripts.eca_grindings_scraper.parser import EcaParseError
-from scripts.eca_grindings_scraper.scraper import (
-    EcaScraperError,
+from scripts.nca_grindings_scraper.db_writer import upsert_nca_records
+from scripts.nca_grindings_scraper.parser import NcaParseError
+from scripts.nca_grindings_scraper.scraper import (
+    NcaScraperError,
     discover_pdf_urls,
     fetch_and_parse,
 )
@@ -36,12 +27,12 @@ from scripts.eca_grindings_scraper.scraper import (
 configure_logging()
 logger = logging.getLogger(__name__)
 
-bootstrap_scraper("eca-grindings-scraper-backfill", script_file=__file__)
+bootstrap_scraper("nca-grindings-scraper-backfill", script_file=__file__)
 
 
 def _parse_args() -> argparse.Namespace:
     parser = build_base_argparser(
-        "ECA grindings one-shot backfill (full listing)", include_force=False
+        "NCA grindings one-shot backfill (full listing)", include_force=False
     )
     parser.add_argument(
         "--verify",
@@ -56,7 +47,7 @@ def main() -> int:
     configure_logging(verbose=args.verbose)
 
     logger.info("=" * 60)
-    logger.info("ECA Grindings Backfill")
+    logger.info("NCA Grindings Backfill")
     logger.info("Mode: %s", "DRY RUN" if args.dry_run else "LIVE")
     if args.verify:
         logger.info("Mode: VERIFY (re-parse + compare)")
@@ -73,14 +64,9 @@ def main() -> int:
             for period_label, pdf_url in sorted(pdf_urls.items()):
                 try:
                     records = fetch_and_parse(period_label, pdf_url)
-                except (EcaScraperError, EcaParseError) as exc:
-                    # Backfill keeps going on per-PDF errors (still logs them
-                    # via Sentry). One bad archive doesn't kill 30 good ones.
-                    # Older PDFs sometimes use a layout we no longer support
-                    # (header drift, missing 'Date :' anchor) — these are
-                    # archived for manual review rather than blocking the run.
+                except (NcaScraperError, NcaParseError) as exc:
                     logger.error(
-                        "ECA backfill: failed %s (%s) — skipping",
+                        "NCA backfill: failed %s (%s) — skipping",
                         period_label,
                         exc,
                     )
@@ -100,7 +86,7 @@ def main() -> int:
                             rec.publication_date,
                         )
                 else:
-                    upsert_eca_records(session, records, pdf_url=pdf_url)
+                    upsert_nca_records(session, records, pdf_url=pdf_url)
 
             if not args.dry_run:
                 session.commit()
@@ -117,7 +103,7 @@ def main() -> int:
     except (KeyboardInterrupt, SystemExit):
         raise
     except Exception as exc:
-        logger.exception("ECA backfill failed: %s", exc)
+        logger.exception("NCA backfill failed: %s", exc)
         sentry_sdk.capture_exception(exc)
         return 1
 

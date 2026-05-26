@@ -309,6 +309,35 @@ The frontend calendar shows `display_date` values. Non-trading days (weekends + 
 - **CLI**: `poetry run barchart-stocks-eu-scraper [--dry-run] [--force] [--verbose]`
 - **US**: [docs/user-stories/P1-scrapers-stock-cot-eu.md](docs/user-stories/P1-scrapers-stock-cot-eu.md)
 
+### ECA Grindings Scraper (`backend/scripts/eca_grindings_scraper/`)
+
+- **Data**: European Cocoa Association Western Europe grindings — 2 metrics per quarter (`volume_tonnes`, `yoy_pct`) written to `pl_supply_demand_observation` (EAV-style fundamentals table). Covers ~40% of world cocoa grindings (19 reporting companies compiled by Statser).
+- **Source**: Listing page `https://www.eurococoa.com/grind-stats/` → discovers PDF URLs (URL pattern is INCONSISTENT: `-1`, `-2`, or no suffix, depending on revision history; the scraper never predicts URLs). ~7 years of archives (2019-Q1 → today) available.
+- **Method**: Pure httpx + pdfplumber. Parser extracts publication date from "Date :" header, locates "Quarterly Comparison" (YoY %) and "Quarterly Results" (volumes) sections, reads the FIRST numeric token in the current-year row (= the Q{n} value, since data is left-justified by most recent quarter). Fail-loud on missing anchors, drifted layouts, or out-of-range values.
+- **Calendar-gated**: queries `ref_publication_calendar` for ECA grindings rows where `actual_publication_date IS NULL AND today() BETWEEN expected ± 14 days`. Exits 0 if no publication pending (~250 cheap no-ops/year).
+- **Cron**: `0 13 * * 1-5` (13:00 UTC weekdays — ECA publishes Thursdays ~14:00 CET on ~16th of month after each quarter end).
+- **CLI**: `poetry run eca-grindings-scraper [--dry-run] [--verbose]`
+- **Backfill**: `poetry run eca-grindings-scraper-backfill [--dry-run]` (full listing one-shot, skip per-PDF parse errors).
+- **US**: [docs/user-stories/P3-fundamental-data-scrapers-grindings.md](docs/user-stories/P3-fundamental-data-scrapers-grindings.md)
+
+### NCA Grindings Scraper (`backend/scripts/nca_grindings_scraper/`)
+
+- **Data**: National Confectioners Association North-American grindings — same 2 metrics per quarter as ECA, also written to `pl_supply_demand_observation` (region = `north_america`). ~13 reporting plants.
+- **Source**: Listing page `https://chocolatecouncil.org/cocoa-grinds-report` → discovers PDFs hosted on candyusa.com with INCONSISTENT filenames (`Q1-2026-Cocoa-Grinds.pdf`, `Q1_2025_Cocoa_Grinds_REV0421.pdf`, `Q1_2023_CocoaGrinds_NCA.pdf`, etc.). ~5 years of archives (2021-Q1 → today).
+- **Method**: Pure httpx + pdfplumber. Parser extracts publication date + quarter/year from "Subj: Release of <Ordinal> Quarter Cocoa Grindings for <Year>", then reads the "Cocoa Beans Ground" line for current+prior year tonnages. `yoy_pct` is computed as `current/prior*100` rather than parsing the delta column (robust to multiple formats: `(4,191)`, `-5,028`, etc.). Handles both spaced and kerned ("CocoaBeansGround") variants.
+- **Calendar-gated**: same pattern as ECA against `ref_publication_calendar` (NCA rows).
+- **Cron**: `0 14 * * 1-5` (14:00 UTC weekdays — NCA publishes ~mid-day ET, similar window to ECA).
+- **CLI**: `poetry run nca-grindings-scraper [--dry-run] [--verbose]`
+- **Backfill**: `poetry run nca-grindings-scraper-backfill [--dry-run]` (full listing one-shot).
+- **US**: [docs/user-stories/P3-fundamental-data-scrapers-grindings.md](docs/user-stories/P3-fundamental-data-scrapers-grindings.md)
+
+### Publication Calendar Watchdog (`backend/scripts/publication_calendar_watchdog/`)
+
+- **Purpose**: Daily safety net for low-frequency fundamentals scrapers. Queries `ref_publication_calendar` for rows where `actual_publication_date IS NULL AND expected_publication_date < today - 21 days`. Each overdue row is logged at ERROR + sent to Sentry as `capture_message(level=error)`. Non-zero exit on overdue rows so the cron monitor flags it.
+- **Why**: ECA/NCA scrapers gate on the calendar and exit 0 cleanly when no publication is pending. That makes "publisher silence" indistinguishable from "no expected publication today" from a Sentry cron-monitor perspective. The watchdog turns silence into a visible alert past the grace window.
+- **Cron**: `0 16 * * 1-5` (16:00 UTC weekdays — after both grindings scrapers).
+- **CLI**: `poetry run publication-calendar-watchdog [--dry-run] [--grace-days N]`
+
 ### Known Issues & Lessons (2026-02-18 debugging sessions)
 
 **Bug 1 — Wrong raw block (old scraper)**: Used `re.search` → picked FIRST of 4+ raw blocks. The first block was often a next-month contract or options data → wrong V and OI. Fix: max-volume heuristic picks the block with highest `volume` (always the main contract).
@@ -486,6 +515,9 @@ The `PositionStatus` component automatically fetches and plays the audio file:
 ### Nightly Pipeline Schedule (UTC, weekdays)
 
 ```
+13:00  cc-eca-grindings-scraper      → pl_supply_demand_observation (ECA, calendar-gated)
+14:00  cc-nca-grindings-scraper      → pl_supply_demand_observation (NCA, calendar-gated)
+16:00  cc-publication-calendar-watchdog → Sentry alert if fundamentals overdue ≥ 21d
 18:30  cc-fx-scraper                  → pl_external_indicator (FX, ECB)
 19:00  cc-barchart-scraper            → pl_contract_data_daily (OHLCV + IV)
 19:00  cc-meteo-agent                 → pl_weather_observation
@@ -501,6 +533,8 @@ The `PositionStatus` component automatically fetches and plays the audio file:
 # Monthly:
 22:00 on the 20th  cc-enso-scraper    → pl_external_indicator (ENSO ONI + Niño 3.4)
 ```
+
+Note: the ECA + NCA scrapers gate against `ref_publication_calendar` and exit 0 cleanly on the ~250 weekdays per year when no quarterly publication is pending (only 4 expected fires per source per year). The watchdog escalates "expected but not ingested" rows past a 21-day grace window.
 
 When a job fails, follow [docs/runbooks/pipeline-failure-recovery.md](docs/runbooks/pipeline-failure-recovery.md) — covers diagnosis, root-cause categories, and the cascade of jobs to re-run based on the dependency graph. Pipeline jobs are configured fail-loud, no auto-retry (see `.claude/rules/pipeline-error-handling.md`).
 

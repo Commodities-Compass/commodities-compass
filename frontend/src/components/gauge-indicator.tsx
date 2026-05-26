@@ -45,6 +45,71 @@ const INDICATOR_META: Record<string, IndicatorMeta> = {
     description: 'Ratio volume de trading / positions ouvertes',
     zones: { RED: 'Activité faible', ORANGE: 'Activité normale', GREEN: 'Conviction forte' },
   },
+  // Macro & FX
+  'FX DXY': {
+    fullName: 'Dollar Index proxy',
+    description: 'Force du dollar (1 / EURUSD). Un USD fort pèse sur les commodités cotées en USD.',
+    zones: {
+      RED: 'USD fort — pression baissière',
+      ORANGE: 'USD neutre',
+      GREEN: 'USD faible — soutien commodités',
+    },
+  },
+  GBPUSD: {
+    fullName: 'Livre / Dollar',
+    description: 'Devise de cotation du cocoa Londres. Une livre forte renchérit le contrat en USD.',
+    zones: {
+      RED: 'GBP faible — discount London',
+      ORANGE: 'Zone neutre',
+      GREEN: 'GBP forte — premium London',
+    },
+  },
+  'ENSO ONI': {
+    fullName: 'Oceanic Niño Index',
+    description: 'Anomalie de température de surface Pacifique équatorial (moyenne 3 mois).',
+    zones: {
+      RED: 'La Niña — risque sec Afrique',
+      ORANGE: 'Phase ENSO neutre',
+      GREEN: 'El Niño — humidité Afrique',
+    },
+  },
+  'NIÑO 3.4': {
+    fullName: 'Anomalie Niño 3.4',
+    description: 'Anomalie SST zone Niño 3.4 — signal climatique mensuel, lag 14 jours.',
+    zones: {
+      RED: 'Refroidissement (La Niña)',
+      ORANGE: 'Anomalie neutre',
+      GREEN: 'Réchauffement (El Niño)',
+    },
+  },
+  // Positioning & Supply
+  'COT MM NET': {
+    fullName: 'Managed Money — net',
+    description: 'Position nette des Managed Money sur le contrat ICE US Cocoa (long − short).',
+    zones: {
+      RED: 'Net short — sentiment baissier',
+      ORANGE: 'Net léger — pas de conviction',
+      GREEN: 'Net long — sentiment haussier',
+    },
+  },
+  'STOCK EU': {
+    fullName: 'Stocks certifiés ICE Europe',
+    description: 'Stocks de fèves certifiés en entrepôts ICE Europe (sacs 60 kg). Stocks élevés = pression baissière.',
+    zones: {
+      RED: 'Stocks élevés — pression vendeuse',
+      ORANGE: 'Stocks moyens',
+      GREEN: 'Stocks bas — tension offre',
+    },
+  },
+  'STOCK US': {
+    fullName: 'Stocks certifiés ICE US',
+    description: 'Stocks de fèves certifiés en entrepôts ICE US (tonnes). Stocks élevés = pression baissière.',
+    zones: {
+      RED: 'Stocks élevés — pression vendeuse',
+      ORANGE: 'Stocks moyens',
+      GREEN: 'Stocks bas — tension offre',
+    },
+  },
   PRODUCTION: {
     fullName: 'Sentiment Production',
     description: 'Ton de la presse sur la production cacao',
@@ -217,18 +282,76 @@ export default function GaugeIndicator({
   if (!meta || isTouch) return gauge;
 
   return (
-    <TooltipProvider delayDuration={150}>
+    <TooltipProvider delayDuration={200}>
       <Tooltip>
         <TooltipTrigger asChild>{gauge}</TooltipTrigger>
-        <TooltipContent side="top" className="max-w-60 px-3 py-2 space-y-1.5">
-          <p className="text-xs font-semibold">{meta.fullName}</p>
-          <p className="text-[11px] text-muted-foreground leading-snug">{meta.description}</p>
-          <div className="flex items-center gap-1.5 pt-0.5">
-            <span
-              className="h-1.5 w-1.5 rounded-full"
-              style={{ background: SIGNAL_HEX[zone] }}
+        <TooltipContent
+          side="top"
+          sideOffset={10}
+          className="max-w-70 p-0 border-0 rounded-none shadow-[0_8px_20px_rgba(0,0,0,0.25)] data-[state=open]:zoom-in-100 data-[state=closed]:zoom-out-100"
+          style={{
+            background: 'var(--ink)',
+            color: 'var(--paper)',
+            borderRadius: 0,
+            borderLeft: `2px solid ${SIGNAL_HEX[zone]}`,
+          }}
+        >
+          <div style={{ padding: '12px 14px 12px 12px' }}>
+            <div
+              className="uppercase"
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 10,
+                fontWeight: 600,
+                letterSpacing: '0.22em',
+                color: 'var(--paper)',
+                marginBottom: 8,
+              }}
+            >
+              {meta.fullName}
+            </div>
+            <div
+              style={{
+                fontFamily: 'var(--font-sans)',
+                fontSize: 12,
+                lineHeight: 1.55,
+                color: '#CFCFCF',
+                marginBottom: 10,
+              }}
+            >
+              {meta.description}
+            </div>
+            <div
+              aria-hidden
+              style={{
+                height: 1,
+                borderTop: '1px dotted rgba(255,255,255,0.18)',
+                marginBottom: 10,
+              }}
             />
-            <span className="text-[11px] font-medium">{meta.zones[zone]}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: '50%',
+                  background: SIGNAL_HEX[zone],
+                  flexShrink: 0,
+                }}
+              />
+              <span
+                className="uppercase"
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 10,
+                  fontWeight: 600,
+                  letterSpacing: '0.18em',
+                  color: 'var(--paper)',
+                }}
+              >
+                {meta.zones[zone]}
+              </span>
+            </div>
           </div>
         </TooltipContent>
       </Tooltip>

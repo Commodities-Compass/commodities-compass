@@ -68,25 +68,37 @@ const MACRO_RANGES: Record<string, { min: number; max: number; ranges: Indicator
       { range_low: 20000, range_high: 60000, area: 'GREEN' },
     ],
   },
-  // Stock EU certified (tonnes). 2026-05-27 conversion from the legacy
-  // bag-count thresholds: 500k/2M/5M/8M bags × 60 / 1000 = 30k/120k/300k/480k t.
+  // Stock EU certified (tonnes). Recalibrated 2026-05-27 (commit after the
+  // unit fix) to the post-crisis West African supply regime: ICE Europe
+  // stocks have ranged 2k-37k tonnes since 2024 (vs 150k-200k pre-crisis),
+  // so the prior thresholds (30k/120k/300k/480k) parked every current value
+  // in the GREEN/bullish zone and lost signal. New scale brings the
+  // "current normal" into MONITOR so the gauge differentiates "still
+  // bullish" (severe shortage) from "stocks rebuilding" (bearish for
+  // price). Gauge is rendered with inverted=true so OPEN sits on the LEFT
+  // (matching the GREEN zone position) and HEDGE on the RIGHT — direction
+  // is inverse since LOW stocks = bullish for cocoa prices.
   STOCK_EU: {
-    min: 30_000,
-    max: 480_000,
+    min: 0,
+    max: 200_000,
     ranges: [
-      { range_low: 300_000, range_high: 480_000, area: 'RED' },
-      { range_low: 120_000, range_high: 300_000, area: 'ORANGE' },
-      { range_low: 30_000, range_high: 120_000, area: 'GREEN' },
+      { range_low: 0, range_high: 20_000, area: 'GREEN' }, // severe shortage
+      { range_low: 20_000, range_high: 60_000, area: 'ORANGE' }, // crisis-era normal
+      { range_low: 60_000, range_high: 200_000, area: 'RED' }, // supply rebuilding
     ],
   },
-  // Stock US certified (tonnes) — high stocks bearish, like EU.
+  // Stock US certified (tonnes) — same inverse direction as EU. Recalibrated
+  // 2026-05-27 to current ICE US range (90k-190k t since 2025) — old scale
+  // (50k/150k/250k/350k) parked typical values in MONITOR/HEDGE. New scale
+  // 0-450k covers full historical envelope; current ~186k lands at start of
+  // ORANGE/MONITOR ("normal post-crisis level"). Rendered inverted=true.
   STOCK_US: {
-    min: 50_000,
-    max: 350_000,
+    min: 0,
+    max: 450_000,
     ranges: [
-      { range_low: 250_000, range_high: 350_000, area: 'RED' },
-      { range_low: 150_000, range_high: 250_000, area: 'ORANGE' },
-      { range_low: 50_000, range_high: 150_000, area: 'GREEN' },
+      { range_low: 0, range_high: 100_000, area: 'GREEN' }, // historically low = bullish
+      { range_low: 100_000, range_high: 250_000, area: 'ORANGE' }, // normal range
+      { range_low: 250_000, range_high: 450_000, area: 'RED' }, // surplus = bearish
     ],
   },
 };
@@ -383,6 +395,7 @@ export default function MarketAnalysis({ targetDate, className }: MarketAnalysis
               label="STOCK EU"
               ranges={MACRO_RANGES.STOCK_EU.ranges}
               formatValue={fmtTonnes}
+              inverted
             />
             <GaugeIndicator
               value={positioning?.stock_us_tonnes ?? null}
@@ -391,6 +404,7 @@ export default function MarketAnalysis({ targetDate, className }: MarketAnalysis
               label="STOCK US"
               ranges={MACRO_RANGES.STOCK_US.ranges}
               formatValue={fmtTonnes}
+              inverted
             />
           </div>
 

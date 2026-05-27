@@ -142,6 +142,14 @@ interface RulerGaugeProps {
   className?: string;
   /** Optional formatter for the value label. Defaults to `v.toFixed(2)`. */
   formatValue?: (v: number) => string;
+  /**
+   * When `true`, swap the bottom zone labels from `HEDGE | MONITOR | OPEN`
+   * to `OPEN | MONITOR | HEDGE`. Use for inverse-relation indicators where
+   * LOW values are bullish (= OPEN signal) and HIGH values are bearish
+   * (= HEDGE signal) — typically certified-stock gauges, since the
+   * value→position mapping puts low values on the left where OPEN now sits.
+   */
+  inverted?: boolean;
 }
 
 function zoneOf(value: number, ranges?: IndicatorRange[]): 'RED' | 'ORANGE' | 'GREEN' {
@@ -188,6 +196,7 @@ export default function GaugeIndicator({
   ranges,
   className,
   formatValue,
+  inverted = false,
 }: RulerGaugeProps) {
   const span = max - min || 1;
   const hasValue = value != null && Number.isFinite(value);
@@ -278,14 +287,16 @@ export default function GaugeIndicator({
         </div>
       </div>
 
-      {/* Zone labels */}
+      {/* Zone labels — order depends on `inverted` (inverse-relation gauges
+          like stocks put OPEN on the LEFT because their value→position
+          mapping makes low values land near the GREEN/leftmost zone). */}
       <div
         className="flex justify-between"
         style={{ marginTop: 6 }}
       >
-        <span style={zoneLabelStyle}>Hedge</span>
+        <span style={zoneLabelStyle}>{inverted ? 'Open' : 'Hedge'}</span>
         <span style={{ ...zoneLabelStyle, textAlign: 'center' }}>Monitor</span>
-        <span style={zoneLabelStyle}>Open</span>
+        <span style={zoneLabelStyle}>{inverted ? 'Hedge' : 'Open'}</span>
       </div>
     </div>
   );

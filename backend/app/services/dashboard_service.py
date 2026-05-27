@@ -8,7 +8,7 @@ All queries read from pl_* tables (contract-centric).
 
 import logging
 import re
-from datetime import date
+from datetime import date, timedelta
 from typing import Any, Dict, List, Optional
 
 import uuid
@@ -657,11 +657,17 @@ async def get_latest_recommendations(
 async def get_chart_data(
     db: AsyncSession, days: int = 30, *, end_date: Optional[date] = None
 ) -> List[Dict[str, Any]]:
-    """Get historical chart data for the specified number of days.
+    """Get historical chart data for a calendar-day window ending at ``end_date``.
 
-    Queries the active contract first. If fewer rows than requested (contract
-    rolled recently), falls back to a cross-contract query ordered by date so
-    the chart always has enough history.
+    ``days`` is interpreted as a CALENDAR window (e.g., 365 days = real
+    calendar year ≈ 252 trading sessions) — NOT a row count. Previously
+    ``LIMIT :days`` returned that many session rows, so "1Y" actually spanned
+    ~18 months of calendar time. The dashboard pill labels (30J / 90J / 180J
+    / 1Y) reflect calendar duration to users, so we filter by date range.
+
+    Queries the active contract first. If the window contains fewer rows for
+    the active contract (recent roll), falls back to a cross-contract query
+    so the chart still has coverage across the requested window.
     """
     contract_id = await get_active_contract_id(db)
 
@@ -674,10 +680,15 @@ async def get_chart_data(
         PlDerivedIndicators.macd,
     )
 
-    # Try active contract first
-    date_filter = [PlContractDataDaily.contract_id == contract_id]
-    if end_date is not None:
-        date_filter.append(PlContractDataDaily.date <= end_date)
+    # Calendar window: [window_start, window_end] inclusive.
+    window_end = end_date if end_date is not None else date.today()
+    window_start = window_end - timedelta(days=days)
+
+    date_filter = [
+        PlContractDataDaily.contract_id == contract_id,
+        PlContractDataDaily.date >= window_start,
+        PlContractDataDaily.date <= window_end,
+    ]
 
     query = (
         select(*base_cols)
@@ -692,38 +703,42 @@ async def get_chart_data(
             )
         )
         .where(and_(*date_filter))
-        .order_by(desc(PlContractDataDaily.date))
-        .limit(days)
+        .order_by(PlContractDataDaily.date)
     )
 
     result = await db.execute(query)
     rows = result.all()
 
-    # Fallback: active contract has fewer rows than requested (recent roll)
-    if len(rows) < days:
-        fallback_filter = []
-        if end_date is not None:
-            fallback_filter.append(PlContractDataDaily.date <= end_date)
-
-        fallback_query = select(*base_cols).select_from(
-            outerjoin(
-                PlContractDataDaily,
-                PlDerivedIndicators,
-                and_(
-                    PlContractDataDaily.date == PlDerivedIndicators.date,
-                    PlContractDataDaily.contract_id == PlDerivedIndicators.contract_id,
-                ),
+    # Fallback: cross-contract read covers the window across a recent roll
+    # boundary. We expect ~5 sessions per week — fall back when the count
+    # falls noticeably short of the expected business-day coverage.
+    expected_min = max(1, int(days * 5 / 7) - 7)
+    if len(rows) < expected_min:
+        fallback_query = (
+            select(*base_cols)
+            .select_from(
+                outerjoin(
+                    PlContractDataDaily,
+                    PlDerivedIndicators,
+                    and_(
+                        PlContractDataDaily.date == PlDerivedIndicators.date,
+                        PlContractDataDaily.contract_id
+                        == PlDerivedIndicators.contract_id,
+                    ),
+                )
             )
-        )
-        if fallback_filter:
-            fallback_query = fallback_query.where(and_(*fallback_filter))
-        fallback_query = fallback_query.order_by(desc(PlContractDataDaily.date)).limit(
-            days
+            .where(
+                and_(
+                    PlContractDataDaily.date >= window_start,
+                    PlContractDataDaily.date <= window_end,
+                )
+            )
+            .order_by(PlContractDataDaily.date)
         )
         result = await db.execute(fallback_query)
         rows = result.all()
 
-    chart_rows = list(reversed(rows))
+    chart_rows = list(rows)
 
     # Weekly series — forward-filled per chart date from the dedicated
     # tables. stock_us and com_net_us are toggleable chart metrics in the

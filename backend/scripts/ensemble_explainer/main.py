@@ -1,26 +1,36 @@
-"""CLI entry point for the ensemble explainer.
+"""cc-ensemble-explainer — LLM narrative writer on the ensemble row of pl_indicator_daily.
 
-Runs at 19:25 UTC daily (P2b calendar-aware gate), AFTER:
-  - cc-ensemble-compute (19:18) has written the ensemble decision + diagnostics
-  - cc-press-review-agent (19:05) and cc-meteo-agent (19:00) wrote their rows
-  - cc-daily-analysis (19:20) wrote the legacy row (which the legacy brief uses)
+Thin wrapper around scripts.daily_analysis.db_analysis_engine.DBAnalysisEngine.
+The legacy daily-analysis pipeline already has built-in auto-alignment on the
+ensemble row when no algorithm_version_name is pinned : when
+pl_orchestrator_decision has a row for the (date, contract) at the ensemble
+algorithm version, the engine resolves writes to the ensemble row instead of
+the legacy row, and Call#2 injects the ensemble diagnostics block + force-aligns
+the LLM decision to decision_wrapped.
 
-Sequence:
-  1. Resolve active contract + ensemble algorithm_version_id
-  2. Read inputs: pl_orchestrator_decision + 14 specialist_prediction + press + meteo + technicals
-  3. Build the LLM prompt (FR éditorial, decision-pinned)
-  4. Call OpenAI gpt-4o-mini (1 call, ~$0.001, ~3s)
-  5. Validate output JSON: schema + consistency vs decision (fail-loud)
-  6. UPDATE pl_indicator_daily ensemble row with eco/confidence/direction/conclusion
+This wrapper invokes that auto-align path, so the ensemble row is enriched with
+the SAME narrative structure as the legacy row (eco + confidence + direction +
+conclusion in the long-form "> ... • ... > A SURVEILLER AUJOURD'HUI: ..." that
+the frontend recommendation parser expects). The legacy daily-analysis job
+(cc-daily-analysis) stays pinned to legacy via --algorithm-version legacy in
+deploy.yml and continues to populate the legacy row independently.
 
-Fail-loud per .claude/rules/pipeline-error-handling.md — no auto-retry, no
-fallback. On any error the job exits non-zero and Sentry captures it.
+Pre-conditions (fail-loud per .claude/rules/pipeline-error-handling.md):
+  * cc-ensemble-compute must have written the ensemble row in
+    pl_orchestrator_decision + pl_indicator_daily for the resolved data_date.
+  * cc-compute-indicators must have written z-scores on the ensemble row
+    (the engine's _compute_final_indicator reads them).
+
+Date semantics (P2b):
+  * target_date  = upcoming trading session the narrative addresses
+  * data_date    = previous_session(target_date) = the row date that
+                   compute-indicators + ensemble-compute wrote at, matching
+                   the dashboard's session_date convention.
 """
 
 from __future__ import annotations
 
 import argparse
-import asyncio
 import logging
 import sys
 from datetime import date as date_type
@@ -29,23 +39,20 @@ from pathlib import Path
 import sentry_sdk
 from dotenv import load_dotenv
 from sentry_sdk.crons import monitor
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.sentry import init_sentry
-from scripts.ensemble_explainer.config import LOG_FORMAT
-from scripts.ensemble_explainer.db_reader import (
-    ExplainerDataMissingError,
-    read_explainer_inputs,
+from scripts.daily_analysis.db_analysis_engine import (
+    AnalysisWriteError,
+    DBAnalysisEngine,
 )
-from scripts.ensemble_explainer.db_writer import (
-    ExplainerWriteError,
-    update_ensemble_narrative,
+from scripts.ensemble_explainer.config import (
+    ALGORITHM_NAME,
+    ALGORITHM_VERSION,
+    LOG_FORMAT,
 )
-from scripts.ensemble_explainer.llm_client import call_openai
-from scripts.ensemble_explainer.output_parser import (
-    ExplainerOutputError,
-    parse_explainer_output,
-)
-from scripts.ensemble_explainer.prompts import SYSTEM_PROMPT, USER_PROMPT_TEMPLATE
 
 logging.basicConfig(
     level=logging.INFO,
@@ -58,108 +65,103 @@ load_dotenv(Path(__file__).parent.parent.parent / ".env")
 init_sentry("ensemble-explainer")
 
 
+class EnsembleRowMissingError(RuntimeError):
+    """Raised when cc-ensemble-compute has not (yet) written the ensemble row.
+
+    Fail-loud : the explainer cannot enrich a row that doesn't exist. If we
+    let the engine fall through to legacy fallback we'd write the narrative
+    to the wrong row, polluting the legacy track and silencing the upstream
+    failure.
+    """
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Ensemble Explainer — LLM commentary for the ensemble decision"
+        description=(
+            "Ensemble narrative writer — wraps the legacy DBAnalysisEngine "
+            "with auto-align on the ensemble row."
+        )
     )
     parser.add_argument("--dry-run", action="store_true", help="Log only, no DB write")
     parser.add_argument("--verbose", action="store_true", help="Debug logging")
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Bypass eve-of-trading-day gate (backfill/debugging)",
+        help="Bypass eve-of-trading-day gate (backfills / manual reruns)",
     )
     parser.add_argument(
         "--target-date",
         type=date_type.fromisoformat,
         default=None,
         help=(
-            "Trading session date the commentary should target (YYYY-MM-DD). "
+            "Trading session the narrative addresses (YYYY-MM-DD). "
             "Defaults to get_next_session_date(today()) per P2b."
         ),
+    )
+    parser.add_argument(
+        "--contract",
+        default=None,
+        help="Contract code (default: active contract from DB)",
     )
     return parser.parse_args()
 
 
-def _build_specialists_table(specialists) -> str:
-    """Format the 14-specialist votes as a readable text block for the prompt."""
-    if not specialists:
-        return "(aucun vote spécialiste disponible)"
-    lines = [
-        f"  {s.name:<32s} {s.pred:<8s} (window={s.window_months}m)" for s in specialists
-    ]
-    return "\n".join(lines)
+def _assert_ensemble_row_present(
+    session: Session, data_date: date_type, contract_code: str
+) -> None:
+    """Pre-flight : confirm cc-ensemble-compute has written the ensemble row.
 
-
-def _format_decimal(value, precision: int = 3) -> str:
-    if value is None:
-        return "n/a"
-    try:
-        return f"{float(value):.{precision}f}"
-    except (TypeError, ValueError):
-        return str(value)
-
-
-def _build_user_prompt(inputs) -> str:
-    return USER_PROMPT_TEMPLATE.format(
-        target_date=inputs.target_date.isoformat(),
-        decision=inputs.decision,
-        soft_gate_decision=inputs.soft_gate_decision,
-        wrapper_active=inputs.wrapper_active,
-        net_score=_format_decimal(inputs.net_score, 4),
-        n_committed_specialists=inputs.n_committed_specialists
-        if inputs.n_committed_specialists is not None
-        else "n/a",
-        running_acc_5d=_format_decimal(inputs.running_acc_5d, 4),
-        realized_return_5d=_format_decimal(inputs.realized_return_5d, 4),
-        anomaly_score_z=_format_decimal(inputs.anomaly_score_z, 3),
-        macro_direction=inputs.macro_direction
-        if inputs.macro_direction is not None
-        else "n/a",
-        macro_surprise=_format_decimal(inputs.macro_surprise, 3),
-        macro_half_life_days=inputs.macro_half_life_days
-        if inputs.macro_half_life_days is not None
-        else "n/a",
-        prior_open=_format_decimal(inputs.prior_open, 3),
-        prior_hedge=_format_decimal(inputs.prior_hedge, 3),
-        prior_monitor=_format_decimal(inputs.prior_monitor, 3),
-        winter_vote_signed=inputs.winter_vote_signed
-        if inputs.winter_vote_signed is not None
-        else "n/a",
-        spring_vote_signed=inputs.spring_vote_signed
-        if inputs.spring_vote_signed is not None
-        else "n/a",
-        fired_running_acc=inputs.fired_running_acc,
-        fired_trend=inputs.fired_trend,
-        fired_dispersion=inputs.fired_dispersion,
-        fired_three_way=inputs.fired_three_way,
-        specialist_votes_table=_build_specialists_table(inputs.specialists),
-        press_summary=(inputs.press_summary or "(aucune revue de presse disponible)")[
-            :1200
-        ],
-        press_impact=(inputs.press_impact or "(aucune synthèse impact)")[:600],
-        press_sentiment=inputs.press_sentiment or "n/a",
-        meteo_summary=(inputs.meteo_summary or "(aucune météo disponible)")[:600],
-        meteo_impact=(inputs.meteo_impact or "(aucune évaluation impact)")[:400],
-        technicals_snapshot=inputs.technicals_snapshot,
-    )
+    Without this check the engine's auto-align would silently fall back to
+    the legacy row when no ensemble row exists, breaking the dual-track
+    invariant. Fail-loud early before wasting 2 gpt-4-turbo calls.
+    """
+    row = session.execute(
+        text(
+            """
+            SELECT 1
+            FROM pl_indicator_daily i
+            JOIN ref_contract c ON i.contract_id = c.id
+            JOIN pl_algorithm_version v ON i.algorithm_version_id = v.id
+            WHERE c.code = :contract
+              AND v.name = :ensemble_algo
+              AND v.version = :ensemble_ver
+              AND i.date = :data_date
+            LIMIT 1
+            """
+        ),
+        {
+            "contract": contract_code,
+            "ensemble_algo": ALGORITHM_NAME,
+            "ensemble_ver": ALGORITHM_VERSION,
+            "data_date": data_date,
+        },
+    ).fetchone()
+    if row is None:
+        raise EnsembleRowMissingError(
+            f"No ensemble row in pl_indicator_daily for date={data_date} "
+            f"contract={contract_code} algo={ALGORITHM_NAME} v{ALGORITHM_VERSION}. "
+            "cc-ensemble-compute must run first."
+        )
 
 
 @monitor(monitor_slug="ensemble-explainer")
 def main() -> int:
     args = _parse_args()
-
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    # P2b gate
+    from scripts.contract_resolver import resolve_active_code
     from scripts.db import (
         get_next_session_date,
         get_previous_session_date,
+        get_session,
         is_eve_of_trading_day,
     )
 
     target_date: date_type = args.target_date or get_next_session_date()
+
+    # P2b: gate the daily cron on "is tomorrow a trading day?". --force or
+    # explicit --target-date bypass the gate (backfills, manual reruns).
     if not args.force and args.target_date is None:
         if not is_eve_of_trading_day():
             logger.info(
@@ -167,96 +169,88 @@ def main() -> int:
             )
             return 0
 
-    # ``data_date`` = last completed session = where ensemble-compute (19:18
-    # weekday) wrote pl_orchestrator_decision + the ensemble row of
-    # pl_indicator_daily. The explainer reads/UPDATEs against this date,
-    # while ``target_date`` remains the upcoming session the narrative is
-    # written for (used for press/meteo lookups + Sentry context).
     data_date: date_type = get_previous_session_date(target_date)
 
     logger.info("=" * 60)
-    logger.info("Ensemble Explainer")
+    logger.info("Ensemble Explainer (DBAnalysisEngine auto-align wrapper)")
     logger.info("Mode: %s", "DRY RUN" if args.dry_run else "LIVE")
-    logger.info("Target session: %s | Data session: %s", target_date, data_date)
+    logger.info(
+        "Target session: %s | Data session (row date): %s", target_date, data_date
+    )
     logger.info("=" * 60)
 
     try:
-        from scripts.contract_resolver import resolve_active
-        from scripts.db import get_session
+        contract_code = args.contract
+        if contract_code is None:
+            with get_session() as session:
+                contract_code = resolve_active_code(session)
+            logger.info("Resolved active contract: %s", contract_code)
 
+        # Pre-flight : ensemble row must exist
         with get_session() as session:
-            contract_id = resolve_active(session)
-            logger.info("Active contract id: %s", contract_id)
+            _assert_ensemble_row_present(session, data_date, contract_code)
+        logger.info("Pre-flight OK — ensemble row present at date=%s", data_date)
 
-            inputs = read_explainer_inputs(
-                session, target_date, contract_id, data_date=data_date
+        # Invoke the legacy DBAnalysisEngine WITHOUT pinning algorithm_version
+        # → engine.run() auto-aligns on the ensemble row in
+        # pl_orchestrator_decision, uses CALL_2_PROMPT_ENSEMBLE with the
+        # diagnostics block, and writes the narrative to the ensemble row.
+        db_url = str(settings.DATABASE_SYNC_URL)
+        sqla_engine = create_engine(db_url)
+        with Session(sqla_engine) as session:
+            db_engine = DBAnalysisEngine(session)  # NO algorithm_version_name
+            result = db_engine.run(
+                target_date=target_date,
+                contract_code=contract_code,
+                data_date=data_date,
+                dry_run=args.dry_run,
             )
 
-            user_prompt = _build_user_prompt(inputs)
-            logger.info("Prompt built: %d chars", len(user_prompt))
-
-            result = asyncio.run(call_openai(SYSTEM_PROMPT, user_prompt))
-            if not result.success:
-                logger.error("LLM call failed: %s", result.error)
-                sentry_sdk.capture_message(
-                    f"Ensemble explainer LLM failed: {result.error}", level="error"
-                )
-                return 1
-
-            output = parse_explainer_output(result.parsed or {}, inputs.decision)
-            logger.info(
-                "Validated output: confidence=%d direction=%s conclusion_len=%d eco_len=%d",
-                output.confidence,
-                output.direction,
-                len(output.conclusion),
-                len(output.eco),
+        if not result.ensemble_aligned:
+            # Defense in depth : the pre-flight already guarantees the ensemble
+            # row exists, so reaching this branch would mean the engine resolved
+            # to a different row (e.g. a race between pre-flight and engine.run).
+            raise EnsembleRowMissingError(
+                f"DBAnalysisEngine did NOT auto-align on ensemble for "
+                f"date={data_date} contract={contract_code}. "
+                "Investigate pl_orchestrator_decision freshness."
             )
-
-            if args.dry_run:
-                logger.info("[DRY RUN] Skipping UPDATE.")
-                logger.info("=== eco ===\n%s", output.eco)
-                logger.info("=== conclusion ===\n%s", output.conclusion)
-                return 0
-
-            update_ensemble_narrative(
-                session,
-                data_date,
-                contract_id,
-                inputs.algorithm_version_id,
-                output,
-            )
-            session.commit()
 
         sentry_sdk.set_context(
             "ensemble_explainer",
             {
                 "target_date": target_date.isoformat(),
-                "decision": inputs.decision,
-                "confidence": output.confidence,
-                "direction": output.direction,
-                "llm_input_tokens": result.usage.get("input_tokens", 0),
-                "llm_output_tokens": result.usage.get("output_tokens", 0),
-                "llm_latency_ms": result.latency_ms,
+                "data_date": data_date.isoformat(),
+                "decision": result.trading.decision,
+                "confidence": result.trading.confiance,
+                "direction": result.trading.direction,
+                "macroeco_bonus": result.macro.macroeco_bonus,
+                "call1_tokens": (
+                    result.call1_response.input_tokens
+                    + result.call1_response.output_tokens
+                ),
+                "call2_tokens": (
+                    result.call2_response.input_tokens
+                    + result.call2_response.output_tokens
+                ),
             },
         )
 
         logger.info("=" * 60)
         logger.info(
-            "SUCCESS: ensemble narrative written for %s (decision=%s confidence=%d)",
-            target_date,
-            inputs.decision,
-            output.confidence,
+            "SUCCESS — ensemble row narrative written for date=%s "
+            "(decision=%s confidence=%d direction=%s)",
+            data_date,
+            result.trading.decision,
+            result.trading.confiance,
+            result.trading.direction,
         )
         logger.info("=" * 60)
         return 0
 
     except (KeyboardInterrupt, SystemExit):
         raise
-    except (
-        ExplainerDataMissingError,
-        ExplainerOutputError,
-        ExplainerWriteError,
-    ) as exc:
+    except (EnsembleRowMissingError, AnalysisWriteError) as exc:
         logger.exception("Ensemble explainer failed: %s", exc)
         sentry_sdk.capture_exception(exc)
         return 1

@@ -162,8 +162,9 @@ Ou via la console Drive : ouvrir les 2 fichiers en parallèle.
 
 - `cc-ensemble-explainer` cron monitor : exit 0 = success même si gate skip
 - `cc-compass-brief-ensemble` cron monitor : idem
-- Sentry breadcrumbs : LLM tokens in/out, latency, decision, confidence
-- Si `ExplainerOutputError "contradicts ensemble decision"` apparaît → le prompt LLM dérive, à tuner (voir `ensemble-explainer-prompt-tuning.md`)
+- Sentry breadcrumbs : LLM tokens in/out (Call#1 + Call#2 gpt-4-turbo), latency, decision, confidence, direction, macroeco_bonus
+- Si l'engine émet un warning `LLM returned decision=X but ensemble said Y — forcing alignment`, le LLM a dérivé de `decision_wrapped` mais le force-alignment a corrigé → narrative préservée, à monitorer si récurrent (signe de drift du prompt `CALL_2_PROMPT_ENSEMBLE` dans `scripts/daily_analysis/prompts.py`)
+- Si `EnsembleRowMissingError` → cc-ensemble-compute n'a pas tourné, voir [ensemble-failure-recovery.md](./ensemble-failure-recovery.md)
 
 ## Fail-loud rules respectées
 

@@ -65,7 +65,7 @@ On-demand| cc-ensemble-bootstrap-artifacts       | ENSEMBLE     | Manual (no sch
 | **cc-meteo-agent** | `0 19 * * *` | both | Open-Meteo API | `pl_weather_observation`, `pl_seasonal_score` | ✅ Actif (P2b daily-gated) |
 | **cc-compute-indicators** | `15 19 * * 1-5` | shared | `pl_contract_data_daily` | `pl_derived_indicators`, `pl_indicator_daily` (numerics) | ✅ Actif |
 | **cc-ensemble-compute** | `18 19 * * 1-5` | ENSEMBLE | `pl_derived_indicators`, `pl_article_segment`, `pl_external_indicator`, `pl_cot_eu_weekly`, `pl_model_artifact` | `pl_specialist_prediction` (14), `pl_orchestrator_decision`, `pl_indicator_daily` (ensemble row partielle) | ✅ Actif |
-| **cc-ensemble-explainer** | `25 19 * * *` | ENSEMBLE | `pl_orchestrator_decision`, `pl_specialist_prediction`, `pl_fundamental_article`, `pl_weather_observation`, `pl_contract_data_daily` | UPDATE `pl_indicator_daily` ensemble row (LLM narrative) | 🆕 P4 (2026-05) |
+| **cc-ensemble-explainer** | `25 19 * * *` | ENSEMBLE | `pl_orchestrator_decision`, `pl_specialist_prediction`, `pl_fundamental_article`, `pl_weather_observation`, `pl_contract_data_daily` | UPDATE `pl_indicator_daily` ensemble row (narrative legacy-style via DBAnalysisEngine auto-align) | ✅ Actif (P2b daily-gated, thin wrapper sur le moteur legacy depuis 2026-05-27) |
 | **cc-daily-analysis** | `20 19 * * *` | LEGACY | `pl_contract_data_daily`, `pl_derived_indicators`, `pl_indicator_daily`, `pl_fundamental_article`, `pl_weather_observation` | UPDATE `pl_indicator_daily` legacy row (LLM) | ✅ Actif (P2b daily-gated, `--algorithm-version legacy`) |
 | **cc-compass-brief** | `30 19 * * *` | LEGACY | `pl_indicator_daily` (active row), `pl_contract_data_daily` last 2 dates, `pl_fundamental_article`, `pl_weather_observation` | Drive: `YYYYMMDD-CompassBrief.txt` | ✅ Actif (P2b daily-gated) |
 | **cc-compass-brief-ensemble** | `35 19 * * *` | ENSEMBLE | Ensemble row + orchestrator + 14 specialists + press + meteo + technicals | Drive: `YYYYMMDD-CompassBrief-Ensemble.txt` | 🆕 P4 (2026-05) |
@@ -314,21 +314,23 @@ On-demand| cc-ensemble-bootstrap-artifacts       | ENSEMBLE     | Manual (no sch
 
 **Failure recovery** : [docs/runbooks/ensemble-failure-recovery.md](../runbooks/ensemble-failure-recovery.md).
 
-### 3.15 `cc-ensemble-explainer` 🆕 (P4)
+### 3.15 `cc-ensemble-explainer` (refactor 2026-05-27 : thin wrapper sur DBAnalysisEngine)
 
-> Code : [backend/scripts/ensemble_explainer/](../../backend/scripts/ensemble_explainer/)
+> Code : [backend/scripts/ensemble_explainer/main.py](../../backend/scripts/ensemble_explainer/main.py) (≤200 lignes wrapper)
 
 **Track** : ENSEMBLE
 
-**Description** : 1 appel LLM `gpt-4o-mini` qui produit la narrative (eco, confidence 1-5, direction enum, conclusion ≤2000 chars avec 3 « À SURVEILLER ») pour la row ensemble du jour. La décision reste IMMUTABLE — le LLM ne peut PAS la modifier (validator strict).
+**Description** : invoque le pipeline legacy `DBAnalysisEngine.run()` **sans pinner `--algorithm-version`** → l'auto-align détecte la row ensemble dans `pl_orchestrator_decision`, utilise `CALL_2_PROMPT_ENSEMBLE` (qui injecte les 25 diagnostics structurés), et écrit la narrative legacy-style sur la row ensemble. Aucun prompt / parser / writer custom — réutilisation totale du code legacy. Pre-flight `EnsembleRowMissingError` fail-loud si cc-ensemble-compute n'a pas écrit la row.
 
-**Source** : `pl_orchestrator_decision` + 14× `pl_specialist_prediction` + `pl_fundamental_article` (latest) + `pl_weather_observation` (latest) + `pl_contract_data_daily` (last completed session).
+**Source** (via `DBAnalysisEngine.DBReader`) : `pl_orchestrator_decision` + 14× `pl_specialist_prediction` + `pl_fundamental_article` (date = data_date) + `pl_weather_observation` (date = data_date) + `pl_contract_data_daily` (last 2 sessions pour technicals today+yesterday).
 
 **Cron** : `25 19 * * *` (P2b daily-gated, après cc-ensemble-compute).
 
-**Output** : UPDATE `pl_indicator_daily` ENSEMBLE row → set `eco`, `confidence`, `direction`, `conclusion`. `decision` reste celui que cc-ensemble-compute a écrit.
+**LLM** : 2× `gpt-4-turbo` (Call#1 macro/weather + Call#2 ensemble-aware decision). Format conclusion strict legacy `> ... • ... > A SURVEILLER AUJOURD'HUI: ...` × 3 alertes.
 
-**Cost** : ~$0.001/call × 250/an ≈ $0.25/an.
+**Output** : UPDATE `pl_indicator_daily` ENSEMBLE row → set `eco`, `macroeco_bonus`, `macroeco_score`, `final_indicator`, `decision` (= `decision_wrapped`, pinné), `confidence`, `direction`, `conclusion` long-form.
+
+**Cost** : ~$0.13/jour × 250/an ≈ $32.5/an. Trade-off vs version originale gpt-4o-mini ($0.001/jour) : la parité de format avec le frontend recommandation parser (3 tabs Recommandation / Supply / Technical) impose le verbose legacy.
 
 ### 3.16 `cc-daily-analysis`
 

@@ -413,14 +413,14 @@ Four LLM-powered agents run as GCP Cloud Run Jobs, each generating content for P
 - **Output**: `YYYYMMDD-CompassBrief.txt` uploaded to Drive (idempotent — updates existing file for same date)
 - **Cron**: `30 19 * * 1-5` — **CLI**: `poetry run compass-brief`
 
-### Ensemble Explainer (`backend/scripts/ensemble_explainer/`) 🆕 P4
+### Ensemble Explainer (`backend/scripts/ensemble_explainer/`) — thin wrapper around DBAnalysisEngine
 
-- **Purpose**: enriches the ensemble row of `pl_indicator_daily` with LLM-generated narrative (`eco`, `confidence`, `direction`, `conclusion`) from the structured ensemble diagnostics + press review + meteo. The decision is IMMUTABLE — the LLM cannot change it (validator strict, fail-loud on contradictions).
-- **Inputs**: `pl_orchestrator_decision` + 14× `pl_specialist_prediction` + `pl_fundamental_article` (latest) + `pl_weather_observation` (latest) + `pl_contract_data_daily` (last completed session).
-- **LLM**: 1 call `gpt-4o-mini`, ~$0.001 per call. JSON-strict output, post-LLM validator rejects schema violations + commentary contradictions vs `decision_wrapped`.
-- **Output**: UPDATE `pl_indicator_daily` ensemble row (LLM fields only — decision/conclusion already written by cc-ensemble-compute remain consistent).
-- **Cron**: `25 19 * * *` (P2b daily-gated, after cc-ensemble-compute) — **CLI**: `poetry run ensemble-explainer [--target-date YYYY-MM-DD] [--dry-run]`
-- **US**: see [docs/runbooks/ensemble-explainer-prompt-tuning.md](docs/runbooks/ensemble-explainer-prompt-tuning.md)
+- **Purpose**: enriches the ensemble row of `pl_indicator_daily` with the same long-form LLM narrative (`eco`, `confidence`, `direction`, `conclusion` with `> ... • ... > A SURVEILLER AUJOURD'HUI: ...` structure) that `cc-daily-analysis` writes on the legacy row. The decision is IMMUTABLE (pinned to `decision_wrapped` by the engine's auto-align path).
+- **Implementation** (refactored 2026-05-27): the job is a **thin wrapper** that invokes `scripts.daily_analysis.db_analysis_engine.DBAnalysisEngine.run()` **without pinning `algorithm_version_name`**. The engine's built-in auto-alignment (db_analysis_engine.py:187-200) detects the ensemble row in `pl_orchestrator_decision`, injects the 25-field diagnostics block via `CALL_2_PROMPT_ENSEMBLE`, and writes the narrative to the ensemble row. No custom prompt / parser / writer in this module — everything is reused from `scripts/daily_analysis/`.
+- **Pre-flight**: fail-loud `EnsembleRowMissingError` if `cc-ensemble-compute` has not populated the ensemble row at `data_date` (prevents silent fallback to legacy).
+- **Inputs** (via the engine's `DBReader`): `pl_orchestrator_decision` + 14× `pl_specialist_prediction` + `pl_fundamental_article` + `pl_weather_observation` + `pl_contract_data_daily` (last 2 sessions for the today/yesterday technicals snapshot).
+- **LLM**: 2 calls `gpt-4-turbo` (Call#1 macro/weather → `eco` + `macroeco_bonus`; Call#2 ensemble-aware → `decision`/`confidence`/`direction`/`conclusion`). ~$0.13/day, ~$30/year.
+- **Cron**: `25 19 * * *` (P2b daily-gated, after `cc-ensemble-compute`) — **CLI**: `poetry run ensemble-explainer [--target-date YYYY-MM-DD] [--dry-run] [--force]`
 
 ### Compass Brief Ensemble (`backend/scripts/compass_brief_ensemble/`) 🆕 P4
 
@@ -549,7 +549,7 @@ P2b — the pipeline is split into two phases:
 
 **Phase A — Market close** (T 19:00 UTC, Mon-Fri): scrapers + indicator computation. `date` field on every row = session date T.
 
-**Phase B — Next-session refresh** (daily cron, agent-gated on `is_eve_of_trading_day()`): press review, meteo, daily analysis, compass brief. `date` field on every row = next trading session (T+next). On Sun evening Phase B fires for Monday's session; on Fri eve it skips (Sat is non-trading); etc.
+**Phase B — Next-session refresh** (daily cron, agent-gated on `is_eve_of_trading_day()`): press review, meteo, daily analysis, compass brief, ensemble explainer. The CLI `--target-date` (defaulting to `get_next_session_date(today())`) drives prompt framing / filename / Sentry context — but every Phase B DB write is keyed to `data_date = get_previous_session_date(target_date)` (= same row date as Phase A). This keeps `pl_indicator_daily`, `pl_fundamental_article`, `pl_weather_observation`, `pl_orchestrator_decision` all consistent on a single `session_date = T`, which is what the dashboard's `_parse_and_validate_date()` resolves from `display_date = next_trading_day(T)`. Past P2b drift on this convention manifests as empty dashboard sections the morning after — see PR #15 (consumers), PR #16 (press/meteo producers), PR #17 (ensemble_explainer = wrapper).
 
 ```
 # Phase A — weekday-only, keyed to session date T:
@@ -562,13 +562,13 @@ P2b — the pipeline is split into two phases:
 22:10  cc-ice-cot-eu-scraper          → pl_cot_eu_weekly (ICE EU COT positioning)
 
 # Phase B — daily cron, agent-gated on eve-of-trading-day, keyed to T+next:
-19:00  cc-meteo-agent                 → pl_weather_observation (target_date = next session)
-19:05  cc-press-review-agent          → pl_fundamental_article + pl_article_segment
-19:18  cc-ensemble-compute            → pl_orchestrator_decision + 14 specialist_prediction + ensemble row
-19:20  cc-daily-analysis --algorithm-version legacy → pl_indicator_daily LEGACY row (LLM)
-19:25  cc-ensemble-explainer 🆕       → UPDATE pl_indicator_daily ENSEMBLE row (LLM narrative)
+19:00  cc-meteo-agent                 → pl_weather_observation (row date = data_date = T)
+19:05  cc-press-review-agent          → pl_fundamental_article + pl_article_segment (row date = data_date = T)
+19:18  cc-ensemble-compute            → pl_orchestrator_decision + 14 specialist_prediction + ensemble row (date = T)
+19:20  cc-daily-analysis --algorithm-version legacy → UPDATE pl_indicator_daily LEGACY row at date=T
+19:25  cc-ensemble-explainer          → invokes DBAnalysisEngine (auto-align) → UPDATE ENSEMBLE row at date=T
 19:30  cc-compass-brief               → Drive: YYYYMMDD-CompassBrief.txt (legacy)
-19:35  cc-compass-brief-ensemble 🆕   → Drive: YYYYMMDD-CompassBrief-Ensemble.txt
+19:35  cc-compass-brief-ensemble      → Drive: YYYYMMDD-CompassBrief-Ensemble.txt
 
 # Daytime fundamentals — calendar-gated against ref_publication_calendar:
 13:00  cc-eca-grindings-scraper      → pl_supply_demand_observation (ECA)

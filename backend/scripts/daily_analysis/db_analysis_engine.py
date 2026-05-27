@@ -43,6 +43,31 @@ from scripts.daily_analysis.prompts import (
 logger = logging.getLogger(__name__)
 
 
+# Direction enum values — must match the LLM's accepted output set.
+_DIRECTION_FOR_DECISION: dict[str, str] = {
+    "OPEN": "HAUSSIERE",
+    "HEDGE": "BAISSIERE",
+    "MONITOR": "NEUTRE",
+}
+
+
+def _coherent_direction(decision: str, llm_direction: str | None) -> str:
+    """Return the direction expected for ``decision``.
+
+    Logic : OPEN must always be HAUSSIERE, HEDGE must always be BAISSIERE.
+    MONITOR is contextual but we default to NEUTRE if the LLM picks something
+    contradictory (e.g. HAUSSIERE on a MONITOR call). Conservative — when the
+    LLM aligns with one of the 3 expected values, we keep it as-is.
+    """
+    expected = _DIRECTION_FOR_DECISION.get((decision or "").upper())
+    if expected is None:
+        # Unknown decision — leave the LLM output untouched, caller decides
+        return llm_direction or "NEUTRE"
+    if (llm_direction or "").upper() == expected:
+        return expected
+    return expected
+
+
 class AlgorithmVersionNotFoundError(RuntimeError):
     """Raised when --algorithm-version targets a name with no matching row.
 
@@ -320,6 +345,28 @@ class DBAnalysisEngine:
                     direction=trading.direction,
                     conclusion=trading.conclusion,
                 )
+
+        # Sanity-check #2 : direction must be coherent with decision. The LLM
+        # occasionally picks NEUTRE on a clear HEDGE call (observed
+        # 2026-05-26) or HAUSSIERE on a MONITOR call — the prompt allows the
+        # 3 enum values without enforcing coherence. We normalize here so the
+        # dashboard never surfaces a contradictory (decision, direction) pair.
+        # OPEN → HAUSSIERE, HEDGE → BAISSIERE, MONITOR → NEUTRE.
+        normalized_direction = _coherent_direction(trading.decision, trading.direction)
+        if normalized_direction != trading.direction:
+            logger.warning(
+                "LLM returned direction=%s incoherent with decision=%s — "
+                "forcing direction to %s",
+                trading.direction,
+                trading.decision,
+                normalized_direction,
+            )
+            trading = TradingDecisionOutput(
+                decision=trading.decision,
+                confiance=trading.confiance,
+                direction=normalized_direction,
+                conclusion=trading.conclusion,
+            )
 
         # --- Step 5: Write results to DB ---
         if not dry_run:

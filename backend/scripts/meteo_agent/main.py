@@ -76,7 +76,11 @@ def main() -> int:
 
     # P2b: target_date = upcoming trading session. --force or explicit
     # --target-date bypass the gate (backfills, manual reruns).
-    from scripts.db import get_next_session_date, is_eve_of_trading_day
+    from scripts.db import (
+        get_next_session_date,
+        get_previous_session_date,
+        is_eve_of_trading_day,
+    )
 
     target_date: date_type = args.target_date or get_next_session_date()
 
@@ -91,10 +95,18 @@ def main() -> int:
     if args.bootstrap_memory:
         return _run_bootstrap()
 
+    # ``data_date`` = last completed trading session, matches the dashboard's
+    # session_date convention. The row is dated here even though the prompt
+    # frames the analysis as "preparing the upcoming session" — see press
+    # review agent for the same pattern + rationale.
+    data_date: date_type = get_previous_session_date(target_date)
+
     logger.info("=" * 60)
     logger.info("Meteo Agent - Cocoa Weather Analysis")
     logger.info("Mode: %s", "DRY RUN" if args.dry_run else "LIVE")
-    logger.info("Target session: %s", target_date)
+    logger.info(
+        "Target session: %s | Data session (row date): %s", target_date, data_date
+    )
     logger.info("=" * 60)
 
     try:
@@ -194,12 +206,14 @@ def main() -> int:
         from scripts.meteo_agent.db_writer import write_llm_call, write_observation
 
         with get_session() as session:
-            # P2b: explicit observation_date = target_date (upcoming session)
-            # — was previously implicit date.today() inside write_observation.
+            # P2b: observation_date = data_date (= last completed session).
+            # Dashboard queries pl_weather_observation.date == session_date
+            # (= previous_trading_day(display_date)); writing at target_date
+            # would leave session_date empty on the morning after.
             write_observation(
                 session,
                 result.parsed,
-                observation_date=target_date,
+                observation_date=data_date,
                 dry_run=args.dry_run,
             )
             write_llm_call(
@@ -231,6 +245,8 @@ def main() -> int:
         sentry_sdk.set_context(
             "meteo_agent",
             {
+                "target_date": target_date.isoformat(),
+                "data_date": data_date.isoformat(),
                 "weather_data_chars": len(weather_data),
                 "usage": result.usage,
                 "latency_ms": result.latency_ms,

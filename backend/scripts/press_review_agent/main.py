@@ -88,7 +88,11 @@ def main() -> int:
         logging.getLogger().setLevel(logging.DEBUG)
 
     # P2b: resolve target_date = upcoming trading session.
-    from scripts.db import get_next_session_date, is_eve_of_trading_day
+    from scripts.db import (
+        get_next_session_date,
+        get_previous_session_date,
+        is_eve_of_trading_day,
+    )
 
     target_date: date_type = args.target_date or get_next_session_date()
 
@@ -101,12 +105,21 @@ def main() -> int:
             )
             return 0
 
+    # ``data_date`` = last completed trading session = the row date that
+    # matches the dashboard's session_date convention (= previous_trading_day
+    # of the display_date the frontend shows). The prompt addresses
+    # ``target_date`` (the upcoming session the review informs), but the
+    # ROW is dated at ``data_date`` so dashboard queries align with
+    # pl_contract_data_daily / pl_indicator_daily rows that compute-indicators
+    # wrote for the same session.
+    data_date: date_type = get_previous_session_date(target_date)
+
     providers = parse_providers(args.provider)
 
     logger.info("=" * 60)
     logger.info("Press Review Agent - Cocoa Market Analysis")
     logger.info(f"Mode: {'DRY RUN' if args.dry_run else 'LIVE'}")
-    logger.info(f"Target session: {target_date}")
+    logger.info(f"Target session: {target_date} | Data session (row date): {data_date}")
     logger.info(f"Providers: {', '.join(p.value for p in providers)}")
     logger.info("=" * 60)
 
@@ -189,13 +202,16 @@ def main() -> int:
             )
 
             with get_session() as session:
-                # P2b: explicit article_date = target_date (upcoming session)
-                # — was previously implicit date.today() in write_article.
+                # P2b: article_date = data_date (= last completed session).
+                # The dashboard queries pl_fundamental_article.date by
+                # session_date (= previous_trading_day(display_date)). If we
+                # store the press at target_date (upcoming session) the
+                # dashboard fetches 0 rows on the morning after.
                 article_id = write_article(
                     session,
                     result.provider,
                     result.parsed,
-                    article_date=target_date,
+                    article_date=data_date,
                     dry_run=args.dry_run,
                     source_count=successful_sources,
                     total_sources=len(news_results),
@@ -215,13 +231,15 @@ def main() -> int:
                 if result.parsed is not None:
                     try:
                         # P2b: theme sentiments share the same date as the
-                        # article (target_date). Previous bug used
-                        # date.today() which produced phantom rows on the
-                        # eve-of-trading-day or non-session days.
+                        # article row → data_date (= last completed session),
+                        # not target_date. Keeps pl_article_segment in sync
+                        # with pl_fundamental_article so the sentiment
+                        # batch-read in dashboard_service.get_theme_sentiments
+                        # finds rows for session_date.
                         write_theme_sentiments(
                             session,
                             article_id or uuid.uuid4(),
-                            target_date,
+                            data_date,
                             result.parsed.get("theme_sentiments") or {},
                             result.provider,
                             dry_run=args.dry_run,
@@ -241,6 +259,7 @@ def main() -> int:
             "press_review",
             {
                 "target_date": target_date.isoformat(),
+                "data_date": data_date.isoformat(),
                 "close_date": close_date_str,
                 "close": close_price,
                 "sources_fetched": successful_sources,

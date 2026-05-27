@@ -1,15 +1,22 @@
 """Render the ensemble brief from an :class:`EnsembleBriefData` instance.
 
-7-section template (I-VII) — designed to leverage ensemble's structured outputs:
-  I.   Signal ensemble + persistence + triggers réévaluation
-  II.  Décomposition 14 spécialistes (clusters Winter + Spring)
-  III. Macro radar ensemble (sentiment + anomaly + priors)
-  IV.  Éco & press review (LLM narrative)
-  V.   Weather watch
-  VI.  Chiffres techniques
-  VII. Recommandations opérationnelles
+7-section template + a contextual intro to the panel of specialists :
+
+  Intro — Qui parle aujourd'hui (le panel + qui s'engage)
+  I.    Signal ensemble + persistence + triggers réévaluation
+  II.   Les spécialistes qui se sont exprimés aujourd'hui (committed only)
+        — listed by business profile (cf. specialist_catalog.SPECIALIST_CATALOG)
+  III.  Macro radar ensemble (sentiment + anomaly + priors)
+  IV.   Éco & press review (LLM narrative)
+  V.    Weather watch
+  VI.   Chiffres techniques
+  VII.  Recommandations opérationnelles
 
 Pure formatter — no DB, no LLM. Takes the assembled data and returns a string.
+The committed/abstained vocabulary follows the soft-gate's semantic : a
+specialist whose pred is OPEN or HEDGE is *engaged*, one whose pred is MONITOR
+is *abstaining* (it contributes 0 to the gate's net_score). This is why the
+brief focuses on the engaged voices — they are the ones the gate listened to.
 """
 
 from __future__ import annotations
@@ -17,6 +24,12 @@ from __future__ import annotations
 from datetime import date as date_type, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
+
+from scripts.compass_brief_ensemble.specialist_catalog import (
+    SPECIALIST_CATALOG,
+    cluster_of,
+    lookup,
+)
 
 if TYPE_CHECKING:
     from scripts.compass_brief_ensemble.db_reader import (
@@ -42,22 +55,11 @@ MOIS_FR = {
 SEP_THICK = "═" * 70
 SEP_THIN = "─" * 70
 
-# Heuristic mapping from specialist_name → cluster. Aligned with the R&D
-# documentation in docs/onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md.
-# Winter cluster = TB/FX-anchored specialists. Spring cluster = macro/ENSO
-# anchored. We classify on the prefix/suffix of the specialist name; any
-# unknown name falls into "uncategorised" and is still listed in the table.
-_WINTER_TAGS = ("xpol_W", "xpol_w_", "exp_optim_002", "exp_optim_005", "exp_optim_008")
-_SPRING_TAGS = ("xpol_S", "xpol_s_", "exp_optim_011", "macro_combined", "spring")
-
-
-def _classify_specialist(name: str) -> str:
-    n = name.lower()
-    if any(t.lower() in n for t in _WINTER_TAGS):
-        return "winter"
-    if any(t.lower() in n for t in _SPRING_TAGS):
-        return "spring"
-    return "other"
+# A specialist whose vote is one of these is considered *committed* by the
+# soft-gate (it contributes to the weighted net_score). MONITOR-level votes
+# at the specialist level are abstentions, not "MONITOR votes" in the usual
+# sense — they sit out, neither pushing the gate up nor down.
+_ENGAGED_VOTES = {"OPEN", "HEDGE"}
 
 
 def _format_date(value) -> str:
@@ -125,6 +127,15 @@ def _bool_str(value: bool) -> str:
     return "oui" if value else "non"
 
 
+def _vote_phrase(pred: str) -> str:
+    """Human-friendly verb for a vote at the specialist level."""
+    if pred == "OPEN":
+        return "ouvre la position"
+    if pred == "HEDGE":
+        return "appelle à couvrir"
+    return "préfère ne pas s'exprimer"
+
+
 def render_brief(data: "EnsembleBriefData") -> str:
     """Render the full ensemble brief as a single text block."""
     lines: list[str] = []
@@ -137,13 +148,19 @@ def render_brief(data: "EnsembleBriefData") -> str:
     lines.append(SEP_THICK)
     lines.append("")
 
+    # ── Intro — Qui parle aujourd'hui ─────────────────────────────────────
+    lines.append("À PROPOS DU PANEL COMPASS")
+    lines.append(SEP_THIN)
+    lines.extend(_render_panel_intro(data))
+    lines.append("")
+
     # ── I — Signal ensemble ───────────────────────────────────────────────
     lines.append("I — SIGNAL ENSEMBLE")
     lines.append(SEP_THIN)
     lines.append(f"  Position           : {data.decision}")
     if data.confidence is not None:
         lines.append(
-            f"  Confiance          : {data.confidence}/5 (LLM-judged contextuel)"
+            f"  Confiance          : {data.confidence}/5 (jugée par notre relecteur LLM)"
         )
     if data.direction:
         lines.append(f"  Direction          : {data.direction}")
@@ -157,38 +174,10 @@ def render_brief(data: "EnsembleBriefData") -> str:
             lines.append(f"    • {t}")
     lines.append("")
 
-    # ── II — Décomposition spécialistes ──────────────────────────────────
-    lines.append("II — DÉCOMPOSITION 14 SPÉCIALISTES")
+    # ── II — Les spécialistes qui se sont exprimés ────────────────────────
+    lines.append("II — LES SPÉCIALISTES QUI SE SONT EXPRIMÉS AUJOURD'HUI")
     lines.append(SEP_THIN)
-    winter_glyph = _direction_glyph(data.winter_vote_signed)
-    winter_tag = _cluster_tag(data.winter_vote_signed)
-    spring_glyph = _direction_glyph(data.spring_vote_signed)
-    spring_tag = _cluster_tag(data.spring_vote_signed)
-    lines.append(
-        f"  Cluster Winter (TB/FX)        : {_fmt(data.winter_vote_signed, 0)}  "
-        f"{winter_glyph} {winter_tag}"
-    )
-    lines.append(
-        f"  Cluster Spring (macro/ENSO)   : {_fmt(data.spring_vote_signed, 0)}  "
-        f"{spring_glyph} {spring_tag}"
-    )
-    lines.append(
-        f"  Specialists committed         : {_fmt(data.n_committed_specialists, 0)}/14"
-    )
-
-    dissenters = _find_dissenters(data.specialists, data.decision)
-    if dissenters:
-        lines.append(
-            f"  Désaccord notable             : {', '.join(s.name for s in dissenters)} "
-            f"(votent {dissenters[0].pred})"
-        )
-    lines.append("")
-    lines.append("  Tableau détaillé :")
-    for spec in data.specialists:
-        cluster = _classify_specialist(spec.name)
-        lines.append(
-            f"    {spec.name:<32s} {spec.pred:<8s} window={spec.window_months}m  [{cluster}]"
-        )
+    lines.extend(_render_specialists_section(data))
     lines.append("")
 
     # ── III — Macro radar ──────────────────────────────────────────────────
@@ -273,6 +262,148 @@ def render_brief(data: "EnsembleBriefData") -> str:
     return "\n".join(lines)
 
 
+def _render_panel_intro(data: "EnsembleBriefData") -> list[str]:
+    """Magazine-style intro that explains *what* the panel is.
+
+    Read aloud first thing in the podcast so the auditeur understands the
+    speakers behind the upcoming decision. Deliberately repeated each day —
+    the auditeur may be discovering the system on this brief.
+    """
+    n_committed = data.n_committed_specialists or 0
+    n_abstained = 14 - n_committed
+    return [
+        "  Le signal du jour provient de l'ensemble Compass v1.0.0 — un panel de",
+        "  14 spécialistes propriétaires entraînés en machine learning sur dix ans",
+        "  de données cocoa Londres. Chacun a sa propre méthode : structure",
+        "  de prix, lecture FX, conditions climatiques ENSO, dynamique de",
+        "  volatilité. Six d'entre eux composent le cluster Winter (tendance",
+        "  technique + FX), huit autres le cluster Spring (macro et climat).",
+        "",
+        "  Chaque jour, ces spécialistes ont le choix entre trois positions :",
+        "  s'engager à l'achat (OPEN), appeler à la couverture (HEDGE), ou",
+        "  s'abstenir (MONITOR) quand leur signal est trop faible. L'orchestrateur",
+        "  bayésien Compass agrège uniquement les voix engagées et tranche.",
+        "",
+        f"  Aujourd'hui {n_committed} spécialiste(s) sur 14 se sont engagés ; "
+        f"{n_abstained} ont préféré s'abstenir.",
+    ]
+
+
+def _render_specialists_section(data: "EnsembleBriefData") -> list[str]:
+    """Section II — focused on engaged specialists, with their profiles.
+
+    The committed/abstained partition follows the soft-gate semantic. We
+    expose every engaged specialist with its business profile (label +
+    description from SPECIALIST_CATALOG) so the auditeur understands *who*
+    is speaking, not just an aggregate count. Abstainers are summarised.
+    """
+    lines: list[str] = []
+
+    winter_glyph = _direction_glyph(data.winter_vote_signed)
+    winter_tag = _cluster_tag(data.winter_vote_signed)
+    spring_glyph = _direction_glyph(data.spring_vote_signed)
+    spring_tag = _cluster_tag(data.spring_vote_signed)
+
+    lines.append(
+        f"  Score cumulé Winter (TB/FX)        : {_fmt(data.winter_vote_signed, 0)}  "
+        f"{winter_glyph} {winter_tag}"
+    )
+    lines.append(
+        f"  Score cumulé Spring (macro/ENSO)   : {_fmt(data.spring_vote_signed, 0)}  "
+        f"{spring_glyph} {spring_tag}"
+    )
+    lines.append(
+        f"  Spécialistes engagés               : "
+        f"{_fmt(data.n_committed_specialists, 0)}/14"
+    )
+    lines.append("")
+
+    # Partition specialists: engaged (OPEN or HEDGE) vs abstained (MONITOR)
+    engaged: list[SpecialistVote] = [
+        s for s in data.specialists if s.pred in _ENGAGED_VOTES
+    ]
+    abstained: list[SpecialistVote] = [
+        s for s in data.specialists if s.pred not in _ENGAGED_VOTES
+    ]
+
+    if not engaged:
+        lines.append(
+            "  Aucun spécialiste ne s'est engagé aujourd'hui — le panel reste "
+            "spectateur, la décision finale revient au prior structurel."
+        )
+        lines.append("")
+        return lines
+
+    lines.append(f"  ★ Voix engagées ({len(engaged)})")
+    lines.append("")
+
+    for vote in engaged:
+        profile = lookup(vote.name)
+        if profile is None:
+            # Unknown specialist — should never happen in steady state. Be
+            # defensive : show the raw name so the brief still renders.
+            lines.append(
+                f"    [{vote.pred}] {vote.name} — profil non répertorié "
+                f"(window={vote.window_months}m)"
+            )
+            continue
+        # Header line — vote + business label + cluster code
+        lines.append(
+            f"    [{vote.pred:5s}] {profile.label}  · cluster {profile.cluster.capitalize()} "
+            f"({profile.code}, horizon {profile.horizon_days}j)"
+        )
+        # Description wrapped onto two indented lines for readability
+        for chunk in _wrap_indented(profile.description, indent="      ", width=80):
+            lines.append(chunk)
+        lines.append(
+            f"      → {profile.label.split(' — ')[0]} {_vote_phrase(vote.pred)} ce jour."
+        )
+        lines.append("")
+
+    if abstained:
+        lines.append(f"  ☐ Voix silencieuses ({len(abstained)})")
+        lines.append(
+            "    Les autres spécialistes ont jugé leur signal insuffisant pour "
+            "engager une position et ne contribuent pas au score."
+        )
+        abstained_names = [
+            (lookup(s.name).label if lookup(s.name) else s.name) for s in abstained
+        ]
+        # Render names compactly in groups of 3 for podcast read-aloud friendliness
+        for i in range(0, len(abstained_names), 3):
+            chunk = ", ".join(abstained_names[i : i + 3])
+            lines.append(f"      · {chunk}")
+
+    return lines
+
+
+def _wrap_indented(text: str, indent: str, width: int = 80) -> list[str]:
+    """Soft-wrap ``text`` to lines of at most ``width`` chars, prefixed by indent.
+
+    Word-aware, no hyphenation, preserves the original phrasing. Every wrapped
+    line keeps the ``indent`` prefix so the brief stays visually aligned.
+    """
+    if not text:
+        return []
+    words = text.split()
+    lines: list[str] = []
+    current = indent  # holds the line currently being built, indent + payload
+    for word in words:
+        if current == indent:
+            # No payload yet — start the line with the first word.
+            candidate = indent + word
+        else:
+            candidate = current + " " + word
+        if len(candidate) <= width:
+            current = candidate
+        else:
+            lines.append(current)
+            current = indent + word
+    if current != indent:
+        lines.append(current)
+    return lines
+
+
 def _build_triggers(data: "EnsembleBriefData") -> list[str]:
     """Build the list of "reasons to re-evaluate" based on current diagnostics."""
     triggers: list[str] = []
@@ -293,12 +424,23 @@ def _build_triggers(data: "EnsembleBriefData") -> list[str]:
     return triggers
 
 
+# Kept for backward-compat — used to be imported elsewhere. New callers should
+# read profiles via the catalog directly.
+def _classify_specialist(name: str) -> str:
+    """Delegate to the catalog. Returns 'winter' / 'spring' / 'other'."""
+    return cluster_of(name)
+
+
 def _find_dissenters(
     specialists: list["SpecialistVote"], decision: str
 ) -> list["SpecialistVote"]:
-    """Return specialists whose vote differs from the wrapped decision.
-
-    Useful narrative element : "1 sceptique sur 14 vote HEDGE alors que le
-    consensus est OPEN".
-    """
+    """Return specialists whose vote differs from the wrapped decision."""
     return [s for s in specialists if s.pred != decision]
+
+
+# Exposed for compatibility with downstream callers that might import the
+# catalog symbol from here. Re-exporting keeps the import path stable.
+__all__ = [
+    "render_brief",
+    "SPECIALIST_CATALOG",
+]

@@ -23,6 +23,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.services.dashboard_service import YTD_EVAL_HORIZON_DAYS, _score_day
 from scripts.compass_brief_ensemble.config import ALGORITHM_NAME, ALGORITHM_VERSION
 
 logger = logging.getLogger(__name__)
@@ -172,6 +173,96 @@ def _read_specialists(
     return [SpecialistVote(name=r[0], pred=r[1], window_months=r[2]) for r in rows]
 
 
+def _compute_running_accuracy(
+    session: Session,
+    reference_date: date,
+    contract_id: Any,
+    *,
+    window: int = 5,
+    horizon: int = YTD_EVAL_HORIZON_DAYS,
+) -> Decimal | None:
+    """Compass running accuracy over the last ``window`` evaluable decisions.
+
+    Sync counterpart of ``app.services.ensemble_diagnostics_service._compute_running_accuracy``.
+    Same logic, same horizon constant (J+4), same COALESCE(ensemble, legacy)
+    fallback : a decision made at T is evaluable on T+horizon, we pick the
+    most recent ``window`` evaluable decisions, score each via _score_day,
+    and return the share of positive scores.
+
+    Why we recompute it for the brief instead of trusting
+    ``pl_orchestrator_decision.running_acc_5d``: the R&D field can be NaN
+    during the bootstrap window after each monthly retraining, and uses a
+    different classification logic than the Compass scoring formula. Keeping
+    the brief consistent with the dashboard YTD figure requires this compute.
+
+    Returns ``None`` if fewer than ``window`` evaluable decisions exist —
+    caller can then fall back to the upstream R&D value if they want.
+    """
+    start_date = date.fromordinal(reference_date.toordinal() - 45)
+    rows = session.execute(
+        text(
+            """
+            WITH front_month AS (
+                SELECT DISTINCT ON (cd.date) cd.date, cd.close, cd.contract_id
+                FROM pl_contract_data_daily cd
+                WHERE cd.date <= :ref_date AND cd.date >= :start_date
+                  AND cd.contract_id = :contract
+                ORDER BY cd.date, cd.oi DESC NULLS LAST
+            )
+            SELECT
+                fm.date,
+                fm.close,
+                COALESCE(ens.decision, leg.decision) AS decision
+            FROM front_month fm
+            LEFT JOIN pl_indicator_daily ens
+                   ON ens.date = fm.date
+                  AND ens.contract_id = fm.contract_id
+                  AND ens.algorithm_version_id = (
+                      SELECT id FROM pl_algorithm_version
+                      WHERE name = 'ensemble_v1_softgate_wrapper'
+                      ORDER BY created_at DESC LIMIT 1)
+            LEFT JOIN pl_indicator_daily leg
+                   ON leg.date = fm.date
+                  AND leg.contract_id = fm.contract_id
+                  AND leg.algorithm_version_id = (
+                      SELECT id FROM pl_algorithm_version
+                      WHERE name = 'legacy'
+                      ORDER BY created_at DESC LIMIT 1)
+            ORDER BY fm.date ASC
+            """
+        ),
+        {
+            "ref_date": reference_date,
+            "start_date": start_date,
+            "contract": contract_id,
+        },
+    ).all()
+
+    if len(rows) <= horizon:
+        return None
+
+    scored: list[float] = []
+    for i in range(len(rows) - horizon):
+        current = rows[i]
+        future = rows[i + horizon]
+        if not current.decision or current.close is None or future.close is None:
+            continue
+        s = _score_day(
+            current.decision.strip().upper(),
+            float(current.close),
+            float(future.close),
+        )
+        if s is not None:
+            scored.append(s)
+
+    if len(scored) < window:
+        return None
+
+    last_window = scored[-window:]
+    wins = sum(1 for s in last_window if s > 0)
+    return Decimal(wins) / Decimal(window)
+
+
 def _read_persistence_days(
     session: Session,
     target_date: date,
@@ -309,6 +400,11 @@ def read_brief_data(
     persistence = _read_persistence_days(
         session, effective_data_date, contract_id, algo_id, ind["decision"]
     )
+    # Compute the Compass-formula running accuracy (J+4 horizon, same as the
+    # dashboard YTD). Falls back to the raw R&D field when the window has
+    # fewer than 5 evaluable decisions (mostly historical backfills).
+    computed_acc = _compute_running_accuracy(session, effective_data_date, contract_id)
+    running_acc_5d = computed_acc if computed_acc is not None else orc["running_acc_5d"]
 
     logger.info(
         "Brief data assembled: decision=%s specialists=%d persistence=%dj",
@@ -332,7 +428,7 @@ def read_brief_data(
         fired_trend=bool(orc["fired_trend"]),
         fired_dispersion=bool(orc["fired_dispersion"]),
         fired_three_way=bool(orc["fired_three_way"]),
-        running_acc_5d=orc["running_acc_5d"],
+        running_acc_5d=running_acc_5d,
         realized_return_5d=orc["realized_return_5d"],
         anomaly_score_z=orc["anomaly_score_z"],
         macro_direction=orc["macro_direction"],

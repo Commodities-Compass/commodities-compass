@@ -52,9 +52,9 @@ On-demand| cc-ensemble-bootstrap-artifacts       | ENSEMBLE     | Manual (no sch
 | Job | Cron UTC | Track | Input source | Output table | Statut |
 |---|---|---|---|---|---|
 | **cc-barchart-scraper** | `0 19 * * 1-5` | shared | Barchart.com HTML/XHR (CAK26) | `pl_contract_data_daily` (OHLCV+IV) | ✅ Actif |
-| **cc-ice-stocks-scraper** | `5 19 * * 1-5` | shared | ICE public XLS report | `pl_contract_data_daily.stock_us` | ✅ Actif |
-| **cc-cftc-scraper** | `5 19 * * 1-5` | shared | CFTC.gov HTML | `pl_contract_data_daily.com_net_us` | ✅ Actif |
-| **cc-barchart-stocks-eu-scraper** | `10 19 * * 1-5` | shared | Barchart cmdty page | `pl_contract_data_daily.stock_eu_bags60kg` | ✅ Actif |
+| **cc-ice-stocks-scraper** | `5 19 * * 1-5` | shared | ICE public XLS report | `pl_stock_observation` (region='us', tonnes) | ✅ Actif (refactor 2026-05-27) |
+| **cc-cftc-scraper** | `5 19 * * 1-5` | shared | CFTC.gov HTML | `pl_cot_us_weekly` (Disaggregated COT — long/short/MM) | ✅ Actif (refactor 2026-05-27) |
+| **cc-barchart-stocks-eu-scraper** | `10 19 * * 1-5` | shared | Barchart cmdty page | `pl_stock_observation` (region='eu', bags_60kg + tonnes) | ✅ Actif (refactor 2026-05-27) |
 | **cc-ice-cot-eu-scraper** | `10 22 * * 1-5` | ENSEMBLE-only | ICE public CSV `COTHistYYYY.csv` | `pl_cot_eu_weekly` | ✅ Actif |
 | **cc-fx-scraper** | `30 18 * * 1-5` | shared | ECB SDMX 2.1 CSV | `pl_external_indicator.fx_*` | ✅ Actif |
 | **cc-enso-scraper** | `0 22 20 * *` | ENSEMBLE-only | NOAA PSL ASCII | `pl_external_indicator.enso_*` | ✅ Actif (monthly) |
@@ -107,9 +107,9 @@ On-demand| cc-ensemble-bootstrap-artifacts       | ENSEMBLE     | Manual (no sch
 
 **Cron** : `5 19 * * 1-5`
 
-**Output** : UPDATE `pl_contract_data_daily.stock_us` sur la row du jour. Walks back jusqu'à 60 business days si le report du jour n'existe pas (variantes `a`-suffix).
+**Output** (refactor 2026-05-27) : UPSERT `pl_stock_observation` keyed on `(region='us', report_date, contract_market='cocoa')`. `report_date` = la date écrite dans le XLS par ICE (PAS aujourd'hui). Walks back jusqu'à 60 business days si le rapport du jour n'existe pas (variantes `a`-suffix), et l'`actual_date` du fichier trouvé est ce qui est stocké. Tag `source='ice_us_report41'`.
 
-**Tolérance** : ICE publie en fin de journée US. La marge de 5min après Barchart garantit que la row OHLCV existe avant l'UPDATE.
+**Avant la migration r2m3n4o5p6q7** : écrivait sur `pl_contract_data_daily.stock_us` keyed on session date (today), ce qui perdait le vrai report_date.
 
 ### 3.3 `cc-cftc-scraper`
 
@@ -117,15 +117,17 @@ On-demand| cc-ensemble-bootstrap-artifacts       | ENSEMBLE     | Manual (no sch
 
 **Track** : shared
 
-**Description** : scrape le COT report de CFTC pour le commercial net position cocoa (Producer/Merchant Long − Short). C'est le COT US, pas EU.
+**Description** (refactor 2026-05-27) : scrape le **Disaggregated COT report** CFTC pour cocoa (ICE Futures U.S.). Extrait désormais Open Interest, Producer/Merchant L/S, Swap L/S/Spread, **Managed Money L/S/Spread** (parité avec ICE EU), Other Reportables L/S, Non-Reportable L/S — au lieu du seul net Producer/Merchant.
 
 **Source** : `https://www.cftc.gov/dea/futures/ag_lf.htm`. Pure httpx + regex, no browser. Idempotent — re-run safe.
 
+**Date extraction** : header `Disaggregated Commitments of Traders - Futures Only, <Month> <Day>, <Year>` → `report_date` (Tuesday). `release_date = report_date + 3 days` (CFTC publication convention). Fail-loud si le report a plus de 14 jours (publisher freeze détecté).
+
 **Cron** : `5 19 * * 1-5`. Nouvelle data uniquement les vendredis ~21:30 CET (publication officielle).
 
-**Output** : UPDATE `pl_contract_data_daily.com_net_us`.
+**Output** : UPSERT `pl_cot_us_weekly` keyed on `(release_date, contract_market='cocoa')`. `prod_merc_net` et `m_money_net` sont des colonnes Postgres GENERATED.
 
-**Note ensemble** : l'ensemble préfère le COT EU (`pl_cot_eu_weekly`) au COT US — meilleure adéquation géographique avec le contrat LCE. Mais COT US reste utile comme proxy global pour le legacy.
+**Avant la migration r2m3n4o5p6q7** : UPDATE `pl_contract_data_daily.com_net_us` (juste le net Producer/Merchant, écrasé chaque weekday).
 
 ### 3.4 `cc-barchart-stocks-eu-scraper`
 
@@ -133,15 +135,17 @@ On-demand| cc-ensemble-bootstrap-artifacts       | ENSEMBLE     | Manual (no sch
 
 **Track** : shared (lu par ensemble specialists FX cluster)
 
-**Description** : scrape les certified cocoa stocks ICE Europe (60kg bags) depuis Barchart cmdty page. Updates seulement (jamais INSERT — la row OHLCV doit déjà exister).
+**Description** : scrape les certified cocoa stocks ICE Europe (60kg bags) depuis Barchart cmdty page. ICE Europe publie chaque mardi midi GMT.
 
 **Source** : `https://www.barchart.com/cmdty/data/fundamental/explore/IC345DRW.CS`. Pure httpx + BeautifulSoup. Validate native unit `60 Kg Bag` + multiplier 1 — fail-loud si drift.
 
-**Cron** : `10 19 * * 1-5` (10min après cc-barchart-scraper pour que la row OHLCV soit présente).
+**Cron** : `10 19 * * 1-5`
 
-**Output** : UPDATE `pl_contract_data_daily.stock_eu_bags60kg` sur la row du dernier jour reporté.
+**Output** (refactor 2026-05-27) : UPSERT `pl_stock_observation` keyed on `(region='eu', report_date, contract_market='cocoa')`. `report_date` = `Most Recent Date` parsé sur la page Barchart (= mardi de publication ICE EU). Stocke `value_native` en `bags_60kg` + `value_tonnes` (calcul × 60 / 1000 fait par le shared writer). Tag `source='barchart_ic345drw'`.
 
-**Fail-loud** : missing OHLCV row pour cette date → `StockEuRowMissingError`.
+**Drift detection** : si `obs.date > 14 jours`, log ERROR + Sentry alert — Barchart ou ICE EU a probablement arrêté de publier.
+
+**Avant la migration r2m3n4o5p6q7** : UPDATE `pl_contract_data_daily.stock_eu_bags60kg` keyed on session date, écrasait la même valeur lun-ven jusqu'au mardi suivant. Dépendait d'une row OHLCV pré-existante (fail-loud `StockEuRowMissingError`) — désormais auto-suffisant, plus de couplage à OHLCV.
 
 ### 3.5 `cc-ice-cot-eu-scraper`
 
@@ -470,7 +474,7 @@ Voir détail dans [PIPELINE_ENSEMBLE.md](./PIPELINE_ENSEMBLE.md) §7.
 | Job qui fail | Impact downstream |
 |---|---|
 | `cc-barchart-scraper` | ❌ Tous les downstream (no OHLCV → compute-indicators fail → ensemble + daily-analysis fail → no brief) |
-| `cc-ice-stocks-scraper` ou `cc-cftc` | ⚠️ Tolerable — row OHLCV existe, mais stock_us/com_net seront NULL pour cette date. Brief affichera N/A. |
+| `cc-ice-stocks-scraper` ou `cc-cftc` | ⚠️ Tolerable — depuis 2026-05-27, ces tables sont indépendantes de l'OHLCV row. Pas de fail-loud. Le dashboard / brief continueront d'afficher la dernière obs en date (forward-fill on/before pattern) avec le `*_report_date` affiché côté frontend pour signaler la fraîcheur. |
 | `cc-compute-indicators` | ❌ ensemble + daily-analysis fail (no indicators) |
 | `cc-ensemble-compute` | ⚠️ cc-ensemble-explainer fail (no ensemble row), cc-compass-brief-ensemble fail. Legacy brief intact. |
 | `cc-daily-analysis` | ⚠️ Legacy brief incomplet (decision/eco missing). Ensemble brief intact. |
@@ -484,7 +488,7 @@ Voir détail dans [PIPELINE_ENSEMBLE.md](./PIPELINE_ENSEMBLE.md) §7.
 
 | Table DB | Écrit par | Lu par | Track utilisation |
 |---|---|---|---|
-| `pl_contract_data_daily` | barchart, ice-stocks, cftc, barchart-stocks-eu | compute-indicators, daily-analysis, ensemble-compute, ensemble-explainer, compass-brief, compass-brief-ensemble, frontend | shared |
+| `pl_contract_data_daily` | barchart-scraper (uniquement OHLCV+IV depuis 2026-05-27) | compute-indicators, daily-analysis, ensemble-compute, ensemble-explainer, compass-brief, compass-brief-ensemble, frontend | shared |
 | `pl_derived_indicators` | compute-indicators | daily-analysis, ensemble-compute, ensemble-explainer, compass-brief, compass-brief-ensemble | shared |
 | `pl_indicator_daily` (numerics) | compute-indicators | compass-brief, compass-brief-ensemble | shared |
 | `pl_indicator_daily.decision` legacy | daily-analysis (with `--algorithm-version legacy`) | compass-brief, frontend (fallback) | LEGACY |
@@ -493,12 +497,14 @@ Voir détail dans [PIPELINE_ENSEMBLE.md](./PIPELINE_ENSEMBLE.md) §7.
 | `pl_indicator_daily.{eco,conf,dir,concl}` ensemble | ensemble-explainer | compass-brief-ensemble | ENSEMBLE |
 | `pl_orchestrator_decision` | ensemble-compute | ensemble-explainer, compass-brief-ensemble, frontend (`/ensemble-diagnostics`) | ENSEMBLE |
 | `pl_specialist_prediction` | ensemble-compute | ensemble-explainer, compass-brief-ensemble, frontend (`/ensemble-diagnostics`) | ENSEMBLE |
+| `pl_stock_observation` | ice-stocks-scraper (region='us'), barchart-stocks-eu-scraper (region='eu') | positioning_service (dashboard gauges), daily-analysis (STOCKTOD), compass-brief (STOCK US), julien_handoff, watchlist_eval | shared (NEW 2026-05-27) |
+| `pl_cot_us_weekly` | cftc-scraper (Disaggregated COT, depuis 2026-05-27) | positioning_service (dashboard gauges + COT US release date), daily-analysis (COMNETTOD), compass-brief (COM NET US), julien_handoff, watchlist_eval | shared (NEW 2026-05-27) |
 | `pl_fundamental_article` | press-review-agent | daily-analysis (Call #1), ensemble-explainer, compass-brief, compass-brief-ensemble, frontend | shared |
 | `pl_article_segment` | press-review-agent | ensemble-compute (MacroEventLayer) | ENSEMBLE-relevant |
 | `pl_weather_observation` | meteo-agent | daily-analysis (Call #1), ensemble-explainer, compass-brief, compass-brief-ensemble, frontend | shared |
 | `pl_seasonal_score` | meteo-agent | frontend (Weather card) | shared |
 | `pl_external_indicator` | enso-scraper, fx-scraper | ensemble-compute specialists | ENSEMBLE |
-| `pl_cot_eu_weekly` | ice-cot-eu-scraper | ensemble-compute specialists | ENSEMBLE |
+| `pl_cot_eu_weekly` | ice-cot-eu-scraper | ensemble-compute specialists, positioning_service | ENSEMBLE + shared |
 | `pl_supply_demand_observation` | eca-grindings, nca-grindings | (réservé future — brief enrichments) | shared, dormant |
 | `ref_publication_calendar` | (seeded by migration), UPDATE by ECA/NCA scrapers | ECA/NCA scrapers, watchdog | shared |
 | `pl_model_artifact` | ensemble-bootstrap-artifacts | ensemble-compute | ENSEMBLE |

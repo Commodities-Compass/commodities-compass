@@ -263,8 +263,11 @@ class TestMigrateRawMarketData:
         assert cd.volume == 1200
         assert cd.oi == 8000
         assert cd.implied_volatility == Decimal("0.55")
-        assert cd.stock_us == Decimal("12000")
-        assert cd.com_net_us == Decimal("-5000")
+        # stock_us / com_net_us moved to pl_stock_observation /
+        # pl_cot_us_weekly (migration r2m3n4o5p6q7, 2026-05-27); the
+        # legacy Sheets seed no longer backfills them.
+        assert not hasattr(cd, "stock_us")
+        assert not hasattr(cd, "com_net_us")
         assert cd.open is None
 
     def test_derived_indicators_table_empty(self, sync_db_session):

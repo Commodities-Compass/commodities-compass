@@ -150,8 +150,6 @@ def _convert_numeric_columns(df: pd.DataFrame) -> pd.DataFrame:
         "high",
         "low",
         "implied_volatility",
-        "stock_us",
-        "com_net_us",
         "macroeco_bonus",
     ]:
         if col in result.columns:
@@ -170,7 +168,7 @@ def load_market_data(session: Session, contract_code: str) -> pd.DataFrame:
         text("""
             SELECT
                 d.date, d.close, d.high, d.low, d.volume, d.oi,
-                d.implied_volatility, d.stock_us, d.com_net_us,
+                d.implied_volatility,
                 d.contract_id,
                 i.macroeco_bonus
             FROM pl_contract_data_daily d
@@ -195,8 +193,6 @@ def load_market_data(session: Session, contract_code: str) -> pd.DataFrame:
         "volume",
         "oi",
         "implied_volatility",
-        "stock_us",
-        "com_net_us",
         "contract_id",
         "macroeco_bonus",
     ]
@@ -217,7 +213,7 @@ def load_all_market_data(session: Session) -> pd.DataFrame:
             WITH market AS (
                 SELECT DISTINCT ON (d.date)
                     d.date, d.close, d.high, d.low, d.volume, d.oi,
-                    d.implied_volatility, d.stock_us, d.com_net_us,
+                    d.implied_volatility,
                     d.contract_id,
                     c.code AS contract_code
                 FROM pl_contract_data_daily d
@@ -226,7 +222,7 @@ def load_all_market_data(session: Session) -> pd.DataFrame:
             )
             SELECT
                 m.date, m.close, m.high, m.low, m.volume, m.oi,
-                m.implied_volatility, m.stock_us, m.com_net_us,
+                m.implied_volatility,
                 m.contract_id, m.contract_code,
                 i.macroeco_bonus
             FROM market m
@@ -248,8 +244,6 @@ def load_all_market_data(session: Session) -> pd.DataFrame:
         "volume",
         "oi",
         "implied_volatility",
-        "stock_us",
-        "com_net_us",
         "contract_id",
         "contract_code",
         "macroeco_bonus",

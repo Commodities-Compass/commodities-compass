@@ -181,12 +181,17 @@ class DBBriefReader:
         )
 
     def _read_technicals(self, target_date: date) -> dict[str, str]:
-        """Read raw market data + derived indicators for a date (active contract)."""
+        """Read raw market data + derived indicators for a date (active contract).
+
+        stock_us + com_net_us are weekly cadence — sourced from
+        ``pl_stock_observation`` / ``pl_cot_us_weekly`` since 2026-05-27
+        with the latest-on-or-before-date pattern.
+        """
         result = self._session.execute(
             text("""
                 SELECT
                     d.close, d.high, d.low, d.volume, d.oi,
-                    d.implied_volatility, d.stock_us, d.com_net_us,
+                    d.implied_volatility,
                     di.r1, di.pivot, di.s1,
                     di.ema12, di.ema26,
                     di.macd, di.macd_signal,
@@ -211,12 +216,48 @@ class DBBriefReader:
         columns = result.keys()
         row_dict = dict(zip(columns, row))
 
+        # Inject weekly fields from dedicated tables (replaces the legacy
+        # daily-row columns).
+        row_dict["stock_us"] = self._latest_stock_us_tonnes(target_date)
+        row_dict["com_net_us"] = self._latest_cot_us_prod_merc_net(target_date)
+
         technicals: dict[str, str] = {}
         for db_col, (label, fmt_type) in _TECHNICALS_MAP.items():
             val = row_dict.get(db_col)
             technicals[label] = _fmt(val, fmt_type)
 
         return technicals
+
+    def _latest_stock_us_tonnes(self, on_or_before: date) -> float | None:
+        row = self._session.execute(
+            text(
+                """
+                SELECT value_tonnes FROM pl_stock_observation
+                WHERE region = 'us'
+                  AND contract_market = 'cocoa'
+                  AND report_date <= :d
+                ORDER BY report_date DESC
+                LIMIT 1
+                """
+            ),
+            {"d": on_or_before},
+        ).fetchone()
+        return float(row[0]) if row and row[0] is not None else None
+
+    def _latest_cot_us_prod_merc_net(self, on_or_before: date) -> int | None:
+        row = self._session.execute(
+            text(
+                """
+                SELECT prod_merc_net FROM pl_cot_us_weekly
+                WHERE contract_market = 'cocoa'
+                  AND release_date <= :d
+                ORDER BY release_date DESC
+                LIMIT 1
+                """
+            ),
+            {"d": on_or_before},
+        ).fetchone()
+        return int(row[0]) if row and row[0] is not None else None
 
     def _read_indicators(self, target_date: date) -> dict[str, str]:
         """Read indicator scores + norms + composite for a date."""

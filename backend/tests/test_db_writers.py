@@ -1,10 +1,10 @@
 """Tests for Phase 2 scraper db_writer modules."""
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.models.audit import AudLlmCall
 from app.models.pipeline import (
@@ -166,78 +166,73 @@ class TestBarchartDbWriter:
 
 
 class TestIceStocksDbWriter:
-    def test_update_existing_row(self, sync_db_session, ref_chain_sync):
+    def test_inserts_observation(self, sync_db_session, ref_chain_sync):
         from scripts.ice_stocks_scraper.db_writer import write_stock_us
 
-        contract_id = ref_chain_sync["contract"].id
-        existing = PlContractDataDaily(
-            date=date(2026, 3, 17),
-            contract_id=contract_id,
-            close=Decimal("8500"),
-        )
-        sync_db_session.add(existing)
+        _ = ref_chain_sync  # fixture ensures ref tables seeded
+        write_stock_us(sync_db_session, 150000, report_date=date(2026, 3, 17))
         sync_db_session.flush()
 
-        write_stock_us(sync_db_session, 150000, target_date=date(2026, 3, 17))
+        row = sync_db_session.execute(
+            text(
+                "SELECT region, report_date, value_native, unit_native, "
+                "value_tonnes, source FROM pl_stock_observation"
+            )
+        ).fetchone()
+        assert row.region == "us"
+        assert row.report_date == date(2026, 3, 17)
+        assert row.value_native == Decimal("150000")
+        assert row.unit_native == "tonnes"
+        assert row.value_tonnes == Decimal("150000")
+        assert row.source == "ice_us_report41"
 
-        row = sync_db_session.execute(select(PlContractDataDaily)).scalar_one()
-        assert row.stock_us == Decimal("150000")
-
-    def test_updates_specific_date(self, sync_db_session, ref_chain_sync):
+    def test_updates_specific_report_date(self, sync_db_session, ref_chain_sync):
         from scripts.ice_stocks_scraper.db_writer import write_stock_us
 
-        contract_id = ref_chain_sync["contract"].id
-        sync_db_session.add(
-            PlContractDataDaily(
-                date=date(2026, 3, 14), contract_id=contract_id, close=Decimal("8400")
-            )
-        )
-        sync_db_session.add(
-            PlContractDataDaily(
-                date=date(2026, 3, 17), contract_id=contract_id, close=Decimal("8500")
-            )
-        )
+        _ = ref_chain_sync
+        write_stock_us(sync_db_session, 140000, report_date=date(2026, 3, 14))
+        write_stock_us(sync_db_session, 160000, report_date=date(2026, 3, 17))
         sync_db_session.flush()
 
-        write_stock_us(sync_db_session, 160000, target_date=date(2026, 3, 17))
-
-        latest = sync_db_session.execute(
-            select(PlContractDataDaily).where(
-                PlContractDataDaily.date == date(2026, 3, 17)
+        rows = sync_db_session.execute(
+            text(
+                "SELECT report_date, value_tonnes FROM pl_stock_observation "
+                "ORDER BY report_date"
             )
-        ).scalar_one()
-        assert latest.stock_us == Decimal("160000")
+        ).fetchall()
+        assert [(r.report_date, r.value_tonnes) for r in rows] == [
+            (date(2026, 3, 14), Decimal("140000")),
+            (date(2026, 3, 17), Decimal("160000")),
+        ]
 
-        older = sync_db_session.execute(
-            select(PlContractDataDaily).where(
-                PlContractDataDaily.date == date(2026, 3, 14)
-            )
-        ).scalar_one()
-        assert older.stock_us is None
+    def test_upsert_on_same_report_date_overwrites(
+        self, sync_db_session, ref_chain_sync
+    ):
+        from scripts.ice_stocks_scraper.db_writer import write_stock_us
 
-    def test_no_existing_row_raises(self, sync_db_session, ref_chain_sync):
-        from scripts.ice_stocks_scraper.db_writer import DbWriterError, write_stock_us
+        _ = ref_chain_sync
+        write_stock_us(sync_db_session, 150000, report_date=date(2026, 3, 17))
+        write_stock_us(sync_db_session, 152000, report_date=date(2026, 3, 17))
+        sync_db_session.flush()
 
-        with pytest.raises(DbWriterError, match="No row found"):
-            write_stock_us(sync_db_session, 150000, target_date=date(2026, 3, 17))
+        rows = sync_db_session.execute(
+            text("SELECT value_tonnes FROM pl_stock_observation")
+        ).fetchall()
+        assert len(rows) == 1
+        assert rows[0].value_tonnes == Decimal("152000")
 
     def test_dry_run_no_write(self, sync_db_session, ref_chain_sync):
         from scripts.ice_stocks_scraper.db_writer import write_stock_us
 
-        contract_id = ref_chain_sync["contract"].id
-        sync_db_session.add(
-            PlContractDataDaily(
-                date=date(2026, 3, 17), contract_id=contract_id, close=Decimal("8500")
-            )
-        )
-        sync_db_session.flush()
-
+        _ = ref_chain_sync
         write_stock_us(
-            sync_db_session, 150000, target_date=date(2026, 3, 17), dry_run=True
+            sync_db_session, 150000, report_date=date(2026, 3, 17), dry_run=True
         )
 
-        row = sync_db_session.execute(select(PlContractDataDaily)).scalar_one()
-        assert row.stock_us is None
+        count = sync_db_session.execute(
+            text("SELECT count(*) FROM pl_stock_observation")
+        ).scalar_one()
+        assert count == 0
 
 
 # ---------------------------------------------------------------------------
@@ -246,45 +241,85 @@ class TestIceStocksDbWriter:
 
 
 class TestCftcDbWriter:
-    def test_update_existing_row(self, sync_db_session, ref_chain_sync):
-        from scripts.cftc_scraper.db_writer import write_com_net_us
+    @staticmethod
+    def _make_obs(report_date: date, prod_net: int = -5000):
+        from scripts.cftc_scraper.scraper import CocoaCotUsObservation
 
-        contract_id = ref_chain_sync["contract"].id
-        sync_db_session.add(
-            PlContractDataDaily(
-                date=date(2026, 3, 17), contract_id=contract_id, close=Decimal("8500")
+        return CocoaCotUsObservation(
+            release_date=report_date + timedelta(days=3),
+            report_date=report_date,
+            open_interest=162_798,
+            prod_merc_long=max(prod_net, 0),
+            prod_merc_short=abs(min(prod_net, 0)),
+            swap_long=10_000,
+            swap_short=5_000,
+            swap_spreading=1_000,
+            m_money_long=20_000,
+            m_money_short=15_000,
+            m_money_spreading=2_000,
+            other_rept_long=3_000,
+            other_rept_short=2_000,
+            other_rept_spreading=500,
+            non_rept_long=4_000,
+            non_rept_short=3_500,
+        )
+
+    def test_inserts_row(self, sync_db_session, ref_chain_sync):
+        from scripts.cftc_scraper.db_writer import upsert_cot_us_weekly
+
+        _ = ref_chain_sync
+        obs = self._make_obs(date(2026, 3, 17), prod_net=-5000)
+        upsert_cot_us_weekly(sync_db_session, obs)
+        sync_db_session.flush()
+
+        row = sync_db_session.execute(
+            text(
+                "SELECT release_date, report_date, prod_merc_long, prod_merc_short, "
+                "prod_merc_net, m_money_long, m_money_short, m_money_net, "
+                "open_interest FROM pl_cot_us_weekly"
             )
+        ).fetchone()
+        assert row.release_date == date(2026, 3, 20)
+        assert row.report_date == date(2026, 3, 17)
+        assert row.prod_merc_long == 0
+        assert row.prod_merc_short == 5000
+        assert row.prod_merc_net == -5000
+        assert row.m_money_long == 20000
+        assert row.m_money_net == 5000
+        assert row.open_interest == 162_798
+
+    def test_upsert_overwrites_on_same_release_date(
+        self, sync_db_session, ref_chain_sync
+    ):
+        from scripts.cftc_scraper.db_writer import upsert_cot_us_weekly
+
+        _ = ref_chain_sync
+        upsert_cot_us_weekly(
+            sync_db_session, self._make_obs(date(2026, 3, 17), prod_net=-5000)
+        )
+        upsert_cot_us_weekly(
+            sync_db_session, self._make_obs(date(2026, 3, 17), prod_net=-7000)
         )
         sync_db_session.flush()
 
-        write_com_net_us(sync_db_session, -5000.0, target_date=date(2026, 3, 17))
-
-        row = sync_db_session.execute(select(PlContractDataDaily)).scalar_one()
-        assert row.com_net_us == Decimal("-5000.0")
-
-    def test_no_existing_row_raises(self, sync_db_session, ref_chain_sync):
-        from scripts.cftc_scraper.db_writer import DbWriterError, write_com_net_us
-
-        with pytest.raises(DbWriterError, match="No row found"):
-            write_com_net_us(sync_db_session, -5000.0, target_date=date(2026, 3, 17))
+        rows = sync_db_session.execute(
+            text("SELECT prod_merc_net FROM pl_cot_us_weekly")
+        ).fetchall()
+        assert len(rows) == 1
+        assert rows[0].prod_merc_net == -7000
 
     def test_dry_run_no_write(self, sync_db_session, ref_chain_sync):
-        from scripts.cftc_scraper.db_writer import write_com_net_us
+        from scripts.cftc_scraper.db_writer import upsert_cot_us_weekly
 
-        contract_id = ref_chain_sync["contract"].id
-        sync_db_session.add(
-            PlContractDataDaily(
-                date=date(2026, 3, 17), contract_id=contract_id, close=Decimal("8500")
-            )
-        )
-        sync_db_session.flush()
-
-        write_com_net_us(
-            sync_db_session, -5000.0, target_date=date(2026, 3, 17), dry_run=True
+        _ = ref_chain_sync
+        upsert_cot_us_weekly(
+            sync_db_session, self._make_obs(date(2026, 3, 17)), dry_run=True
         )
 
-        row = sync_db_session.execute(select(PlContractDataDaily)).scalar_one()
-        assert row.com_net_us is None
+        count = sync_db_session.execute(
+            text("SELECT count(*) FROM pl_cot_us_weekly")
+        ).scalar_one()
+        assert count == 0
 
 
 # ---------------------------------------------------------------------------

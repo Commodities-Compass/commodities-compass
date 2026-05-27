@@ -1,56 +1,51 @@
-"""Database writer for ICE stocks data → pl_contract_data_daily.stock_us."""
+"""Database writer for ICE Certified Stocks → pl_stock_observation.
+
+Refactored 2026-05-27: writes to the generic ``pl_stock_observation``
+table (region='us', source='ice_us_report41') keyed on the actual
+``report_date`` extracted from the XLS, rather than overwriting the
+session-date row of ``pl_contract_data_daily.stock_us``. See migration
+``r2m3n4o5p6q7`` for the schema rationale.
+"""
+
+from __future__ import annotations
 
 import logging
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.pipeline import PlContractDataDaily
-from scripts.contract_resolver import resolve_active
+from scripts._shared.stock_observation_writer import (
+    StockObservationWriterError,
+    upsert_stock_observation,
+)
 
 log = logging.getLogger(__name__)
 
+SOURCE_TAG = "ice_us_report41"
 
-class DbWriterError(Exception):
+
+class DbWriterError(StockObservationWriterError):
     pass
 
 
 def write_stock_us(
     session: Session,
     stock_us_tonnes: int,
-    target_date: date,
+    report_date: date,
     dry_run: bool = False,
-) -> None:
-    """Update stock_us on the pl_contract_data_daily row for target_date.
+) -> bool:
+    """Upsert the ICE US certified stock for one report_date.
 
-    Queries by (date, contract_id). Raises DbWriterError if no row exists
-    for that date (Barchart must have created it).
+    ``stock_us_tonnes`` is the post-conversion value already in tonnes
+    (the scraper does ``grand_total_bags × 70 / 1000`` at parse time).
     """
-    contract_id = resolve_active(session)
-
-    if dry_run:
-        log.info(
-            "[DRY RUN] Would write stock_us=%d for date=%s",
-            stock_us_tonnes,
-            target_date,
-        )
-        return
-
-    existing = session.execute(
-        select(PlContractDataDaily).where(
-            PlContractDataDaily.date == target_date,
-            PlContractDataDaily.contract_id == contract_id,
-        )
-    ).scalar_one_or_none()
-
-    if existing is None:
-        raise DbWriterError(
-            f"No row found for date={target_date}, contract_id={contract_id} — "
-            "Barchart scraper must run first to create the row"
-        )
-
-    existing.stock_us = Decimal(str(stock_us_tonnes))
-    session.flush()
-    log.info("Updated stock_us=%d on row date=%s", stock_us_tonnes, existing.date)
+    return upsert_stock_observation(
+        session,
+        region="us",
+        report_date=report_date,
+        value_native=Decimal(str(stock_us_tonnes)),
+        unit_native="tonnes",
+        source=SOURCE_TAG,
+        dry_run=dry_run,
+    )

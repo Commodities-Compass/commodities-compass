@@ -21,9 +21,11 @@ from app.models.pipeline import (
     PlAlgorithmVersion,
     PlContractDataDaily,
     PlCotEuWeekly,
+    PlCotUsWeekly,
     PlExternalIndicator,
     PlOrchestratorDecision,
     PlSpecialistPrediction,
+    PlStockObservation,
 )
 from app.models.reference import RefCommodity, RefContract, RefExchange
 from app.services.ensemble_diagnostics_service import (
@@ -214,7 +216,6 @@ async def test_positioning_returns_cot_stocks_and_ratio(
             contract_market="cocoa",
             prod_merc_long=80_000,
             prod_merc_short=60_000,
-            # m_money_net and prod_merc_net are GENERATED columns — let DB compute.
             m_money_long=40_000,
             m_money_short=22_000,
             other_rept_long=10_000,
@@ -225,29 +226,70 @@ async def test_positioning_returns_cot_stocks_and_ratio(
         )
     )
     db_session.add(
+        PlCotUsWeekly(
+            release_date=date_cls(2026, 5, 8),
+            report_date=date_cls(2026, 5, 5),
+            contract_market="cocoa",
+            prod_merc_long=70_000,
+            prod_merc_short=55_000,
+            m_money_long=30_000,
+            m_money_short=18_000,
+            open_interest=150_000,
+        )
+    )
+    db_session.add(
+        PlStockObservation(
+            region="eu",
+            report_date=date_cls(2026, 5, 13),
+            value_native=Decimal("2500000"),  # 2.5M bags
+            unit_native="bags_60kg",
+            value_tonnes=Decimal("150000"),  # 2.5M × 60 / 1000
+            contract_market="cocoa",
+            source="barchart_ic345drw",
+        )
+    )
+    db_session.add(
+        PlStockObservation(
+            region="us",
+            report_date=date_cls(2026, 5, 14),
+            value_native=Decimal("30000"),
+            unit_native="tonnes",
+            value_tonnes=Decimal("30000"),
+            contract_market="cocoa",
+            source="ice_us_report41",
+        )
+    )
+    db_session.add(
         PlContractDataDaily(
             date=target,
             contract_id=contract,
             close=Decimal("8000"),
             volume=1000,
             oi=50000,
-            stock_eu_bags60kg=Decimal("2500000"),  # 2.5M bags = 150_000 tonnes
-            stock_us=Decimal("30000"),  # 30_000 tonnes
-            com_net_us=Decimal("5000"),
         )
     )
     await db_session.flush()
 
     out = await get_positioning(db_session, target, contract_id=contract)
 
-    assert out["cot_managed_money_net"] == 18_000  # 40_000 - 22_000
+    # ICE EU COT
+    assert out["cot_managed_money_net"] == 18_000
     assert out["cot_producer_merchant_net"] == 20_000
     assert out["cot_open_interest"] == 200_000
     assert out["cot_release_date"] == "2026-05-09"
-    assert out["stock_eu_bags60kg"] == 2_500_000.0
-    assert out["stock_us"] == 30_000.0
-    # 2_500_000 bags × 60kg / 1000 = 150_000 tonnes, ratio = 150_000 / 30_000 = 5
-    assert out["stock_eu_us_ratio"] == 5.0
+    # CFTC US COT (new since 2026-05-27)
+    assert out["cot_us_managed_money_net"] == 12_000
+    assert out["cot_us_producer_merchant_net"] == 15_000
+    assert out["cot_us_open_interest"] == 150_000
+    assert out["cot_us_release_date"] == "2026-05-08"
+    # Stocks in tonnes — single canonical unit, both gauges + ratio
+    assert out["stock_eu_tonnes"] == 150_000.0
+    assert out["stock_eu_native_value"] == 2_500_000.0
+    assert out["stock_eu_native_unit"] == "bags_60kg"
+    assert out["stock_eu_report_date"] == "2026-05-13"
+    assert out["stock_us_tonnes"] == 30_000.0
+    assert out["stock_us_report_date"] == "2026-05-14"
+    assert out["stock_eu_us_ratio"] == 5.0  # 150_000 / 30_000
 
 
 @pytest.mark.integration
@@ -258,21 +300,33 @@ async def test_positioning_falls_back_to_latest_when_target_missing(
     contract = await _seed_chain(db_session, "CAK26")
     target = date_cls(2026, 5, 16)
     db_session.add(
-        PlContractDataDaily(
-            date=date_cls(2026, 5, 14),  # latest before target
-            contract_id=contract,
-            close=Decimal("8000"),
-            stock_eu_bags60kg=Decimal("1000000"),
-            stock_us=Decimal("10000"),
+        PlStockObservation(
+            region="eu",
+            report_date=date_cls(2026, 5, 13),
+            value_native=Decimal("1000000"),
+            unit_native="bags_60kg",
+            value_tonnes=Decimal("60000"),
+            contract_market="cocoa",
+            source="barchart_ic345drw",
+        )
+    )
+    db_session.add(
+        PlStockObservation(
+            region="us",
+            report_date=date_cls(2026, 5, 14),
+            value_native=Decimal("10000"),
+            unit_native="tonnes",
+            value_tonnes=Decimal("10000"),
+            contract_market="cocoa",
+            source="ice_us_report41",
         )
     )
     await db_session.flush()
 
     out = await get_positioning(db_session, target, contract_id=contract)
-    assert out["stock_eu_bags60kg"] == 1_000_000.0
-    assert out["stock_us"] == 10_000.0
-    # 1M bags × 60kg / 1000 = 60_000 tonnes, ratio = 60_000 / 10_000 = 6
-    assert out["stock_eu_us_ratio"] == 6.0
+    assert out["stock_eu_tonnes"] == 60_000.0
+    assert out["stock_us_tonnes"] == 10_000.0
+    assert out["stock_eu_us_ratio"] == 6.0  # 60_000 / 10_000
 
 
 # ---------------------------------------------------------------------------

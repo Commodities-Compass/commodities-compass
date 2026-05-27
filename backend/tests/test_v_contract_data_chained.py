@@ -23,8 +23,7 @@ _VIEW_DDL = """
 CREATE OR REPLACE VIEW v_contract_data_chained AS
 SELECT DISTINCT ON (date)
     date, display_date, contract_id,
-    open, high, low, close, volume, oi, implied_volatility,
-    stock_us, stock_eu_bags60kg, com_net_us
+    open, high, low, close, volume, oi, implied_volatility
 FROM pl_contract_data_daily
 WHERE close IS NOT NULL
 ORDER BY

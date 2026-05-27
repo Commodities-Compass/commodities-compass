@@ -140,7 +140,18 @@ export default function LiveSignalStrip() {
     {
       key: 'stockEu',
       label: 'Stock EU',
-      value: positioning?.stock_eu_bags60kg != null ? `${fmtCompact(positioning.stock_eu_bags60kg)} bags` : '—',
+      value:
+        positioning?.stock_eu_tonnes != null
+          ? `${fmtCompact(positioning.stock_eu_tonnes)} t`
+          : '—',
+    },
+    {
+      key: 'stockUs',
+      label: 'Stock US',
+      value:
+        positioning?.stock_us_tonnes != null
+          ? `${fmtCompact(positioning.stock_us_tonnes)} t`
+          : '—',
     },
     {
       key: 'fxDxy',

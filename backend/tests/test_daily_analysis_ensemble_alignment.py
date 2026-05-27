@@ -112,8 +112,6 @@ def seed_market_data(sync_db_session, ref_chain):
                 volume=4000,
                 oi=42000,
                 implied_volatility=Decimal("0.55"),
-                stock_us=Decimal("30000"),
-                com_net_us=Decimal("8000"),
             )
         )
         sync_db_session.add(

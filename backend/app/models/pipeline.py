@@ -21,6 +21,7 @@ from sqlalchemy import (
     TIMESTAMP,
     VARCHAR,
     Boolean,
+    CheckConstraint,
     Computed,
     ForeignKey,
     Index,
@@ -58,11 +59,12 @@ class PlContractDataDaily(Base):
     volume: Mapped[Optional[int]] = mapped_column(INTEGER)
     oi: Mapped[Optional[int]] = mapped_column(INTEGER)
 
-    # Additional market data
+    # Additional market data.
+    # Weekly stocks (US + EU) and CFTC US commercial net live in dedicated
+    # tables (pl_stock_observation, pl_cot_us_weekly) since 2026-05-27 —
+    # they're weekly cadence with their own report_date provenance and don't
+    # belong on the daily OHLCV row.
     implied_volatility: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
-    stock_us: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
-    stock_eu_bags60kg: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
-    com_net_us: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
 
     # Display date = next trading day after session date.
     # Dashboard queries filter by this column. NULL for pre-calendar historical data.
@@ -512,6 +514,121 @@ class PlCotEuWeekly(Base):
     open_interest: Mapped[Optional[int]] = mapped_column(INTEGER)
 
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+
+
+class PlCotUsWeekly(Base):
+    """CFTC US COT weekly positioning (mirrors ``pl_cot_eu_weekly``).
+
+    Source: CFTC Agriculture Long Format report
+    ``https://www.cftc.gov/dea/futures/ag_lf.htm``, COCOA - ICE FUTURES U.S.
+    section. Weekly snapshot Tuesday, release Friday ~21:30 CET.
+
+    Schema future-proofs the table with Managed Money / Other Reportable /
+    Non-Reportable columns even though the current scraper only extracts
+    Producer/Merchant — backfilled historical rows leave them NULL.
+    ``prod_merc_net`` and ``m_money_net`` are GENERATED columns
+    (long − short) — never write to them directly.
+    """
+
+    __tablename__ = "pl_cot_us_weekly"
+    __table_args__ = (
+        UniqueConstraint("release_date", "contract_market", name="uq_cot_us_weekly"),
+        Index("ix_cot_us_weekly_report_date", "report_date"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    release_date: Mapped[date] = mapped_column(DATE, nullable=False)
+    report_date: Mapped[date] = mapped_column(DATE, nullable=False)
+    contract_market: Mapped[str] = mapped_column(
+        VARCHAR(50), nullable=False, server_default="cocoa"
+    )
+
+    prod_merc_long: Mapped[Optional[int]] = mapped_column(INTEGER)
+    prod_merc_short: Mapped[Optional[int]] = mapped_column(INTEGER)
+    prod_merc_net: Mapped[Optional[int]] = mapped_column(
+        INTEGER,
+        Computed("prod_merc_long - prod_merc_short", persisted=True),
+    )
+
+    m_money_long: Mapped[Optional[int]] = mapped_column(INTEGER)
+    m_money_short: Mapped[Optional[int]] = mapped_column(INTEGER)
+    m_money_net: Mapped[Optional[int]] = mapped_column(
+        INTEGER,
+        Computed("m_money_long - m_money_short", persisted=True),
+    )
+
+    other_rept_long: Mapped[Optional[int]] = mapped_column(INTEGER)
+    other_rept_short: Mapped[Optional[int]] = mapped_column(INTEGER)
+    non_rept_long: Mapped[Optional[int]] = mapped_column(INTEGER)
+    non_rept_short: Mapped[Optional[int]] = mapped_column(INTEGER)
+
+    open_interest: Mapped[Optional[int]] = mapped_column(INTEGER)
+
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+
+
+class PlStockObservation(Base):
+    """ICE certified cocoa stocks — generic region-agnostic table.
+
+    One row per (region, report_date, contract_market) publication. Stores
+    both the source's native unit (``value_native`` + ``unit_native``) and
+    a normalized ``value_tonnes`` so consumers can compare regions without
+    re-implementing the bag→tonne math at every call site.
+
+    Replaces ``pl_contract_data_daily.stock_us`` and
+    ``pl_contract_data_daily.stock_eu_bags60kg`` (migration r2m3n4o5p6q7,
+    2026-05-27) — the daily contract row was the wrong home for weekly data
+    with its own publication cadence and provenance.
+
+    Sources today:
+      * region='us', source='ice_us_report41' — daily-cadence URL but
+        often-flat values; native unit tonnes (the scraper already converts
+        from 70-lb bags at ingest).
+      * region='eu', source='barchart_ic345drw' — ICE Europe weekly Tuesday
+        publication; native unit 60kg bags (raw count, Barchart convention).
+    """
+
+    __tablename__ = "pl_stock_observation"
+    __table_args__ = (
+        CheckConstraint("region IN ('us', 'eu')", name="ck_stock_observation_region"),
+        CheckConstraint(
+            "unit_native IN ('tonnes', 'bags_60kg')",
+            name="ck_stock_observation_unit_native",
+        ),
+        UniqueConstraint(
+            "region", "report_date", "contract_market", name="uq_stock_observation"
+        ),
+        Index(
+            "ix_stock_observation_lookup",
+            "region",
+            "contract_market",
+            text("report_date DESC"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    region: Mapped[str] = mapped_column(VARCHAR(10), nullable=False)
+    report_date: Mapped[date] = mapped_column(DATE, nullable=False)
+    value_native: Mapped[Decimal] = mapped_column(DECIMAL(15, 6), nullable=False)
+    unit_native: Mapped[str] = mapped_column(VARCHAR(15), nullable=False)
+    value_tonnes: Mapped[Decimal] = mapped_column(DECIMAL(15, 6), nullable=False)
+    contract_market: Mapped[str] = mapped_column(
+        VARCHAR(50), nullable=False, server_default="cocoa"
+    )
+    source: Mapped[str] = mapped_column(VARCHAR(40), nullable=False)
+    ingested_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP, nullable=False, server_default=func.now()
+    )
 
 
 class PlModelArtifact(Base):

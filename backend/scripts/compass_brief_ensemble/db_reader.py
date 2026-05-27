@@ -342,8 +342,7 @@ def _read_technicals(session: Session, target_date: date, contract_id: Any) -> s
     row = session.execute(
         text(
             """
-            SELECT date, close, high, low, volume, oi, implied_volatility,
-                   stock_us, stock_eu_bags60kg, com_net_us
+            SELECT date, close, high, low, volume, oi, implied_volatility
             FROM pl_contract_data_daily
             WHERE contract_id = :contract AND date <= :date
             ORDER BY date DESC LIMIT 1
@@ -353,6 +352,39 @@ def _read_technicals(session: Session, target_date: date, contract_id: Any) -> s
     ).fetchone()
     if row is None:
         return "(pas de données technicals)"
+
+    # stocks + CFTC net live in dedicated tables since 2026-05-27;
+    # forward-fill the latest weekly observation on/before the row date.
+    stock_us = session.execute(
+        text(
+            """
+            SELECT value_tonnes FROM pl_stock_observation
+            WHERE region = 'us' AND contract_market = 'cocoa' AND report_date <= :d
+            ORDER BY report_date DESC LIMIT 1
+            """
+        ),
+        {"d": row[0]},
+    ).scalar_one_or_none()
+    stock_eu = session.execute(
+        text(
+            """
+            SELECT value_native FROM pl_stock_observation
+            WHERE region = 'eu' AND contract_market = 'cocoa' AND report_date <= :d
+            ORDER BY report_date DESC LIMIT 1
+            """
+        ),
+        {"d": row[0]},
+    ).scalar_one_or_none()
+    com_net = session.execute(
+        text(
+            """
+            SELECT prod_merc_net FROM pl_cot_us_weekly
+            WHERE contract_market = 'cocoa' AND release_date <= :d
+            ORDER BY release_date DESC LIMIT 1
+            """
+        ),
+        {"d": row[0]},
+    ).scalar_one_or_none()
 
     def _fmt(value, unit: str = "", precision: int = 2):
         if value is None:
@@ -365,7 +397,7 @@ def _read_technicals(session: Session, target_date: date, contract_id: Any) -> s
         f"Date close : {row[0]}\n"
         f"  CLOSE={_fmt(row[1])} | HIGH={_fmt(row[2])} | LOW={_fmt(row[3])}\n"
         f"  VOLUME={_fmt(row[4], '', 0)} | OI={_fmt(row[5], '', 0)} | IV={_fmt(row[6])}\n"
-        f"  STOCK_US={_fmt(row[7])} | STOCK_EU={_fmt(row[8])} | COM_NET={_fmt(row[9])}"
+        f"  STOCK_US={_fmt(stock_us)} | STOCK_EU={_fmt(stock_eu)} | COM_NET={_fmt(com_net)}"
     )
 
 

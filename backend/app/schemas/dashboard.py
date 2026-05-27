@@ -313,55 +313,87 @@ class MacroPanelResponse(BaseModel):
 
 
 class PositioningResponse(BaseModel):
-    """COT EU positioning + Stock EU/US fundamentals.
+    """COT EU + COT US + Stock EU/US fundamentals.
 
-    Sources:
-      * ``pl_cot_eu_weekly`` for COT EU Managed Money + Producer/Merchant nets.
-        Weekly cadence, lagged ~3 days from snapshot Tuesday.
-      * ``pl_contract_data_daily`` for stocks (EU 60kg bags, US tonnes) and the
-        legacy CFTC US commercial net.
+    Sources (all weekly; payload reflects "latest on/before target_date"):
+      * ``pl_cot_eu_weekly`` — ICE Europe Disaggregated COT
+      * ``pl_cot_us_weekly`` — CFTC US Disaggregated COT (refactored
+        2026-05-27 from the legacy ``com_net_us`` column)
+      * ``pl_stock_observation`` — generic ICE certified stocks, both
+        regions, canonical tonnes + native unit + report_date provenance.
     """
 
     date: str = Field(..., description="Date in YYYY-MM-DD format")
-    # COT EU (weekly, Managed Money is the R&D signal driver)
+    # --- ICE EU COT ------------------------------------------------------
     cot_managed_money_net: Optional[int] = Field(
-        None, description="Managed Money net (long - short)"
+        None, description="ICE EU Managed Money net (long - short)"
     )
     cot_managed_money_long: Optional[int] = Field(
-        None, description="Managed Money long"
+        None, description="ICE EU Managed Money long"
     )
     cot_managed_money_short: Optional[int] = Field(
-        None, description="Managed Money short"
+        None, description="ICE EU Managed Money short"
     )
     cot_producer_merchant_net: Optional[int] = Field(
-        None, description="Producer/Merchant net (commercial hedgers)"
+        None, description="ICE EU Producer/Merchant net (commercial hedgers)"
     )
     cot_open_interest: Optional[int] = Field(
         None, description="ICE EU total open interest on report"
     )
     cot_report_date: Optional[str] = Field(
-        None, description="Tuesday the report covers"
+        None, description="ICE EU Tuesday the report covers"
     )
     cot_release_date: Optional[str] = Field(
-        None, description="ICE publication date (Friday)"
+        None, description="ICE EU publication date (Friday)"
     )
-    # Stocks (Stock EU is the principal signal per North Star)
-    stock_eu_bags60kg: Optional[float] = Field(
-        None, description="ICE Europe certified stocks in 60kg bags"
+    # --- CFTC US COT (new, parity with EU since 2026-05-27) --------------
+    cot_us_managed_money_net: Optional[int] = Field(
+        None, description="CFTC US Managed Money net (long - short)"
     )
-    stock_us: Optional[float] = Field(
+    cot_us_managed_money_long: Optional[int] = Field(
+        None, description="CFTC US Managed Money long"
+    )
+    cot_us_managed_money_short: Optional[int] = Field(
+        None, description="CFTC US Managed Money short"
+    )
+    cot_us_producer_merchant_net: Optional[int] = Field(
+        None, description="CFTC US Producer/Merchant net (commercial hedgers)"
+    )
+    cot_us_open_interest: Optional[int] = Field(
+        None, description="CFTC US total open interest on report"
+    )
+    cot_us_report_date: Optional[str] = Field(
+        None, description="CFTC US Tuesday the report covers"
+    )
+    cot_us_release_date: Optional[str] = Field(
+        None, description="CFTC US publication date (Friday)"
+    )
+    # --- Stocks (canonical tonnes for both regions, plus EU native audit) -
+    stock_eu_tonnes: Optional[float] = Field(
+        None, description="ICE Europe certified stocks normalized to tonnes"
+    )
+    stock_eu_native_value: Optional[float] = Field(
+        None,
+        description="ICE EU stocks raw value as published (60kg bag count)",
+    )
+    stock_eu_native_unit: Optional[str] = Field(
+        None, description="Native unit of stock_eu_native_value ('bags_60kg')"
+    )
+    stock_eu_report_date: Optional[str] = Field(
+        None, description="ICE EU stocks publication date (Tuesday weekly)"
+    )
+    stock_us_tonnes: Optional[float] = Field(
         None, description="ICE US certified stocks (tonnes)"
+    )
+    stock_us_report_date: Optional[str] = Field(
+        None, description="ICE US stocks publication date (Report 41)"
     )
     stock_eu_us_ratio: Optional[float] = Field(
         None,
         description=(
-            "Ratio of EU stocks (converted to tonnes via 60kg) to US stocks. "
+            "Ratio of EU stocks (tonnes) over US stocks (tonnes). "
             "Higher = more EU coverage relative to US."
         ),
-    )
-    # Legacy CFTC US commercial net (kept for backwards compat with old gauges)
-    com_net_us: Optional[float] = Field(
-        None, description="CFTC US Producer/Merchant net (legacy)"
     )
 
 

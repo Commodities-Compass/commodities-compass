@@ -1,4 +1,12 @@
-"""CFTC scraper - Simple daily runner for COM NET US data."""
+"""CFTC scraper — daily runner for CFTC US Disaggregated COT (cocoa).
+
+Refactored 2026-05-27: writes one UPSERT row per real CFTC release into
+``pl_cot_us_weekly``, mirroring ``cc-ice-cot-eu-scraper``. The previous
+behavior (overwrite ``pl_contract_data_daily.com_net_us`` every weekday
+with the same Friday-released value) is gone.
+"""
+
+from __future__ import annotations
 
 import argparse
 import logging
@@ -26,9 +34,17 @@ load_dotenv(Path(__file__).parent.parent.parent / ".env")
 init_sentry("cftc-scraper")
 
 
+# CFTC publishes Friday for Tuesday snapshot. Allow up to 14 days latency
+# before flagging the publisher as stale — covers federal holidays that
+# shift Friday's release to Monday.
+STALE_OBSERVATION_DAYS = 14
+
+
 @monitor(monitor_slug="cftc-scraper")
 def main() -> int:
-    parser = argparse.ArgumentParser(description="CFTC scraper for COM NET US data")
+    parser = argparse.ArgumentParser(
+        description="CFTC Disaggregated COT scraper (cocoa)"
+    )
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -49,34 +65,41 @@ def main() -> int:
         return 0
 
     logger.info("=" * 60)
-    logger.info("CFTC Scraper - COM NET US")
-    logger.info(f"Mode: {'DRY RUN' if args.dry_run else 'LIVE'}")
+    logger.info("CFTC Scraper — Disaggregated COT (cocoa)")
+    logger.info("Mode: %s", "DRY RUN" if args.dry_run else "LIVE")
     logger.info("=" * 60)
 
     try:
-        # Step 1: Scrape CFTC report
         logger.info("Step 1: Scraping CFTC report...")
         scraper = CFTCScraper()
-        commercial_net = scraper.scrape()
+        obs = scraper.scrape(max_stale_days=STALE_OBSERVATION_DAYS)
 
-        logger.info(f"COM NET US: {commercial_net:,.0f}")
+        logger.info(
+            "Parsed: report_date=%s release_date=%s prod_merc_net=%d "
+            "m_money_net=%d open_interest=%d",
+            obs.report_date,
+            obs.release_date,
+            obs.prod_merc_net,
+            obs.m_money_net,
+            obs.open_interest,
+        )
 
-        # Step 2: Write to GCP PostgreSQL
         logger.info("Step 2: Writing to GCP PostgreSQL...")
-        from scripts.cftc_scraper.db_writer import write_com_net_us
+        from scripts.cftc_scraper.db_writer import upsert_cot_us_weekly
         from scripts.db import get_session
 
-        from datetime import date
-
         with get_session() as session:
-            write_com_net_us(
-                session, commercial_net, target_date=date.today(), dry_run=args.dry_run
-            )
+            upsert_cot_us_weekly(session, obs, dry_run=args.dry_run)
+            session.commit()
 
         sentry_sdk.set_context(
             "scrape_result",
             {
-                "commercial_net": commercial_net,
+                "release_date": obs.release_date.isoformat(),
+                "report_date": obs.report_date.isoformat(),
+                "prod_merc_net": obs.prod_merc_net,
+                "m_money_net": obs.m_money_net,
+                "open_interest": obs.open_interest,
                 "dry_run": args.dry_run,
             },
         )
@@ -86,13 +109,13 @@ def main() -> int:
         logger.info("=" * 60)
         return 0
 
-    except CFTCScraperError as e:
-        logger.error(f"CFTC scraper error: {e}")
-        sentry_sdk.capture_exception(e)
+    except CFTCScraperError as exc:
+        logger.error("CFTC scraper error: %s", exc)
+        sentry_sdk.capture_exception(exc)
         return 1
-    except Exception as e:
-        logger.exception(f"Unexpected error: {e}")
-        sentry_sdk.capture_exception(e)
+    except Exception as exc:
+        logger.exception("Unexpected error: %s", exc)
+        sentry_sdk.capture_exception(exc)
         return 1
 
 

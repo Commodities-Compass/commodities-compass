@@ -118,7 +118,9 @@ LEGACY_V1 = AlgorithmConfig(
 )
 
 # Standard column names used across the engine.
-# Raw market data columns (input).
+# Raw market data columns (input). stock_us / com_net_us were removed
+# 2026-05-27 — they live in pl_stock_observation / pl_cot_us_weekly now
+# and no indicator consumes them.
 RAW_COLS = [
     "date",
     "close",
@@ -127,8 +129,6 @@ RAW_COLS = [
     "volume",
     "oi",
     "implied_volatility",
-    "stock_us",
-    "com_net_us",
 ]
 
 # Derived indicator columns (output of indicators/).

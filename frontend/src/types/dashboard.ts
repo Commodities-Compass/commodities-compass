@@ -143,6 +143,7 @@ export interface MacroPanelResponse {
 
 export interface PositioningResponse {
   date: string;
+  // ICE EU COT
   cot_managed_money_net: number | null;
   cot_managed_money_long: number | null;
   cot_managed_money_short: number | null;
@@ -150,10 +151,22 @@ export interface PositioningResponse {
   cot_open_interest: number | null;
   cot_report_date: string | null;
   cot_release_date: string | null;
-  stock_eu_bags60kg: number | null;
-  stock_us: number | null;
+  // CFTC US COT (added 2026-05-27 — parity with EU)
+  cot_us_managed_money_net: number | null;
+  cot_us_managed_money_long: number | null;
+  cot_us_managed_money_short: number | null;
+  cot_us_producer_merchant_net: number | null;
+  cot_us_open_interest: number | null;
+  cot_us_report_date: string | null;
+  cot_us_release_date: string | null;
+  // Stocks (canonical tonnes for both regions + EU native audit)
+  stock_eu_tonnes: number | null;
+  stock_eu_native_value: number | null;
+  stock_eu_native_unit: string | null;
+  stock_eu_report_date: string | null;
+  stock_us_tonnes: number | null;
+  stock_us_report_date: string | null;
   stock_eu_us_ratio: number | null;
-  com_net_us: number | null;
 }
 
 // ---------------------------------------------------------------------------

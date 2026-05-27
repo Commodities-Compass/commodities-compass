@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from datetime import date
 
 import sentry_sdk
 from sentry_sdk.crons import monitor
@@ -25,6 +26,12 @@ from scripts.barchart_stocks_eu_scraper.db_writer import update_stock_eu
 
 configure_logging()
 logger = logging.getLogger(__name__)
+
+# Barchart mirrors ICE Europe's weekly Tuesday publication. If the most
+# recent date we read is older than this many days, the source has likely
+# stopped updating — escalate via Sentry rather than silently re-writing
+# a stale value.
+STALE_OBSERVATION_DAYS = 14
 
 bootstrap_scraper("barchart-stocks-eu-scraper", script_file=__file__)
 
@@ -62,17 +69,35 @@ def main() -> int:
             len(obs.history),
         )
 
+        # Drift detection: ICE Europe publishes Tuesday; allow up to
+        # 14 days latency before flagging the source as stale.
+        age_days = (date.today() - obs.date).days
+        if age_days > STALE_OBSERVATION_DAYS:
+            msg = (
+                f"Barchart Most Recent Date {obs.date.isoformat()} is "
+                f"{age_days} days old (> {STALE_OBSERVATION_DAYS}j threshold) "
+                "— ICE Europe may have stopped publishing or Barchart is broken."
+            )
+            logger.error(msg)
+            sentry_sdk.capture_message(msg, level="error")
+
         if args.dry_run:
-            logger.info("Step 2: [DRY RUN] Skipping DB UPDATE")
+            logger.info("Step 2: [DRY RUN] Skipping DB UPSERT")
             for d, v in obs.history[:5]:
                 logger.info("  history: %s = %s bags60kg", d, v)
         else:
             from scripts.db import get_session
 
             with get_session() as session:
-                n_updated = update_stock_eu(session, obs.date, obs.value_bags60kg)
+                written = update_stock_eu(
+                    session, report_date=obs.date, value_bags60kg=obs.value_bags60kg
+                )
                 session.commit()
-            logger.info("Step 2: Updated %d row in pl_contract_data_daily", n_updated)
+            logger.info(
+                "Step 2: Upserted pl_stock_observation (region=eu, report_date=%s, written=%s)",
+                obs.date,
+                written,
+            )
 
         sentry_sdk.set_context(
             "scrape_result",

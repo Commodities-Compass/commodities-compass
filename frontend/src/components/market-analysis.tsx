@@ -68,16 +68,18 @@ const MACRO_RANGES: Record<string, { min: number; max: number; ranges: Indicator
       { range_low: 20000, range_high: 60000, area: 'GREEN' },
     ],
   },
+  // Stock EU certified (tonnes). 2026-05-27 conversion from the legacy
+  // bag-count thresholds: 500k/2M/5M/8M bags × 60 / 1000 = 30k/120k/300k/480k t.
   STOCK_EU: {
-    min: 500_000,
-    max: 8_000_000,
+    min: 30_000,
+    max: 480_000,
     ranges: [
-      { range_low: 5_000_000, range_high: 8_000_000, area: 'RED' },
-      { range_low: 2_000_000, range_high: 5_000_000, area: 'ORANGE' },
-      { range_low: 500_000, range_high: 2_000_000, area: 'GREEN' },
+      { range_low: 300_000, range_high: 480_000, area: 'RED' },
+      { range_low: 120_000, range_high: 300_000, area: 'ORANGE' },
+      { range_low: 30_000, range_high: 120_000, area: 'GREEN' },
     ],
   },
-  // Stock US certified (tonnes) — high stocks bearish, like EU
+  // Stock US certified (tonnes) — high stocks bearish, like EU.
   STOCK_US: {
     min: 50_000,
     max: 350_000,
@@ -95,6 +97,14 @@ function fmtCompactInt(v?: number | null): string {
   if (abs >= 1_000_000) return `${(v / 1_000_000).toFixed(2)}M`;
   if (abs >= 1_000) return `${(v / 1_000).toFixed(1)}k`;
   return v.toFixed(0);
+}
+
+function fmtTonnes(v: number): string {
+  // Stock values are in tonnes; render compactly with a t suffix.
+  const abs = Math.abs(v);
+  if (abs >= 1_000_000) return `${(v / 1_000_000).toFixed(2)}M t`;
+  if (abs >= 1_000) return `${(v / 1_000).toFixed(0)}k t`;
+  return `${v.toFixed(0)} t`;
 }
 
 function fmtNum(v?: number | null, digits = 2): string {
@@ -367,18 +377,20 @@ export default function MarketAnalysis({ targetDate, className }: MarketAnalysis
               ranges={MACRO_RANGES.COT_MM.ranges}
             />
             <GaugeIndicator
-              value={positioning?.stock_eu_bags60kg ?? MACRO_RANGES.STOCK_EU.min}
+              value={positioning?.stock_eu_tonnes ?? null}
               min={MACRO_RANGES.STOCK_EU.min}
               max={MACRO_RANGES.STOCK_EU.max}
               label="STOCK EU"
               ranges={MACRO_RANGES.STOCK_EU.ranges}
+              formatValue={fmtTonnes}
             />
             <GaugeIndicator
-              value={positioning?.stock_us ?? MACRO_RANGES.STOCK_US.min}
+              value={positioning?.stock_us_tonnes ?? null}
               min={MACRO_RANGES.STOCK_US.min}
               max={MACRO_RANGES.STOCK_US.max}
               label="STOCK US"
               ranges={MACRO_RANGES.STOCK_US.ranges}
+              formatValue={fmtTonnes}
             />
           </div>
 
@@ -412,10 +424,28 @@ export default function MarketAnalysis({ targetDate, className }: MarketAnalysis
               <Eyebrow tone="subtle" size={9}>Ratio EU/US (tonnes)</Eyebrow>
               <DataValue size={11}>{fmtNum(positioning?.stock_eu_us_ratio, 2)}</DataValue>
             </span>
+            {positioning?.stock_eu_report_date && (
+              <span style={inlineCell}>
+                <Eyebrow tone="subtle" size={9}>Stock EU release</Eyebrow>
+                <DataValue size={11} color="var(--ink-mid)">{fmtDate(positioning.stock_eu_report_date)}</DataValue>
+              </span>
+            )}
+            {positioning?.stock_us_report_date && (
+              <span style={inlineCell}>
+                <Eyebrow tone="subtle" size={9}>Stock US release</Eyebrow>
+                <DataValue size={11} color="var(--ink-mid)">{fmtDate(positioning.stock_us_report_date)}</DataValue>
+              </span>
+            )}
             {positioning?.cot_release_date && (
               <span style={inlineCell}>
-                <Eyebrow tone="subtle" size={9}>COT release</Eyebrow>
-                <DataValue size={11} color="var(--ink-mid)">{fmtDate(positioning?.cot_release_date)}</DataValue>
+                <Eyebrow tone="subtle" size={9}>COT EU release</Eyebrow>
+                <DataValue size={11} color="var(--ink-mid)">{fmtDate(positioning.cot_release_date)}</DataValue>
+              </span>
+            )}
+            {positioning?.cot_us_release_date && (
+              <span style={inlineCell}>
+                <Eyebrow tone="subtle" size={9}>COT US release</Eyebrow>
+                <DataValue size={11} color="var(--ink-mid)">{fmtDate(positioning.cot_us_release_date)}</DataValue>
               </span>
             )}
           </div>

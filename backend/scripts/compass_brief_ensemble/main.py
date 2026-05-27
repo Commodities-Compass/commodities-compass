@@ -117,7 +117,13 @@ def main() -> int:
     logger.info("Target session: %s | Data session: %s", target_date, data_date)
     logger.info("=" * 60)
 
-    filename = FILENAME_PATTERN.format(date=target_date.strftime("%Y%m%d"))
+    # Filename is keyed on the SESSION date (= data_date), not the publication
+    # date (target_date / display_date). This keeps brief + NotebookLM audio +
+    # dashboard audio lookup aligned: audio_service.get_audio_file_info uses
+    # the resolved session_date when the dashboard calendar fetches audio for
+    # the user-facing display_date. See `_parse_and_validate_date` in
+    # dashboard endpoint.
+    filename = FILENAME_PATTERN.format(date=data_date.strftime("%Y%m%d"))
 
     try:
         from scripts.contract_resolver import resolve_active

@@ -319,14 +319,14 @@ DONNÉES DU 23 mai 2026 (AUJOURD'HUI)
 | MÉTÉO | `pl_weather_observation.{summary, impact_assessment}` | cc-meteo-agent |
 
 #### Upload Drive
-- Filename : `YYYYMMDD-CompassBrief.txt` (target_date = next trading session par P2b)
+- Filename : `YYYYMMDD-CompassBrief.txt` où **`YYYYMMDD` = session_date** (= `data_date`, la dernière session boursière complète). Note : le contenu cite `target_date` (display_date) comme date de publication, mais le filename est ancré sur la session — c'est ce qui permet à `audio_service.py` de retrouver l'audio quand le dashboard navigue par display_date.
 - Folder : `GOOGLE_DRIVE_BRIEFS_FOLDER_ID` (env var, partagé avec brief ensemble)
 - Idempotent : re-upload du même filename remplace la version précédente
 
 #### Audio NotebookLM
 - Hors scope de ce pipeline — NotebookLM consomme le .txt et produit l'audio en parallèle (workflow Google Drive automatique configuré par l'utilisateur)
-- Filename audio attendu : `YYYYMMDD-CompassAudio.{wav|m4a|mp4}`
-- Le backend FastAPI `audio_service.py` cherche ces filenames sur Drive
+- Filename audio attendu : `YYYYMMDD-CompassAudio.{wav|m4a|mp4}` (même `YYYYMMDD` que le brief, hérité par NotebookLM)
+- Le backend FastAPI `audio_service.py` cherche ces filenames sur Drive en utilisant le session_date résolu via `_parse_and_validate_date` (display_date → session_date lookup dans `pl_contract_data_daily`)
 
 ---
 

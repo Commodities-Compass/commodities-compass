@@ -59,8 +59,8 @@
 | `pl_indicator_daily` row | `algorithm_version_id=legacy` | `algorithm_version_id=ensemble_v1_softgate_wrapper` | UNIQUE constraint sur (date, contract_id, algorithm_version_id) garantit qu'un track ne peut PAS toucher l'autre |
 | `pl_orchestrator_decision` | — | écrit | Table exclusive à l'ensemble |
 | `pl_specialist_prediction` | — | 14 rows/jour | Table exclusive à l'ensemble |
-| Drive file | `YYYYMMDD-CompassBrief.txt` | `YYYYMMDD-CompassBrief-Ensemble.txt` | Filename discriminant ; même folder OK |
-| Drive audio | `YYYYMMDD-CompassAudio.{ext}` | `YYYYMMDD-CompassAudio-Ensemble.{ext}` | NotebookLM produit les 2 audios chaque jour |
+| Drive file | `YYYYMMDD-CompassBrief.txt` | `YYYYMMDD-CompassBrief-Ensemble.txt` | `YYYYMMDD` = **session_date** (= `data_date`). Aligne brief + audio + dashboard lookup. |
+| Drive audio | `YYYYMMDD-CompassAudio.{ext}` | `YYYYMMDD-CompassAudio-Ensemble.{ext}` | NotebookLM hérite du préfixe brief → même `YYYYMMDD` = session_date |
 
 ## Switch frontend (quel audio est servi)
 

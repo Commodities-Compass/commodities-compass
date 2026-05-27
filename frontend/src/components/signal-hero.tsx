@@ -214,6 +214,8 @@ function ConvictionBreakdown({
             style={{
               padding: '14px 16px 12px',
               borderLeft: i === 0 ? 'none' : '1px solid var(--rule)',
+              minWidth: 0,
+              overflow: 'hidden',
             }}
           >
             <Eyebrow as="div" tone="subtle" size={9} tracking="0.2em">
@@ -224,10 +226,15 @@ function ConvictionBreakdown({
                 fontFamily: 'var(--font-display)',
                 fontStyle: tile.italic ? 'italic' : 'normal',
                 fontWeight: 700,
-                fontSize: 'clamp(20px, 2.4vw, 28px)',
+                // Lower clamp ceiling so long words like "Défavorable" stay
+                // inside their tile on intermediate widths (1100-1500px).
+                fontSize: 'clamp(18px, 1.9vw, 24px)',
                 lineHeight: 1.1,
                 color: tile.color,
                 marginTop: 6,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
               }}
             >
               {tile.big}
@@ -240,6 +247,9 @@ function ConvictionBreakdown({
                 letterSpacing: '0.15em',
                 color: 'var(--ink-light)',
                 marginTop: 4,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
               }}
             >
               {tile.caption}
@@ -249,7 +259,9 @@ function ConvictionBreakdown({
       </div>
 
       <style>{`
-        @media (max-width: 767px) {
+        /* Switch to 2x2 grid earlier — 4 columns on screens below ~1200px
+           leaves tiles too narrow for long words ("Défavorable", "Favorable"). */
+        @media (max-width: 1199px) {
           .conviction-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
           }

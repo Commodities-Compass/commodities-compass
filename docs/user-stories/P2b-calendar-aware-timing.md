@@ -58,7 +58,7 @@ Bridges weekend and holiday gaps automatically. On a normal Mon→Tue cycle, Pha
 - `pl_fundamental_article.date` = next trading day at write time (not run day).
 - `pl_weather_observation.date` = next trading day.
 - `pl_indicator_daily` LLM fields (decision, confidence, direction, conclusion, macroeco_bonus, eco) populated for next trading day.
-- Compass brief file in Google Drive named `YYYYMMDD-CompassBrief.txt` where `YYYYMMDD` = next trading day.
+- Compass brief file in Google Drive named `YYYYMMDD-CompassBrief.txt` where `YYYYMMDD` = **session_date** (= the trading day the brief covers, NOT the publication day / next trading day). Session-date naming is required so the dashboard audio lookup (`audio_service.py`, which resolves display_date → session_date) finds the matching NotebookLM-produced audio file.
 - The agents accept an explicit `--target-date YYYY-MM-DD` CLI flag for backfills and tests. Default = `get_next_session_date(today())`.
 - Dashboard `GET /dashboard?date=<session_date>` query path is unchanged — finds the rows directly, no walk-back logic, no asymmetric joins.
 

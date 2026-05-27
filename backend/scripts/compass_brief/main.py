@@ -120,15 +120,21 @@ def main() -> int:
         # 2. Generate brief text
         brief = generate_brief(data)
 
-        # 3. Derive filename from target_date (upcoming session — P2b).
-        # The data inside the brief still reflects data.today / data.yesterday
-        # (the last two completed sessions), but the filename matches the
-        # session the brief informs.
-        filename = f"{target_date.strftime('%Y%m%d')}-CompassBrief.txt"
+        # 3. Derive filename from the SESSION date (= data_date), not the
+        # publication date (target_date / display_date). Keeps brief +
+        # NotebookLM audio + dashboard audio lookup aligned: the audio
+        # service uses the resolved session_date when the dashboard calendar
+        # fetches audio for the user-facing display_date. See
+        # `_parse_and_validate_date` in the dashboard endpoint.
+        from scripts.db import get_previous_session_date
+
+        previous_session = get_previous_session_date(target_date)
+        filename = f"{previous_session.strftime('%Y%m%d')}-CompassBrief.txt"
 
         logger.info("Generated brief: %s (%d chars)", filename, len(brief))
         logger.info(
-            "Target session: %s | Data: today=%s, yesterday=%s",
+            "Session covered: %s | Publication target: %s | Data: today=%s, yesterday=%s",
+            previous_session,
             target_date,
             data.today.date,
             data.yesterday.date,
@@ -140,9 +146,6 @@ def main() -> int:
         # stale market data; skip the upload to avoid overwriting a good
         # one. Caller can re-run with --force after the upstream catch-up.
         data_date = datetime.strptime(data.today.date, "%m/%d/%Y").date()
-        from scripts.db import get_previous_session_date
-
-        previous_session = get_previous_session_date(target_date)
         skip_upload = False
         if data_date < previous_session and not args.force:
             logger.warning(

@@ -59,7 +59,7 @@ class IndicatorPipeline:
 
         Args:
             raw_df: DataFrame with columns: date, close, high, low,
-                     volume, oi, implied_volatility, stock_us, com_net_us.
+                     volume, oi, implied_volatility.
                      Optionally: macroeco_bonus (LLM-generated).
                      Must be sorted by date ascending.
             macroeco_col: Column name for macroeco bonus values.

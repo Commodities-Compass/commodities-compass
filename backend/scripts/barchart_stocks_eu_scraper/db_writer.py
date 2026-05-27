@@ -1,17 +1,11 @@
-"""UPDATE writer for Barchart Stock EU data → pl_contract_data_daily.
+"""UPSERT writer for Barchart Stock EU → pl_stock_observation.
 
-This scraper *never inserts* a row. The OHLCV row must already have been
-written by ``barchart_scraper`` at 19:00 UTC; this scraper updates the
-``stock_eu_bags60kg`` column on the existing row keyed by ``(date,
-contract_id)`` where ``contract_id`` is the currently active contract.
-
-Mirrors ``ice_stocks_scraper.db_writer.write_stock_us`` — both EU and US
-stock scrapers use the same (date, active_contract_id) targeting so that
-during a contract roll, only the active contract's row is updated.
-
-Fail-loud per ``.claude/rules/pipeline-error-handling.md`` if the row
-doesn't exist — masking that case would create stock-only rows with no
-OHLCV, breaking downstream computation.
+Refactored 2026-05-27: writes to the generic ``pl_stock_observation``
+table (region='eu', source='barchart_ic345drw') keyed on the Barchart
+"Most Recent Date" (= ICE Europe publication Tuesday). The old design
+overwrote the session-date row of ``pl_contract_data_daily.stock_eu_bags60kg``
+which masked the weekly cadence (lun-ven all carried the same value).
+See migration ``r2m3n4o5p6q7`` for the schema rationale.
 """
 
 from __future__ import annotations
@@ -20,57 +14,43 @@ import logging
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from scripts.contract_resolver import resolve_active
+from scripts._shared.stock_observation_writer import (
+    StockObservationWriterError,
+    upsert_stock_observation,
+)
 
 logger = logging.getLogger(__name__)
 
+SOURCE_TAG = "barchart_ic345drw"
 
-class StockEuRowMissingError(RuntimeError):
-    """Raised when pl_contract_data_daily has no row for the target (date, contract)."""
+
+class StockEuRowMissingError(StockObservationWriterError):
+    """Kept for backwards compatibility with existing tests, but no longer
+    raised — the writer now INSERTs/UPSERTs into pl_stock_observation
+    without depending on a pre-existing OHLCV row.
+    """
 
 
 def update_stock_eu(
     session: Session,
-    target_date: date,
+    report_date: date,
     value_bags60kg: Decimal,
-) -> int:
-    """Update pl_contract_data_daily.stock_eu_bags60kg for one (date, active_contract).
+    dry_run: bool = False,
+) -> bool:
+    """Upsert one ICE Europe certified stock observation.
 
-    Returns the number of rows updated (always 1 if the row exists).
-    Raises StockEuRowMissingError if no row matches — the OHLCV scraper
-    must have run first AND the active contract must be set.
-
-    The active contract is resolved from ``ref_contract.is_active=true``
-    so that during a roll, only the new active contract's row gets the
-    stock value (matching stock_us semantics).
+    ``report_date`` is the Barchart "Most Recent Date" (the Tuesday ICE
+    Europe published). ``value_bags60kg`` is the raw 60kg-bag count.
+    Conversion to tonnes happens in the shared writer.
     """
-    contract_id = resolve_active(session)
-
-    result = session.execute(
-        text(
-            "UPDATE pl_contract_data_daily "
-            "SET stock_eu_bags60kg = :v "
-            "WHERE date = :d AND contract_id = :contract_id"
-        ),
-        {"v": value_bags60kg, "d": target_date, "contract_id": contract_id},
+    return upsert_stock_observation(
+        session,
+        region="eu",
+        report_date=report_date,
+        value_native=value_bags60kg,
+        unit_native="bags_60kg",
+        source=SOURCE_TAG,
+        dry_run=dry_run,
     )
-    rowcount = result.rowcount
-    if rowcount == 0:
-        raise StockEuRowMissingError(
-            f"no row in pl_contract_data_daily for "
-            f"date={target_date.isoformat()}, contract_id={contract_id} "
-            "— OHLCV scraper must run first"
-        )
-
-    session.flush()
-    logger.info(
-        "Updated %d row (date=%s, contract_id=%s, stock_eu_bags60kg=%s)",
-        rowcount,
-        target_date,
-        contract_id,
-        value_bags60kg,
-    )
-    return rowcount

@@ -43,6 +43,10 @@ class EnsembleLoaderError(RuntimeError):
 # 600d GARCH/long-run lookback chains across roll boundaries — see
 # Alembic n8i9j0k1l2m3. Indicators join on (date, contract_id) where
 # contract_id is whichever underlying contract was front-month that day.
+#
+# stock_us and com_net_us were removed from the VIEW + projection
+# 2026-05-27 (migration r2m3n4o5p6q7). They live in pl_stock_observation
+# / pl_cot_us_weekly now and no R&D specialist consumes them.
 _MARKET_HISTORY_SELECT = """
 SELECT
     pd.date::DATE                       AS date,
@@ -54,8 +58,6 @@ SELECT
     pd.volume                           AS volume,
     pd.oi                               AS oi,
     pd.implied_volatility               AS implied_volatility,
-    pd.stock_us                         AS stock_us,
-    pd.com_net_us                       AS com_net_us,
     pi.r3, pi.r2, pi.r1, pi.pivot, pi.s1, pi.s2, pi.s3,
     pi.ema12, pi.ema26, pi.macd, pi.macd_signal,
     pi.rsi_14d,

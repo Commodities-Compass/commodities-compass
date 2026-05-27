@@ -133,12 +133,15 @@ const INDICATOR_META: Record<string, IndicatorMeta> = {
 };
 
 interface RulerGaugeProps {
-  value: number;
+  /** Numeric value to plot. Pass `null` to render a "no data" gauge (no marker, "—" label). */
+  value: number | null;
   min: number;
   max: number;
   label: string;
   ranges?: IndicatorRange[];
   className?: string;
+  /** Optional formatter for the value label. Defaults to `v.toFixed(2)`. */
+  formatValue?: (v: number) => string;
 }
 
 function zoneOf(value: number, ranges?: IndicatorRange[]): 'RED' | 'ORANGE' | 'GREEN' {
@@ -184,10 +187,14 @@ export default function GaugeIndicator({
   label,
   ranges,
   className,
+  formatValue,
 }: RulerGaugeProps) {
   const span = max - min || 1;
-  const pct = Math.max(0, Math.min(100, ((value - min) / span) * 100));
-  const zone = zoneOf(value, ranges);
+  const hasValue = value != null && Number.isFinite(value);
+  const pct = hasValue
+    ? Math.max(0, Math.min(100, ((value! - min) / span) * 100))
+    : 0;
+  const zone = hasValue ? zoneOf(value!, ranges) : 'ORANGE';
   const [t1, t2] = zoneBounds(ranges, min, max);
   const meta = INDICATOR_META[label];
   const isTouch = useIsTouch();
@@ -217,38 +224,42 @@ export default function GaugeIndicator({
           paddingBottom: 4,
         }}
       >
-        {/* Value label (top) */}
+        {/* Value label (top) — centered when no data, else above the marker */}
         <span
           className="tabular-nums"
           style={{
             position: 'absolute',
             top: 0,
-            left: `${pct}%`,
+            left: hasValue ? `${pct}%` : '50%',
             transform: 'translateX(-50%)',
             fontFamily: 'var(--font-mono)',
             fontSize: 12,
             fontWeight: 700,
-            color: 'var(--ink)',
+            color: hasValue ? 'var(--ink)' : 'var(--ink-light)',
             whiteSpace: 'nowrap',
           }}
         >
-          {value != null ? value.toFixed(2) : '—'}
+          {hasValue
+            ? (formatValue ? formatValue(value!) : value!.toFixed(2))
+            : '—'}
         </span>
 
-        {/* Triangle marker */}
-        <span
-          style={{
-            position: 'absolute',
-            top: 16,
-            left: `${pct}%`,
-            transform: 'translateX(-50%)',
-            fontSize: 10,
-            lineHeight: 1,
-            color: SIGNAL_HEX[zone],
-          }}
-        >
-          {'▼'}
-        </span>
+        {/* Triangle marker — suppressed when no data so we never imply a position */}
+        {hasValue && (
+          <span
+            style={{
+              position: 'absolute',
+              top: 16,
+              left: `${pct}%`,
+              transform: 'translateX(-50%)',
+              fontSize: 10,
+              lineHeight: 1,
+              color: SIGNAL_HEX[zone],
+            }}
+          >
+            {'▼'}
+          </span>
+        )}
 
         {/* Ruler line */}
         <div

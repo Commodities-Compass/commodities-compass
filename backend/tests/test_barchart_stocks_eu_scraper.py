@@ -33,12 +33,6 @@ from scripts.barchart_stocks_eu_scraper.parser import (
     parse_barchart_history_series,
     parse_barchart_stocks_eu_html,
 )
-from tests.factories import (
-    make_pl_contract_data_daily,
-    make_ref_commodity,
-    make_ref_contract,
-    make_ref_exchange,
-)
 
 
 # ---------------------------------------------------------------------------
@@ -205,126 +199,72 @@ class TestParseBarchartStocksEuHtml:
 
 
 class TestUpdateStockEu:
-    def _seed_row(self, session, target_date: date):
-        """Seed ref_exchange + ref_commodity + ref_contract + pl_contract_data_daily row.
+    """Validates the Barchart EU stocks writer after the 2026-05-27 refactor
+    (writes to pl_stock_observation region='eu' instead of overwriting
+    pl_contract_data_daily.stock_eu_bags60kg).
+    """
 
-        Returns the seeded row so callers can assert against it.
-        """
-        # Unique suffix per call to avoid conflicts across tests in the same session.
-        suffix = target_date.strftime("%Y%m%d")
-        exchange = make_ref_exchange(code=f"ICE_EU_{suffix}")
-        session.add(exchange)
-        session.flush()
-        commodity = make_ref_commodity(exchange.id, code=f"CC_{suffix}")
-        session.add(commodity)
-        session.flush()
-        contract = make_ref_contract(commodity.id, code=f"CT_{suffix}")
-        session.add(contract)
-        session.flush()
-        row = make_pl_contract_data_daily(contract.id, date=target_date)
-        session.add(row)
-        session.flush()
-        return row
-
-    def test_update_existing_row(self, sync_db_session):
+    def test_inserts_observation(self, sync_db_session):
         target = date(2026, 5, 13)
-        self._seed_row(sync_db_session, target)
-
-        n = update_stock_eu(
-            sync_db_session,
-            target,
-            Decimal("621116"),
-        )
-        assert n == 1
+        written = update_stock_eu(sync_db_session, target, Decimal("621116"))
+        sync_db_session.flush()
+        assert written is True
 
         row = sync_db_session.execute(
             text(
-                "SELECT stock_eu_bags60kg FROM pl_contract_data_daily WHERE date = :d"
+                "SELECT region, report_date, value_native, unit_native, "
+                "value_tonnes, source FROM pl_stock_observation "
+                "WHERE region = 'eu' AND report_date = :d"
             ),
             {"d": target},
         ).fetchone()
-        assert row.stock_eu_bags60kg == Decimal("621116")
+        assert row.region == "eu"
+        assert row.value_native == Decimal("621116")
+        assert row.unit_native == "bags_60kg"
+        # 621116 bags × 60 / 1000 = 37266.96 tonnes
+        assert row.value_tonnes == Decimal("37266.960000")
+        assert row.source == "barchart_ic345drw"
 
     def test_update_overwrites_prior_value(self, sync_db_session):
         target = date(2026, 5, 14)
-        self._seed_row(sync_db_session, target)
-
         update_stock_eu(sync_db_session, target, Decimal("100000"))
         update_stock_eu(sync_db_session, target, Decimal("621116"))
-
-        row = sync_db_session.execute(
-            text(
-                "SELECT stock_eu_bags60kg FROM pl_contract_data_daily WHERE date = :d"
-            ),
-            {"d": target},
-        ).fetchone()
-        assert row.stock_eu_bags60kg == Decimal("621116")
-
-    def _seed_active_contract_only(self, session, suffix: str):
-        """Seed an active contract but NO pl_contract_data_daily row."""
-        exchange = make_ref_exchange(code=f"ICE_EU_{suffix}")
-        session.add(exchange)
-        session.flush()
-        commodity = make_ref_commodity(exchange.id, code=f"CC_{suffix}")
-        session.add(commodity)
-        session.flush()
-        contract = make_ref_contract(commodity.id, code=f"CT_{suffix}")
-        session.add(contract)
-        session.flush()
-        return contract
-
-    def test_missing_row_fails_loud(self, sync_db_session):
-        """If barchart OHLCV scraper hasn't run yet, fail-loud — don't INSERT."""
-        self._seed_active_contract_only(sync_db_session, "MISSING")
-        with pytest.raises(StockEuRowMissingError, match="no row"):
-            update_stock_eu(
-                sync_db_session,
-                date(2026, 5, 31),  # no row was seeded for this date
-                Decimal("621116"),
-            )
-
-    def test_only_updates_active_contract_during_roll(self, sync_db_session):
-        """During a contract roll, only the active contract's row gets the stock value.
-
-        Seeds two contracts on the same date — one active (CAK26), one inactive
-        (CAH26). The UPDATE must hit only the active one, never both.
-        """
-        target = date(2026, 5, 15)
-        suffix = target.strftime("%Y%m%d")
-        exchange = make_ref_exchange(code=f"ICE_EU_{suffix}")
-        sync_db_session.add(exchange)
         sync_db_session.flush()
-        commodity = make_ref_commodity(exchange.id, code=f"CC_{suffix}")
-        sync_db_session.add(commodity)
-        sync_db_session.flush()
-        active = make_ref_contract(commodity.id, code=f"ACT_{suffix}", is_active=True)
-        inactive = make_ref_contract(
-            commodity.id,
-            code=f"INA_{suffix}",
-            contract_month="H26",
-            is_active=False,
-        )
-        sync_db_session.add_all([active, inactive])
-        sync_db_session.flush()
-
-        active_row = make_pl_contract_data_daily(active.id, date=target)
-        inactive_row = make_pl_contract_data_daily(inactive.id, date=target)
-        sync_db_session.add_all([active_row, inactive_row])
-        sync_db_session.flush()
-
-        update_stock_eu(sync_db_session, target, Decimal("621116"))
 
         rows = sync_db_session.execute(
             text(
-                "SELECT contract_id, stock_eu_bags60kg FROM pl_contract_data_daily "
-                "WHERE date = :d ORDER BY contract_id"
+                "SELECT value_native FROM pl_stock_observation "
+                "WHERE region = 'eu' AND report_date = :d"
             ),
             {"d": target},
         ).fetchall()
-        assert len(rows) == 2
-        by_contract = {r.contract_id: r.stock_eu_bags60kg for r in rows}
-        assert by_contract[active.id] == Decimal("621116")
-        assert by_contract[inactive.id] is None  # untouched
+        assert len(rows) == 1
+        assert rows[0].value_native == Decimal("621116")
+
+    def test_no_pcdd_dependency(self, sync_db_session):
+        """Writer no longer depends on a pre-existing OHLCV row — the new
+        target table is self-contained.
+        """
+        target = date(2026, 5, 31)
+        # Deliberately no ref or pcdd seed — pl_stock_observation accepts the
+        # row anyway because it's region-keyed, not contract-keyed.
+        update_stock_eu(sync_db_session, target, Decimal("621116"))
+        sync_db_session.flush()
+
+        count = sync_db_session.execute(
+            text(
+                "SELECT count(*) FROM pl_stock_observation "
+                "WHERE region = 'eu' AND report_date = :d"
+            ),
+            {"d": target},
+        ).scalar_one()
+        assert count == 1
+
+    def test_legacy_exception_still_importable(self):
+        """StockEuRowMissingError kept for backwards-compatibility — it just
+        no longer fires because the new table doesn't have the FK precondition.
+        """
+        assert issubclass(StockEuRowMissingError, RuntimeError)
 
 
 # ---------------------------------------------------------------------------

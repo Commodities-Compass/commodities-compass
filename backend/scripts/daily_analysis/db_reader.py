@@ -218,12 +218,20 @@ class DBReader:
         )
 
     def _read_technicals(self, target_date: date, contract_code: str) -> TechnicalsData:
-        """Read last 2 days of technicals + derived indicators from DB."""
+        """Read last 2 days of technicals + derived indicators from DB.
+
+        stock_us and com_net_us are weekly cadence values that live in
+        ``pl_stock_observation`` and ``pl_cot_us_weekly`` since
+        2026-05-27. They're injected into the today/yesterday dicts
+        below from the latest observation on/before each row's date so
+        the LLM prompt still receives STOCKTOD/COMNETTOD variables with
+        meaningful values.
+        """
         _technicals_sql = """
             SELECT
                 d.date,
                 d.close, d.high, d.low, d.volume, d.oi,
-                d.implied_volatility, d.stock_us, d.com_net_us,
+                d.implied_volatility,
                 di.r1, di.pivot, di.s1,
                 di.ema12, di.ema26,
                 di.macd, di.macd_signal,
@@ -281,6 +289,14 @@ class DBReader:
         today_row = dict(zip(columns, rows[0]))
         yesterday_row = dict(zip(columns, rows[1]))
 
+        # Inject weekly stock_us + com_net_us from dedicated tables.
+        today_row["stock_us"] = self._latest_stock_us_tonnes(today_row["date"])
+        yesterday_row["stock_us"] = self._latest_stock_us_tonnes(yesterday_row["date"])
+        today_row["com_net_us"] = self._latest_cot_us_prod_merc_net(today_row["date"])
+        yesterday_row["com_net_us"] = self._latest_cot_us_prod_merc_net(
+            yesterday_row["date"]
+        )
+
         today_vars: dict[str, str] = {}
         yesterday_vars: dict[str, str] = {}
 
@@ -296,6 +312,39 @@ class DBReader:
             today_date=today_row["date"].strftime("%m/%d/%Y"),
             today_date_iso=today_row["date"],
         )
+
+    def _latest_stock_us_tonnes(self, on_or_before: date) -> float | None:
+        """Latest ICE US certified stock observation in tonnes on/before date."""
+        row = self._session.execute(
+            text(
+                """
+                SELECT value_tonnes FROM pl_stock_observation
+                WHERE region = 'us'
+                  AND contract_market = 'cocoa'
+                  AND report_date <= :d
+                ORDER BY report_date DESC
+                LIMIT 1
+                """
+            ),
+            {"d": on_or_before},
+        ).fetchone()
+        return float(row[0]) if row and row[0] is not None else None
+
+    def _latest_cot_us_prod_merc_net(self, on_or_before: date) -> int | None:
+        """Latest CFTC US Producer/Merchant net position on/before date."""
+        row = self._session.execute(
+            text(
+                """
+                SELECT prod_merc_net FROM pl_cot_us_weekly
+                WHERE contract_market = 'cocoa'
+                  AND release_date <= :d
+                ORDER BY release_date DESC
+                LIMIT 1
+                """
+            ),
+            {"d": on_or_before},
+        ).fetchone()
+        return int(row[0]) if row and row[0] is not None else None
 
     def _read_context(self, target_date: date) -> ContextData:
         """Read market research + weather data for LLM Call #1."""

@@ -1,16 +1,25 @@
-"""Positioning service — COT EU weekly + Stock EU/US daily.
+"""Positioning service — ICE EU COT + CFTC US COT + Stock EU/US.
 
-Sources:
-  * ``pl_cot_eu_weekly`` for ICE Europe positioning (Managed Money + Producer/
-    Merchant nets, plus longs and shorts). Weekly cadence, lagged ~3 days
-    from snapshot Tuesday. We pick the most recent row on/before the target.
-  * ``pl_contract_data_daily`` for ``stock_eu_bags60kg``, ``stock_us`` (tonnes),
-    and the legacy CFTC US commercial net ``com_net_us``. We pick the row on
-    the target date for the resolved contract, falling back to the latest
-    available date (covers contract roll edge-cases).
+Sources (all weekly, queried "latest on/before target_date"):
+  * ``pl_cot_eu_weekly`` — ICE Europe Disaggregated COT (Friday release for
+    Tuesday snapshot). Provides Managed Money + Producer/Merchant nets,
+    longs/shorts, and total open interest.
+  * ``pl_cot_us_weekly`` — CFTC US Disaggregated COT (same cadence as EU).
+    Refactored 2026-05-27 to mirror the EU schema. Replaces the legacy
+    ``pl_contract_data_daily.com_net_us`` column.
+  * ``pl_stock_observation`` — ICE certified stocks for both regions in a
+    single generic table keyed on (region, report_date, contract_market).
+    Stores both ``value_native`` (in the source's native unit) and
+    ``value_tonnes`` (normalized to tonnes for cross-region comparison +
+    gauge rendering).
 
-The EU/US stock ratio is computed in tonnes — EU bags are converted via
-``bags × 60 / 1000`` (60kg per bag).
+Output payload always includes ``*_report_date`` / ``*_release_date``
+fields so the frontend can display "last published" provenance and avoid
+the trompeur-fallback bug where a null value was masked by the gauge
+minimum.
+
+The EU/US stock ratio is always in tonnes — both sides converted at the
+source, no consumer math required.
 """
 
 from __future__ import annotations
@@ -23,33 +32,74 @@ from typing import Any, Optional
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.pipeline import PlContractDataDaily, PlCotEuWeekly
-from app.utils.contract_resolver import get_active_contract_id
+from app.models.pipeline import PlCotEuWeekly, PlCotUsWeekly, PlStockObservation
 
 logger = logging.getLogger(__name__)
-
-# Cocoa bag = 60 kg → tonnes (per ICE convention)
-EU_BAG_KG = 60.0
-KG_PER_TONNE = 1000.0
 
 
 async def get_positioning(
     db: AsyncSession,
     target_date: date_cls,
     *,
-    contract_id: Optional[uuid.UUID] = None,
+    contract_id: Optional[uuid.UUID] = None,  # noqa: ARG001 — kept for callsite stability
 ) -> dict[str, Any]:
-    """Return COT EU positioning + Stock EU/US for ``target_date``.
+    """Return COT EU + COT US + Stock EU/US for ``target_date``.
 
-    Stock columns are taken from the (target_date, contract_id) row when it
-    exists. If the contract has no row for that date (roll edge), falls back
-    to the latest available row for that contract on or before the date.
+    All sources are weekly so the "latest on/before target_date" pattern
+    applies uniformly. ``contract_id`` is retained on the signature for
+    callsite stability but is no longer needed — none of the four sources
+    are keyed on contract_id anymore (cocoa-level positioning data is
+    contract-agnostic).
     """
-    if contract_id is None:
-        contract_id = await get_active_contract_id(db)
+    cot_eu = await _fetch_latest_cot_eu(db, target_date)
+    cot_us = await _fetch_latest_cot_us(db, target_date)
+    stock_eu = await _fetch_latest_stock(db, target_date, region="eu")
+    stock_us = await _fetch_latest_stock(db, target_date, region="us")
 
-    # COT EU — most recent weekly snapshot on/before target_date
-    cot = (
+    stock_eu_tonnes = _to_float(stock_eu.value_tonnes) if stock_eu else None
+    stock_us_tonnes = _to_float(stock_us.value_tonnes) if stock_us else None
+
+    stock_eu_us_ratio: Optional[float] = None
+    if (
+        stock_eu_tonnes is not None
+        and stock_us_tonnes is not None
+        and stock_us_tonnes > 0
+    ):
+        stock_eu_us_ratio = round(stock_eu_tonnes / stock_us_tonnes, 4)
+
+    return {
+        "date": target_date.isoformat(),
+        # ICE EU COT (managed money / producer-merchant, weekly)
+        "cot_managed_money_net": _int_or_none(cot_eu, "m_money_net"),
+        "cot_managed_money_long": _int_or_none(cot_eu, "m_money_long"),
+        "cot_managed_money_short": _int_or_none(cot_eu, "m_money_short"),
+        "cot_producer_merchant_net": _int_or_none(cot_eu, "prod_merc_net"),
+        "cot_open_interest": _int_or_none(cot_eu, "open_interest"),
+        "cot_report_date": _iso_or_none(cot_eu, "report_date"),
+        "cot_release_date": _iso_or_none(cot_eu, "release_date"),
+        # CFTC US COT (same shape as ICE EU since 2026-05-27)
+        "cot_us_managed_money_net": _int_or_none(cot_us, "m_money_net"),
+        "cot_us_managed_money_long": _int_or_none(cot_us, "m_money_long"),
+        "cot_us_managed_money_short": _int_or_none(cot_us, "m_money_short"),
+        "cot_us_producer_merchant_net": _int_or_none(cot_us, "prod_merc_net"),
+        "cot_us_open_interest": _int_or_none(cot_us, "open_interest"),
+        "cot_us_report_date": _iso_or_none(cot_us, "report_date"),
+        "cot_us_release_date": _iso_or_none(cot_us, "release_date"),
+        # Stocks — canonical unit is tonnes, plus native unit for audit
+        "stock_eu_tonnes": stock_eu_tonnes,
+        "stock_eu_native_value": _to_float(stock_eu.value_native) if stock_eu else None,
+        "stock_eu_native_unit": stock_eu.unit_native if stock_eu else None,
+        "stock_eu_report_date": _iso_or_none(stock_eu, "report_date"),
+        "stock_us_tonnes": stock_us_tonnes,
+        "stock_us_report_date": _iso_or_none(stock_us, "report_date"),
+        "stock_eu_us_ratio": stock_eu_us_ratio,
+    }
+
+
+async def _fetch_latest_cot_eu(
+    db: AsyncSession, target_date: date_cls
+) -> Optional[PlCotEuWeekly]:
+    return (
         await db.execute(
             select(PlCotEuWeekly)
             .where(
@@ -61,59 +111,53 @@ async def get_positioning(
         )
     ).scalar_one_or_none()
 
-    # Stocks — exact-date row first, fall back to latest <= target_date
-    stocks = (
+
+async def _fetch_latest_cot_us(
+    db: AsyncSession, target_date: date_cls
+) -> Optional[PlCotUsWeekly]:
+    return (
         await db.execute(
-            select(
-                PlContractDataDaily.stock_eu_bags60kg,
-                PlContractDataDaily.stock_us,
-                PlContractDataDaily.com_net_us,
-                PlContractDataDaily.date,
-            )
+            select(PlCotUsWeekly)
             .where(
-                PlContractDataDaily.contract_id == contract_id,
-                PlContractDataDaily.date <= target_date,
+                PlCotUsWeekly.release_date <= target_date,
+                PlCotUsWeekly.contract_market == "cocoa",
             )
-            .order_by(desc(PlContractDataDaily.date))
+            .order_by(desc(PlCotUsWeekly.release_date))
             .limit(1)
         )
-    ).one_or_none()
-
-    stock_eu = _to_float(stocks.stock_eu_bags60kg) if stocks else None
-    stock_us = _to_float(stocks.stock_us) if stocks else None
-    com_net_us = _to_float(stocks.com_net_us) if stocks else None
-
-    # Ratio EU/US in tonnes (only when both present and US > 0)
-    stock_eu_us_ratio: Optional[float] = None
-    if stock_eu is not None and stock_us is not None and stock_us > 0:
-        stock_eu_tonnes = stock_eu * EU_BAG_KG / KG_PER_TONNE
-        stock_eu_us_ratio = round(stock_eu_tonnes / stock_us, 4)
-
-    return {
-        "date": target_date.isoformat(),
-        "cot_managed_money_net": int(cot.m_money_net)
-        if cot and cot.m_money_net is not None
-        else None,
-        "cot_managed_money_long": int(cot.m_money_long)
-        if cot and cot.m_money_long is not None
-        else None,
-        "cot_managed_money_short": int(cot.m_money_short)
-        if cot and cot.m_money_short is not None
-        else None,
-        "cot_producer_merchant_net": int(cot.prod_merc_net)
-        if cot and cot.prod_merc_net is not None
-        else None,
-        "cot_open_interest": int(cot.open_interest)
-        if cot and cot.open_interest is not None
-        else None,
-        "cot_report_date": cot.report_date.isoformat() if cot else None,
-        "cot_release_date": cot.release_date.isoformat() if cot else None,
-        "stock_eu_bags60kg": stock_eu,
-        "stock_us": stock_us,
-        "stock_eu_us_ratio": stock_eu_us_ratio,
-        "com_net_us": com_net_us,
-    }
+    ).scalar_one_or_none()
 
 
-def _to_float(v: Any) -> Optional[float]:
-    return float(v) if v is not None else None
+async def _fetch_latest_stock(
+    db: AsyncSession, target_date: date_cls, *, region: str
+) -> Optional[PlStockObservation]:
+    return (
+        await db.execute(
+            select(PlStockObservation)
+            .where(
+                PlStockObservation.region == region,
+                PlStockObservation.contract_market == "cocoa",
+                PlStockObservation.report_date <= target_date,
+            )
+            .order_by(desc(PlStockObservation.report_date))
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
+def _to_float(value: Any) -> Optional[float]:
+    return float(value) if value is not None else None
+
+
+def _int_or_none(obj: Any, attr: str) -> Optional[int]:
+    if obj is None:
+        return None
+    value = getattr(obj, attr, None)
+    return int(value) if value is not None else None
+
+
+def _iso_or_none(obj: Any, attr: str) -> Optional[str]:
+    if obj is None:
+        return None
+    value = getattr(obj, attr, None)
+    return value.isoformat() if value is not None else None

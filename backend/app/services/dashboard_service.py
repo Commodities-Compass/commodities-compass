@@ -19,10 +19,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.pipeline import (
     PlArticleSegment,
     PlContractDataDaily,
+    PlCotUsWeekly,
     PlDerivedIndicators,
     PlFundamentalArticle,
     PlIndicatorDaily,
     PlSentimentFeature,
+    PlStockObservation,
     PlWeatherObservation,
 )
 from app.models.test_range import TestRange
@@ -670,8 +672,6 @@ async def get_chart_data(
         PlContractDataDaily.oi,
         PlDerivedIndicators.rsi_14d,
         PlDerivedIndicators.macd,
-        PlContractDataDaily.stock_us,
-        PlContractDataDaily.com_net_us,
     )
 
     # Try active contract first
@@ -723,6 +723,36 @@ async def get_chart_data(
         result = await db.execute(fallback_query)
         rows = result.all()
 
+    chart_rows = list(reversed(rows))
+
+    # Weekly series — forward-filled per chart date from the dedicated
+    # tables. stock_us and com_net_us are toggleable chart metrics in the
+    # frontend (commodities-data.ts); we keep them in the payload so the
+    # chart doesn't lose options, but they're now sourced from
+    # pl_stock_observation (region='us') and pl_cot_us_weekly.
+    if chart_rows:
+        stock_us_series = await _build_forward_fill_series(
+            db,
+            chart_dates=[r.date for r in chart_rows],
+            table=PlStockObservation,
+            date_col=PlStockObservation.report_date,
+            extra_where=[
+                PlStockObservation.region == "us",
+                PlStockObservation.contract_market == "cocoa",
+            ],
+            value_col=PlStockObservation.value_tonnes,
+        )
+        com_net_series = await _build_forward_fill_series(
+            db,
+            chart_dates=[r.date for r in chart_rows],
+            table=PlCotUsWeekly,
+            date_col=PlCotUsWeekly.release_date,
+            extra_where=[PlCotUsWeekly.contract_market == "cocoa"],
+            value_col=PlCotUsWeekly.prod_merc_net,
+        )
+    else:
+        stock_us_series, com_net_series = {}, {}
+
     return [
         {
             "date": row.date.strftime("%Y-%m-%d"),
@@ -731,13 +761,68 @@ async def get_chart_data(
             "open_interest": float(row.oi) if row.oi is not None else None,
             "rsi_14d": float(row.rsi_14d) if row.rsi_14d is not None else None,
             "macd": float(row.macd) if row.macd is not None else None,
-            "stock_us": float(row.stock_us) if row.stock_us is not None else None,
-            "com_net_us": (
-                float(row.com_net_us) if row.com_net_us is not None else None
-            ),
+            "stock_us": stock_us_series.get(row.date),
+            "com_net_us": com_net_series.get(row.date),
         }
-        for row in reversed(rows)
+        for row in chart_rows
     ]
+
+
+async def _build_forward_fill_series(
+    db: AsyncSession,
+    *,
+    chart_dates: List[date],
+    table,
+    date_col,
+    extra_where,
+    value_col,
+) -> Dict[date, Optional[float]]:
+    """Forward-fill a weekly value across daily chart dates.
+
+    Pulls every relevant observation in the window plus one earlier
+    observation as the carry-in, then walks the sorted chart dates and
+    associates the latest observation on/before each one. ~1 query
+    regardless of chart length.
+    """
+    if not chart_dates:
+        return {}
+
+    window_start = min(chart_dates)
+    window_end = max(chart_dates)
+
+    # Carry-in: the most recent observation strictly before window_start.
+    carry_query = (
+        select(date_col, value_col)
+        .where(*extra_where, date_col < window_start)
+        .order_by(desc(date_col))
+        .limit(1)
+    )
+    carry_result = await db.execute(carry_query)
+    in_window_query = (
+        select(date_col, value_col)
+        .where(*extra_where, date_col >= window_start, date_col <= window_end)
+        .order_by(date_col)
+    )
+    in_window_result = await db.execute(in_window_query)
+
+    observations: List[tuple[date, Optional[float]]] = []
+    for row in carry_result.all():
+        observations.append((row[0], float(row[1]) if row[1] is not None else None))
+    for row in in_window_result.all():
+        observations.append((row[0], float(row[1]) if row[1] is not None else None))
+
+    if not observations:
+        return {d: None for d in chart_dates}
+
+    series: Dict[date, Optional[float]] = {}
+    obs_idx = 0
+    last_value: Optional[float] = None
+    for d in sorted(chart_dates):
+        while obs_idx < len(observations) and observations[obs_idx][0] <= d:
+            last_value = observations[obs_idx][1]
+            obs_idx += 1
+        series[d] = last_value
+    return series
 
 
 # ---------------------------------------------------------------------------

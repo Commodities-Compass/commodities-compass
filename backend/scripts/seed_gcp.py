@@ -385,8 +385,12 @@ def migrate_raw_market_data(
                 volume=t.volume,
                 oi=t.open_interest,
                 implied_volatility=decimal_or_none(t.implied_volatility),
-                stock_us=decimal_or_none(t.stock_us),
-                com_net_us=decimal_or_none(t.com_net_us),
+                # stock_us / com_net_us are no longer columns on
+                # pl_contract_data_daily (migration r2m3n4o5p6q7,
+                # 2026-05-27) — they live in pl_stock_observation /
+                # pl_cot_us_weekly. The Sheets seed source is also
+                # retired so backfilling them from this script is
+                # unnecessary.
             )
         )
         count += 1

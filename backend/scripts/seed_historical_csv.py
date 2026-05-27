@@ -226,8 +226,6 @@ def seed_ohlcv(
                     volume=int_or_none(row["volume"]),
                     oi=int_or_none(row["oi"]),
                     implied_volatility=None,
-                    stock_us=None,
-                    com_net_us=None,
                 )
             )
             inserted += 1

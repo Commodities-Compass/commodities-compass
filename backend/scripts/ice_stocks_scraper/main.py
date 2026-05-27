@@ -96,17 +96,24 @@ def main() -> int:
             else ""
         )
 
-        # Step 3: Write to GCP PostgreSQL
-        logger.info("Step 3: Writing to GCP PostgreSQL...")
+        # Step 3: Write to GCP PostgreSQL — keyed on the ICE-published
+        # report_date (NOT today()), so the dashboard can show data freshness
+        # honestly. data["actual_date"] is the date for which the XLS was
+        # found (may be earlier than today if today's file isn't out yet —
+        # ICE publishes daily at end-of-session but availability lags).
+        report_date = data["actual_date"]
+        logger.info(
+            "Step 3: Writing to GCP PostgreSQL (report_date=%s)...", report_date
+        )
         from scripts.db import get_session
         from scripts.ice_stocks_scraper.db_writer import write_stock_us
 
-        from datetime import date as date_type
-
-        db_date = target_date or date_type.today()
         with get_session() as session:
             write_stock_us(
-                session, stock_us_tonnes, target_date=db_date, dry_run=args.dry_run
+                session,
+                stock_us_tonnes,
+                report_date=report_date,
+                dry_run=args.dry_run,
             )
 
         sentry_sdk.set_context(

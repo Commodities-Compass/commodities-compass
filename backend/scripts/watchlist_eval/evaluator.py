@@ -17,10 +17,22 @@ def load_market_data(session: Session) -> dict[tuple[date, UUID], DayData]:
 
     Returns dict keyed on (date, contract_id) → DayData.
     """
+    # stock_us + com_net_us live in dedicated tables since 2026-05-27
+    # (migration r2m3n4o5p6q7). Forward-fill the latest weekly observation
+    # on/before each daily row date so the watchlist evaluator keeps its
+    # historical eval ability intact.
     rows = session.execute(
         text(
             "SELECT d.date, d.contract_id, d.close, d.volume, d.oi, "
-            "d.implied_volatility, d.stock_us, d.com_net_us, "
+            "d.implied_volatility, "
+            "(SELECT so.value_tonnes FROM pl_stock_observation so "
+            "  WHERE so.region='us' AND so.contract_market='cocoa' "
+            "    AND so.report_date <= d.date "
+            "  ORDER BY so.report_date DESC LIMIT 1) AS stock_us, "
+            "(SELECT cw.prod_merc_net FROM pl_cot_us_weekly cw "
+            "  WHERE cw.contract_market='cocoa' "
+            "    AND cw.release_date <= d.date "
+            "  ORDER BY cw.release_date DESC LIMIT 1) AS com_net_us, "
             "di.rsi_14d, di.macd, di.r1, di.s1, di.pivot, "
             "di.stochastic_k_14, di.atr_14d, "
             "di.bollinger_upper, di.bollinger_lower "

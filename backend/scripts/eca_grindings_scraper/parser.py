@@ -49,9 +49,13 @@ _MONTH_NAMES = {
     "december": 12,
 }
 
-# "Date : April 16th 2026" / "Date: October 17th 2024" — month / day / year.
+# "Date : April 16th 2026" / "Date: October 17th, 2024" — month / day / year.
+# The optional comma after the day suffix appears in 2019 publications
+# (e.g. "October 16th, 2019"). The ``,?`` keeps the modern no-comma form
+# working while accepting legacy commas. Zero-width spaces (U+200B) found
+# in a few 2020 PDFs are normalized away in _normalize_pdf_text.
 _DATE_RE = re.compile(
-    r"Date\s*:\s*(?P<month>[A-Za-z]+)\s+(?P<day>\d{1,2})(?:st|nd|rd|th)?\s+(?P<year>\d{4})",
+    r"Date\s*:\s*(?P<month>[A-Za-z]+)\s+(?P<day>\d{1,2})(?:st|nd|rd|th)?,?\s+(?P<year>\d{4})",
     re.IGNORECASE,
 )
 
@@ -76,6 +80,17 @@ class EcaRecord:
     period_date: date  # first day of the quarter (2026-01-01 for Q1 2026)
     metric_name: str  # METRIC_VOLUME_TONNES | METRIC_YOY_PCT
     value: float
+
+
+def _normalize_pdf_text(text: str) -> str:
+    """Strip ZERO WIDTH SPACE (U+200B) characters from PDF-extracted text.
+
+    Some 2020 ECA PDFs embed U+200B between visual cells; pdfplumber surfaces
+    those literally, which breaks regex ``\\s+`` boundaries (ZWSP is not
+    whitespace). Replacing with a normal space lets every downstream regex
+    work without each one having to know about the quirk.
+    """
+    return text.replace("​", " ") if "​" in text else text
 
 
 def _parse_publication_date(text: str) -> date:
@@ -197,6 +212,8 @@ def parse_eca_pdf(pdf_bytes: bytes, *, period_label: str) -> list[EcaRecord]:
 
     if not page_one_text.strip():
         raise EcaParseError("ECA PDF: page 1 extracted text is empty.")
+
+    page_one_text = _normalize_pdf_text(page_one_text)
 
     pub_date = _parse_publication_date(page_one_text)
 

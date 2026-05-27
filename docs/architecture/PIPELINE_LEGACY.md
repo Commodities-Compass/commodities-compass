@@ -236,6 +236,9 @@ WHERE date = :date
 #### Le flag `--algorithm-version legacy`
 En prod, `cc-daily-analysis` est lancé avec `--algorithm-version legacy` (cf. `deploy.yml:211`). Cela force l'UPDATE sur la row legacy, **garantit qu'il ne touchera jamais la row ensemble**. C'est le mécanisme d'isolation du dual-track côté legacy.
 
+#### Le pipeline legacy est aussi appelé pour la row ENSEMBLE (refactor 2026-05-27)
+Depuis le refactor PR #17, le job `cc-ensemble-explainer` (19:25 UTC) invoque le MÊME `DBAnalysisEngine.run()` **sans pinner `--algorithm-version`** → l'auto-align (db_analysis_engine.py:187-200) détecte la row ensemble dans `pl_orchestrator_decision` et écrit la narrative legacy-style (mêmes prompts `CALL_1_PROMPT` + `CALL_2_PROMPT_ENSEMBLE`, même format de conclusion `> ... • ... > A SURVEILLER AUJOURD'HUI: ...`) sur la row ensemble. Le code legacy est donc utilisé par les 2 tracks : pinné sur legacy via deploy.yml (cc-daily-analysis), et auto-aligné sur ensemble via cc-ensemble-explainer. Voir [PIPELINE_ENSEMBLE.md §7](./PIPELINE_ENSEMBLE.md) pour le détail.
+
 ### 3.6 `cc-compass-brief` — Brief generator + Drive upload
 
 > Code : [backend/scripts/compass_brief/](../../backend/scripts/compass_brief/) (main, db_reader, brief_generator, drive_uploader)

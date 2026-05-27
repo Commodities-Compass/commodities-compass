@@ -6,11 +6,18 @@
 
 ---
 
-## Scenario A — Bug dans l'explainer LLM (parsing/validation failure)
+## Scenario A — Bug dans l'explainer (refactor 2026-05-27 : wrapper DBAnalysisEngine)
+
+### Contexte
+Depuis le refactor PR #17, `cc-ensemble-explainer` est un thin wrapper autour de `scripts.daily_analysis.db_analysis_engine.DBAnalysisEngine` (cf. [PIPELINE_ENSEMBLE.md §7](../architecture/PIPELINE_ENSEMBLE.md)). Plus de prompt / parser / writer custom — tout le code LLM est partagé avec `cc-daily-analysis`. Donc les modes de panne sont les mêmes que côté legacy.
 
 ### Symptômes
-- Sentry alerte sur `cc-ensemble-explainer` avec `ExplainerOutputError` ou `ExplainerWriteError`
-- Le brief ensemble du jour ne se génère pas (cc-compass-brief-ensemble exit 1 avec `EnsembleBriefDataMissingError` car l'ensemble row n'a pas eu son UPDATE LLM)
+- Sentry alerte sur `cc-ensemble-explainer` avec :
+  - `EnsembleRowMissingError` (pre-flight a trouvé 0 row ensemble dans `pl_indicator_daily` à `data_date`)
+  - `AnalysisWriteError` (engine n'a pas matché de row à l'UPDATE — typiquement compute-indicators n'a pas tourné)
+  - OpenAI 5xx / timeout / quota
+  - `AlgorithmVersionNotFoundError` (improbable, schema drift)
+- Le brief ensemble du jour ne se génère pas (cc-compass-brief-ensemble exit 1 avec `EnsembleBriefDataMissingError` ou conclusion vide)
 - L'utilisateur a peut-être vu un brief incomplet si `cc-compass-brief-ensemble` a tourné avant le diagnostic
 
 ### Action immédiate (≤2 min)
@@ -19,28 +26,29 @@ gcloud scheduler jobs pause cc-ensemble-explainer --location europe-west1 --proj
 gcloud scheduler jobs pause cc-compass-brief-ensemble --location europe-west1 --project cacaooo
 ```
 
-Le brief LEGACY continue à se générer normalement. Le frontend par défaut (`BRIEF_DEFAULT_VERSION=legacy`) sert toujours l'audio legacy → aucun impact UX.
+Le brief LEGACY continue à se générer normalement (cc-daily-analysis pinné sur legacy via `--algorithm-version legacy`). Le frontend par défaut (`BRIEF_DEFAULT_VERSION=legacy`) sert toujours l'audio legacy → aucun impact UX.
 
 ### Diagnostic
-1. Sentry → trouver l'exception et le raw LLM output (loggé via `logger.warning`)
-2. Inspecter le prompt envoyé : `gcloud logging read 'resource.labels.job_name="cc-ensemble-explainer"' --limit 50`
-3. Comparer avec [docs/runbooks/ensemble-explainer-prompt-tuning.md](./ensemble-explainer-prompt-tuning.md)
+1. Sentry → exception + stack trace (le code legacy DBAnalysisEngine se log sous `scripts.daily_analysis.*` même quand appelé depuis ensemble-explainer).
+2. `gcloud logging read 'resource.labels.job_name="cc-ensemble-explainer"' --limit 50` — chercher les lignes `Date semantics:`, `Pre-flight OK`, `Call #1 result`, `Call #2 result`, `Engine result`.
+3. Vérifier l'upstream — `cc-ensemble-compute` a-t-il tourné ce soir ? Si non c'est lui le vrai responsable (cf. [ensemble-failure-recovery.md](./ensemble-failure-recovery.md)).
 
 ### Fix
-- Si problème de prompt → éditer `backend/scripts/ensemble_explainer/prompts.py`
-- Si problème de validation (e.g. nouveau pattern de "contradicts decision" trop strict) → ajuster `output_parser.py`
-- Tester en dry-run sur dates historiques
-- PR + merge + redéploiement
-- Reprendre les schedulers : `gcloud scheduler jobs resume ...`
+- Si bug d'engine / prompt → éditer `backend/scripts/daily_analysis/prompts.py` (`CALL_1_PROMPT` ou `CALL_2_PROMPT_ENSEMBLE`) OU `backend/scripts/daily_analysis/db_analysis_engine.py`. ⚠ Toute modif affecte AUSSI le brief legacy puisque le code est partagé.
+- Si `EnsembleRowMissingError` → relancer d'abord cc-ensemble-compute pour générer la row manquante.
+- Tester en dry-run local sur dates historiques : `poetry run ensemble-explainer --target-date YYYY-MM-DD --dry-run`.
+- PR + merge + redéploiement.
+- Reprendre les schedulers : `gcloud scheduler jobs resume ...`.
 
 ### Verification
 - Lancer manuellement pour rattraper les dates manquées :
   ```bash
   gcloud run jobs execute cc-ensemble-explainer \
     --region europe-west9 --project cacaooo \
-    --args="ensemble-explainer,--target-date,2026-05-26,--force"
+    --args="ensemble-explainer,--target-date,2026-05-27,--force"
   ```
-- Vérifier la row ensemble : `SELECT eco, confidence, direction FROM pl_indicator_daily WHERE date = '2026-05-26' AND algorithm_version_id IN (SELECT id FROM pl_algorithm_version WHERE name='ensemble_v1_softgate_wrapper')`
+  Le wrapper calcule `data_date = previous_session(2026-05-27)` = 2026-05-26 et UPDATE la row à cette date.
+- Vérifier la row ensemble : `SELECT date, decision, confidence, direction, LENGTH(conclusion) FROM pl_indicator_daily i JOIN pl_algorithm_version v ON i.algorithm_version_id=v.id WHERE i.date='2026-05-26' AND v.name='ensemble_v1_softgate_wrapper'`. Conclusion attendue : ~1000-1500 chars avec marker `> A SURVEILLER AUJOURD'HUI:` + 3 bullets.
 
 ---
 

@@ -31,7 +31,7 @@
 - **Soft-gate Bayésien** : combine les 14 votes pondérés par leur accuracy historique + structural priors Bayésiens → produit `soft_gate_decision` + `net_score`.
 - **Compass wrapper** : 4 détecteurs (running_acc, trend, dispersion, three_way) qui peuvent vetoer la décision soft-gate → `decision_wrapped` (la décision finale).
 - **Diagnostics** : 25 colonnes auditables (`pl_orchestrator_decision`) qui expliquent POURQUOI la décision a été prise.
-- **(Optionnel)** `cc-ensemble-explainer` : 1 appel LLM `gpt-4o-mini` qui produit la narrative (eco, confidence, direction, conclusion) à partir des diagnostics structurés.
+- `cc-ensemble-explainer` (refactor 2026-05-27) : thin wrapper qui invoque `DBAnalysisEngine` (le moteur legacy) **sans pinner sur `legacy`** → l'auto-align détecte la row ensemble dans `pl_orchestrator_decision`, injecte les diagnostics via `CALL_2_PROMPT_ENSEMBLE`, et écrit la narrative (eco / confidence / direction / conclusion long-form `> ... • ... > A SURVEILLER AUJOURD'HUI:`) sur la row ensemble. Aucun prompt custom — réutilisation totale du pipeline legacy.
 
 ### Forces et limites
 
@@ -41,7 +41,7 @@
 - Audit trail riche (25+ champs structurés)
 - Multi-horizon (5d rolling)
 - Pas de hallucination — c'est du déterministe ML
-- Cost LLM divisé par ~25 vs legacy (si Explainer en gpt-4o-mini)
+- Cost LLM : 2× `gpt-4-turbo`/jour côté legacy + 2× `gpt-4-turbo`/jour côté ensemble-explainer (qui partage le même engine) = ~$30/an supplémentaires pour la dual-track narrative. Trade-off pour la parité de format avec le brief legacy.
 
 **Limites** :
 - Sans le LLM Explainer, pas de narrative humaine — la décision est juste un label
@@ -277,7 +277,7 @@ Le brief legacy parle d'« aujourd'hui » (horizon T+1). L'ensemble parle d'une 
 
 ```
 19:18  cc-ensemble-compute     → row ensemble pl_indicator_daily + orchestrator + 14 specialists
-19:25  cc-ensemble-explainer   → UPDATE ensemble row : eco, confidence, direction, conclusion (1 LLM call)
+19:25  cc-ensemble-explainer   → invoque DBAnalysisEngine (auto-align) → UPDATE row ensemble : eco + confidence + direction + conclusion long-form (2 LLM calls gpt-4-turbo)
 19:35  cc-compass-brief-ensemble → Drive: YYYYMMDD-CompassBrief-Ensemble.txt
 ```
 
@@ -339,14 +339,21 @@ VII — RECOMMANDATIONS OPÉRATIONNELLES
 | VI — Technicals | yesterday + today | dernière session uniquement | `pl_contract_data_daily` |
 | VII — Recommendations | LLM Call #2 (3 alertes) | LLM Explainer (3 alertes liées aux triggers) | `pl_indicator_daily.conclusion` |
 
-### LLM Explainer (1 appel, contraint)
+### LLM Explainer (wrapper sur DBAnalysisEngine, refactor 2026-05-27)
 
-> Code : [backend/scripts/ensemble_explainer/](../../backend/scripts/ensemble_explainer/)
+> Code : [backend/scripts/ensemble_explainer/main.py](../../backend/scripts/ensemble_explainer/main.py) (≤200 lignes, juste un thin wrapper)
 
-- Modèle : `gpt-4o-mini` (cheap, ~$0.001/call)
-- **La décision est IMMUTABLE** — le LLM peut juste expliquer pourquoi, pas la changer
-- Validator post-LLM : si la conclusion contredit la decision (e.g. decision=OPEN mais conclusion mentionne « vendre ») → fail-loud
-- Output JSON validation stricte : `{eco, confidence 1-5, direction enum, conclusion avec 3 "À SURVEILLER"}`
+Le job ne contient PLUS de prompt / parser / writer custom. Il :
+1. Calcule `data_date = previous_session(target_date)` (semantic P2b).
+2. Pre-flight : vérifie qu'une row ensemble existe dans `pl_indicator_daily` pour `data_date` (fail-loud `EnsembleRowMissingError` sinon).
+3. Instancie `DBAnalysisEngine(session)` **sans `algorithm_version_name`** → l'auto-align kick in (db_analysis_engine.py:187-200).
+4. L'engine fait 2 appels `gpt-4-turbo` avec les prompts legacy (`CALL_1_PROMPT` macro/weather + `CALL_2_PROMPT_ENSEMBLE` avec les 25 champs de diagnostics ensemble injectés) et écrit la narrative sur la row ensemble.
+
+- **Modèle** : `gpt-4-turbo` × 2 calls/jour (~$0.13/jour) — partage exactement le pipeline du brief legacy.
+- **La décision est IMMUTABLE** : `CALL_2_PROMPT_ENSEMBLE` force `decision = decision_wrapped`, le format JSON l'impose, et `db_analysis_engine.run()` ré-écrase si le LLM dérive (`_force_alignment_if_drifted`).
+- **Format conclusion** : long-form legacy `> opening • bullets > A SURVEILLER AUJOURD'HUI: • alert1 • alert2 • alert3` — strictement identique au brief legacy, donc le parser frontend (`split3 + parseConclusion`) bucketise correctement les 3 tabs Recommandation / Supply & Momentum / Technical Outlook.
+
+**Pourquoi cette refonte** : la version initiale (gpt-4o-mini + custom prompt court) produisait 388 chars + 1 « À SURVEILLER » inline → le frontend split3 ne trouvait rien à bucketiser → 2 tabs sur 3 vides. Voir [docs/runbooks/brief-rollback-procedure.md](../runbooks/brief-rollback-procedure.md) pour les scénarios opérationnels.
 
 ---
 
@@ -414,16 +421,31 @@ prior_hedge           = 0.32
 prior_monitor         = 0.23
 ```
 
-### LLM Explainer output (gpt-4o-mini)
+### LLM Explainer output (wrapper sur DBAnalysisEngine, gpt-4-turbo × 2 calls)
 
-```json
-{
-  "eco": "Marché en consolidation baissière. Sentiment macro -0.37σ (half_life 5j) confirme le biais HEDGE. Pas d'anomalie de régime (z=0.45). Sortie Q1 NCA modérée pèse sur la demande chocolat.",
-  "confidence": 4,
-  "direction": "BAISSIERE",
-  "conclusion": "Position HEDGE tenable sur 4-5 jours. Cluster Winter unanime -4, cluster Spring -3. Le gate confirme un retournement structurel post-anomalie début mai. Persistence du biais favorable.\nÀ SURVEILLER : retournement sentiment (macro_direction → +1)\nÀ SURVEILLER : anomaly_score_z > 2.5 (régime change)\nÀ SURVEILLER : NCA Q2 publi le 16 juillet (catalyseur demande)"
-}
+Exemple réel sur 2026-05-26 (HEDGE, 3 spécialistes engagés sur 14, conviction nette) :
+
+```text
+> 3 spécialistes sur 14 confirment la position HEDGE, conviction forte (net_score -1.000).
+        • CLOSE aujourd'hui à 3153 contre 2860 hier, indiquant une hausse significative mais potentiellement éphémère.
+        • VOLUME aujourd'hui à 7992, hier à 6867, montrant un engagement croissant des traders.
+        • OPEN INTEREST a légèrement augmenté à 43182 aujourd'hui contre 42996 hier.
+        • Le RSI est à 64.75, suggérant une surachat possible.
+        • MACD à -35.90 aujourd'hui contre -61.09 hier, dynamique baissière qui s'atténue.
+        • La volatilité implicite a diminué à 0.43 contre 0.45 — moins d'incertitude.
+        • Le STOCK EU a augmenté de 189288 à 192176, ce qui pourrait indiquer une pression baissière.
+> A SURVEILLER AUJOURD'HUI:
+        • Baissier si CLOSE clôture sous SUPPORT 1 à 2900 — objectif S2 à 2700.
+        • Haussier si CLOSE dépasse RESISTANCE 1 à 3291 — confirmation de tendance haussière.
+        • Baissier si RSI passe sous 60 (actuellement à 64.75) — accélération de la pression vendeuse.
 ```
+
+Et `eco` en parallèle (Call#1 macro/weather) :
+```
+"Anticipation d'augmentation de la production ivoirienne en 2025/26, mais sécheresse persistante au Ghana modère l'optimisme baissier."
+```
+
+JSON shape identique au brief legacy : `{decision, confiance, direction, conclusion}` côté Call#2 + `{macroeco_bonus, eco}` côté Call#1. Le validator strict de l'engine refuse toute conclusion contenant un mot opposé à la decision (e.g. « acheter » si HEDGE).
 
 ### Pl_indicator_daily ensemble row écrite
 
@@ -455,7 +477,7 @@ WHERE date='2026-05-22' AND contract_id=<CAK26> AND algorithm_version_id=<ensemb
 
 **Multi-horizon** : J+4-J+5 → on capture les biais structurels (ENSO, COT positioning) que T+1 LLM ne voit pas.
 
-**Cost LLM ÷ 25** : si on adopte gpt-4o-mini Explainer, le narrative coûte $0.001/jour vs $0.13/jour legacy.
+**Cost LLM** : la dual-track narrative (legacy + ensemble) coûte ~2× le legacy = ~$0.26/jour (4 calls gpt-4-turbo). Le refactor 2026-05-27 a abandonné l'option gpt-4o-mini ($0.001/jour) pour pouvoir réutiliser le prompt legacy verbatim et garantir la parité de format avec le frontend recommandation parser.
 
 **Frontend déjà branché** : dashboard sert ensemble depuis migration `_resolve_algo_for_date()`. Le brief dual-track est le dernier morceau de transition.
 
@@ -467,7 +489,7 @@ WHERE date='2026-05-22' AND contract_id=<CAK26> AND algorithm_version_id=<ensemb
 
 **Retraining mensuel** : nécessite que la R&D livre une nouvelle version mensuelle. Process documenté dans `CAMPAIGN_5_PROD_DEPLOYMENT.md`.
 
-**Pas de narrative native** : sans le LLM Explainer (optionnel), la décision est juste un label. Le brief ensemble repose donc sur l'Explainer pour rester audio-friendly.
+**Pas de narrative native** : sans le LLM Explainer, la décision est juste un label. Le brief ensemble repose sur l'Explainer (= wrapper du pipeline legacy) pour la narrative audio-friendly.
 
 **Hardcoded clusters dans brief_generator** : la classification specialist_name → Winter/Spring est heuristique via `_WINTER_TAGS`/`_SPRING_TAGS`. Si R&D renomme un spécialiste, on doit mettre à jour.
 
@@ -485,7 +507,7 @@ WHERE date='2026-05-22' AND contract_id=<CAK26> AND algorithm_version_id=<ensemb
 | 4 Compass wrapper | [backend/scripts/ensemble_compute/compass_wrapper.py](../../backend/scripts/ensemble_compute/compass_wrapper.py) |
 | 5 Diagnostics schema | [backend/app/models/pipeline.py](../../backend/app/models/pipeline.py) (`PlOrchestratorDecision`, `PlSpecialistPrediction`) |
 | 6 Frontend integration | [backend/app/services/dashboard_service.py](../../backend/app/services/dashboard_service.py), [endpoints/dashboard.py](../../backend/app/api/api_v1/endpoints/dashboard.py), [services/ensemble_diagnostics_service.py](../../backend/app/services/ensemble_diagnostics_service.py) |
-| 7 Brief ensemble | [backend/scripts/ensemble_explainer/](../../backend/scripts/ensemble_explainer/), [backend/scripts/compass_brief_ensemble/](../../backend/scripts/compass_brief_ensemble/) |
+| 7 Brief ensemble | [backend/scripts/ensemble_explainer/main.py](../../backend/scripts/ensemble_explainer/main.py) (wrapper sur DBAnalysisEngine), [backend/scripts/daily_analysis/db_analysis_engine.py](../../backend/scripts/daily_analysis/db_analysis_engine.py) (engine + auto-align), [backend/scripts/daily_analysis/prompts.py](../../backend/scripts/daily_analysis/prompts.py) (`CALL_2_PROMPT_ENSEMBLE`), [backend/scripts/compass_brief_ensemble/](../../backend/scripts/compass_brief_ensemble/) |
 | Bootstrap artifacts | [backend/scripts/ensemble_bootstrap/main.py](../../backend/scripts/ensemble_bootstrap/main.py), [docs/runbooks/ensemble-failure-recovery.md](../runbooks/ensemble-failure-recovery.md) |
 
 ---
@@ -495,7 +517,7 @@ WHERE date='2026-05-22' AND contract_id=<CAK26> AND algorithm_version_id=<ensemb
 - [PIPELINE_LEGACY.md](./PIPELINE_LEGACY.md) — pipeline LLM legacy qui tourne en parallèle (dual-track)
 - [JOBS_AND_SCRAPERS.md](./JOBS_AND_SCRAPERS.md) — catalogue exhaustif des jobs/scrapers anciens et nouveaux
 - [docs/runbooks/brief-dual-track.md](../runbooks/brief-dual-track.md) — opérations du brief ensemble
-- [docs/runbooks/ensemble-explainer-prompt-tuning.md](../runbooks/ensemble-explainer-prompt-tuning.md) — comment éditer le prompt LLM
+- Pour tuner les prompts ensemble : éditer `CALL_1_PROMPT` (macro/weather) et `CALL_2_PROMPT_ENSEMBLE` (decision avec diagnostics) dans [backend/scripts/daily_analysis/prompts.py](../../backend/scripts/daily_analysis/prompts.py) — ce sont les mêmes prompts que cc-daily-analysis legacy utilise, donc toute modification affecte les 2 tracks.
 - [docs/runbooks/brief-ensemble-evolution.md](../runbooks/brief-ensemble-evolution.md) — comment ajouter des sections au brief
 - [docs/runbooks/ensemble-failure-recovery.md](../runbooks/ensemble-failure-recovery.md) — récupération en cas de panne ensemble
 - [docs/onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md](../onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md) — déploiement initial Campaign 5

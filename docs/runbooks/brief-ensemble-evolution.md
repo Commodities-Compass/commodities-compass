@@ -76,14 +76,15 @@ Ces sections nécessitent du SQL plus complexe (rolling computations) mais reste
 
 Idée : un 2e appel LLM (« commenter section II ») qui transforme le tableau brut des 14 spécialistes en une narration éditoriale plus longue.
 
-- Coût : 1 appel LLM supplémentaire par jour (~$0.001 si gpt-4o-mini)
+- Coût : 1 appel LLM supplémentaire par jour (~$0.05 si gpt-4-turbo, ~$0.001 si on accepte gpt-4o-mini sur cette section seule)
 - Bénéfice : audio NotebookLM plus engageant
 - Risque : drift narrative-vs-data → ajouter un validator
 
 Architecture si on le fait :
-- Nouveau script `cc-ensemble-explainer-clusters` qui produit un commentaire sur cluster Winter vs Spring
+- Nouveau script `cc-ensemble-cluster-narrator` qui produit un commentaire sur cluster Winter vs Spring
 - Stocke dans une nouvelle colonne `pl_indicator_daily.cluster_narrative` (TEXT)
 - Le `brief_generator` lit cette colonne et la place dans la section II
+- Ne pas confondre avec `cc-ensemble-explainer` qui est désormais un wrapper de `DBAnalysisEngine` (cf. PR #17), pas un slot pour ajouter de nouveaux prompts custom
 
 ### Niveau 4 — Brief hebdomadaire 5-day rolling
 
@@ -99,15 +100,18 @@ Hors scope actuelle PR mais nice-to-have pour Q3 2026.
 
 ## Changer le ton sans toucher au code
 
-Tout passe par les prompts du LLM Explainer ([prompts.py](../../backend/scripts/ensemble_explainer/prompts.py)). Voir [ensemble-explainer-prompt-tuning.md](./ensemble-explainer-prompt-tuning.md) pour la procédure détaillée.
+Depuis le refactor 2026-05-27 (PR #17), `cc-ensemble-explainer` partage les prompts du brief legacy : [`backend/scripts/daily_analysis/prompts.py`](../../backend/scripts/daily_analysis/prompts.py) (`CALL_1_PROMPT` pour macro/weather, `CALL_2_PROMPT_ENSEMBLE` pour la decision + diagnostics ensemble). Tuner ces prompts modifie SIMULTANÉMENT le brief legacy et le brief ensemble.
 
-Exemples de ton possibles :
-- **Magazine éditorial actuel** : sobre, neutre, en français, citations chiffrées
-- **Tableau de bord** : très condensé, bullet points, sans prose
-- **Narratif long** : explicatif, analogies, comparaisons historiques (~500 mots)
-- **Provocateur** : « le marché ignore X » (pas conseillé pour audience trading sérieuse)
+⚠️ **Conséquence importante** : on ne peut plus diverger les 2 tons sans dupliquer le code. Si on veut un ton spécifique à ensemble, deux options :
 
-Le ton est entièrement dans le `SYSTEM_PROMPT` — pas besoin de redeploy si on remplace juste les instructions de style.
+1. Créer un fork des prompts dans `backend/scripts/ensemble_explainer/prompts.py` (recréer le module supprimé) + le brancher dans le wrapper. Architecturalement c'est une régression du refactor PR #17.
+2. Ajouter un branchement conditionnel dans `CALL_2_PROMPT_ENSEMBLE` qui adapte selon que `align_on_ensemble=True/False`. Plus subtil, code commun préservé.
+
+**Procédure pour tuner ENSEMBLE des 2 tracks** :
+1. Éditer les blocs concernés dans `prompts.py` (e.g. la section "Procède en 4 étapes" ou le format de conclusion).
+2. Test local : `poetry run daily-analysis --date YYYY-MM-DD --dry-run` (legacy) + `poetry run ensemble-explainer --target-date YYYY-MM-DD --dry-run` (ensemble).
+3. Comparer les 2 outputs sur 3 dates historiques représentatives.
+4. PR + merge + observation 2-3 jours en prod.
 
 ## Validation continue après évolution
 

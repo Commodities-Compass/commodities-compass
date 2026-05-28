@@ -159,13 +159,24 @@ export default function LiveSignalStrip() {
       value: fmtNum(macro?.fx_dxy_proxy, 3),
     },
     {
-      key: 'cotMm',
-      label: 'COT MM',
+      key: 'cotMmEu',
+      label: 'COT MM EU',
       value: fmtSignedCompact(positioning?.cot_managed_money_net),
       valueColor:
         positioning?.cot_managed_money_net == null
           ? undefined
           : positioning.cot_managed_money_net >= 0
+            ? 'var(--color-signal-open)'
+            : 'var(--color-signal-hedge)',
+    },
+    {
+      key: 'cotMmUs',
+      label: 'COT MM US',
+      value: fmtSignedCompact(positioning?.cot_us_managed_money_net),
+      valueColor:
+        positioning?.cot_us_managed_money_net == null
+          ? undefined
+          : positioning.cot_us_managed_money_net >= 0
             ? 'var(--color-signal-open)'
             : 'var(--color-signal-hedge)',
     },

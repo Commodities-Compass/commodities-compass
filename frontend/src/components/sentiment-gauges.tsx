@@ -29,10 +29,11 @@ const SENTIMENT_RANGES: IndicatorRange[] = [
   { range_low: 0.3, range_high: 1.0, area: 'GREEN' },
 ];
 
-// Confidence below this threshold means the LLM had no meaningful coverage
-// for this theme today (or the backend soft-filled with a neutral row).
-// Render a distinct "no coverage" placeholder instead of a misleading gauge.
-const NO_COVERAGE_CONFIDENCE_THRESHOLD = 0.2;
+// Note: the previous behavior hid the gauge when confidence < 0.2 (treating
+// the backend soft-fill as "no coverage"). Product decision 2026-05-28: always
+// display the gauge so traders see a sentiment value every day, even when the
+// LLM had thin source coverage. The placeholder below is kept only for the
+// (now defensive) case where the score is truly null/undefined.
 
 function NoCoveragePlaceholder({ label }: { label: string }) {
   const isTouch = useIsTouch();
@@ -148,15 +149,10 @@ export default function SentimentGauges({ targetDate }: SentimentGaugesProps) {
         const t = themeMap.get(theme);
         const label = THEME_LABELS[theme];
 
-        const isNoCoverage =
-          !t ||
-          t.score === null ||
-          t.score === undefined ||
-          (t.confidence !== null &&
-            t.confidence !== undefined &&
-            t.confidence < NO_COVERAGE_CONFIDENCE_THRESHOLD);
+        const hasNoScore =
+          !t || t.score === null || t.score === undefined;
 
-        if (isNoCoverage) {
+        if (hasNoScore) {
           return <NoCoveragePlaceholder key={theme} label={label} />;
         }
 

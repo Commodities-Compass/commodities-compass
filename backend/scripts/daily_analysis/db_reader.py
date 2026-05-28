@@ -98,7 +98,8 @@ _DB_TO_PROMPT_VARS: dict[str, str] = {
     "volume": "VOL",
     "oi": "OI",
     "implied_volatility": "VOLIMP",
-    "stock_us": "STOCK",
+    "stock_us": "STOCKUS",
+    "stock_eu_tonnes": "STOCKEU",
     "com_net_us": "COMNET",
     "r1": "R1",
     "pivot": "PIVOT",
@@ -114,6 +115,11 @@ _DB_TO_PROMPT_VARS: dict[str, str] = {
     "bollinger_upper": "BSUP",
     "bollinger_lower": "BBINF",
 }
+
+# Columns whose values are tonnage observations: format with thousand
+# separators in the LLM prompt so the model can echo back something like
+# "192,176 tonnes" rather than "192176".
+_THOUSANDS_FORMAT_COLUMNS: frozenset[str] = frozenset({"stock_us", "stock_eu_tonnes"})
 
 METEO_HISTORY_LIMIT = 100
 
@@ -220,12 +226,14 @@ class DBReader:
     def _read_technicals(self, target_date: date, contract_code: str) -> TechnicalsData:
         """Read last 2 days of technicals + derived indicators from DB.
 
-        stock_us and com_net_us are weekly cadence values that live in
-        ``pl_stock_observation`` and ``pl_cot_us_weekly`` since
-        2026-05-27. They're injected into the today/yesterday dicts
+        stock_us, stock_eu_tonnes and com_net_us are weekly cadence values
+        that live in ``pl_stock_observation`` and ``pl_cot_us_weekly``
+        since 2026-05-27. They're injected into the today/yesterday dicts
         below from the latest observation on/before each row's date so
-        the LLM prompt still receives STOCKTOD/COMNETTOD variables with
-        meaningful values.
+        the LLM prompt still receives STOCKUSTOD / STOCKEUTOD / COMNETTOD
+        variables with meaningful values. Both stock columns are in
+        tonnes (converted at the source via the shared
+        ``stock_observation_writer``).
         """
         _technicals_sql = """
             SELECT
@@ -289,9 +297,19 @@ class DBReader:
         today_row = dict(zip(columns, rows[0]))
         yesterday_row = dict(zip(columns, rows[1]))
 
-        # Inject weekly stock_us + com_net_us from dedicated tables.
-        today_row["stock_us"] = self._latest_stock_us_tonnes(today_row["date"])
-        yesterday_row["stock_us"] = self._latest_stock_us_tonnes(yesterday_row["date"])
+        # Inject weekly stock_us / stock_eu / com_net_us from dedicated tables.
+        today_row["stock_us"] = self._latest_stock_tonnes(
+            today_row["date"], region="us"
+        )
+        yesterday_row["stock_us"] = self._latest_stock_tonnes(
+            yesterday_row["date"], region="us"
+        )
+        today_row["stock_eu_tonnes"] = self._latest_stock_tonnes(
+            today_row["date"], region="eu"
+        )
+        yesterday_row["stock_eu_tonnes"] = self._latest_stock_tonnes(
+            yesterday_row["date"], region="eu"
+        )
         today_row["com_net_us"] = self._latest_cot_us_prod_merc_net(today_row["date"])
         yesterday_row["com_net_us"] = self._latest_cot_us_prod_merc_net(
             yesterday_row["date"]
@@ -303,8 +321,12 @@ class DBReader:
         for db_col, prompt_var in _DB_TO_PROMPT_VARS.items():
             today_val = today_row.get(db_col)
             yesterday_val = yesterday_row.get(db_col)
-            today_vars[f"{prompt_var}TOD"] = _format_value(today_val)
-            yesterday_vars[f"{prompt_var}YES"] = _format_value(yesterday_val)
+            if db_col in _THOUSANDS_FORMAT_COLUMNS:
+                today_vars[f"{prompt_var}TOD"] = _format_tonnes(today_val)
+                yesterday_vars[f"{prompt_var}YES"] = _format_tonnes(yesterday_val)
+            else:
+                today_vars[f"{prompt_var}TOD"] = _format_value(today_val)
+                yesterday_vars[f"{prompt_var}YES"] = _format_value(yesterday_val)
 
         return TechnicalsData(
             today=today_vars,
@@ -313,20 +335,25 @@ class DBReader:
             today_date_iso=today_row["date"],
         )
 
-    def _latest_stock_us_tonnes(self, on_or_before: date) -> float | None:
-        """Latest ICE US certified stock observation in tonnes on/before date."""
+    def _latest_stock_tonnes(self, on_or_before: date, *, region: str) -> float | None:
+        """Latest ICE certified stock observation in tonnes on/before date.
+
+        ``region`` is one of ``'us'`` / ``'eu'`` — both rows live in
+        ``pl_stock_observation`` and store the value normalized to tonnes
+        (US source is bags×70/1000, EU source is bags60kg×60/1000).
+        """
         row = self._session.execute(
             text(
                 """
                 SELECT value_tonnes FROM pl_stock_observation
-                WHERE region = 'us'
+                WHERE region = :region
                   AND contract_market = 'cocoa'
                   AND report_date <= :d
                 ORDER BY report_date DESC
                 LIMIT 1
                 """
             ),
-            {"d": on_or_before},
+            {"d": on_or_before, "region": region},
         ).fetchone()
         return float(row[0]) if row and row[0] is not None else None
 
@@ -464,6 +491,20 @@ def _format_value(value: object) -> str:
         return ""
     if isinstance(value, (float, Decimal)):
         return f"{float(value):g}"
+    return str(value)
+
+
+def _format_tonnes(value: object) -> str:
+    """Format a tonnage observation with thousand separators (e.g. 192,176).
+
+    Used for stock_us / stock_eu_tonnes so the LLM prompt receives a
+    human-readable integer count of tonnes rather than the raw number,
+    which makes the brief easier to read.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, (int, float, Decimal)):
+        return f"{float(value):,.0f}"
     return str(value)
 
 

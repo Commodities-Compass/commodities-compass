@@ -124,7 +124,8 @@ Tu disposes également des données suivantes (comparées entre aujourd'hui et h
 \t•\tVOLUME aujourd'hui : {VOLTOD} ; hier : {VOLYES}
 \t•\tOPEN INTEREST aujourd'hui : {OITOD} ; hier : {OIYES}
 \t•\tIMPLIED VOLATILITY aujourd'hui : {VOLIMPTOD} ; hier : {VOLIMPYES}
-\t•\tSTOCK EU aujourd'hui : {STOCKTOD} ; hier : {STOCKYES}
+\t•\tSTOCK US (tonnes) aujourd'hui : {STOCKUSTOD} ; hier : {STOCKUSYES}
+\t•\tSTOCK EU (tonnes) aujourd'hui : {STOCKEUTOD} ; hier : {STOCKEUYES}
 \t•\tCOM NET aujourd'hui : {COMNETTOD} ; hier : {COMNETYES}
 \t•\tPIVOT aujourd'hui : {PIVOTTOD} ; hier : {PIVOTYES}
 \t•\tSUPPORT 1 aujourd'hui : {S1TOD} ; hier : {S1YES}
@@ -151,7 +152,7 @@ Structure la réponse en phrases brèves, orientées "alerte" avec chiffres :
 - RSI / MACD / %K / %D : signaux haussiers ou baissiers ?
 - COM NET : interprète selon la variation
 - VOLATILITÉ / ATR : signale les hausses de tension
-- STOCK US : hausse = pression baissière ; baisse = signal haussier potentiel
+- STOCK US / STOCK EU (en tonnes) : hausse = pression baissière ; baisse = signal haussier potentiel — précise toujours l'unité « tonnes »
 
 ---
 
@@ -204,7 +205,7 @@ Le champ "conclusion" doit OBLIGATOIREMENT suivre ce format exact :
 - Section "A SURVEILLER" : une ligne commençant par "> A SURVEILLER AUJOURD'HUI:" suivie des seuils critiques en "        • " bullets
 - Pas de Markdown. Pas de phrases vagues. Chaque phrase concise avec des chiffres.
 
-{{"decision": "OPEN ou MONITOR ou HEDGE", "confiance": 3, "direction": "HAUSSIERE ou BAISSIERE ou NEUTRE", "conclusion": "> Le CLOSE a diminué passant de X à Y, indiquant une tendance baissière.\\n        • Le VOLUME a baissé de X à Y, montrant une réduction de l'activité.\\n        • OPEN INTEREST a réduit de X à Y, suggérant un repli des positions.\\n        • Le RSI est à X, signifiant une situation de survente.\\n        • MACD est négatif à X, confirmant la tendance baissière.\\n        • La volatilité implicite est à X%, indiquant les anticipations du marché.\\n        • Le STOCK EU a augmenté, passant de X à Y.\\n> A SURVEILLER AUJOURD'HUI:\\n        • Baissier si CLOSE clôture sous SUPPORT 1 à X — objectif S2 à Y.\\n        • Haussier si CLOSE dépasse RESISTANCE 1 à X — poursuite de la tendance haussière.\\n        • Baissier si RSI passe sous X (actuellement à Y) — pression vendeuse accrue."}}
+{{"decision": "OPEN ou MONITOR ou HEDGE", "confiance": 3, "direction": "HAUSSIERE ou BAISSIERE ou NEUTRE", "conclusion": "> Le CLOSE a diminué passant de X à Y, indiquant une tendance baissière.\\n        • Le VOLUME a baissé de X à Y, montrant une réduction de l'activité.\\n        • OPEN INTEREST a réduit de X à Y, suggérant un repli des positions.\\n        • Le RSI est à X, signifiant une situation de survente.\\n        • MACD est négatif à X, confirmant la tendance baissière.\\n        • La volatilité implicite est à X%, indiquant les anticipations du marché.\\n        • Le STOCK US a augmenté, passant de X tonnes à Y tonnes.\\n        • Le STOCK EU a reculé, passant de X tonnes à Y tonnes.\\n> A SURVEILLER AUJOURD'HUI:\\n        • Baissier si CLOSE clôture sous SUPPORT 1 à X — objectif S2 à Y.\\n        • Haussier si CLOSE dépasse RESISTANCE 1 à X — poursuite de la tendance haussière.\\n        • Baissier si RSI passe sous X (actuellement à Y) — pression vendeuse accrue."}}
 """
 
 
@@ -298,7 +299,8 @@ Tu disposes également des données techniques (comparées entre aujourd'hui et 
 \t•\tVOLUME aujourd'hui : {VOLTOD} ; hier : {VOLYES}
 \t•\tOPEN INTEREST aujourd'hui : {OITOD} ; hier : {OIYES}
 \t•\tIMPLIED VOLATILITY aujourd'hui : {VOLIMPTOD} ; hier : {VOLIMPYES}
-\t•\tSTOCK EU aujourd'hui : {STOCKTOD} ; hier : {STOCKYES}
+\t•\tSTOCK US (tonnes) aujourd'hui : {STOCKUSTOD} ; hier : {STOCKUSYES}
+\t•\tSTOCK EU (tonnes) aujourd'hui : {STOCKEUTOD} ; hier : {STOCKEUYES}
 \t•\tCOM NET aujourd'hui : {COMNETTOD} ; hier : {COMNETYES}
 \t•\tPIVOT aujourd'hui : {PIVOTTOD} ; hier : {PIVOTYES}
 \t•\tSUPPORT 1 aujourd'hui : {S1TOD} ; hier : {S1YES}
@@ -332,7 +334,7 @@ Structure la réponse en phrases brèves :
 - RSI / MACD / %K / %D : signaux haussiers ou baissiers
 - COM NET : interprétation de la variation
 - VOLATILITÉ / ATR : tension du marché
-- STOCK EU : hausse = pression baissière ; baisse = signal haussier
+- STOCK US / STOCK EU (en tonnes) : hausse = pression baissière ; baisse = signal haussier — précise toujours l'unité « tonnes »
 
 ---
 
@@ -379,7 +381,7 @@ Le champ "conclusion" doit OBLIGATOIREMENT suivre ce format :
 - Section "A SURVEILLER" : "> A SURVEILLER AUJOURD'HUI:" suivie de 3 lignes "        • " avec seuils chiffrés
 - Pas de Markdown. Pas de phrases vagues. Chaque phrase concise avec des chiffres.
 
-{{"decision": "{DECISION_WRAPPED}", "confiance": 3, "direction": "HAUSSIERE ou BAISSIERE ou NEUTRE", "conclusion": "> {N_COMMITTED} spécialistes sur 14 confirment la position {DECISION_WRAPPED}, conviction nette (net_score {NET_SCORE}).\\n        • Le CLOSE est passé de X à Y, indiquant Z.\\n        • Le VOLUME a baissé de X à Y.\\n        • OPEN INTEREST a réduit de X à Y.\\n        • Le RSI est à X, signifiant Z.\\n        • MACD à X, signal Z.\\n        • La volatilité implicite est à X%.\\n        • Le STOCK EU a augmenté de X à Y.\\n> A SURVEILLER AUJOURD'HUI:\\n        • Baissier si CLOSE clôture sous SUPPORT 1 à X — objectif S2 à Y.\\n        • Haussier si CLOSE dépasse RESISTANCE 1 à X — poursuite de la tendance.\\n        • Baissier si RSI passe sous X (actuellement à Y) — pression vendeuse accrue."}}
+{{"decision": "{DECISION_WRAPPED}", "confiance": 3, "direction": "HAUSSIERE ou BAISSIERE ou NEUTRE", "conclusion": "> {N_COMMITTED} spécialistes sur 14 confirment la position {DECISION_WRAPPED}, conviction nette (net_score {NET_SCORE}).\\n        • Le CLOSE est passé de X à Y, indiquant Z.\\n        • Le VOLUME a baissé de X à Y.\\n        • OPEN INTEREST a réduit de X à Y.\\n        • Le RSI est à X, signifiant Z.\\n        • MACD à X, signal Z.\\n        • La volatilité implicite est à X%.\\n        • Le STOCK US a augmenté de X tonnes à Y tonnes.\\n        • Le STOCK EU a reculé de X tonnes à Y tonnes.\\n> A SURVEILLER AUJOURD'HUI:\\n        • Baissier si CLOSE clôture sous SUPPORT 1 à X — objectif S2 à Y.\\n        • Haussier si CLOSE dépasse RESISTANCE 1 à X — poursuite de la tendance.\\n        • Baissier si RSI passe sous X (actuellement à Y) — pression vendeuse accrue."}}
 """
 )
 

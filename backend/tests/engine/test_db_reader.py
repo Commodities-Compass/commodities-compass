@@ -6,7 +6,11 @@ Tests the data formatting and variable mapping logic.
 from __future__ import annotations
 
 
-from scripts.daily_analysis.db_reader import _format_value, _DB_TO_PROMPT_VARS
+from scripts.daily_analysis.db_reader import (
+    _DB_TO_PROMPT_VARS,
+    _format_tonnes,
+    _format_value,
+)
 
 
 class TestFormatValue:
@@ -34,10 +38,29 @@ class TestFormatValue:
         assert "e" not in result.lower()
 
 
+class TestFormatTonnes:
+    def test_none(self) -> None:
+        assert _format_tonnes(None) == ""
+
+    def test_integer_thousands(self) -> None:
+        assert _format_tonnes(192176) == "192,176"
+
+    def test_float_rounded(self) -> None:
+        # 60kg-bag conversion can leave a fractional residue; we round.
+        assert _format_tonnes(11530.56) == "11,531"
+
+    def test_small_value(self) -> None:
+        assert _format_tonnes(42) == "42"
+
+
 class TestPromptVariableMapping:
-    def test_all_21_variables_mapped(self) -> None:
-        """Should have exactly 21 DB→prompt variable mappings."""
-        assert len(_DB_TO_PROMPT_VARS) == 21
+    def test_all_22_variables_mapped(self) -> None:
+        """Should have exactly 22 DB→prompt variable mappings (21 + stock_eu_tonnes)."""
+        assert len(_DB_TO_PROMPT_VARS) == 22
+
+    def test_stocks_mapped(self) -> None:
+        assert _DB_TO_PROMPT_VARS["stock_us"] == "STOCKUS"
+        assert _DB_TO_PROMPT_VARS["stock_eu_tonnes"] == "STOCKEU"
 
     def test_raw_ohlcv_mapped(self) -> None:
         assert _DB_TO_PROMPT_VARS["close"] == "CLOSE"

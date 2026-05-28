@@ -761,6 +761,7 @@ class TestPressReviewForceOverwrite:
             {"resume": "x" * 50, "mots_cle": "k", "impact_synthetiques": "i"},
             article_date=date(2026, 3, 17),
         )
+        assert article_id is not None  # write_article only returns None on dry_run
 
         original_themes = {
             "production": {"score": 0.5, "confidence": 0.8, "rationale": "Original"},

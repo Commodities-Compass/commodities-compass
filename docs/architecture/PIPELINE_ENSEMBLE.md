@@ -514,6 +514,7 @@ WHERE date='2026-05-22' AND contract_id=<CAK26> AND algorithm_version_id=<ensemb
 
 ## 11 — Liens vers les autres docs architecture
 
+- [ENSEMBLE_BRIDGE_FROM_LEGACY.md](./ENSEMBLE_BRIDGE_FROM_LEGACY.md) — **pont de lecture LEGACY → ENSEMBLE** : ce qui change, journée annotée, **carte des leviers tunables** (30 params `pl_algorithm_config` + LLM + env vars), 4 scénarios de décision avec dates réelles
 - [PIPELINE_LEGACY.md](./PIPELINE_LEGACY.md) — pipeline LLM legacy qui tourne en parallèle (dual-track)
 - [JOBS_AND_SCRAPERS.md](./JOBS_AND_SCRAPERS.md) — catalogue exhaustif des jobs/scrapers anciens et nouveaux
 - [docs/runbooks/brief-dual-track.md](../runbooks/brief-dual-track.md) — opérations du brief ensemble

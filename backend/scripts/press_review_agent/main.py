@@ -215,6 +215,7 @@ def main() -> int:
                     dry_run=args.dry_run,
                     source_count=successful_sources,
                     total_sources=len(news_results),
+                    force=args.force,
                 )
                 write_llm_call(
                     session,
@@ -243,6 +244,7 @@ def main() -> int:
                             result.parsed.get("theme_sentiments") or {},
                             result.provider,
                             dry_run=args.dry_run,
+                            force=args.force,
                         )
                     except Exception as e:
                         logger.error(

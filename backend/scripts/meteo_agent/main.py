@@ -215,6 +215,7 @@ def main() -> int:
                 result.parsed,
                 observation_date=data_date,
                 dry_run=args.dry_run,
+                force=args.force,
             )
             write_llm_call(
                 session, result.usage, result.latency_ms, dry_run=args.dry_run

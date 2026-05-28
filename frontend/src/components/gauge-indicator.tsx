@@ -83,9 +83,20 @@ const INDICATOR_META: Record<string, IndicatorMeta> = {
     },
   },
   // Positioning & Supply
-  'COT MM NET': {
-    fullName: 'Managed Money — net',
-    description: 'Position nette des Managed Money sur le contrat ICE US Cocoa (long − short).',
+  'COT MM NET EU': {
+    fullName: 'Managed Money — net (ICE Europe)',
+    description:
+      'Position nette des Managed Money sur le contrat cacao ICE Europe (London #7), publiée hebdomadairement (long − short).',
+    zones: {
+      RED: 'Net short — sentiment baissier',
+      ORANGE: 'Net léger — pas de conviction',
+      GREEN: 'Net long — sentiment haussier',
+    },
+  },
+  'COT MM NET US': {
+    fullName: 'Managed Money — net (CFTC US)',
+    description:
+      'Position nette des Managed Money sur le contrat cacao NY (CFTC Disaggregated Cocoa, ICE US Futures), publiée hebdomadairement (long − short).',
     zones: {
       RED: 'Net short — sentiment baissier',
       ORANGE: 'Net léger — pas de conviction',

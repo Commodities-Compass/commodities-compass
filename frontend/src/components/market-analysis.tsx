@@ -59,13 +59,29 @@ const MACRO_RANGES: Record<string, { min: number; max: number; ranges: Indicator
       { range_low: 0.5, range_high: 3, area: 'GREEN' },
     ],
   },
-  COT_MM: {
+  // COT Managed Money Net — Net long position of speculative funds.
+  // Same direction convention for both regions: net long = bullish for prices.
+  // Ranges differ because CFTC US cocoa contracts trade larger notional
+  // (NY cocoa) and historically swing wider than ICE Europe (London #7).
+  COT_MM_EU: {
     min: -40000,
     max: 60000,
     ranges: [
       { range_low: -40000, range_high: 0, area: 'RED' },
       { range_low: 0, range_high: 20000, area: 'ORANGE' },
       { range_low: 20000, range_high: 60000, area: 'GREEN' },
+    ],
+  },
+  // Calibrated 2026-05-28 from CFTC cocoa Managed Money historical envelope
+  // (~−50k bottom of 2022 / ~+100k 2024 supply-crisis peak). Re-tune once
+  // we accumulate enough scraped weeks to plot the post-refactor distribution.
+  COT_MM_US: {
+    min: -50000,
+    max: 100000,
+    ranges: [
+      { range_low: -50000, range_high: 0, area: 'RED' },
+      { range_low: 0, range_high: 30000, area: 'ORANGE' },
+      { range_low: 30000, range_high: 100000, area: 'GREEN' },
     ],
   },
   // Stock EU certified (tonnes). Recalibrated 2026-05-27 (commit after the
@@ -257,7 +273,6 @@ const gridStyle = (cols: number): React.CSSProperties => ({
 });
 const gridStyle5: React.CSSProperties = gridStyle(5);
 const gridStyle4: React.CSSProperties = gridStyle(4);
-const gridStyle3: React.CSSProperties = gridStyle(3);
 
 export default function MarketAnalysis({ targetDate, className }: MarketAnalysisProps) {
   const { data: gridData, isLoading: gridLoading } = useIndicatorsGrid(targetDate);
@@ -380,13 +395,20 @@ export default function MarketAnalysis({ targetDate, className }: MarketAnalysis
           <Eyebrow as="div" tone="muted" size={10} style={{ marginBottom: 14, letterSpacing: '0.22em' }}>
             Positioning & Supply
           </Eyebrow>
-          <div className="gauges-row" style={gridStyle3}>
+          <div className="gauges-row" style={gridStyle4}>
             <GaugeIndicator
               value={positioning?.cot_managed_money_net ?? 0}
-              min={MACRO_RANGES.COT_MM.min}
-              max={MACRO_RANGES.COT_MM.max}
-              label="COT MM NET"
-              ranges={MACRO_RANGES.COT_MM.ranges}
+              min={MACRO_RANGES.COT_MM_EU.min}
+              max={MACRO_RANGES.COT_MM_EU.max}
+              label="COT MM NET EU"
+              ranges={MACRO_RANGES.COT_MM_EU.ranges}
+            />
+            <GaugeIndicator
+              value={positioning?.cot_us_managed_money_net ?? 0}
+              min={MACRO_RANGES.COT_MM_US.min}
+              max={MACRO_RANGES.COT_MM_US.max}
+              label="COT MM NET US"
+              ranges={MACRO_RANGES.COT_MM_US.ranges}
             />
             <GaugeIndicator
               value={positioning?.stock_eu_tonnes ?? null}
@@ -423,16 +445,28 @@ export default function MarketAnalysis({ targetDate, className }: MarketAnalysis
             }}
           >
             <span style={inlineCell}>
-              <Eyebrow tone="subtle" size={9}>COT MM long</Eyebrow>
+              <Eyebrow tone="subtle" size={9}>COT MM EU long</Eyebrow>
               <DataValue size={11}>{fmtCompactInt(positioning?.cot_managed_money_long)}</DataValue>
             </span>
             <span style={inlineCell}>
-              <Eyebrow tone="subtle" size={9}>COT MM short</Eyebrow>
+              <Eyebrow tone="subtle" size={9}>COT MM EU short</Eyebrow>
               <DataValue size={11}>{fmtCompactInt(positioning?.cot_managed_money_short)}</DataValue>
             </span>
             <span style={inlineCell}>
-              <Eyebrow tone="subtle" size={9}>COT Prod/Merch net</Eyebrow>
+              <Eyebrow tone="subtle" size={9}>COT MM US long</Eyebrow>
+              <DataValue size={11}>{fmtCompactInt(positioning?.cot_us_managed_money_long)}</DataValue>
+            </span>
+            <span style={inlineCell}>
+              <Eyebrow tone="subtle" size={9}>COT MM US short</Eyebrow>
+              <DataValue size={11}>{fmtCompactInt(positioning?.cot_us_managed_money_short)}</DataValue>
+            </span>
+            <span style={inlineCell}>
+              <Eyebrow tone="subtle" size={9}>COT P/M net EU</Eyebrow>
               <DataValue size={11}>{fmtCompactInt(positioning?.cot_producer_merchant_net)}</DataValue>
+            </span>
+            <span style={inlineCell}>
+              <Eyebrow tone="subtle" size={9}>COT P/M net US</Eyebrow>
+              <DataValue size={11}>{fmtCompactInt(positioning?.cot_us_producer_merchant_net)}</DataValue>
             </span>
             <span style={inlineCell}>
               <Eyebrow tone="subtle" size={9}>Ratio EU/US (tonnes)</Eyebrow>

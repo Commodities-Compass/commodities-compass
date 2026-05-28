@@ -4,7 +4,7 @@ import logging
 import uuid
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.models.audit import AudLlmCall
@@ -29,10 +29,20 @@ def write_observation(
     parsed: dict[str, str],
     observation_date: date | None = None,
     dry_run: bool = False,
+    force: bool = False,
 ) -> uuid.UUID | None:
-    """Insert weather observation into pl_weather_observation.
+    """Insert (or overwrite when ``force=True``) a weather observation.
 
-    Raises DuplicateObservationError if a row already exists for this date.
+    Behavior on duplicate (row exists for ``date`` per the UNIQUE constraint):
+      * ``force=False`` (default) — raise ``DuplicateObservationError``
+        (fail-loud). Detects a runaway double-fire of the cron, which is
+        the original intent of the guard.
+      * ``force=True`` — UPDATE the existing row in place and return its id.
+
+    The ``--force`` flag plumbing exists for legitimate operator reruns
+    (cleanup, manual recovery after a cron failure). Without ``--force``
+    the duplicate guard stays armed.
+
     Returns the observation UUID, or None if dry_run.
     """
     row_date = observation_date or date.today()
@@ -52,10 +62,30 @@ def write_observation(
     ).scalar_one_or_none()
 
     if existing:
-        raise DuplicateObservationError(
-            f"Weather observation already exists for date={row_date} "
-            f"(id={existing}). Pipeline may have run twice today."
+        if not force:
+            raise DuplicateObservationError(
+                f"Weather observation already exists for date={row_date} "
+                f"(id={existing}). Pipeline may have run twice today. "
+                f"Re-run with --force to overwrite explicitly."
+            )
+        log.warning(
+            "Weather observation exists for date=%s — overwriting via --force (id=%s)",
+            row_date,
+            existing,
         )
+        session.execute(
+            update(PlWeatherObservation)
+            .where(PlWeatherObservation.id == existing)
+            .values(
+                observation=parsed["texte"],
+                summary=parsed["resume"],
+                keywords=parsed.get("mots_cle"),
+                impact_assessment=parsed.get("impact_synthetiques"),
+                diagnostics=parsed.get("diagnostics"),
+            )
+        )
+        session.flush()
+        return existing
 
     obs = PlWeatherObservation(
         date=row_date,

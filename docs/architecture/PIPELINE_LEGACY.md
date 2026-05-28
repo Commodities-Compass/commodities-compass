@@ -435,6 +435,7 @@ Impact : Neutre sur production court terme. Surveillance Q2.
 
 ## 7 — Liens vers les autres docs architecture
 
+- [ENSEMBLE_BRIDGE_FROM_LEGACY.md](./ENSEMBLE_BRIDGE_FROM_LEGACY.md) — **pont de lecture LEGACY → ENSEMBLE** : ce qui change, journée annotée, carte des leviers tunables, scénarios de décision
 - [PIPELINE_ENSEMBLE.md](./PIPELINE_ENSEMBLE.md) — le pipeline ensemble v1.0.0 qui tourne en parallèle aujourd'hui
 - [JOBS_AND_SCRAPERS.md](./JOBS_AND_SCRAPERS.md) — catalogue exhaustif de tous les jobs/scrapers, anciens et nouveaux
 - [docs/runbooks/brief-dual-track.md](../runbooks/brief-dual-track.md) — opérations du mode dual-track

@@ -695,3 +695,214 @@ class TestMeteoDbWriter:
 
         rows = sync_db_session.execute(select(PlWeatherObservation)).scalars().all()
         assert len(rows) == 0
+
+
+# ---------------------------------------------------------------------------
+# --force overwrite semantics
+#
+# Regression coverage for the 2026-05-27 incident: the pre-PR #16 ancient code
+# left stale rows at the upcoming-session date, and the duplicate guard then
+# blocked the post-PR #16 cron from writing the fresh data. Without --force
+# the guard stays armed (= legitimate fail-loud detection of double-fire).
+# With --force the writer UPDATEs the existing row in place (preserves FK
+# refs in the article case + cleanly re-inserts the 4 cascading segments).
+# ---------------------------------------------------------------------------
+
+
+class TestPressReviewForceOverwrite:
+    def test_force_overwrites_existing_article_preserves_id(self, sync_db_session):
+        from scripts.press_review_agent.config import Provider
+        from scripts.press_review_agent.db_writer import write_article
+
+        first = {
+            "resume": "Stale content from previous run",
+            "mots_cle": "old; keywords",
+            "impact_synthetiques": "Old impact",
+        }
+        first_id = write_article(
+            sync_db_session, Provider.OPENAI, first, article_date=date(2026, 3, 17)
+        )
+        assert first_id is not None
+
+        # Re-run with --force: same date+provider, different content.
+        fresh = {
+            "resume": "Fresh content after rerun",
+            "mots_cle": "new; keywords",
+            "impact_synthetiques": "Fresh impact",
+        }
+        second_id = write_article(
+            sync_db_session,
+            Provider.OPENAI,
+            fresh,
+            article_date=date(2026, 3, 17),
+            force=True,
+        )
+
+        # Same id preserved → existing FK refs from pl_article_segment stay valid.
+        assert second_id == first_id
+
+        rows = sync_db_session.execute(select(PlFundamentalArticle)).scalars().all()
+        assert len(rows) == 1
+        assert rows[0].summary == "Fresh content after rerun"
+        assert rows[0].keywords == "new; keywords"
+        assert rows[0].impact_synthesis == "Fresh impact"
+
+    def test_force_re_inserts_segments_after_deleting_existing(self, sync_db_session):
+        from app.models.pipeline import PlArticleSegment
+        from scripts.press_review_agent.config import Provider
+        from scripts.press_review_agent.db_writer import (
+            write_article,
+            write_theme_sentiments,
+        )
+
+        article_id = write_article(
+            sync_db_session,
+            Provider.OPENAI,
+            {"resume": "x" * 50, "mots_cle": "k", "impact_synthetiques": "i"},
+            article_date=date(2026, 3, 17),
+        )
+        assert article_id is not None  # write_article only returns None on dry_run
+
+        original_themes = {
+            "production": {"score": 0.5, "confidence": 0.8, "rationale": "Original"},
+            "chocolat": {"score": -0.3, "confidence": 0.7, "rationale": "Original"},
+            "transformation": {
+                "score": 0.2,
+                "confidence": 0.6,
+                "rationale": "Original",
+            },
+            "economie": {"score": 0.0, "confidence": 0.4, "rationale": "Original"},
+        }
+        write_theme_sentiments(
+            sync_db_session,
+            article_id,
+            date(2026, 3, 17),
+            original_themes,
+            Provider.OPENAI,
+        )
+        assert (
+            sync_db_session.execute(
+                select(PlArticleSegment).where(
+                    PlArticleSegment.article_id == article_id
+                )
+            )
+            .scalars()
+            .all()
+        ).__len__() == 4
+
+        # Rerun with --force: must DELETE the 4 originals and INSERT 4 new ones.
+        updated_themes = {
+            "production": {"score": -0.8, "confidence": 0.9, "rationale": "Updated"},
+            "chocolat": {"score": 0.5, "confidence": 0.6, "rationale": "Updated"},
+            "transformation": {
+                "score": -0.1,
+                "confidence": 0.5,
+                "rationale": "Updated",
+            },
+            "economie": {"score": 0.3, "confidence": 0.4, "rationale": "Updated"},
+        }
+        count = write_theme_sentiments(
+            sync_db_session,
+            article_id,
+            date(2026, 3, 17),
+            updated_themes,
+            Provider.OPENAI,
+            force=True,
+        )
+
+        assert count == 4
+        rows = (
+            sync_db_session.execute(
+                select(PlArticleSegment).where(
+                    PlArticleSegment.article_id == article_id
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(rows) == 4
+        assert all(r.facts == "Updated" for r in rows), (
+            "Force=True must DELETE old segments before INSERT — old facts must not survive"
+        )
+
+    def test_no_force_still_raises_duplicate_error(self, sync_db_session):
+        """Garde-fou intact : sans --force le check fail-loud doit toujours fire
+        (détection de double-fire involontaire du cron).
+        """
+        from scripts.press_review_agent.config import Provider
+        from scripts.press_review_agent.db_writer import (
+            DuplicateArticleError,
+            write_article,
+        )
+
+        parsed = {"resume": "x", "mots_cle": "k", "impact_synthetiques": "i"}
+        write_article(
+            sync_db_session, Provider.OPENAI, parsed, article_date=date(2026, 3, 17)
+        )
+
+        with pytest.raises(DuplicateArticleError):
+            write_article(
+                sync_db_session,
+                Provider.OPENAI,
+                parsed,
+                article_date=date(2026, 3, 17),
+                # force=False (default)
+            )
+
+
+class TestMeteoForceOverwrite:
+    def test_force_overwrites_existing_observation_preserves_id(self, sync_db_session):
+        from scripts.meteo_agent.db_writer import write_observation
+
+        first = {
+            "texte": "Stale observation",
+            "resume": "Stale summary",
+            "mots_cle": "old",
+            "impact_synthetiques": "5/10",
+        }
+        first_id = write_observation(
+            sync_db_session, first, observation_date=date(2026, 3, 17)
+        )
+        assert first_id is not None
+
+        fresh = {
+            "texte": "Fresh observation",
+            "resume": "Fresh summary",
+            "mots_cle": "new",
+            "impact_synthetiques": "8/10",
+        }
+        second_id = write_observation(
+            sync_db_session,
+            fresh,
+            observation_date=date(2026, 3, 17),
+            force=True,
+        )
+
+        assert second_id == first_id
+
+        rows = sync_db_session.execute(select(PlWeatherObservation)).scalars().all()
+        assert len(rows) == 1
+        assert rows[0].observation == "Fresh observation"
+        assert rows[0].summary == "Fresh summary"
+        assert rows[0].keywords == "new"
+        assert rows[0].impact_assessment == "8/10"
+
+    def test_no_force_still_raises_duplicate_error(self, sync_db_session):
+        """Garde-fou intact : sans --force le check fail-loud doit toujours fire."""
+        from scripts.meteo_agent.db_writer import (
+            DuplicateObservationError,
+            write_observation,
+        )
+
+        parsed = {
+            "texte": "x",
+            "resume": "y",
+            "mots_cle": "k",
+            "impact_synthetiques": "i",
+        }
+        write_observation(sync_db_session, parsed, observation_date=date(2026, 3, 17))
+
+        with pytest.raises(DuplicateObservationError):
+            write_observation(
+                sync_db_session, parsed, observation_date=date(2026, 3, 17)
+            )

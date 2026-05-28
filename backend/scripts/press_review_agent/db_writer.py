@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Any
 
 import sentry_sdk
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from app.models.audit import AudLlmCall
@@ -48,10 +48,25 @@ def write_article(
     dry_run: bool = False,
     source_count: int | None = None,
     total_sources: int | None = None,
+    force: bool = False,
 ) -> uuid.UUID | None:
-    """Insert a press review article into pl_fundamental_article.
+    """Insert (or overwrite when ``force=True``) a press review article.
 
-    Raises DuplicateArticleError if a row already exists for (date, llm_provider).
+    Behavior on duplicate (= a row already exists for the
+    ``(date, llm_provider)`` unique constraint):
+      * ``force=False`` (default) — raise ``DuplicateArticleError`` (fail-loud).
+        Detects a runaway double-fire of the cron, which is the original
+        intent of the guard.
+      * ``force=True`` — UPDATE the existing row in place and return its id.
+        Preserves the row's primary key, which keeps the FK from
+        ``pl_article_segment.article_id`` valid (segments will be DELETE+INSERT
+        by ``write_theme_sentiments`` in the same run).
+
+    The ``--force`` flag plumbing exists for legitimate operator reruns
+    (cleanup, prompt tuning experiments, manual recovery after a cron
+    failure) where the user has explicitly asked to overwrite. Without
+    ``--force`` the duplicate guard stays armed.
+
     Returns the article UUID, or None if dry_run.
     """
     row_date = article_date or date.today()
@@ -73,11 +88,39 @@ def write_article(
     ).scalar_one_or_none()
 
     if existing:
-        raise DuplicateArticleError(
-            f"Article already exists for date={row_date}, "
-            f"provider={provider.value} (id={existing}). "
-            f"Pipeline may have run twice today."
+        if not force:
+            raise DuplicateArticleError(
+                f"Article already exists for date={row_date}, "
+                f"provider={provider.value} (id={existing}). "
+                f"Pipeline may have run twice today. "
+                f"Re-run with --force to overwrite explicitly."
+            )
+        # --force: overwrite the existing row in place. We preserve the id
+        # (and therefore the FK from pl_article_segment.article_id) — the
+        # caller's write_theme_sentiments(force=True) will DELETE+INSERT the
+        # cascading 4 segment rows immediately after.
+        log.warning(
+            "[%s] Article exists for date=%s — overwriting via --force (id=%s)",
+            provider.value,
+            row_date,
+            existing,
         )
+        session.execute(
+            update(PlFundamentalArticle)
+            .where(PlFundamentalArticle.id == existing)
+            .values(
+                category="macro",
+                source=AUTHOR_LABELS[provider],
+                summary=parsed["resume"],
+                keywords=parsed.get("mots_cle"),
+                impact_synthesis=parsed.get("impact_synthetiques"),
+                is_active=(provider == PRODUCTION_PROVIDER),
+                source_count=source_count,
+                total_sources=total_sources,
+            )
+        )
+        session.flush()
+        return existing
 
     article = PlFundamentalArticle(
         date=row_date,
@@ -153,6 +196,7 @@ def write_theme_sentiments(
     theme_sentiments: dict[str, Any],
     provider: Provider,
     dry_run: bool = False,
+    force: bool = False,
 ) -> int:
     """Insert per-theme sentiment scores into pl_article_segment.
 
@@ -160,6 +204,11 @@ def write_theme_sentiments(
     transformation / economie), they are filled with a neutral fallback
     row and a Sentry warning is emitted. Guarantees 4 rows per day so
     the dashboard always renders 4 sentiment gauges.
+
+    When ``force=True``, all existing rows for ``article_id`` are DELETEd
+    before INSERT. This is the cascading counterpart of
+    ``write_article(force=True)`` — the FK to pl_fundamental_article.id
+    remains valid since the article row's id is preserved by the UPDATE.
 
     Returns the number of segments written (always len(THEMES) on success).
     """
@@ -172,6 +221,21 @@ def write_theme_sentiments(
             len(filled),
         )
         return 0
+
+    if force:
+        # Wipe the 4 cascading rows from the previous run so the INSERT
+        # below doesn't pile up duplicates (no UNIQUE constraint on
+        # pl_article_segment to protect against this).
+        deleted = session.execute(
+            delete(PlArticleSegment).where(PlArticleSegment.article_id == article_id)
+        ).rowcount
+        if deleted:
+            log.warning(
+                "[%s] Deleted %d existing segments for article_id=%s before --force re-INSERT",
+                provider.value,
+                deleted,
+                article_id,
+            )
 
     count = 0
     for theme, data in filled.items():

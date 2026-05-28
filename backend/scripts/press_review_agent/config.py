@@ -151,7 +151,7 @@ GOOGLE_NEWS_QUERIES = [
             "+when:3d&hl=fr&gl=FR&ceid=FR:fr"
         ),
     },
-    # Economie / Macro (EN + FR)
+    # Economie / Macro (EN + FR + ES + policy/regulation + brand-macro)
     {
         "theme": "economie",
         "url": (
@@ -170,7 +170,29 @@ GOOGLE_NEWS_QUERIES = [
             "+when:3d&hl=fr&gl=FR&ceid=FR:fr"
         ),
     },
-    # Transformation / Processing (EN + FR)
+    {
+        # Policy + regulation (EUDR, COCOBOD, CCC, farm-gate price) — chronic
+        # news flow that gets missed when keywords are too price-centric.
+        "theme": "economie",
+        "url": (
+            "https://news.google.com/rss/search?"
+            'q="cocoa"+AND+("EUDR"+OR+"EU+deforestation"+OR+"COCOBOD"+OR+"CCC"'
+            '+OR+"farm-gate+price"+OR+"export+tax"+OR+"living+income")'
+            "+when:3d&hl=en&gl=US&ceid=US:en"
+        ),
+    },
+    {
+        # Africa producer currencies (XOF/Cedi) — direct revenue translation
+        # for Ivory Coast / Ghana exports, frequently ignored by macro queries.
+        "theme": "economie",
+        "url": (
+            "https://news.google.com/rss/search?"
+            'q=("Ivory+Coast"+OR+"Ghana"+OR+"Cote+d\'Ivoire")+AND+("CFA+franc"'
+            '+OR+"cedi"+OR+"currency"+OR+"devaluation"+OR+"central+bank")'
+            "+when:3d&hl=en&gl=US&ceid=US:en"
+        ),
+    },
+    # Transformation / Processing (EN + FR + Africa + brand processors)
     {
         "theme": "transformation",
         "url": (
@@ -189,9 +211,64 @@ GOOGLE_NEWS_QUERIES = [
             "+when:3d&hl=fr&gl=FR&ceid=FR:fr"
         ),
     },
+    {
+        # Africa processing — origin transformation is a strategic axis (CCC
+        # 2025 target 50% local grind). Often missed by global-keyword queries.
+        "theme": "transformation",
+        "url": (
+            "https://news.google.com/rss/search?"
+            'q="cocoa"+AND+("Ivory+Coast+processing"+OR+"Ghana+processing"'
+            '+OR+"local+grinder"+OR+"origin+grinding"+OR+"African+processor")'
+            "+when:3d&hl=en&gl=US&ceid=US:en"
+        ),
+    },
+    {
+        # Brand processors — Barry Callebaut, Cargill, Olam, ECOM, Sucden, etc.
+        # Earnings + capacity announcements drive transformation sentiment.
+        "theme": "transformation",
+        "url": (
+            "https://news.google.com/rss/search?"
+            'q=("Barry+Callebaut"+OR+"Cargill+cocoa"+OR+"Olam+cocoa"'
+            '+OR+"ECOM+cocoa"+OR+"Sucden+cocoa")+AND+("processing"+OR+"grinding"'
+            '+OR+"capacity"+OR+"factory"+OR+"investment")'
+            "+when:7d&hl=en&gl=US&ceid=US:en"
+        ),
+    },
+    # Chocolat — brand-name queries (Hershey/Mondelez/Nestlé/Lindt) and a
+    # Spanish-language query for LatAm demand coverage.
+    {
+        "theme": "chocolat",
+        "url": (
+            "https://news.google.com/rss/search?"
+            'q=("Hershey"+OR+"Mondelez"+OR+"Nestlé"+OR+"Lindt"+OR+"Ferrero")'
+            '+AND+("cocoa"+OR+"chocolate"+OR+"pricing"+OR+"margins"+OR+"hedging")'
+            "+when:7d&hl=en&gl=US&ceid=US:en"
+        ),
+    },
+    {
+        "theme": "chocolat",
+        "url": (
+            "https://news.google.com/rss/search?"
+            'q="cacao"+AND+("chocolate"+OR+"demanda"+OR+"precio"+OR+"Ecuador"'
+            '+OR+"Perú"+OR+"América+Latina")'
+            "+when:3d&hl=es&gl=ES&ceid=ES:es"
+        ),
+    },
+    # Production — Brazilian Portuguese (Bahia is a meaningful producer).
+    {
+        "theme": "production",
+        "url": (
+            "https://news.google.com/rss/search?"
+            'q="cacau"+AND+("produção"+OR+"safra"+OR+"colheita"+OR+"Bahia"'
+            '+OR+"Brasil"+OR+"vassoura-de-bruxa")'
+            "+when:3d&hl=pt-BR&gl=BR&ceid=BR:pt-419"
+        ),
+    },
 ]
 
-GOOGLE_NEWS_MAX_ITEMS_PER_QUERY = 10
+# Bumped from 10 → 15: MD5 dedup is already in place, gives the LLM more
+# headlines to chew on without notable extra cost (RSS is title-only).
+GOOGLE_NEWS_MAX_ITEMS_PER_QUERY = 15
 
 HTTP_TIMEOUT = 10
 USER_AGENT = (

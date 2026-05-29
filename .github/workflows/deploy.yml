@@ -66,6 +66,7 @@ jobs:
           env_vars: |
             GOOGLE_DRIVE_AUDIO_FOLDER_ID=${{ vars.GOOGLE_DRIVE_AUDIO_FOLDER_ID }}
             BACKEND_CORS_ORIGINS=${{ vars.BACKEND_CORS_ORIGINS }}
+            GIT_COMMIT_SHA=${{ github.sha }}
           secrets: |
             DATABASE_URL=DATABASE_URL:latest
             DATABASE_SYNC_URL=DATABASE_SYNC_URL:latest
@@ -170,7 +171,7 @@ jobs:
 
           SECRETS="--set-secrets=DATABASE_URL=DATABASE_URL:latest,DATABASE_SYNC_URL=DATABASE_SYNC_URL:latest,GOOGLE_SHEETS_CREDENTIALS_JSON=GOOGLE_SHEETS_CREDENTIALS_JSON:latest,GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON=GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON:latest,GOOGLE_DRIVE_CREDENTIALS_JSON=GOOGLE_DRIVE_CREDENTIALS_JSON:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,SENTRY_DSN=SENTRY_DSN:latest"
 
-          ENV_VARS="--set-env-vars=GOOGLE_DRIVE_AUDIO_FOLDER_ID=${{ vars.GOOGLE_DRIVE_AUDIO_FOLDER_ID }},GOOGLE_DRIVE_BRIEFS_FOLDER_ID=${{ vars.GOOGLE_DRIVE_BRIEFS_FOLDER_ID }}"
+          ENV_VARS="--set-env-vars=GOOGLE_DRIVE_AUDIO_FOLDER_ID=${{ vars.GOOGLE_DRIVE_AUDIO_FOLDER_ID }},GOOGLE_DRIVE_BRIEFS_FOLDER_ID=${{ vars.GOOGLE_DRIVE_BRIEFS_FOLDER_ID }},GIT_COMMIT_SHA=${{ github.sha }}"
 
           deploy_job() {
             local name=$1
@@ -246,3 +247,28 @@ jobs:
           # See docs/runbooks/brief-dual-track.md.
           deploy_job cc-ensemble-explainer       1Gi  "ensemble-explainer"
           deploy_job cc-compass-brief-ensemble   1Gi  "compass-brief-ensemble"
+
+  sentry-release:
+    name: Create Sentry Release
+    runs-on: ubuntu-latest
+    needs: [deploy-backend, deploy-frontend, deploy-jobs]
+    if: github.event.workflow_run.conclusion == 'success'
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create Sentry release
+        uses: getsentry/action-release@v1
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: commodities-compass
+          SENTRY_PROJECT: commodities-compass
+        with:
+          environment: production
+          version: ${{ github.sha }}
+          set_commits: auto
+          finalize: true

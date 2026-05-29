@@ -124,6 +124,10 @@ frontend/.env.production
 # Local-only runbooks, scripts, credentials (never committed)
 .local/
 
+# Sentry CLI config (contains auth token — never committed)
+.sentryclirc
+.sentryclirc.local
+
 # Local scratch / one-off outputs (kept on disk, just not tracked)
 tmp/
 output/

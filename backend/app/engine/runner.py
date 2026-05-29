@@ -49,6 +49,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.sentry import init_sentry
 from app.engine.db_writer import write_pipeline_results
 from app.engine.pipeline import IndicatorPipeline
 from app.engine.types import AlgorithmConfig, LEGACY_V1
@@ -441,6 +442,7 @@ def _run_for_version(
 
 
 def main() -> None:
+    init_sentry("compute-indicators")
     parser = argparse.ArgumentParser(description="Compute indicators for a contract")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--contract", help="Contract code (e.g., CAK26)")

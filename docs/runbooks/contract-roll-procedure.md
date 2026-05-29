@@ -72,7 +72,7 @@ gcloud run jobs execute cc-compute-indicators \
 ### Step 5 — Verify
 
 1. **DB**: `SELECT date, contract_id FROM pl_indicator_daily ORDER BY date DESC LIMIT 10;` — confirm rows exist for the new contract
-2. **Dashboard**: open `https://app.com-compass.com/dashboard`, check current day shows new contract data, then navigate back across the roll boundary — historical dates must still resolve correctly (cross-contract fallback in `dashboard_service._resolve_contract_for_date()`)
+2. **Dashboard**: open `https://app.com-compass.com/dashboard`, check current day shows new contract data, then navigate back across the roll boundary — historical dates must still resolve correctly (cross-contract fallback in `contract_resolver.resolve_contract_for_date()`)
 3. **Press review**: confirm next day's article references the new contract month (the prompt injects `contract_code` and `contract_month` — was a bug previously, now fixed)
 
 ## Rollback
@@ -100,7 +100,7 @@ These bugs were caught during the `CAK26 → CAN26` roll on 2026-04-14. They are
 
 After a roll, navigating to historical dates (pre-roll) used to show empty gauges because dashboard queries filtered by `contract_id = active_contract` (e.g. `CAN26`), but pre-roll data lives on the previous contract (`CAK26`).
 
-`_resolve_contract_for_date()` in `backend/app/services/dashboard_service.py` resolves the best contract for any historical date with priority:
+`resolve_contract_for_date()` in `backend/app/utils/contract_resolver.py` resolves the best contract for any historical date with priority:
 
 1. Active contract with complete data (`conclusion IS NOT NULL`)
 2. Any contract with complete data for that date (cross-contract fallback)
@@ -114,5 +114,5 @@ YTD performance uses a separate cross-contract query (`DISTINCT ON (date) ORDER 
 - CLI: `backend/scripts/roll_contract.py` (entry point: `poetry run roll-contract`)
 - Resolver: `backend/app/utils/contract_resolver.py` (`resolve_active_code()`)
 - Compute engine front-month picker: `backend/app/engine/runner.py` (`load_all_market_data()`)
-- Dashboard fallback: `backend/app/services/dashboard_service.py` (`_resolve_contract_for_date()`)
+- Dashboard fallback: `backend/app/utils/contract_resolver.py` (`resolve_contract_for_date()`)
 - Press review contract injection: `backend/scripts/press_review_agent/config.py`

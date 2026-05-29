@@ -54,14 +54,15 @@ frontend/
 │   │   ├── sentiment-gauges.tsx       # 4 thematic sentiment ruler gauges
 │   │   ├── section-header.tsx         # Roman numeral + title + rule
 │   │   ├── editorial-tabs.tsx         # Magazine-style tabs (Playfair italic active)
-│   │   └── date-selector.tsx          # Calendar picker (card | compact variants)
+│   │   ├── market-analysis/           # Sub-files: technicals/macro/positioning-gauges, editorial-analysis, helpers
+│   │   └── date-selector.tsx          # Calendar picker (compact masthead variant)
 │   ├── contexts/         # DashboardDateContext (Provider)
-│   ├── data/             # Chart metric options and mock data
-│   ├── hooks/            # useAuth, useDashboard, useDashboardDate, use-mobile, use-toast
+│   ├── data/             # Chart metric options, indicator metadata (extracted from gauge-indicator)
+│   ├── hooks/            # useAuth, useDashboard, useDashboardDate, use-mobile
 │   ├── pages/            # Page components (dashboard, historical, login)
 │   ├── test/             # Test setup and utilities
 │   ├── types/            # TypeScript type definitions
-│   └── utils/            # Utilities (cn, format-financial-text, recommendation-parser)
+│   └── utils/            # Utilities (cn, date-utils, ensemble-explanation, format-financial-text, recommendation-parser)
 ├── public/               # Static assets (favicons regenerated from brand bible 1024 transparent)
 └── package.json
 ```

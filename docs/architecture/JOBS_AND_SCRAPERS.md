@@ -497,8 +497,8 @@ Voir détail dans [PIPELINE_ENSEMBLE.md](./PIPELINE_ENSEMBLE.md) §7.
 | `pl_indicator_daily.{eco,conf,dir,concl}` ensemble | ensemble-explainer | compass-brief-ensemble | ENSEMBLE |
 | `pl_orchestrator_decision` | ensemble-compute | ensemble-explainer, compass-brief-ensemble, frontend (`/ensemble-diagnostics`) | ENSEMBLE |
 | `pl_specialist_prediction` | ensemble-compute | ensemble-explainer, compass-brief-ensemble, frontend (`/ensemble-diagnostics`) | ENSEMBLE |
-| `pl_stock_observation` | ice-stocks-scraper (region='us'), barchart-stocks-eu-scraper (region='eu') | positioning_service (dashboard gauges), daily-analysis (STOCKTOD), compass-brief (STOCK US), julien_handoff, watchlist_eval | shared (NEW 2026-05-27) |
-| `pl_cot_us_weekly` | cftc-scraper (Disaggregated COT, depuis 2026-05-27) | positioning_service (dashboard gauges + COT US release date), daily-analysis (COMNETTOD), compass-brief (COM NET US), julien_handoff, watchlist_eval | shared (NEW 2026-05-27) |
+| `pl_stock_observation` | ice-stocks-scraper (region='us'), barchart-stocks-eu-scraper (region='eu') | positioning_service (dashboard gauges), daily-analysis (STOCKTOD), compass-brief (STOCK US), watchlist_eval | shared (NEW 2026-05-27) |
+| `pl_cot_us_weekly` | cftc-scraper (Disaggregated COT, depuis 2026-05-27) | positioning_service (dashboard gauges + COT US release date), daily-analysis (COMNETTOD), compass-brief (COM NET US), watchlist_eval | shared (NEW 2026-05-27) |
 | `pl_fundamental_article` | press-review-agent | daily-analysis (Call #1), ensemble-explainer, compass-brief, compass-brief-ensemble, frontend | shared |
 | `pl_article_segment` | press-review-agent | ensemble-compute (MacroEventLayer) | ENSEMBLE-relevant |
 | `pl_weather_observation` | meteo-agent | daily-analysis (Call #1), ensemble-explainer, compass-brief, compass-brief-ensemble, frontend | shared |

@@ -277,9 +277,12 @@ Le brief legacy parle d'« aujourd'hui » (horizon T+1). L'ensemble parle d'une 
 
 ```
 19:18  cc-ensemble-compute     → row ensemble pl_indicator_daily + orchestrator + 14 specialists
+                                  (P2b daily, eve-of-trading gate — fires Mon-Thu eve and Sun eve)
 19:25  cc-ensemble-explainer   → invoque DBAnalysisEngine (auto-align) → UPDATE row ensemble : eco + confidence + direction + conclusion long-form (2 LLM calls gpt-4-turbo)
 19:35  cc-compass-brief-ensemble → Drive: YYYYMMDD-CompassBrief-Ensemble.txt
 ```
+
+**Critical weekend behavior (P2b)** : `cc-ensemble-compute` fires Sunday eve (eve of Monday=trading), reading the just-written `pl_article_segment` from Sunday 19:05 press-review with `article_date = Friday`. This is how the ensemble decision for Friday's session incorporates news that broke during the weekend.
 
 ### Template du brief ensemble (7 sections)
 

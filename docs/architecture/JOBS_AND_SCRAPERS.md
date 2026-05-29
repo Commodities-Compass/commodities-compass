@@ -22,7 +22,7 @@ Time UTC | Job                                   | Track       | Type
 19:05    | cc-press-review-agent                 | both        | Phase B (eve-gated)
 19:10    | cc-barchart-stocks-eu-scraper         | shared      | Phase A (stock_eu)
 19:15    | cc-compute-indicators                 | shared      | Phase A (engine)
-19:18    | cc-ensemble-compute                   | ENSEMBLE    | Phase A (ML decision)
+19:18    | cc-ensemble-compute                   | ENSEMBLE    | Phase B (eve-gated, ML decision)
 19:20    | cc-daily-analysis                     | LEGACY      | Phase B (eve-gated, LLM)
 19:25    | cc-ensemble-explainer                 | ENSEMBLE    | Phase B (eve-gated, LLM)
 19:30    | cc-compass-brief                      | LEGACY      | Phase B (eve-gated, Drive)
@@ -64,7 +64,7 @@ On-demand| cc-ensemble-bootstrap-artifacts       | ENSEMBLE     | Manual (no sch
 | **cc-press-review-agent** | `5 19 * * *` | both | 6 news sources + Google News RSS | `pl_fundamental_article`, `pl_article_segment`, `pl_sentiment_feature` | ✅ Actif (P2b daily-gated) |
 | **cc-meteo-agent** | `0 19 * * *` | both | Open-Meteo API | `pl_weather_observation`, `pl_seasonal_score` | ✅ Actif (P2b daily-gated) |
 | **cc-compute-indicators** | `15 19 * * 1-5` | shared | `pl_contract_data_daily` | `pl_derived_indicators`, `pl_indicator_daily` (numerics) | ✅ Actif |
-| **cc-ensemble-compute** | `18 19 * * 1-5` | ENSEMBLE | `pl_derived_indicators`, `pl_article_segment`, `pl_external_indicator`, `pl_cot_eu_weekly`, `pl_model_artifact` | `pl_specialist_prediction` (14), `pl_orchestrator_decision`, `pl_indicator_daily` (ensemble row partielle) | ✅ Actif |
+| **cc-ensemble-compute** | `18 19 * * *` (eve-gated) | ENSEMBLE | `pl_derived_indicators`, `pl_article_segment`, `pl_external_indicator`, `pl_cot_eu_weekly`, `pl_model_artifact` | `pl_specialist_prediction` (14), `pl_orchestrator_decision`, `pl_indicator_daily` (ensemble row partielle) | ✅ Actif |
 | **cc-ensemble-explainer** | `25 19 * * *` | ENSEMBLE | `pl_orchestrator_decision`, `pl_specialist_prediction`, `pl_fundamental_article`, `pl_weather_observation`, `pl_contract_data_daily` | UPDATE `pl_indicator_daily` ensemble row (narrative legacy-style via DBAnalysisEngine auto-align) | ✅ Actif (P2b daily-gated, thin wrapper sur le moteur legacy depuis 2026-05-27) |
 | **cc-daily-analysis** | `20 19 * * *` | LEGACY | `pl_contract_data_daily`, `pl_derived_indicators`, `pl_indicator_daily`, `pl_fundamental_article`, `pl_weather_observation` | UPDATE `pl_indicator_daily` legacy row (LLM) | ✅ Actif (P2b daily-gated, `--algorithm-version legacy`) |
 | **cc-compass-brief** | `30 19 * * *` | LEGACY | `pl_indicator_daily` (active row), `pl_contract_data_daily` last 2 dates, `pl_fundamental_article`, `pl_weather_observation` | Drive: `YYYYMMDD-CompassBrief.txt` | ✅ Actif (P2b daily-gated) |
@@ -307,7 +307,7 @@ On-demand| cc-ensemble-bootstrap-artifacts       | ENSEMBLE     | Manual (no sch
 - `pl_article_segment` 90d (confidence ≥0.70) via MacroEventLayer
 - `pl_external_indicator` (ENSO + FX) + `pl_cot_eu_weekly`
 
-**Cron** : `18 19 * * 1-5` (3min après cc-compute-indicators).
+**Cron** : `18 19 * * *` (P2b daily, eve-of-trading gate ; 13min après cc-press-review-agent à 19:05 pour lire les `pl_article_segment` fraîchement écrits). Fire Mon-Thu eve + Sunday eve, skip Friday + Saturday eves. Sur Sunday eve, écrit la row pour `data_date = Friday` avec le MacroSignal incluant les news du weekend.
 
 **Output** :
 - 14× `pl_specialist_prediction` (specialist_name, pred, window_months)

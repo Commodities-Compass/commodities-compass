@@ -1,16 +1,14 @@
 """CLI entry point for ICE Certified Cocoa Stocks scraper."""
 
-import argparse
 import logging
 import sys
 from datetime import datetime
-from pathlib import Path
 
 import sentry_sdk
-from dotenv import load_dotenv
 from sentry_sdk.crons import monitor
 
-from app.core.sentry import init_sentry
+from scripts._shared.cli import build_base_argparser
+from scripts._shared.sentry import bootstrap_scraper
 from scripts.ice_stocks_scraper.scraper import ICEScraperError, scrape
 
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -23,26 +21,14 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Load env + init Sentry BEFORE @monitor-decorated function
-load_dotenv(Path(__file__).parent.parent.parent / ".env")
-init_sentry("ice-stocks-scraper")
+bootstrap_scraper("ice-stocks-scraper", script_file=__file__)
 
 
 @monitor(monitor_slug="ice-stocks-scraper")
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="ICE Certified Cocoa Stocks scraper (Report 41)"
-    )
-    parser.add_argument(
-        "--dry-run", action="store_true", help="Parse + validate, no DB write"
-    )
+    parser = build_base_argparser("ICE Certified Cocoa Stocks scraper (Report 41)")
     parser.add_argument(
         "--date", type=str, default=None, help="Target date YYYY-MM-DD (default: today)"
-    )
-    parser.add_argument("--verbose", action="store_true")
-    parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Run even on non-trading days (for backfills/debugging)",
     )
 
     args = parser.parse_args()

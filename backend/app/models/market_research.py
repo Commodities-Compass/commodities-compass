@@ -1,5 +1,10 @@
 """
 Market research and analyst reports model.
+
+DEPRECATED — Legacy model from pre-MVP era. Replaced by pl_fundamental_article
+(populated by cc-press-review-agent) which the dashboard API queries. The
+underlying table still exists on prod for traceability; it will be dropped in
+a future migration. Do NOT use in new code. See CLAUDE.md § Database Setup.
 """
 
 from datetime import datetime

@@ -78,8 +78,6 @@ The backend follows a clean architecture with separation of concerns:
   - `endpoints/auth.py` - Authentication endpoints (me, verify)
   - `endpoints/dashboard.py` - Dashboard data endpoints (position, indicators, recommendations, chart, news, weather, audio)
   - `endpoints/audio.py` - Audio streaming and metadata endpoints (unauthenticated stream for HTML audio element)
-  - `endpoints/commodities.py` - Commodity information (stub/mock data, TODO)
-  - `endpoints/historical.py` - Historical data endpoints (stub/mock data, TODO)
 - **`app/models/`** - SQLAlchemy database models split by domain:
   - `base.py` - DeclarativeBase class
   - `technicals.py` - Legacy: OHLCV data with 40+ technical indicators (unused, pending drop)
@@ -473,8 +471,6 @@ All API endpoints are prefixed with `/v1` and include:
   - `GET /audio/info` - Audio metadata (requires auth)
 - `/dashboard/non-trading-days` - Exchange holidays + latest display_date for calendar:
   - `GET /dashboard/non-trading-days?year=2026` - Returns non-trading weekday dates and `latest_trading_day` (= `MAX(display_date)` from actual data)
-- `/commodities/*` - Commodity information (stub/mock data, TODO)
-- `/historical/*` - Historical data and indicators (stub/mock data, TODO)
 
 ## Google Drive Audio Integration
 
@@ -594,7 +590,6 @@ When a job fails, follow [docs/runbooks/pipeline-failure-recovery.md](docs/runbo
 - Database migrations managed via Alembic (migrations are idempotent for safe GCP re-application)
 - Pre-commit hooks run via Husky (backend: ruff + pyright, frontend: eslint fix)
 - Development setup script available at `scripts/setup-dev.sh`
-- `commodities` and `historical` API endpoints return mock data (TODO: implement database queries)
 - Node.js 18+ and pnpm required (see root `package.json` engines)
 - **Always use pnpm** instead of npm for all JavaScript/TypeScript dependency management and script execution
 - **GCP env var gotcha**: `gcloud run services update --set-env-vars` REPLACES all env vars. Use `--update-env-vars` to add/update without wiping existing vars.

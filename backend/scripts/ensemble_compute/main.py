@@ -25,7 +25,7 @@ import argparse
 import logging
 import sys
 import uuid
-from datetime import date, datetime, timezone
+from datetime import datetime
 
 import pandas as pd
 import sentry_sdk
@@ -95,7 +95,14 @@ def _parse_args() -> argparse.Namespace:
         "--date",
         type=lambda s: datetime.strptime(s, "%Y-%m-%d").date(),
         default=None,
-        help="Target date (default: today UTC, business day)",
+        help=(
+            "Target session date — the WHERE/UPDATE key on "
+            "pl_orchestrator_decision/pl_specialist_prediction. "
+            "Default (no --date): previous_session(next_session(today)), i.e. "
+            "the most recent completed trading session before the upcoming "
+            "one this run prepares. Bypasses the eve-of-trading-day gate "
+            "when set explicitly."
+        ),
     )
     parser.add_argument(
         "--historical",
@@ -107,10 +114,6 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
     return parser.parse_args()
-
-
-def _today_utc() -> date:
-    return datetime.now(timezone.utc).date()
 
 
 def _resolve_algorithm_version_id(session, name: str) -> uuid.UUID:
@@ -153,12 +156,36 @@ def main() -> int:
     args = _parse_args()
     configure_logging(verbose=args.verbose)
 
-    from scripts.db import get_session, should_skip_non_trading_day
+    from scripts.db import (
+        get_next_session_date,
+        get_previous_session_date,
+        get_session,
+        is_eve_of_trading_day,
+    )
 
-    if should_skip_non_trading_day(force=args.force):
-        return 0
+    # P2b Phase B gate: skip cleanly when the upcoming day is not a trading
+    # session. Explicit --date or --force bypass the gate (backfills, reruns).
+    # Pre-P2b semantic (today must be a trading day) replaced by eve-of-trading
+    # so Sunday eve fires for Monday's session — letting the MacroSignal pick
+    # up weekend press-review writes that target Friday's data_date.
+    if not args.force and args.date is None:
+        if not is_eve_of_trading_day():
+            logger.info(
+                "Phase-B gate: tomorrow is not a trading day — skipping cleanly."
+            )
+            return 0
 
-    target_date = args.date or _today_utc()
+    # ``target_date`` retains its existing meaning inside this file (= the
+    # session date this run computes for, used as the WHERE/UPDATE key on
+    # pl_orchestrator_decision / pl_specialist_prediction). Post-P2b, when
+    # called by the cron without --date, this is the most recent completed
+    # session (= previous_session of the upcoming target). Equal to today
+    # mid-week, equal to Friday on Sunday eve.
+    if args.date:
+        target_date = args.date
+    else:
+        next_session = get_next_session_date()
+        target_date = get_previous_session_date(next_session)
 
     logger.info("=" * 60)
     logger.info("Ensemble Compute (C5 v1.0.0)")

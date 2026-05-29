@@ -86,12 +86,15 @@ locals {
     }
     ensemble-compute = {
       description = "C5 ensemble: soft-gate + Compass wrapper daily decision (shadow mode v1.0.0)"
-      # 19:18 UTC weekdays — sandwiched between cc-compute-indicators (19:15)
-      # and cc-daily-analysis (19:20). The ensemble reads pl_derived_indicators
-      # which compute-indicators must have written first, and daily-analysis
-      # reads pl_indicator_daily which ensemble-compute writes here (legacy
-      # version flag prevents overwrite, see deploy.yml).
-      schedule = "18 19 * * 1-5"
+      # 19:18 UTC daily, agent-gated on eve-of-trading-day (P2b). Captures
+      # weekend macro news (Sun eve fires for Mon session, reading the fresh
+      # pl_article_segment that press-review just wrote at 19:05 with
+      # article_date = previous_session). Sandwiched between
+      # cc-press-review-agent (19:05) and cc-daily-analysis (19:20) so the
+      # MacroSignal sees the latest articles, and daily-analysis sees the
+      # ensemble row this job writes. Skips cleanly when tomorrow is not
+      # a trading day (Fri/Sat eve).
+      schedule = "18 19 * * *"
     }
     # NB: cc-ensemble-bootstrap-artifacts is deployed without a scheduler.
     # Triggered manually via gcloud when R&D ships a new frozen artefact pack.

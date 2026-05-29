@@ -123,3 +123,20 @@ frontend/.env.production
 
 # Local-only runbooks, scripts, credentials (never committed)
 .local/
+
+# Local scratch / one-off outputs (kept on disk, just not tracked)
+tmp/
+output/
+mockup/
+
+# Local-only docs subdirs (kept on disk, not in repo)
+docs/algorithms/
+docs/user-stories/
+docs/feature-proposals/
+docs/presentations/
+
+# HTML drafts / investigations (kept on disk, not in repo)
+# Exception: brand bible HTML is intentionally tracked (referenced by CLAUDE.md)
+docs/**/*.html
+!docs/brand/**/*.html
+backend/vendor/**/*.html

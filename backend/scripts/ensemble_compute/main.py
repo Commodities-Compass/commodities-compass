@@ -1,12 +1,19 @@
-"""cc-ensemble-compute — daily C5 ensemble decision.
+"""cc-ensemble-compute — daily C5 ensemble decision (P2b Phase B).
 
-Runs at 19:18 UTC weekdays (between cc-compute-indicators at 19:15 and
-cc-daily-analysis at 19:20). Reads from prod tables, instantiates
-``EnsemblePipeline``, writes 3 tables.
+Runs at 19:18 UTC every day, gated on ``is_eve_of_trading_day()`` so it
+fires Mon-Thu eve and Sunday eve, skipping Friday + Saturday eves. The
+move from weekday-only to daily-gated (PR #35) is what lets the
+MacroSignal incorporate news that broke during the weekend: Sunday 19:05
+press-review writes pl_article_segment with ``article_date = Friday``,
+and Sunday 19:18 ensemble-compute reads it before deciding Friday's row.
+
+Sequencing on a typical evening (eve of next session): cc-meteo-agent
+(19:00) → cc-press-review-agent (19:05) → cc-ensemble-compute (19:18) →
+cc-daily-analysis (19:20) → cc-ensemble-explainer (19:25) → briefs.
 
 Usage:
-    poetry run ensemble-compute                          # today, active contract
-    poetry run ensemble-compute --date 2026-05-15
+    poetry run ensemble-compute                          # default = previous_session(next_session(today))
+    poetry run ensemble-compute --date 2026-05-15        # explicit, bypasses gate
     poetry run ensemble-compute --dry-run --verbose
     poetry run ensemble-compute --date 2026-05-15 --force
 
@@ -14,7 +21,8 @@ Per CAMPAIGN_5_PROD_DEPLOYMENT.md §6.2:
     - Reads pl_contract_data_daily × pl_derived_indicators for market_history.
     - Reads pl_orchestrator_decision + pl_specialist_prediction for the
       wrapper's trailing window.
-    - Uses MacroSignal stub (neutral) until the sentiment pipeline is live.
+    - Reads pl_article_segment (90d window, confidence ≥ 0.70) → MacroSignal
+      via MacroEventLayer.
     - Writes pl_specialist_prediction (14), pl_orchestrator_decision (1),
       pl_indicator_daily (1 row UPSERT, decision = wrapped_decision).
 """

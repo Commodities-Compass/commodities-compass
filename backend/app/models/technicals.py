@@ -1,5 +1,10 @@
 """
 Technical analysis data model for commodities trading.
+
+DEPRECATED — Legacy model from pre-MVP era. No longer read by any production
+code (dashboard API queries pl_* tables exclusively). The underlying table
+still exists on prod for traceability; it will be dropped in a future
+migration. Do NOT use in new code. See CLAUDE.md § Database Setup.
 """
 
 from datetime import datetime

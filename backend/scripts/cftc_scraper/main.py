@@ -8,16 +8,14 @@ with the same Friday-released value) is gone.
 
 from __future__ import annotations
 
-import argparse
 import logging
 import sys
-from pathlib import Path
 
 import sentry_sdk
-from dotenv import load_dotenv
 from sentry_sdk.crons import monitor
 
-from app.core.sentry import init_sentry
+from scripts._shared.cli import build_base_argparser
+from scripts._shared.sentry import bootstrap_scraper
 from scripts.cftc_scraper.scraper import CFTCScraper, CFTCScraperError
 
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -30,8 +28,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Load env + init Sentry BEFORE @monitor-decorated function
-load_dotenv(Path(__file__).parent.parent.parent / ".env")
-init_sentry("cftc-scraper")
+bootstrap_scraper("cftc-scraper", script_file=__file__)
 
 
 # CFTC publishes Friday for Tuesday snapshot. Allow up to 14 days latency
@@ -42,19 +39,7 @@ STALE_OBSERVATION_DAYS = 14
 
 @monitor(monitor_slug="cftc-scraper")
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="CFTC Disaggregated COT scraper (cocoa)"
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Scrape and validate, but don't write to DB",
-    )
-    parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Run even on non-trading days (for backfills/debugging)",
-    )
+    parser = build_base_argparser("CFTC Disaggregated COT scraper (cocoa)")
 
     args = parser.parse_args()
 

@@ -31,6 +31,7 @@ from app.models.test_range import TestRange
 from app.utils.contract_resolver import (
     get_active_algorithm_version_id,
     get_active_contract_id,
+    resolve_contract_for_date,
 )
 from app.utils.date_utils import get_year_start_date
 
@@ -40,87 +41,6 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
-
-
-async def _resolve_contract_for_date(
-    db: AsyncSession, target_date: date
-) -> Optional[uuid.UUID]:
-    """Resolve the best contract_id for a historical date.
-
-    Priority order:
-    1. Active contract — if it has a complete pl_indicator_daily row
-       (conclusion IS NOT NULL = daily analysis ran for this contract+date)
-    2. Any contract with a complete row for that date
-    3. Active contract with any row (even without conclusion)
-    4. Any contract with data (highest OI = front-month heuristic)
-
-    Returns None if no contract has data for that date at all.
-    """
-    active_id = await get_active_contract_id(db)
-    algo_id = await get_active_algorithm_version_id(db)
-
-    # 1. Active contract with complete data (conclusion exists)
-    active_complete = await db.execute(
-        select(PlIndicatorDaily.id)
-        .where(
-            PlIndicatorDaily.contract_id == active_id,
-            PlIndicatorDaily.algorithm_version_id == algo_id,
-            PlIndicatorDaily.date == target_date,
-            PlIndicatorDaily.conclusion.isnot(None),
-        )
-        .limit(1)
-    )
-    if active_complete.scalar_one_or_none() is not None:
-        return active_id
-
-    # 2. Any contract with complete data for this date
-    any_complete = await db.execute(
-        select(PlIndicatorDaily.contract_id)
-        .where(
-            PlIndicatorDaily.date == target_date,
-            PlIndicatorDaily.algorithm_version_id == algo_id,
-            PlIndicatorDaily.conclusion.isnot(None),
-        )
-        .limit(1)
-    )
-    fallback_id = any_complete.scalar_one_or_none()
-    if fallback_id is not None:
-        logger.debug(
-            "Cross-contract fallback (complete) for %s: %s -> %s",
-            target_date,
-            active_id,
-            fallback_id,
-        )
-        return fallback_id
-
-    # 3. Active contract with any row
-    active_any = await db.execute(
-        select(PlIndicatorDaily.id)
-        .where(
-            PlIndicatorDaily.contract_id == active_id,
-            PlIndicatorDaily.date == target_date,
-        )
-        .limit(1)
-    )
-    if active_any.scalar_one_or_none() is not None:
-        return active_id
-
-    # 4. Any contract with market data (highest OI = front-month)
-    fallback_market = await db.execute(
-        select(PlContractDataDaily.contract_id)
-        .where(PlContractDataDaily.date == target_date)
-        .order_by(desc(PlContractDataDaily.oi))
-        .limit(1)
-    )
-    fallback_id = fallback_market.scalar_one_or_none()
-    if fallback_id is not None:
-        logger.debug(
-            "Cross-contract fallback (market) for %s: %s -> %s",
-            target_date,
-            active_id,
-            fallback_id,
-        )
-    return fallback_id
 
 
 # Evaluation horizon (trading days) used by the YTD scoring formula.
@@ -231,7 +151,7 @@ async def get_position_from_technicals(
     """
     if contract_id is None:
         if target_date:
-            contract_id = await _resolve_contract_for_date(db, target_date)
+            contract_id = await resolve_contract_for_date(db, target_date)
             if not contract_id:
                 return None
         else:
@@ -395,7 +315,7 @@ async def get_indicators_with_ranges(
     """
     if contract_id is None:
         if target_date:
-            contract_id = await _resolve_contract_for_date(db, target_date)
+            contract_id = await resolve_contract_for_date(db, target_date)
             if not contract_id:
                 return {}
         else:
@@ -569,7 +489,7 @@ async def get_latest_recommendations(
     """
     if contract_id is None:
         if target_date:
-            contract_id = await _resolve_contract_for_date(db, target_date)
+            contract_id = await resolve_contract_for_date(db, target_date)
             if not contract_id:
                 return [], None, None
         else:

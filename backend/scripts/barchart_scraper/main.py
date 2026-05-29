@@ -1,15 +1,13 @@
 """CLI entry point for Barchart scraper."""
 
-import argparse
 import logging
 import sys
-from pathlib import Path
 
 import sentry_sdk
-from dotenv import load_dotenv
 from sentry_sdk.crons import monitor
 
-from app.core.sentry import init_sentry
+from scripts._shared.cli import build_base_argparser
+from scripts._shared.sentry import bootstrap_scraper
 from scripts.barchart_scraper.config import LOG_FORMAT
 from scripts.barchart_scraper.scraper import BarchartScraper, BarchartScraperError
 from scripts.barchart_scraper.validator import DataValidator
@@ -22,34 +20,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Load env + init Sentry BEFORE @monitor-decorated function
-load_dotenv(Path(__file__).parent.parent.parent / ".env")
-init_sentry("barchart-scraper")
+bootstrap_scraper("barchart-scraper", script_file=__file__)
 
 
 @monitor(monitor_slug="barchart-scraper")
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Barchart scraper for London cocoa futures"
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Run scraper and validation, but don't write to DB",
-    )
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Enable debug logging",
-    )
+    parser = build_base_argparser("Barchart scraper for London cocoa futures")
     parser.add_argument(
         "--headful",
         action="store_true",
         help="Run browser in non-headless mode (visible, for debugging)",
-    )
-    parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Run even on non-trading days (for backfills/debugging)",
     )
 
     args = parser.parse_args()

@@ -92,9 +92,10 @@ def get_next_session_date(
     """Return the next trading session strictly AFTER target_date (default: today).
 
     Alias of :func:`get_display_date` but named for the P2b Phase B agents
-    (press_review, meteo, daily_analysis, compass_brief) — these write data
-    keyed to the upcoming session, not "today". On weekends and holidays
-    this skips ahead to the next IFEU trading day automatically.
+    (meteo, press_review, ensemble_compute, daily_analysis, ensemble_explainer,
+    compass_brief, compass_brief_ensemble) — these write data keyed to the
+    upcoming session, not "today". On weekends and holidays this skips ahead
+    to the next IFEU trading day automatically.
     """
     from app.utils.trading_calendar import get_next_trading_day_sync
 

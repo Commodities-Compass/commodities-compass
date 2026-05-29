@@ -120,7 +120,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             {/* RIGHT: date picker */}
             <div className="flex items-center shrink-0">
               <DateSelector
-                variant="compact"
                 currentDate={currentDate}
                 onDateChange={setCurrentDate}
                 sessionDate={sessionDate ?? undefined}

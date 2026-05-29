@@ -135,7 +135,8 @@ docs/user-stories/
 docs/feature-proposals/
 docs/presentations/
 
-# HTML drafts / investigations under docs/ (kept on disk, not in repo)
+# HTML drafts / investigations (kept on disk, not in repo)
 # Exception: brand bible HTML is intentionally tracked (referenced by CLAUDE.md)
 docs/**/*.html
 !docs/brand/**/*.html
+backend/vendor/**/*.html

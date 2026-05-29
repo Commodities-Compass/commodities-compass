@@ -1,0 +1,24 @@
+; Sentry CLI configuration template.
+;
+; Copy to .sentryclirc and either paste a token after `token =` (read-only User Auth
+; Token from Sentry → Settings → Account → API → Auth Tokens), or set the
+; SENTRY_AUTH_TOKEN environment variable in your shell (~/.zshrc) and leave the
+; token line commented out.
+;
+; .sentryclirc is gitignored. .sentryclirc.example is committed (this file).
+;
+; Required scopes for triage (read-only):
+;   - event:read
+;   - project:read
+;   - project:releases (read)
+;   - org:read
+; ⚠️ Never grant write scopes for local use. Write tokens belong in CI only.
+
+[defaults]
+org = commodities-compass
+project = commodities-compass
+; url = https://sentry.io/    ; uncomment if pointing at self-hosted Sentry
+
+[auth]
+; token = sntryu_paste_your_user_token_here
+; Or leave commented and export SENTRY_AUTH_TOKEN in your shell.

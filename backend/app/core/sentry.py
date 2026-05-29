@@ -23,7 +23,8 @@ def init_sentry(
         environment=os.getenv("ENVIRONMENT", "production"),
         traces_sample_rate=0.2,
         sample_rate=1.0,
+        send_default_pii=False,
         integrations=integrations or [],
-        release=os.getenv("RAILWAY_GIT_COMMIT_SHA"),
+        release=os.getenv("GIT_COMMIT_SHA") or os.getenv("GITHUB_SHA"),
     )
     sentry_sdk.set_tag("service", service)

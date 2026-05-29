@@ -110,14 +110,14 @@ The backend follows a clean architecture with separation of concerns:
 
 ### Frontend (React 19 + TypeScript)
 
-The frontend follows the **Compass CC editorial / magazine brand identity** (2026 brand bible — assets in `docs/compass-brandbible-pack/`). It reads like a daily intelligence briefing rather than a generic dashboard.
+The frontend follows the **Compass CC editorial / magazine brand identity** (2026 brand bible — assets in `docs/brand/`). It reads like a daily intelligence briefing rather than a generic dashboard.
 
 - **Brand identity**:
   - Tokens in `src/index.css` (`--ink`, `--ink-dark`, `--ink-mid`, `--ink-light`, `--rule`, `--paper-off`, `--paper`, `--color-signal-{open,monitor,hedge}`).
   - **Typography**: Playfair Display (`--font-display`, italic for editorial voice) + Inter (`--font-sans`, sections + structure) + IBM Plex Mono (`--font-mono`, data, kickers, ticker) + Georgia (`--font-editorial`, article body). All self-hosted via `@fontsource(-variable)`.
   - **Signal palette**: OPEN `#10B981`, MONITOR `#F59E0B`, HEDGE `#EF4444`.
   - Light theme only. Dark mode = P2 follow-up (no toggle currently exposed).
-  - **Favicon** — all sizes regenerated from `docs/compass-brandbible-pack/logo/transparent/compass-icon-1024-transparent.png` via `sips` (16/32/48 + 180 apple-touch + 192/512 android-chrome). OG image at `frontend/public/og-image.png`.
+  - **Favicon** — all sizes regenerated from `docs/brand/logo/transparent/compass-icon-1024-transparent.png` via `sips` (16/32/48 + 180 apple-touch + 192/512 android-chrome). OG image at `frontend/public/og-image.png`.
 - **Auth0 Integration** - `main.tsx` sets up Auth0Provider with localStorage caching and refresh tokens
 - **API Layer** - `src/api/` contains:
   - `client.ts` - Axios client with automatic token injection and 401 interceptor (dispatches `auth:token-expired` event)
@@ -168,7 +168,7 @@ The frontend follows the **Compass CC editorial / magazine brand identity** (202
   - `use-mobile.tsx` - Mobile breakpoint detection
 - **Types** - `src/types/dashboard.ts` for all API response type definitions
 - **Data** - `src/data/commodities-data.ts` for chart metric options and mock data
-- **Brand asset source** - `docs/compass-brandbible-pack/` contains the original 2026 brand pack: tokens (`compass-brandbible-2026.html`), magazine reference (`ux-3-magazine.html`), gauge variants (`gauge-styles-editorial.html`), business cards, and the full logo library (favicon/, png/, dark/, transparent/, social/).
+- **Brand asset source** - `docs/brand/` contains the original 2026 brand pack: tokens (`compass-brandbible-2026.html`), magazine reference (`ux-3-magazine.html`), gauge variants (`gauge-styles-editorial.html`), business cards, and the full logo library (favicon/, png/, dark/, transparent/, social/).
 
 ### Environment Configuration
 
@@ -362,7 +362,7 @@ The frontend calendar shows `display_date` values. Non-trading days (weekends + 
 
 ### Contract Roll Procedure
 
-When OI shifts to the next delivery month (e.g., `CAK26 → CAN26`), follow [docs/runbooks/contract-roll-procedure.md](docs/runbooks/contract-roll-procedure.md). Quick path: `poetry run roll-contract <NEW>` (against GCP via bastion) then trigger `cc-compute-indicators` with `--full --all-versions`. The runbook covers backfill, rollback, past incidents (CAK26→CAN26 bugs), and the dashboard cross-contract fallback (`_resolve_contract_for_date()` in `dashboard_service.py`) that ensures historical dates resolve correctly across rolls — no gaps when navigating across a roll boundary.
+When OI shifts to the next delivery month (e.g., `CAK26 → CAN26`), follow [docs/runbooks/contract-roll-procedure.md](docs/runbooks/contract-roll-procedure.md). Quick path: `poetry run roll-contract <NEW>` (against GCP via bastion) then trigger `cc-compute-indicators` with `--full --all-versions`. The runbook covers backfill, rollback, past incidents (CAK26→CAN26 bugs), and the dashboard cross-contract fallback (`resolve_contract_for_date()` in `app/utils/contract_resolver.py`) that ensures historical dates resolve correctly across rolls — no gaps when navigating across a roll boundary.
 
 ## AI Agents
 

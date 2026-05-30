@@ -10,20 +10,22 @@ import { fr } from 'date-fns/locale';
 import { useState } from 'react';
 
 interface DateSelectorProps {
-  currentDate: string;
-  onDateChange: (date: string) => void;
+  /** Date displayed on the trigger pill + highlighted in the popover (= today's real date by default; or whatever the user has picked). */
+  calendarDate: string;
+  /** Backend-resolved session date — shown as "· session X" suffix when ≠ calendarDate. */
   sessionDate?: string;
+  onDateChange: (date: string) => void;
   className?: string;
 }
 
 export default function DateSelector({
-  currentDate,
+  calendarDate,
   onDateChange,
   sessionDate,
   className,
 }: DateSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const selectedDate = parseISO(currentDate);
+  const selectedDate = parseISO(calendarDate);
 
   function handleCalendarSelect(date: Date | undefined) {
     if (date) {
@@ -62,7 +64,7 @@ export default function DateSelector({
             <span style={{ color: 'var(--ink)', fontWeight: 600 }}>
               {format(selectedDate, 'd MMM yyyy', { locale: fr })}
             </span>
-            {sessionDate && sessionDate.slice(0, 10) !== currentDate && (
+            {sessionDate && sessionDate.slice(0, 10) !== calendarDate && (
               <span style={{ color: 'var(--ink-light)' }}>
                 · session {format(parseISO(sessionDate), 'd MMM', { locale: fr })}
               </span>

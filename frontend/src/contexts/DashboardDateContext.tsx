@@ -3,7 +3,17 @@ import type { ReactNode } from 'react';
 import { usePositionStatus, useNonTradingDays } from '@/hooks/useDashboard';
 
 export interface DashboardDateContextValue {
+  /** Date sent to backend queries (resolves to a real trading session). */
   currentDate: string;
+  /**
+   * Date displayed on the calendar trigger / popover.
+   * - Refresh today = today's calendar date (Friday 29, Saturday 30, etc.)
+   * - User pick = the picked date
+   * Visually decoupled from `currentDate` so the dashboard can display the
+   * last fully-complete session (e.g. Thursday) while the calendar pill
+   * still reads today's date (e.g. Saturday).
+   */
+  calendarDate: string;
   setCurrentDate: (date: string) => void;
   sessionDate: string | null;
 }
@@ -16,22 +26,25 @@ const todayISO = () => {
 };
 
 export function DashboardDateProvider({ children }: { children: ReactNode }) {
-  // Default date derivation, in priority order:
-  //   1. User pick (calendar) — wins as soon as set
-  //   2. Backend's `latest_trading_day` — MAX(pl_contract_data_daily.display_date)
-  //      WHERE display_date <= today. On Saturday/Sunday this is the previous
-  //      trading day's display_date, so the dashboard lands on the last
-  //      fully-complete session (e.g. Saturday morning → Thursday's session
-  //      under the "Vendredi 29 mai" label) instead of the just-closed-but-
-  //      partial session whose Phase B narrative will only arrive Sunday eve.
-  //   3. Today (synchronous fallback before the endpoint resolves, or if it
-  //      fails).
   const [userPickedDate, setUserPickedDate] = useState<string | null>(null);
+  const today = todayISO();
   const currentYear = new Date().getFullYear();
   const { data: nonTradingDays } = useNonTradingDays(currentYear);
+  const latestTradingDay = nonTradingDays?.latest_trading_day;
 
-  const currentDate =
-    userPickedDate ?? nonTradingDays?.latest_trading_day ?? todayISO();
+  // currentDate (API): user pick > backend latest_trading_day > today.
+  //   Backend `latest_trading_day` = MAX(pl_contract_data_daily.display_date)
+  //   WHERE display_date <= today. On weekends this resolves to the previous
+  //   trading day's display_date, so the dashboard reads the last fully-
+  //   complete session (Thursday) — Friday's row is "Phase A only" through
+  //   the weekend (Phase B fires Sunday eve and only THEN completes Friday).
+  //
+  // calendarDate (visual): user pick > today.
+  //   The calendar pill always tracks the real-world calendar date.
+  //   Diverges from currentDate on weekends/holidays, when the dashboard
+  //   shows older data than today.
+  const currentDate = userPickedDate ?? latestTradingDay ?? today;
+  const calendarDate = userPickedDate ?? today;
 
   const setCurrentDate = useCallback((date: string) => {
     setUserPickedDate(date);
@@ -41,8 +54,8 @@ export function DashboardDateProvider({ children }: { children: ReactNode }) {
   const sessionDate = positionData?.date ?? null;
 
   const value = useMemo(
-    () => ({ currentDate, setCurrentDate, sessionDate }),
-    [currentDate, sessionDate, setCurrentDate],
+    () => ({ currentDate, calendarDate, setCurrentDate, sessionDate }),
+    [currentDate, calendarDate, sessionDate, setCurrentDate],
   );
 
   return <DashboardDateContext.Provider value={value}>{children}</DashboardDateContext.Provider>;

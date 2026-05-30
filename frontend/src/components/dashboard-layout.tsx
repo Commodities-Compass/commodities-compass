@@ -22,7 +22,7 @@ interface DashboardLayoutProps {
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const { user, logout } = useAuth();
-  const { currentDate, setCurrentDate, sessionDate } = useDashboardDate();
+  const { currentDate, calendarDate, setCurrentDate, sessionDate } = useDashboardDate();
 
   const rawName = user?.name && !user.name.includes('@') ? user.name : null;
   const displayName =
@@ -120,7 +120,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             {/* RIGHT: date picker */}
             <div className="flex items-center shrink-0">
               <DateSelector
-                currentDate={currentDate}
+                calendarDate={calendarDate}
                 onDateChange={setCurrentDate}
                 sessionDate={sessionDate ?? undefined}
               />

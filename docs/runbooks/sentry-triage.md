@@ -129,19 +129,26 @@ curl -s -H "Authorization: Bearer $SENTRY_AUTH_TOKEN" \
 
 ### Drill into one issue's latest event
 
+The events/latest endpoint **requires the org prefix** — `/api/0/issues/{id}/events/latest/` (without `organizations/`) returns `{"detail": "The requested resource does not exist"}`.
+
 ```bash
 ISSUE_ID=<paste from list>
 curl -s -H "Authorization: Bearer $SENTRY_AUTH_TOKEN" \
-  "https://sentry.io/api/0/issues/$ISSUE_ID/events/latest/" \
+  "https://sentry.io/api/0/organizations/commodities-compass/issues/$ISSUE_ID/events/latest/" \
   | jq '{
     title: .metadata.title,
-    release: (.tags // [] | map(select(.key=="release")) | .[0].value),
-    service: (.tags // [] | map(select(.key=="service")) | .[0].value),
-    environment: (.tags // [] | map(select(.key=="environment")) | .[0].value),
+    message: .message,
+    culprit,
+    release: ((.tags // []) | map(select(.key=="release")) | .[0].value),
+    service: ((.tags // []) | map(select(.key=="service")) | .[0].value),
+    environment: ((.tags // []) | map(select(.key=="environment")) | .[0].value),
+    server_name: ((.tags // []) | map(select(.key=="server_name")) | .[0].value),
     user: .user,
-    top_frame: (.entries // [] | map(select(.type=="exception")) | .[0].data.values[0].stacktrace.frames | last | {filename, lineno, function, in_app})
+    top_frame: ((.entries // []) | map(select(.type=="exception")) | .[0].data.values[0].stacktrace.frames | last | {filename, lineno, function, in_app})
   }'
 ```
+
+The `server_name` tag is critical for filtering — see "Filtering out local pollution" below.
 
 ### Verify a release exists (after a CI deploy)
 
@@ -176,6 +183,39 @@ Sentry stack frames carry paths from the build system, not your local repo. Tran
 | `webpack:///src/...` (frontend, pre-Vite) | strip `webpack:///` → `frontend/src/...` |
 | `app:///assets/index-<hash>.js` (frontend, Vite + uploaded maps) | The map resolves to `frontend/src/...` automatically in the Sentry UI. The local frame already includes the resolved path. |
 | `vendor.<hash>.js`, `auth.<hash>.js`, etc. | Third-party — fix is in our wrapper code, not the vendor file. |
+
+---
+
+## Filtering out local pollution (Hedi's laptop → prod project)
+
+`init_sentry()` in [backend/app/core/sentry.py](../../backend/app/core/sentry.py) no-ops when `SENTRY_DSN` is absent. **But if `SENTRY_DSN` is exported in your local shell** (e.g., for sentry-cli usage), every local pytest run, dev script, or one-off `poetry run <agent>` fires events into the production project — tagged with `environment=production` (the default) and `service=<last init_sentry call>`.
+
+### How to spot it
+
+The `server_name` SDK tag holds the hostname of the process that fired the event:
+- `localhost` → real Cloud Run container (k8s/Cloud Run default hostname is `localhost`).
+- `<your-hostname>.local` (e.g., `Hedis-MacBook-Pro.local`) → fired from your laptop. **Not prod.**
+
+```bash
+# Drilldown that surfaces server_name explicitly
+curl -s -H "Authorization: Bearer $SENTRY_AUTH_TOKEN" \
+  "https://sentry.io/api/0/organizations/commodities-compass/issues/$ISSUE_ID/events/latest/" \
+  | jq -r '((.tags // []) | map(select(.key=="server_name")) | .[0].value // "?")'
+```
+
+If `*.local`: the issue is local pollution. Safe to resolve immediately — it doesn't reflect a real prod incident.
+
+### Red flags in the message itself
+
+- Synthetic exception strings: `boom`, `<MagicMock ...>`, `[Filtered]` as the entire payload.
+- `service` tag mismatched with the message domain (e.g., `service=ice-cot-eu-scraper` on an "ENSO scraper failed" event = pytest fired multiple `init_sentry()` calls in the same process; only the last one wins the tag).
+- A cluster of unrelated issues all sharing the same `firstSeen` minute → single local test run that exercised many code paths.
+
+### Permanent fix (in place since 2026-05-30)
+
+[backend/app/core/sentry.py](../../backend/app/core/sentry.py) early-exits when `"pytest" in sys.modules`. `PYTEST_CURRENT_TEST` would not work — pytest only sets it during test execution, but `init_sentry()` is called at module-import time (during pytest collection), so the env var is not set yet. The `sys.modules` check catches the entire pytest process. Safe because `pytest` is a dev-only Poetry dep and is excluded from the prod Docker image (`poetry install --only=main`).
+
+**Still applies**: ad-hoc local runs (`poetry run barchart-scraper`, etc.) outside pytest will still fire events if `SENTRY_DSN` is exported in your shell. These show up with `server_name=*.local` — filter them out per the section above. If this becomes noisy, escalate to Option B (require explicit `ENVIRONMENT=production`).
 
 ---
 

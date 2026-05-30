@@ -99,6 +99,13 @@ jobs:
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ vars.GCP_REGION }}-docker.pkg.dev
 
+      - name: Fetch SENTRY_DSN from GCP Secret Manager
+        id: sentry-dsn
+        run: |
+          DSN=$(gcloud secrets versions access latest --secret=SENTRY_DSN --project=${{ vars.GCP_PROJECT_ID }})
+          echo "::add-mask::$DSN"
+          echo "value=$DSN" >> "$GITHUB_OUTPUT"
+
       - name: Build and push frontend image
         run: |
           docker build \
@@ -108,6 +115,10 @@ jobs:
             --build-arg AUTH0_REDIRECT_URI=${{ vars.FRONTEND_URL }} \
             --build-arg API_BASE_URL=${{ vars.API_BASE_URL }} \
             --build-arg AUTH0_ISSUER=${{ vars.AUTH0_ISSUER }} \
+            --build-arg SENTRY_DSN=${{ steps.sentry-dsn.outputs.value }} \
+            --build-arg GIT_COMMIT_SHA=${{ github.sha }} \
+            --build-arg SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }} \
+            --build-arg ENVIRONMENT=production \
             -t ${{ env.REGISTRY }}/frontend:${{ github.sha }} \
             -t ${{ env.REGISTRY }}/frontend:latest \
             frontend/

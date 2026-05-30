@@ -1,11 +1,13 @@
-import React, { Component } from 'react';
-import type { ErrorInfo, ReactNode } from 'react';
+import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { Auth0Provider } from '@auth0/auth0-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import { ErrorFallback } from './components/ErrorFallback';
+import { initSentry, Sentry } from './sentry';
 import './index.css';
+
+initSentry();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -27,32 +29,9 @@ if (import.meta.env.PROD) {
   }
 }
 
-// Root error boundary — replaces Sentry.ErrorBoundary
-class RootErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
-  constructor(props: { children: ReactNode }) {
-    super(props);
-    this.state = { hasError: false };
-  }
-
-  static getDerivedStateFromError(): { hasError: boolean } {
-    return { hasError: true };
-  }
-
-  componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('[RootErrorBoundary] Uncaught error:', error, info.componentStack);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return <ErrorFallback />;
-    }
-    return this.props.children;
-  }
-}
-
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <RootErrorBoundary>
+    <Sentry.ErrorBoundary fallback={<ErrorFallback />}>
       <Auth0Provider
         domain={domain}
         clientId={clientId}
@@ -67,6 +46,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <App />
         </QueryClientProvider>
       </Auth0Provider>
-    </RootErrorBoundary>
+    </Sentry.ErrorBoundary>
   </React.StrictMode>
 );

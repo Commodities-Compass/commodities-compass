@@ -583,6 +583,10 @@ Notes:
 
 When a job fails, follow [docs/runbooks/pipeline-failure-recovery.md](docs/runbooks/pipeline-failure-recovery.md) — covers diagnosis, root-cause categories, and the cascade of jobs to re-run based on the dependency graph. Pipeline jobs are configured fail-loud, no auto-retry (see `.claude/rules/pipeline-error-handling.md`).
 
+## Sentry Triage
+
+For terminal-first error triage (Claude or human): see [docs/runbooks/sentry-triage.md](docs/runbooks/sentry-triage.md). Covers the `curl` + `jq` query patterns, tag conventions (`service`, `release`, `environment`), and the Claude triage loop pseudocode. **Hard rule**: the local `SENTRY_AUTH_TOKEN` is a user token with strictly read-only scopes (`event:read`, `project:read`, `org:read`) — never grant write scopes for local use. The CI uses a separate org token (`org:ci` scope) stored as a GitHub Actions Secret, never in `~/.zshrc`.
+
 ## Development Notes
 
 - Backend uses Poetry scripts: `poetry run dev`, `poetry run lint`, `poetry run daily-analysis`, `poetry run meteo-agent`, `poetry run compass-brief`, `poetry run press-review`, `poetry run barchart-scraper`, `poetry run ice-stocks-scraper`, `poetry run cftc-scraper`, `poetry run compute-indicators`, `poetry run seed-gcp`, `poetry run seed-trading-calendar`

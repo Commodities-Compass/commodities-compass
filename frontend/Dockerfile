@@ -15,13 +15,17 @@ RUN pnpm install --frozen-lockfile
 # Copy source code
 COPY . .
 
-# Accept build arguments from Railway
+# Accept build arguments
 ARG AUTH0_DOMAIN
 ARG AUTH0_CLIENT_ID
 ARG AUTH0_API_AUDIENCE
 ARG AUTH0_REDIRECT_URI
 ARG API_BASE_URL
 ARG AUTH0_ISSUER
+ARG SENTRY_DSN
+ARG GIT_COMMIT_SHA
+ARG SENTRY_AUTH_TOKEN
+ARG ENVIRONMENT=production
 
 # Set environment variables for the build
 ENV AUTH0_DOMAIN=$AUTH0_DOMAIN
@@ -30,8 +34,14 @@ ENV AUTH0_API_AUDIENCE=$AUTH0_API_AUDIENCE
 ENV AUTH0_REDIRECT_URI=$AUTH0_REDIRECT_URI
 ENV API_BASE_URL=$API_BASE_URL
 ENV AUTH0_ISSUER=$AUTH0_ISSUER
+ENV SENTRY_DSN=$SENTRY_DSN
+ENV GIT_COMMIT_SHA=$GIT_COMMIT_SHA
+ENV SENTRY_AUTH_TOKEN=$SENTRY_AUTH_TOKEN
+ENV ENVIRONMENT=$ENVIRONMENT
 
-# Build the application
+# Build the application (sentry-vite-plugin uploads source maps then deletes the .map files
+# from dist, so the final image never ships them. SENTRY_AUTH_TOKEN is also never carried
+# over to the runtime stage below — it stays scoped to this build stage.)
 RUN pnpm run build
 
 # Production stage

@@ -1,6 +1,5 @@
 # Sentry Triage Runbook — Terminal-First Error Investigation
 
-> Companion to [P1-sentry-cli-triage.md](../user-stories/P1-sentry-cli-triage.md).
 > When prod breaks, this is the playbook. Read top-to-bottom on first use; cherry-pick later.
 
 ## TL;DR for Claude

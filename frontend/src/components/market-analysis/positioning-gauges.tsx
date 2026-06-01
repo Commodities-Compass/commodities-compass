@@ -35,7 +35,6 @@ export default function PositioningGauges({ positioning }: PositioningGaugesProp
           label="STOCK EU"
           ranges={MACRO_RANGES.STOCK_EU.ranges}
           formatValue={fmtTonnes}
-          inverted
         />
         <GaugeIndicator
           value={positioning?.stock_us_tonnes ?? null}
@@ -44,7 +43,6 @@ export default function PositioningGauges({ positioning }: PositioningGaugesProp
           label="STOCK US"
           ranges={MACRO_RANGES.STOCK_US.ranges}
           formatValue={fmtTonnes}
-          inverted
         />
       </div>
 

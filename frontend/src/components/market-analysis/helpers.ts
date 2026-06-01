@@ -71,7 +71,7 @@ export const MACRO_RANGES: Record<
   },
   // Stock EU certified (tonnes). Recalibrated 2026-05-27 for the post-crisis
   // West African supply regime (2k-37k since 2024 vs 150k-200k pre-crisis).
-  // Rendered inverted=true (low stocks = bullish for cocoa prices).
+  // Low stocks = bullish for cocoa prices → GREEN on the low end.
   STOCK_EU: {
     min: 0,
     max: 200_000,

@@ -20,14 +20,6 @@ interface RulerGaugeProps {
   className?: string;
   /** Optional formatter for the value label. Defaults to `v.toFixed(2)`. */
   formatValue?: (v: number) => string;
-  /**
-   * When `true`, swap the bottom zone labels from `HEDGE | MONITOR | OPEN`
-   * to `OPEN | MONITOR | HEDGE`. Use for inverse-relation indicators where
-   * LOW values are bullish (= OPEN signal) and HIGH values are bearish
-   * (= HEDGE signal) — typically certified-stock gauges, since the
-   * value→position mapping puts low values on the left where OPEN now sits.
-   */
-  inverted?: boolean;
 }
 
 function zoneOf(value: number, ranges?: IndicatorRange[]): 'RED' | 'ORANGE' | 'GREEN' {
@@ -49,15 +41,38 @@ function zoneOf(value: number, ranges?: IndicatorRange[]): 'RED' | 'ORANGE' | 'G
 function zoneBounds(ranges: IndicatorRange[] | undefined, min: number, max: number): [number, number] {
   const span = max - min || 1;
   if (!ranges || ranges.length < 2) return [33.33, 66.66];
-  const sorted = [...ranges].sort(
-    (a, b) =>
-      (a.range_low + a.range_high) / 2 - (b.range_low + b.range_high) / 2,
-  );
+  const sorted = sortRangesByMidpoint(ranges);
   const upper = (r: IndicatorRange) => Math.max(r.range_low, r.range_high);
   const b1 = Math.max(0, Math.min(100, ((upper(sorted[0]) - min) / span) * 100));
   const second = sorted.length >= 3 ? sorted[1] : sorted[0];
   const b2 = Math.max(0, Math.min(100, ((upper(second) - min) / span) * 100));
   return [b1, b2];
+}
+
+function sortRangesByMidpoint(ranges: IndicatorRange[]): IndicatorRange[] {
+  return [...ranges].sort(
+    (a, b) =>
+      (a.range_low + a.range_high) / 2 - (b.range_low + b.range_high) / 2,
+  );
+}
+
+const AREA_TO_LABEL: Record<IndicatorRange['area'], string> = {
+  RED: 'Hedge',
+  ORANGE: 'Monitor',
+  GREEN: 'Open',
+};
+
+/**
+ * Derive the left/right zone labels from the actual leftmost/rightmost ranges.
+ * The middle is always `Monitor`. Falls back to the default `Hedge|Open`
+ * orientation when ranges are missing or ambiguous.
+ */
+function zoneLabels(ranges: IndicatorRange[] | undefined): [string, string] {
+  if (!ranges || ranges.length < 2) return ['Hedge', 'Open'];
+  const sorted = sortRangesByMidpoint(ranges);
+  const left = AREA_TO_LABEL[sorted[0].area] ?? 'Hedge';
+  const right = AREA_TO_LABEL[sorted[sorted.length - 1].area] ?? 'Open';
+  return [left, right];
 }
 
 const SIGNAL_HEX = {
@@ -74,7 +89,6 @@ export default function GaugeIndicator({
   ranges,
   className,
   formatValue,
-  inverted = false,
 }: RulerGaugeProps) {
   const span = max - min || 1;
   const hasValue = value != null && Number.isFinite(value);
@@ -83,6 +97,7 @@ export default function GaugeIndicator({
     : 0;
   const zone = hasValue ? zoneOf(value!, ranges) : 'ORANGE';
   const [t1, t2] = zoneBounds(ranges, min, max);
+  const [leftLabel, rightLabel] = zoneLabels(ranges);
   const meta = INDICATOR_META[label];
   const isTouch = useIsTouch();
 
@@ -165,16 +180,16 @@ export default function GaugeIndicator({
         </div>
       </div>
 
-      {/* Zone labels — order depends on `inverted` (inverse-relation gauges
-          like stocks put OPEN on the LEFT because their value→position
-          mapping makes low values land near the GREEN/leftmost zone). */}
+      {/* Zone labels — derived from the leftmost/rightmost range areas so the
+          label under the marker always matches its color (inverse-relation
+          gauges like stocks naturally render `OPEN | MONITOR | HEDGE`). */}
       <div
         className="flex justify-between"
         style={{ marginTop: 6 }}
       >
-        <span style={zoneLabelStyle}>{inverted ? 'Open' : 'Hedge'}</span>
+        <span style={zoneLabelStyle}>{leftLabel}</span>
         <span style={{ ...zoneLabelStyle, textAlign: 'center' }}>Monitor</span>
-        <span style={zoneLabelStyle}>{inverted ? 'Hedge' : 'Open'}</span>
+        <span style={zoneLabelStyle}>{rightLabel}</span>
       </div>
     </div>
   );

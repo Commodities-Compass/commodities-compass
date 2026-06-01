@@ -119,8 +119,6 @@ function ConvictionBreakdown({
   signalColor: string;
 }) {
   const macro = macroWord(diag.macro_direction);
-  const accPct =
-    diag.running_acc_5d != null ? Math.round(diag.running_acc_5d * 100) : null;
   const scoreStr = `${diag.net_score >= 0 ? '+' : ''}${diag.net_score.toFixed(2)}`;
 
   const tiles = [
@@ -146,12 +144,13 @@ function ConvictionBreakdown({
       caption: `${macro.arrow} direction`,
     },
     {
-      eyebrow: 'Précision 5j',
-      big: accPct != null ? `${accPct}%` : '—',
-      italic: false,
-      color:
-        accPct != null && accPct >= 60 ? 'var(--color-signal-open)' : 'var(--ink)',
-      caption: 'running accuracy',
+      eyebrow: 'Wrapper',
+      big: diag.wrapper_active ? 'Veto' : 'Pass',
+      italic: true,
+      color: diag.wrapper_active
+        ? 'var(--color-signal-hedge)'
+        : 'var(--color-signal-open)',
+      caption: diag.wrapper_active ? 'soft-gate révisé' : 'soft-gate retenu',
     },
   ];
 
@@ -252,7 +251,7 @@ function ConvictionBreakdown({
 /* ===================================================================
  * Score panel Horizon — the only KPI kept inside the score card.
  *
- * Net score / Consensus / Précision 5j are surfaced in the left-side
+ * Conviction / Consensus / Macro / Wrapper are surfaced in the left-side
  * Conviction Breakdown — duplicating them in the score panel was repetitive.
  * The Horizon stays here because it qualifies the OPEN/HEDGE/MONITOR call
  * directly ("acheteuse pour combien de temps ?"). Styled as a single

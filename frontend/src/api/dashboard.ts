@@ -12,7 +12,6 @@ import type {
   MacroPanelResponse,
   PositioningResponse,
   EnsembleDiagnosticsResponse,
-  SpecialistVotesResponse,
 } from '@/types/dashboard';
 
 export type { PositionStatusResponse };
@@ -87,22 +86,12 @@ export const dashboardApi = {
     return response.data;
   },
 
-  // ---- Section VII — Ensemble Audit -----------------------------------
   getEnsembleDiagnostics: async (
     targetDate?: string,
   ): Promise<EnsembleDiagnosticsResponse> => {
     const params = targetDate ? { target_date: targetDate } : {};
     const response = await apiClient.get<EnsembleDiagnosticsResponse>(
       '/dashboard/ensemble-diagnostics',
-      { params },
-    );
-    return response.data;
-  },
-
-  getSpecialistVotes: async (targetDate?: string): Promise<SpecialistVotesResponse> => {
-    const params = targetDate ? { target_date: targetDate } : {};
-    const response = await apiClient.get<SpecialistVotesResponse>(
-      '/dashboard/specialist-votes',
       { params },
     );
     return response.data;

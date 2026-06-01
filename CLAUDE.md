@@ -165,7 +165,6 @@ The frontend follows the **Compass CC editorial / magazine brand identity** (202
   - `useAuth.ts` - Auth0 token management wrapper
   - `useDashboard.ts` - React Query hooks for all dashboard endpoints (24h stale time, no auto-refetch)
   - `useDashboardDate.ts` - Reads current/session date from `DashboardDateContext`
-  - `use-mobile.tsx` - Mobile breakpoint detection
 - **Types** - `src/types/dashboard.ts` for all API response type definitions
 - **Data** - `src/data/commodities-data.ts` for chart metric options and mock data
 - **Brand asset source** - `docs/brand/` contains the original 2026 brand pack: tokens (`compass-brandbible-2026.html`), magazine reference (`ux-3-magazine.html`), gauge variants (`gauge-styles-editorial.html`), business cards, and the full logo library (favicon/, png/, dark/, transparent/, social/).

@@ -22,7 +22,7 @@ function macroFR(direction: number | null | undefined): string | null {
 
 /**
  * 2 plain-French sentences derived from the ensemble diagnostics. Templated,
- * no LLM. Used by SignalHero (inline) and the optional DecisionExplainerCard.
+ * no LLM. Consumed by SignalHero.
  *
  * Tone: confidence-first. The explanation always frames the result as
  * "our orchestrator validates / calibrates the decision", never defensive.

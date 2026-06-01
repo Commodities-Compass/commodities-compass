@@ -12,7 +12,6 @@ import type {
   MacroPanelResponse,
   PositioningResponse,
   EnsembleDiagnosticsResponse,
-  SpecialistVotesResponse,
 } from '@/types/dashboard';
 import axios from 'axios';
 
@@ -134,17 +133,6 @@ export const useEnsembleDiagnostics = (targetDate?: string) => {
   return useQuery<EnsembleDiagnosticsResponse>({
     queryKey: ['ensemble-diagnostics', targetDate],
     queryFn: () => dashboardApi.getEnsembleDiagnostics(targetDate),
-    enabled,
-    retry: shouldRetry404,
-    ...DAILY_QUERY_OPTIONS,
-  });
-};
-
-export const useSpecialistVotes = (targetDate?: string) => {
-  const enabled = isOnOrAfterEnsembleStart(targetDate);
-  return useQuery<SpecialistVotesResponse>({
-    queryKey: ['specialist-votes', targetDate],
-    queryFn: () => dashboardApi.getSpecialistVotes(targetDate),
     enabled,
     retry: shouldRetry404,
     ...DAILY_QUERY_OPTIONS,

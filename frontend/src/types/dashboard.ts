@@ -170,26 +170,8 @@ export interface PositioningResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Section VII — Ensemble Audit
+// Ensemble diagnostics — consumed by SignalHero (Conviction Breakdown).
 // ---------------------------------------------------------------------------
-
-export type SpecialistCluster = 'winter' | 'spring' | 'unmapped';
-
-export interface SpecialistVote {
-  specialist_name: string;
-  cluster: SpecialistCluster;
-  pred: 'OPEN' | 'HEDGE' | 'MONITOR';
-  window_months: number;
-  n_features_used: number | null;
-}
-
-export interface SpecialistVotesResponse {
-  date: string;
-  algorithm_version: string;
-  votes: SpecialistVote[];
-  winter_signed: number | null;
-  spring_signed: number | null;
-}
 
 export interface EnsembleDiagnosticsResponse {
   date: string;

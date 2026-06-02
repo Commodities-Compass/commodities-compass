@@ -375,12 +375,15 @@ E **IMPORTANT** Format final OBLIGATOIRE ET STRICT :
 
 Tu DOIS répondre UNIQUEMENT avec un objet JSON valide, sans texte autour.
 
-Le champ "decision" doit être EXACTEMENT {DECISION_WRAPPED} (aucune autre valeur acceptée).
-Le champ "conclusion" doit OBLIGATOIREMENT suivre ce format :
-- Ligne 1 : commence par "> " suivi d'une phrase résumé qui décrit la conviction Compass du jour (forte / modérée / faible) sans citer de chiffre interne
-- Lignes suivantes : chaque indicateur analysé sur sa propre ligne, commençant par "        • "
-- Section "A SURVEILLER" : "> A SURVEILLER AUJOURD'HUI:" suivie de 3 lignes "        • " avec seuils chiffrés
-- Pas de Markdown. Pas de phrases vagues. Chaque phrase concise avec des chiffres.
+Tu DOIS retourner EXACTEMENT les 4 champs suivants (aucun ne peut manquer) :
+\t1.\t"decision" : doit être EXACTEMENT {DECISION_WRAPPED} (aucune autre valeur acceptée)
+\t2.\t"confiance" : entier de 1 à 5 selon ta conviction sur la décision
+\t3.\t"direction" : "HAUSSIERE" ou "BAISSIERE" ou "NEUTRE" — cohérente avec la décision (HEDGE → BAISSIERE, OPEN → HAUSSIERE, MONITOR → NEUTRE)
+\t4.\t"conclusion" : suit OBLIGATOIREMENT ce format :
+\t\t•\tLigne 1 : commence par "> " suivi d'une phrase résumé qui décrit la conviction Compass du jour (forte / modérée / faible) sans citer de chiffre interne
+\t\t•\tLignes suivantes : chaque indicateur analysé sur sa propre ligne, commençant par "        • "
+\t\t•\tSection "A SURVEILLER" : "> A SURVEILLER AUJOURD'HUI:" suivie de 3 lignes "        • " avec seuils chiffrés
+\t\t•\tPas de Markdown. Pas de phrases vagues. Chaque phrase concise avec des chiffres.
 
 {{"decision": "{DECISION_WRAPPED}", "confiance": 3, "direction": "HAUSSIERE ou BAISSIERE ou NEUTRE", "conclusion": "> Lecture Compass alignée sur la position {DECISION_WRAPPED}, conviction nette (forte / modérée / faible).\\n        • Le CLOSE est passé de X à Y, indiquant Z.\\n        • Le VOLUME a baissé de X à Y.\\n        • OPEN INTEREST a réduit de X à Y.\\n        • Le RSI est à X, signifiant Z.\\n        • MACD à X, signal Z.\\n        • La volatilité implicite est à X%.\\n        • Le STOCK US a augmenté de X tonnes à Y tonnes.\\n        • Le STOCK EU a reculé de X tonnes à Y tonnes.\\n> A SURVEILLER AUJOURD'HUI:\\n        • Baissier si CLOSE clôture sous SUPPORT 1 à X — objectif S2 à Y.\\n        • Haussier si CLOSE dépasse RESISTANCE 1 à X — poursuite de la tendance.\\n        • Baissier si RSI passe sous X (actuellement à Y) — pression vendeuse accrue."}}
 """

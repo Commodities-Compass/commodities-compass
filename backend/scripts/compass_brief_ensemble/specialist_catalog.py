@@ -1,26 +1,21 @@
-"""Catalog of the 14 ensemble specialists with business-friendly labels.
+"""Catalog of the Compass specialists with business-friendly labels.
 
-The technical IDs (``exp_optim_002``, ``xpol_S_bear_garch_macro``, etc.) come
-from the R&D vendor pack ([backend/vendor/campaign5_ensemble_v1.0.0/ensemble/
-optimizer/specialists.py]). For the daily brief and podcast we want to surface
-*what they actually do* in a way a trader or business reader understands —
-without leaking the raw research IDs or the model family jargon (GARCH,
-Triple-Barrier, calibrated-TB, etc.).
+The catalog is the single source of truth for the brief generator and any
+downstream consumer that needs to look up a profile by its technical name.
 
-This catalog is the single source of truth for that translation. The brief
-generator and any downstream consumer should import ``SPECIALIST_CATALOG`` to
-look up a profile by its technical name.
+Editorial rules (the brief is read aloud by NotebookLM, so any wording here
+ends up in the daily podcast):
 
-Source of truth for cluster assignment :
-[backend/vendor/campaign5_ensemble_v1.0.0/ensemble/orchestrator/transition_wrapper.py]
-``DEFAULT_CLUSTER_MAPPING``. We mirror it here so the brief is decoupled from
-the vendor module (which could be rewritten without warning at the next R&D
-delivery).
+  * never name the model family (no "barrières techniques", no "GARCH", no
+    "calibrated-TB", no "modèle entraîné"). Speak in business terms only :
+    tendance, FX, climat, volatilité, macro.
+  * never reveal training scope ("calibrée sur dix ans") nor architecture
+    ("seul modèle du panel à raisonner sur trois semaines").
+  * keep each description ≤2 sentences for podcast read-aloud.
 
-Editorial rules respected in the descriptions :
-  * never say "IA" or "AI" — these are proprietary ML-trained specialists
-  * speak in business terms (tendance, FX, climat, volatilité)
-  * keep each description ≤2 sentences for podcast read-aloud
+Internal R&D fields (cluster, code, horizon_days, bias) stay in the catalog
+because they are useful for audit / dashboard / tests, but they are *not*
+rendered into the brief.
 """
 
 from __future__ import annotations
@@ -29,6 +24,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 ClusterName = Literal["winter", "spring"]
+ThemeName = Literal["technique", "fx", "macro", "climat", "volatilité"]
 
 
 @dataclass(frozen=True)
@@ -36,34 +32,39 @@ class SpecialistProfile:
     """Business-facing description of one specialist."""
 
     name: str
-    """Technical ID written by cc-ensemble-compute on pl_specialist_prediction.specialist_name."""
+    """Technical ID written by cc-ensemble-compute on
+    pl_specialist_prediction.specialist_name."""
 
     cluster: ClusterName
-    """Mirrors DEFAULT_CLUSTER_MAPPING from the vendor wrapper."""
+    """Internal R&D grouping. Not rendered in the brief."""
 
     code: str
-    """Short R&D code (W1, W2... S1, S2... X1, X2...) kept for audit cross-reference."""
+    """Short R&D code (W1, S1...). Not rendered in the brief."""
 
     label: str
-    """Business-friendly title shown in the brief and read aloud in the podcast."""
+    """Business-friendly title shown in the brief and read aloud in the
+    podcast."""
 
     description: str
     """1-2 sentences describing what the specialist watches and how it votes,
-    no technical jargon. Read aloud in the podcast when this specialist
-    engages on a given day."""
+    no technical jargon, no training-scope hints. Read aloud in the podcast
+    when this specialist is the headline lecture of the day."""
+
+    theme: ThemeName
+    """Business theme used to group specialists in editorial mode :
+    `une lecture FX convergente`, `plusieurs lectures macro`, etc."""
 
     horizon_days: int
-    """Forward-return horizon the specialist was trained on. 6 (~1 week) for
-    most, 22 (~3 weeks) for the slow cycle specialist."""
+    """Internal field — not rendered in the brief."""
 
     bias: Literal["neutral", "bearish", "bullish"]
-    """Class-weight bias applied at training time. Most are neutral; some
-    Spring specialists were intentionally tilted bearish (S1, S2, X4) or
-    bullish (S3, S4, S5, S6, X3) to keep coverage on directional moves."""
+    """Internal field — used by the brief generator to pick the headline
+    specialist whose architectural bias aligns with the daily decision. Not
+    rendered in the brief itself."""
 
 
 # ───────────────────────────────────────────────────────────────────────────
-# WINTER cluster (6) — tendance / structure de prix / FX hedging
+# WINTER cluster
 # ───────────────────────────────────────────────────────────────────────────
 WINTER_PROFILES: tuple[SpecialistProfile, ...] = (
     SpecialistProfile(
@@ -72,10 +73,10 @@ WINTER_PROFILES: tuple[SpecialistProfile, ...] = (
         code="W1",
         label="Lecteur de tendance — référence",
         description=(
-            "Identifie les retournements du marché via une méthode de barrières "
-            "techniques (objectif, stop, horizon) calibrée sur dix ans de cocoa "
-            "Londres. C'est le pilier purement technique du panel."
+            "Lit la structure de prix du cocoa Londres pour repérer les "
+            "retournements. C'est le pilier purement technique du signal."
         ),
+        theme="technique",
         horizon_days=6,
         bias="neutral",
     ),
@@ -85,10 +86,11 @@ WINTER_PROFILES: tuple[SpecialistProfile, ...] = (
         code="W2",
         label="Lecteur de tendance volatilité-conditionnel",
         description=(
-            "Variante du lecteur de référence enrichie d'un modèle de volatilité "
-            "qui pondère le signal selon le régime ambiant. Sa voix porte davantage "
-            "quand le marché s'agite."
+            "Variante du lecteur de référence qui pondère son verdict selon "
+            "le régime de volatilité ambiant. Sa voix porte davantage quand "
+            "le marché s'agite."
         ),
+        theme="volatilité",
         horizon_days=6,
         bias="neutral",
     ),
@@ -96,12 +98,13 @@ WINTER_PROFILES: tuple[SpecialistProfile, ...] = (
         name="exp_optim_006",
         cluster="winter",
         code="W3",
-        label="Spécialiste cycle long — 3 semaines",
+        label="Spécialiste cycle long",
         description=(
-            "Seul modèle du panel à raisonner sur un horizon de trois semaines "
-            "boursières (~22 jours). Utile pour détecter les retournements lents "
-            "que les autres spécialistes, calibrés sur cinq jours, ratent."
+            "Lit la structure de prix sur un horizon plus large que les "
+            "autres lectures. Utile pour détecter les retournements lents "
+            "que les approches courtes manquent."
         ),
+        theme="technique",
         horizon_days=22,
         bias="neutral",
     ),
@@ -111,10 +114,11 @@ WINTER_PROFILES: tuple[SpecialistProfile, ...] = (
         code="W4",
         label="Stratège macro global",
         description=(
-            "Croise les conditions climatiques globales (El Niño / La Niña) "
-            "et les mouvements de la livre face au dollar — historiquement "
-            "le scorer le plus régulier de l'équipe."
+            "Croise les conditions climatiques globales et les mouvements "
+            "de la livre face au dollar. Historiquement la lecture la plus "
+            "régulière de l'équipe."
         ),
+        theme="macro",
         horizon_days=6,
         bias="neutral",
     ),
@@ -122,12 +126,13 @@ WINTER_PROFILES: tuple[SpecialistProfile, ...] = (
         name="xpol_W_TB_garch",
         cluster="winter",
         code="X1",
-        label="Lecteur de tendance + ajustement volatilité",
+        label="Lecteur de tendance avec contrôle de volatilité",
         description=(
-            "Combinaison du lecteur de tendance de référence et de l'ajustement "
-            "volatilité-conditionnel. Quand ces deux approches convergent sur le "
-            "même verdict, le signal est considéré comme doublement filtré."
+            "Combine la lecture de tendance de référence et le filtre de "
+            "volatilité. Quand les deux approches convergent, le signal "
+            "est considéré comme doublement filtré."
         ),
+        theme="volatilité",
         horizon_days=6,
         bias="neutral",
     ),
@@ -137,10 +142,11 @@ WINTER_PROFILES: tuple[SpecialistProfile, ...] = (
         code="X2",
         label="Lecteur de tendance contextualisé macro",
         description=(
-            "Identique au lecteur de tendance de référence, mais enrichi des "
-            "conditions climatiques ENSO et FX. Tire son signal quand la macro "
-            "renforce la dynamique purement technique."
+            "Lecture de tendance enrichie des conditions climatiques et "
+            "FX. Tire son signal quand la toile macro renforce la dynamique "
+            "purement technique."
         ),
+        theme="macro",
         horizon_days=6,
         bias="neutral",
     ),
@@ -148,7 +154,7 @@ WINTER_PROFILES: tuple[SpecialistProfile, ...] = (
 
 
 # ───────────────────────────────────────────────────────────────────────────
-# SPRING cluster (8) — macro/ENSO/sentiment, biais directionnels assumés
+# SPRING cluster
 # ───────────────────────────────────────────────────────────────────────────
 SPRING_PROFILES: tuple[SpecialistProfile, ...] = (
     SpecialistProfile(
@@ -157,10 +163,11 @@ SPRING_PROFILES: tuple[SpecialistProfile, ...] = (
         code="S1",
         label="Sentinelle baissière FX",
         description=(
-            "Calibrée pour repérer les retournements baissiers via les "
-            "mouvements de change. Vote rarement à l'achat par construction — "
-            "quand elle s'engage, c'est presque toujours pour couvrir."
+            "Suit les mouvements de change pour repérer les retournements "
+            "baissiers. Vote rarement à l'achat — quand elle s'engage, c'est "
+            "presque toujours pour couvrir."
         ),
+        theme="fx",
         horizon_days=6,
         bias="bearish",
     ),
@@ -168,12 +175,13 @@ SPRING_PROFILES: tuple[SpecialistProfile, ...] = (
         name="exp_optim_017_bear_8",
         cluster="spring",
         code="S2",
-        label="Sentinelle baissière macro + FX",
+        label="Sentinelle baissière climat + FX",
         description=(
-            "Variante de la sentinelle baissière qui ajoute le signal climatique "
-            "ENSO. Plus prudente : elle ne s'engage que si pression FX et stress "
+            "Variante de la sentinelle FX qui ajoute la lecture climatique. "
+            "Plus prudente : elle ne s'engage que si pression FX et stress "
             "hydrique se cumulent."
         ),
+        theme="climat",
         horizon_days=6,
         bias="bearish",
     ),
@@ -183,10 +191,10 @@ SPRING_PROFILES: tuple[SpecialistProfile, ...] = (
         code="S6",
         label="Stratège haussier FX",
         description=(
-            "Calibré pour détecter les phases de hausse soutenue, lit "
-            "principalement la livre face au dollar. Vote rarement à la "
-            "couverture par construction."
+            "Détecte les phases de hausse soutenue, lit principalement la "
+            "livre face au dollar. Vote rarement à la couverture."
         ),
+        theme="fx",
         horizon_days=6,
         bias="bullish",
     ),
@@ -194,12 +202,12 @@ SPRING_PROFILES: tuple[SpecialistProfile, ...] = (
         name="exp_optim_017_bull_5",
         cluster="spring",
         code="S3",
-        label="Stratège haussier baseline (approche logistique)",
+        label="Stratège haussier baseline",
         description=(
-            "Approche statistique logistique pure, fortement biaisée à l'achat. "
-            "Vote tranché — peu de zones grises, soit elle est à l'achat soit "
-            "elle se retire."
+            "Approche statistique pure, fortement biaisée à l'achat. Vote "
+            "tranché — peu de zones grises, soit à l'achat soit en retrait."
         ),
+        theme="technique",
         horizon_days=6,
         bias="bullish",
     ),
@@ -209,10 +217,10 @@ SPRING_PROFILES: tuple[SpecialistProfile, ...] = (
         code="S4",
         label="Stratège haussier FX renforcé",
         description=(
-            "Variante du stratège haussier FX avec un biais encore plus marqué "
-            "(poids triple sur les phases de hausse). Voix la plus offensive du "
-            "panel quand la livre se renforce."
+            "Variante du stratège haussier FX avec un biais encore plus "
+            "marqué. Voix la plus offensive quand la livre se renforce."
         ),
+        theme="fx",
         horizon_days=6,
         bias="bullish",
     ),
@@ -222,10 +230,11 @@ SPRING_PROFILES: tuple[SpecialistProfile, ...] = (
         code="S5",
         label="Stratège haussier multi-facteur",
         description=(
-            "Utilise la palette de features la plus large du panel — une "
-            "cinquantaine de dimensions techniques et fondamentales. Sa voix "
-            "compte particulièrement quand le marché présente des signaux mixtes."
+            "Utilise la palette de lectures la plus large — une cinquantaine "
+            "d'angles techniques et fondamentaux. Sa voix compte "
+            "particulièrement quand le marché présente des signaux mixtes."
         ),
+        theme="macro",
         horizon_days=6,
         bias="bullish",
     ),
@@ -233,12 +242,13 @@ SPRING_PROFILES: tuple[SpecialistProfile, ...] = (
         name="xpol_S_bull_garch_fx",
         cluster="spring",
         code="X3",
-        label="Stratège haussier volatilité-conditionnel FX",
+        label="Stratège haussier FX avec contrôle de volatilité",
         description=(
-            "Combine biais haussier, ajustement volatilité et lecture FX. "
+            "Combine biais haussier, filtre de volatilité et lecture FX. "
             "Tire son signal sur les phases de hausse soutenue où la "
             "volatilité reste maîtrisée."
         ),
+        theme="fx",
         horizon_days=6,
         bias="bullish",
     ),
@@ -248,11 +258,11 @@ SPRING_PROFILES: tuple[SpecialistProfile, ...] = (
         code="X4",
         label="Sentinelle baissière complète",
         description=(
-            "Combine toutes les défenses du panel : biais baissier, ajustement "
-            "volatilité, FX et ENSO. La voix la plus prudente — vote à la "
-            "couverture seulement quand tous les facteurs s'alignent en pression "
-            "baissière."
+            "Combine toutes les défenses : biais baissier, filtre de "
+            "volatilité, FX et climat. La voix la plus prudente — vote à la "
+            "couverture seulement quand tous les facteurs s'alignent."
         ),
+        theme="macro",
         horizon_days=6,
         bias="bearish",
     ),
@@ -278,3 +288,9 @@ def cluster_of(name: str) -> str:
     """Cluster lookup with safe fallback for unknown names."""
     profile = lookup(name)
     return profile.cluster if profile is not None else "other"
+
+
+def theme_of(name: str) -> str:
+    """Business theme lookup with safe fallback for unknown names."""
+    profile = lookup(name)
+    return profile.theme if profile is not None else "macro"

@@ -341,10 +341,22 @@ class TestEngineEnsembleAlignment:
         assert engine._algorithm_version_id_cache == versions["ensemble"].id
 
         # Call #2 prompt must have used the ensemble builder — verify by
-        # checking the second prompt mentions consensus / spécialistes.
+        # checking the second prompt is the redacted "LECTURE COMPASS DU JOUR"
+        # variant (not the legacy composite-score prompt).
         second_prompt = mock_instance.call.call_args_list[1].args[0]
-        assert "spécialistes" in second_prompt
-        assert "ensemble Compass" in second_prompt
+        assert "LECTURE COMPASS DU JOUR" in second_prompt
+        assert "verdict Compass" in second_prompt
+        # The redacted block must carry the VOCABULAIRE INTERDIT block so the
+        # LLM knows it must NOT leak any of these tokens into the conclusion.
+        assert "VOCABULAIRE STRICTEMENT INTERDIT" in second_prompt
+        # The OLD diagnostic lines that previously exposed cluster scores
+        # and detector state must no longer appear as positive instructions.
+        # (They show up inside the INTERDIT list as forbidden words — that's
+        # the only place they should appear now.)
+        assert "Cluster Winter (régime bear-dominant)" not in second_prompt
+        assert "Cluster Spring (régime bull/transition)" not in second_prompt
+        assert "Filet de sécurité (wrapper) actif" not in second_prompt
+        assert 'Détecteur "précision récente"' not in second_prompt
         assert "DECISION_WRAPPED" not in second_prompt  # template var resolved
 
         # The writer UPDATE must have hit the ensemble row, not legacy
@@ -507,9 +519,15 @@ class TestEngineEnsembleAlignment:
 
 @pytest.mark.usefixtures("seed_market_data")
 class TestEnsembleAlignmentWithVotes:
-    def test_diagnostics_block_includes_winter_spring_signed(
+    def test_diagnostics_block_renders_redacted_signal_view(
         self, sync_db_session, ref_chain, versions, seed_market_data
     ):
+        """Replaces the previous winter/spring/dispersion check. After the
+        engine-redaction patch, the Call#2 prompt no longer exposes cluster
+        scores, soft-gate/wrapper state, or detector fires — those are
+        explicit leaks. The prompt instead carries a small set of safe
+        diagnostics (decision, conviction, convergence count, macro direction)
+        plus a strict VOCABULAIRE INTERDIT block."""
         _seed_indicator_daily(
             sync_db_session,
             contract_id=seed_market_data["contract_id"],
@@ -561,10 +579,15 @@ class TestEnsembleAlignmentWithVotes:
             )
 
         second_prompt = mock_instance.call.call_args_list[1].args[0]
-        # Diagnostics block specifics
-        assert "12/14" in second_prompt  # n_committed
-        assert "+3" in second_prompt or "3" in second_prompt  # winter signed
-        assert "-2" in second_prompt  # spring signed
-        assert (
-            "relâché grâce à la précision récente" in second_prompt
-        )  # dispersion hint
+        # Redacted diagnostics — convergence count without "/14"
+        assert "12 lecture(s)" in second_prompt
+        # Conviction wording instructions present
+        assert "Conviction forte / modérée / faible" in second_prompt
+        # The VOCABULAIRE STRICTEMENT INTERDIT block must reach the LLM
+        # (otherwise the LLM has no instruction to stop leaking).
+        assert "VOCABULAIRE STRICTEMENT INTERDIT" in second_prompt
+        # The OLD positive instructions exposing cluster scores and detectors
+        # are gone.
+        assert "Cluster Winter (régime bear-dominant)" not in second_prompt
+        assert "Cluster Spring (régime bull/transition)" not in second_prompt
+        assert 'Détecteur "divergence régimes"' not in second_prompt

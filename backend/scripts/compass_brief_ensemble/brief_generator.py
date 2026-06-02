@@ -1,33 +1,32 @@
-"""Render the ensemble brief from an :class:`EnsembleBriefData` instance.
+"""Render the Compass cocoa daily brief from an :class:`EnsembleBriefData`.
 
-7-section template + a contextual intro to the panel of specialists :
+The brief is uploaded to Drive and fed verbatim into NotebookLM, which turns
+it into the daily audio podcast. Everything written here ends up read aloud —
+so the template is intentionally redacted of any reference to the underlying
+decision engine (no panel size, no model family, no orchestrator names, no
+internal gate diagnostics). Audit details still flow through the DB and
+dashboard.
 
-  Intro — Qui parle aujourd'hui (le panel + qui s'engage)
-  I.    Signal ensemble + persistence + triggers réévaluation
-  II.   Les spécialistes qui se sont exprimés aujourd'hui (committed only)
-        — listed by business profile (cf. specialist_catalog.SPECIALIST_CATALOG)
-  III.  Macro radar ensemble (sentiment + anomaly + priors)
-  IV.   Éco & press review (LLM narrative)
-  V.    Weather watch
-  VI.   Chiffres techniques
-  VII.  Recommandations opérationnelles
+Structure rendered :
 
-Pure formatter — no DB, no LLM. Takes the assembled data and returns a string.
-The committed/abstained vocabulary follows the soft-gate's semantic : a
-specialist whose pred is OPEN or HEDGE is *engaged*, one whose pred is MONITOR
-is *abstaining* (it contributes 0 to the gate's net_score). This is why the
-brief focuses on the engaged voices — they are the ones the gate listened to.
+  Intro    — single neutral framing line
+  I.       — Signal (decision + confidence + direction + YTD)
+  II.      — Lecture éditoriale (headline specialist + thematic grouping)
+  III.     — Éco & Press review (LLM narrative)
+  IV.      — Weather watch
+  V.       — Chiffres techniques de la dernière session
+  VI.      — Recommandations opérationnelles
 """
 
 from __future__ import annotations
 
+import logging
 from datetime import date as date_type, datetime
-from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from scripts.compass_brief_ensemble.specialist_catalog import (
     SPECIALIST_CATALOG,
-    cluster_of,
+    SpecialistProfile,
     lookup,
 )
 
@@ -55,11 +54,89 @@ MOIS_FR = {
 SEP_THICK = "═" * 70
 SEP_THIN = "─" * 70
 
-# A specialist whose vote is one of these is considered *committed* by the
-# soft-gate (it contributes to the weighted net_score). MONITOR-level votes
-# at the specialist level are abstentions, not "MONITOR votes" in the usual
-# sense — they sit out, neither pushing the gate up nor down.
 _ENGAGED_VOTES = {"OPEN", "HEDGE"}
+
+_THEME_LABEL = {
+    "technique": "une lecture technique",
+    "fx": "une lecture FX",
+    "macro": "une lecture macro",
+    "climat": "une lecture climatique",
+    "volatilité": "une lecture volatilité",
+}
+
+_DECISION_TO_BIAS = {"OPEN": "bullish", "HEDGE": "bearish"}
+
+# Engine-revealing substrings that must NEVER reach NotebookLM. Anything
+# matching these (case-insensitive) in an upstream LLM-written field is
+# redacted out of the brief and treated as "not available". The check is
+# substring-only (no regex) — keeps the list explicit and trivially auditable.
+_FORBIDDEN_SUBSTRINGS: tuple[str, ...] = (
+    "soft-gate",
+    "softgate",
+    "wrapper",
+    "wrapper_fired",
+    "running_acc",
+    "realized_return",
+    "anomaly_z",
+    "anomaly_score_z",
+    "dispersion fire",
+    "detectors fired",
+    "cluster winter",
+    "cluster spring",
+    "orchestrateur bayésien",
+    "14 spécialistes",
+    "spécialistes sur 14",
+    "sur 14 confirment",
+    "sur 14 votent",
+    "des 14",
+    "panel de 14",
+    "consensus n/14",
+    "net_score",
+    "net score",
+    "filet de sécurité",
+    "filet de securite",
+    "propriétaires",
+    "machine learning",
+    "ensemble v1",
+)
+
+logger = logging.getLogger(__name__)
+
+
+class UnsafeBriefContentError(RuntimeError):
+    """An upstream LLM-written field still embeds engine internals.
+
+    Raised by the brief renderer when ``conclusion``, ``eco`` or
+    ``press_summary`` contains any token from ``_FORBIDDEN_SUBSTRINGS``.
+    Per ``.claude/rules/pipeline-error-handling.md`` the brief job must
+    fail loud rather than ship a leaky `.txt` to NotebookLM — the recovery
+    path is to diagnose the upstream agent (typically
+    ``cc-ensemble-explainer`` not yet enriching ``conclusion``), fix it,
+    and manually relaunch.
+    """
+
+
+def _assert_safe(value: str | None, *, field_name: str) -> None:
+    """Raise ``UnsafeBriefContentError`` if ``value`` carries any forbidden
+    engine token. No-op when ``value`` is empty or safe."""
+    if not value:
+        return
+    lowered = value.lower()
+    hits = [tok for tok in _FORBIDDEN_SUBSTRINGS if tok in lowered]
+    if not hits:
+        return
+    logger.error(
+        "Brief field %s contains forbidden engine tokens %s — refusing to "
+        "render (likely cause: cc-ensemble-explainer did not enrich the "
+        "row, see runbooks/brief-dual-track.md).",
+        field_name,
+        hits,
+    )
+    raise UnsafeBriefContentError(
+        f"Refused to render brief: field '{field_name}' embeds engine "
+        f"internals ({hits}). Investigate upstream LLM enrichment, fix, "
+        "and relaunch."
+    )
 
 
 def _format_date(value) -> str:
@@ -75,153 +152,69 @@ def _format_date(value) -> str:
     return f"{dt.day} {MOIS_FR[dt.month]} {dt.year}"
 
 
-def _fmt(value, precision: int = 3, suffix: str = "") -> str:
-    """Format a numeric/Decimal/None value compactly."""
+def _fmt_signed_pct(value) -> str | None:
+    """Format a YTD-style numeric value as a signed percentage with 2 dp."""
     if value is None:
-        return "n/a"
-    if isinstance(value, Decimal):
-        try:
-            return f"{float(value):.{precision}f}{suffix}"
-        except (ValueError, OverflowError):
-            return str(value)
-    if isinstance(value, float):
-        return f"{value:.{precision}f}{suffix}"
-    return f"{value}{suffix}"
-
-
-def _direction_glyph(signed_vote: int | None) -> str:
-    if signed_vote is None:
-        return "→"
-    if signed_vote > 1:
-        return "↗"
-    if signed_vote < -1:
-        return "↘"
-    return "→"
-
-
-def _cluster_tag(signed_vote: int | None) -> str:
-    if signed_vote is None:
-        return ""
-    if signed_vote > 1:
-        return "bullish"
-    if signed_vote < -1:
-        return "bearish"
-    return "neutre"
-
-
-def _anomaly_label(z) -> str:
-    if z is None:
-        return "n/a"
+        return None
     try:
-        zf = float(z)
+        f = float(value)
     except (TypeError, ValueError):
-        return "n/a"
-    if zf >= 2.5:
-        return "CRITIQUE"
-    if zf >= 1.5:
-        return "élevé"
-    return "normal"
-
-
-def _bool_str(value: bool) -> str:
-    return "oui" if value else "non"
-
-
-def _vote_phrase(pred: str) -> str:
-    """Human-friendly verb for a vote at the specialist level."""
-    if pred == "OPEN":
-        return "ouvre la position"
-    if pred == "HEDGE":
-        return "appelle à couvrir"
-    return "préfère ne pas s'exprimer"
+        return None
+    return f"{f:+.2f}%"
 
 
 def render_brief(data: "EnsembleBriefData") -> str:
-    """Render the full ensemble brief as a single text block."""
+    """Render the full daily brief as a single text block."""
     lines: list[str] = []
 
     # ── Header ────────────────────────────────────────────────────────────
     lines.append(SEP_THICK)
-    lines.append("COMPASS DAILY BRIEF — Cocoa Outlook (Ensemble v1.0.0)")
+    lines.append("COMPASS DAILY BRIEF — Cocoa Outlook")
     lines.append(f"Date : {_format_date(data.target_date)}")
-    lines.append("Horizon décisionnel : 4-5 trading days (J+4-J+5)")
+    lines.append("Horizon décisionnel : 4 à 5 sessions boursières")
     lines.append(SEP_THICK)
     lines.append("")
 
-    # ── Intro — Qui parle aujourd'hui ─────────────────────────────────────
-    lines.append("À PROPOS DU PANEL COMPASS")
-    lines.append(SEP_THIN)
-    lines.extend(_render_panel_intro(data))
+    # ── Intro — neutral framing, no panel ─────────────────────────────────
+    lines.append(
+        "Lecture Compass du jour sur le front-month cocoa Londres, "
+        "horizon 4 à 5 sessions."
+    )
     lines.append("")
 
-    # ── I — Signal ensemble ───────────────────────────────────────────────
-    lines.append("I — SIGNAL ENSEMBLE")
+    # ── I — Signal ────────────────────────────────────────────────────────
+    lines.append("I — SIGNAL")
     lines.append(SEP_THIN)
     lines.append(f"  Position           : {data.decision}")
     if data.confidence is not None:
-        lines.append(
-            f"  Confiance          : {data.confidence}/5 (jugée par notre relecteur LLM)"
-        )
+        lines.append(f"  Confiance          : {data.confidence}/5 (lecture humaine)")
     if data.direction:
         lines.append(f"  Direction          : {data.direction}")
-    lines.append(
-        f"  Persistence        : biais maintenu depuis {data.persistence_days} jour(s)"
-    )
-    triggers = _build_triggers(data)
-    if triggers:
-        lines.append("  Triggers de réévaluation :")
-        for t in triggers:
-            lines.append(f"    • {t}")
+    ytd = _fmt_signed_pct(data.ytd_score)
+    if ytd is not None:
+        lines.append(f"  Performance YTD    : {ytd}")
     lines.append("")
 
-    # ── II — Les spécialistes qui se sont exprimés ────────────────────────
-    lines.append("II — LES SPÉCIALISTES QUI SE SONT EXPRIMÉS AUJOURD'HUI")
+    # ── II — Lecture éditoriale ───────────────────────────────────────────
+    lines.append("II — LECTURE ÉDITORIALE")
     lines.append(SEP_THIN)
-    lines.extend(_render_specialists_section(data))
+    lines.extend(_render_editorial_section(data))
     lines.append("")
 
-    # ── III — Macro radar ──────────────────────────────────────────────────
-    lines.append("III — MACRO RADAR ENSEMBLE")
-    lines.append(SEP_THIN)
-    lines.append(
-        f"  Macro direction               : {_fmt(data.macro_direction, 0)} "
-        f"(depuis sentiment features)"
-    )
-    lines.append(
-        f"  Surprise macro                : {_fmt(data.macro_surprise, 3, 'σ')} "
-        f"(half_life {_fmt(data.macro_half_life_days, 0, ' jours')})"
-    )
-    lines.append(
-        f"  Anomaly score                 : {_fmt(data.anomaly_score_z, 2)} "
-        f"({_anomaly_label(data.anomaly_score_z)})"
-    )
-    lines.append(
-        f"  Prior structurel              : P(OPEN)={_fmt(data.prior_open, 3)} "
-        f"P(HEDGE)={_fmt(data.prior_hedge, 3)} P(MONITOR)={_fmt(data.prior_monitor, 3)}"
-    )
-    lines.append(
-        f"  Wrapper actif                 : {_bool_str(data.wrapper_active)}  "
-        f"(soft-gate disait {data.soft_gate_decision})"
-    )
-    lines.append(
-        f"  Detectors fired               : run_acc={_bool_str(data.fired_running_acc)} "
-        f"dispersion={_bool_str(data.fired_dispersion)} "
-        f"trend={_bool_str(data.fired_trend)} 3way={_bool_str(data.fired_three_way)}"
-    )
-    lines.append(
-        f"  Running acc 5d (Compass)      : {_fmt(data.running_acc_5d, 4)}  "
-        f"| Realized return 5d : {_fmt(data.realized_return_5d, 4)}"
-    )
-    lines.append("")
+    # Fail-loud guard on every LLM-written field BEFORE rendering anything
+    # else — better to abort early than to emit a partial leaky brief.
+    _assert_safe(data.eco, field_name="eco")
+    _assert_safe(data.press_summary, field_name="press_summary")
+    _assert_safe(data.conclusion, field_name="conclusion")
 
-    # ── IV — Éco & press review ──────────────────────────────────────────
-    lines.append("IV — ÉCO & PRESS REVIEW (LECTURE HUMAINE)")
+    # ── III — Éco & press review ──────────────────────────────────────────
+    lines.append("III — ÉCO & PRESS REVIEW")
     lines.append(SEP_THIN)
     if data.eco:
         lines.append(data.eco)
         lines.append("")
     if data.press_summary:
-        lines.append("Press review (cc-press-review-agent) :")
+        lines.append("Press review :")
         lines.append(data.press_summary)
         lines.append("")
     if data.press_impact:
@@ -230,8 +223,8 @@ def render_brief(data: "EnsembleBriefData") -> str:
         lines.append(f"Sentiment dominant : {data.press_sentiment}")
     lines.append("")
 
-    # ── V — Weather watch ────────────────────────────────────────────────
-    lines.append("V — WEATHER WATCH")
+    # ── IV — Weather watch ────────────────────────────────────────────────
+    lines.append("IV — WEATHER WATCH")
     lines.append(SEP_THIN)
     if data.meteo_summary:
         lines.append(data.meteo_summary)
@@ -241,20 +234,21 @@ def render_brief(data: "EnsembleBriefData") -> str:
         lines.append("(aucune météo disponible pour la session)")
     lines.append("")
 
-    # ── VI — Chiffres techniques ─────────────────────────────────────────
-    lines.append("VI — CHIFFRES TECHNIQUES DERNIÈRE SESSION")
+    # ── V — Chiffres techniques ───────────────────────────────────────────
+    lines.append("V — CHIFFRES TECHNIQUES DERNIÈRE SESSION")
     lines.append(SEP_THIN)
     lines.append(data.technicals_snapshot)
     lines.append("")
 
-    # ── VII — Recommandations ───────────────────────────────────────────
-    lines.append("VII — RECOMMANDATIONS OPÉRATIONNELLES")
+    # ── VI — Recommandations ──────────────────────────────────────────────
+    lines.append("VI — RECOMMANDATIONS OPÉRATIONNELLES")
     lines.append(SEP_THIN)
     if data.conclusion:
         lines.append(data.conclusion)
     else:
         lines.append(
-            "(pas de conclusion narrative — cc-ensemble-explainer n'a pas encore tourné)"
+            "(pas de conclusion narrative — la lecture humaine n'a pas "
+            "encore été enrichie pour cette session)"
         )
     lines.append("")
     lines.append(SEP_THICK)
@@ -262,119 +256,104 @@ def render_brief(data: "EnsembleBriefData") -> str:
     return "\n".join(lines)
 
 
-def _render_panel_intro(data: "EnsembleBriefData") -> list[str]:
-    """Magazine-style intro that explains *what* the panel is.
+def _render_editorial_section(data: "EnsembleBriefData") -> list[str]:
+    """Section II — headline lecture + thematic convergence.
 
-    Read aloud first thing in the podcast so the auditeur understands the
-    speakers behind the upcoming decision. Deliberately repeated each day —
-    the auditeur may be discovering the system on this brief.
+    Picks one specialist as the editorial headline (priority: vote aligned
+    with the daily decision AND bias matching the decision direction), then
+    groups the remaining engaged specialists by business theme. No counts,
+    no codes, no clusters, no horizons — pure editorial framing.
     """
-    n_committed = data.n_committed_specialists or 0
-    n_abstained = 14 - n_committed
-    return [
-        "  Le signal du jour provient de l'ensemble Compass v1.0.0 — un panel de",
-        "  14 spécialistes propriétaires entraînés en machine learning sur dix ans",
-        "  de données cocoa Londres. Chacun a sa propre méthode : structure",
-        "  de prix, lecture FX, conditions climatiques ENSO, dynamique de",
-        "  volatilité. Six d'entre eux composent le cluster Winter (tendance",
-        "  technique + FX), huit autres le cluster Spring (macro et climat).",
-        "",
-        "  Chaque jour, ces spécialistes ont le choix entre trois positions :",
-        "  s'engager à l'achat (OPEN), appeler à la couverture (HEDGE), ou",
-        "  s'abstenir (MONITOR) quand leur signal est trop faible. L'orchestrateur",
-        "  bayésien Compass agrège uniquement les voix engagées et tranche.",
-        "",
-        f"  Aujourd'hui {n_committed} spécialiste(s) sur 14 se sont engagés ; "
-        f"{n_abstained} ont préféré s'abstenir.",
-    ]
-
-
-def _render_specialists_section(data: "EnsembleBriefData") -> list[str]:
-    """Section II — focused on engaged specialists, with their profiles.
-
-    The committed/abstained partition follows the soft-gate semantic. We
-    expose every engaged specialist with its business profile (label +
-    description from SPECIALIST_CATALOG) so the auditeur understands *who*
-    is speaking, not just an aggregate count. Abstainers are summarised.
-    """
-    lines: list[str] = []
-
-    winter_glyph = _direction_glyph(data.winter_vote_signed)
-    winter_tag = _cluster_tag(data.winter_vote_signed)
-    spring_glyph = _direction_glyph(data.spring_vote_signed)
-    spring_tag = _cluster_tag(data.spring_vote_signed)
-
-    lines.append(
-        f"  Score cumulé Winter (TB/FX)        : {_fmt(data.winter_vote_signed, 0)}  "
-        f"{winter_glyph} {winter_tag}"
-    )
-    lines.append(
-        f"  Score cumulé Spring (macro/ENSO)   : {_fmt(data.spring_vote_signed, 0)}  "
-        f"{spring_glyph} {spring_tag}"
-    )
-    lines.append(
-        f"  Spécialistes engagés               : "
-        f"{_fmt(data.n_committed_specialists, 0)}/14"
-    )
-    lines.append("")
-
-    # Partition specialists: engaged (OPEN or HEDGE) vs abstained (MONITOR)
     engaged: list[SpecialistVote] = [
         s for s in data.specialists if s.pred in _ENGAGED_VOTES
     ]
-    abstained: list[SpecialistVote] = [
-        s for s in data.specialists if s.pred not in _ENGAGED_VOTES
-    ]
-
     if not engaged:
-        lines.append(
-            "  Aucun spécialiste ne s'est engagé aujourd'hui — le panel reste "
-            "spectateur, la décision finale revient au prior structurel."
-        )
-        lines.append("")
-        return lines
-
-    lines.append(f"  ★ Voix engagées ({len(engaged)})")
-    lines.append("")
-
-    for vote in engaged:
-        profile = lookup(vote.name)
-        if profile is None:
-            # Unknown specialist — should never happen in steady state. Be
-            # defensive : show the raw name so the brief still renders.
-            lines.append(
-                f"    [{vote.pred}] {vote.name} — profil non répertorié "
-                f"(window={vote.window_months}m)"
-            )
-            continue
-        # Header line — vote + business label + cluster code
-        lines.append(
-            f"    [{vote.pred:5s}] {profile.label}  · cluster {profile.cluster.capitalize()} "
-            f"({profile.code}, horizon {profile.horizon_days}j)"
-        )
-        # Description wrapped onto two indented lines for readability
-        for chunk in _wrap_indented(profile.description, indent="      ", width=80):
-            lines.append(chunk)
-        lines.append(
-            f"      → {profile.label.split(' — ')[0]} {_vote_phrase(vote.pred)} ce jour."
-        )
-        lines.append("")
-
-    if abstained:
-        lines.append(f"  ☐ Voix silencieuses ({len(abstained)})")
-        lines.append(
-            "    Les autres spécialistes ont jugé leur signal insuffisant pour "
-            "engager une position et ne contribuent pas au score."
-        )
-        abstained_names = [
-            (lookup(s.name).label if lookup(s.name) else s.name) for s in abstained
+        return [
+            "  Pas de lecture marquée engagée sur cette session — "
+            "le marché est observé sans prise de position."
         ]
-        # Render names compactly in groups of 3 for podcast read-aloud friendliness
-        for i in range(0, len(abstained_names), 3):
-            chunk = ", ".join(abstained_names[i : i + 3])
-            lines.append(f"      · {chunk}")
+
+    headline = _pick_headline(engaged, data.decision)
+    lines: list[str] = []
+
+    if headline is not None:
+        headline_profile = lookup(headline.name)
+        if headline_profile is not None:
+            lines.append(f"  Lecture phare du jour : {headline_profile.label}.")
+            for chunk in _wrap_indented(
+                headline_profile.description, indent="  ", width=80
+            ):
+                lines.append(chunk)
+            lines.append("")
+
+    others = [s for s in engaged if s is not headline]
+    theme_sentence = _render_theme_convergence(others)
+    if theme_sentence:
+        lines.append(f"  {theme_sentence}")
 
     return lines
+
+
+def _pick_headline(
+    engaged: list["SpecialistVote"], decision: str
+) -> "SpecialistVote | None":
+    """Pick the most editorial-meaningful specialist for the day.
+
+    Priority tiers, in order :
+      1. vote == decision AND architectural bias matches the decision
+         direction (e.g. HEDGE decision + bearish specialist).
+      2. vote == decision, any bias.
+      3. fallback: first engaged specialist.
+    """
+    if not engaged:
+        return None
+
+    target_bias = _DECISION_TO_BIAS.get(decision)
+    if target_bias is not None:
+        for vote in engaged:
+            profile = lookup(vote.name)
+            if (
+                profile is not None
+                and vote.pred == decision
+                and profile.bias == target_bias
+            ):
+                return vote
+
+    for vote in engaged:
+        if vote.pred == decision:
+            return vote
+
+    return engaged[0]
+
+
+def _render_theme_convergence(others: list["SpecialistVote"]) -> str:
+    """Build a single editorial sentence describing what else is converging.
+
+    Returns an empty string when no other engaged specialists exist or
+    when none of them map to a known theme.
+    """
+    themes_seen: list[str] = []
+    for vote in others:
+        profile = lookup(vote.name)
+        if profile is None:
+            continue
+        label = _THEME_LABEL.get(profile.theme)
+        if label is None:
+            continue
+        if label not in themes_seen:
+            themes_seen.append(label)
+
+    if not themes_seen:
+        return ""
+    if len(themes_seen) == 1:
+        return f"D'autres lectures convergent sur ce verdict, dont {themes_seen[0]}."
+    if len(themes_seen) == 2:
+        return (
+            f"D'autres lectures convergent sur ce verdict — {themes_seen[0]} "
+            f"et {themes_seen[1]}."
+        )
+    head = ", ".join(themes_seen[:-1])
+    return f"D'autres lectures convergent sur ce verdict — {head} et {themes_seen[-1]}."
 
 
 def _wrap_indented(text: str, indent: str, width: int = 80) -> list[str]:
@@ -387,10 +366,9 @@ def _wrap_indented(text: str, indent: str, width: int = 80) -> list[str]:
         return []
     words = text.split()
     lines: list[str] = []
-    current = indent  # holds the line currently being built, indent + payload
+    current = indent
     for word in words:
         if current == indent:
-            # No payload yet — start the line with the first word.
             candidate = indent + word
         else:
             candidate = current + " " + word
@@ -404,43 +382,10 @@ def _wrap_indented(text: str, indent: str, width: int = 80) -> list[str]:
     return lines
 
 
-def _build_triggers(data: "EnsembleBriefData") -> list[str]:
-    """Build the list of "reasons to re-evaluate" based on current diagnostics."""
-    triggers: list[str] = []
-    triggers.append("anomaly_score_z > 2.5 → bascule MONITOR forcée")
-    triggers.append("dispersion fire (specialists désaccord soutenu)")
-    triggers.append("sentiment shift > 1.5σ (press_review macro surprise)")
-
-    # Add a contextual trigger if running_acc_5d is below a healthy threshold
-    if data.running_acc_5d is not None:
-        try:
-            if float(data.running_acc_5d) < 0.6:
-                triggers.append(
-                    f"running_acc_5d={_fmt(data.running_acc_5d, 3)} sous 0.6 — "
-                    "perf récente faible, override Compass actif"
-                )
-        except (TypeError, ValueError):
-            pass
-    return triggers
-
-
-# Kept for backward-compat — used to be imported elsewhere. New callers should
-# read profiles via the catalog directly.
-def _classify_specialist(name: str) -> str:
-    """Delegate to the catalog. Returns 'winter' / 'spring' / 'other'."""
-    return cluster_of(name)
-
-
-def _find_dissenters(
-    specialists: list["SpecialistVote"], decision: str
-) -> list["SpecialistVote"]:
-    """Return specialists whose vote differs from the wrapped decision."""
-    return [s for s in specialists if s.pred != decision]
-
-
-# Exposed for compatibility with downstream callers that might import the
-# catalog symbol from here. Re-exporting keeps the import path stable.
+# Exposed for compatibility with downstream callers that import the catalog
+# symbol from here. Re-exporting keeps the import path stable.
 __all__ = [
     "render_brief",
     "SPECIALIST_CATALOG",
+    "SpecialistProfile",
 ]

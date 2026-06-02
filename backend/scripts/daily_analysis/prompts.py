@@ -252,33 +252,34 @@ def build_call2_prompt(
 
 
 ENSEMBLE_DIAGNOSTICS_BLOCK = """\
-🤖 CONTEXTE DÉCISIONNEL — C5 ENSEMBLE V1
+CONTEXTE DÉCISIONNEL — LECTURE COMPASS DU JOUR
 
-La décision du jour ({DECISION_WRAPPED}) provient de l'ensemble Compass v1.0.0,
-un orchestrateur bayésien qui agrège 14 spécialistes ML (Winter + Spring
-clusters). Tu DOIS la justifier en t'appuyant sur les diagnostics suivants —
-PAS sur un score composite technique.
+La décision du jour ({DECISION_WRAPPED}) est le verdict Compass — tu DOIS la
+justifier en t'appuyant sur les diagnostics ci-dessous, PAS sur un score
+composite technique.
 
-Diagnostics ensemble pour ce jour :
-\t•\tDécision soft-gate brute : {SOFT_GATE_DECISION}
-\t•\tDécision finale (après filet de sécurité) : {DECISION_WRAPPED}
-\t•\tConviction (net_score, intervalle [-1, +1]) : {NET_SCORE}
-\t•\tConsensus : {N_COMMITTED}/14 spécialistes ont voté avec confiance (poids cumulés {WEIGHTS_SUM})
-\t•\tCluster Winter (régime bear-dominant) — score signé : {WINTER_SIGNED}
-\t•\tCluster Spring (régime bull/transition) — score signé : {SPRING_SIGNED}
-\t•\tFilet de sécurité (wrapper) actif : {WRAPPER_ACTIVE}
-\t•\tDétecteur "précision récente" déclenché : {FIRED_RUNNING_ACC} (running_acc 5j = {RUNNING_ACC_5D})
-\t•\tDétecteur "divergence régimes" déclenché : {FIRED_DISPERSION} {DISPERSION_HINT}
-\t•\tDirection macro (signal LLM filtré conf≥0.70) : {MACRO_DIRECTION} (surprise={MACRO_SURPRISE}, half-life={MACRO_HALF_LIFE_DAYS}j)
-\t•\tAnomalie marché (z-score régime long-run) : {ANOMALY_SCORE_Z}
-\t•\tPriors décisionnels : OPEN={PRIOR_OPEN} · HEDGE={PRIOR_HEDGE} · MONITOR={PRIOR_MONITOR}
+Diagnostics du signal :
+\t•\tDécision : {DECISION_WRAPPED}
+\t•\tConviction (intervalle [-1, +1]) : {NET_SCORE}
+\t•\tConvergence des lectures engagées : {N_COMMITTED} lecture(s) (poids cumulés {WEIGHTS_SUM})
+\t•\tDirection macro (signal filtré) : {MACRO_DIRECTION} (surprise={MACRO_SURPRISE}, half-life={MACRO_HALF_LIFE_DAYS}j)
 
-Vocabulaire à utiliser :
-\t•\t"X spécialistes sur 14 confirment…" (parle de consensus, pas de score composite)
-\t•\t"Conviction forte/modérée/faible" selon abs(net_score)
-\t•\t"Le filet de sécurité a été relâché" si fired_dispersion=True et wrapper_active=False
-\t•\t"Le filet de sécurité s'est activé par prudence" si wrapper_active=True
-\t•\t"Régime atypique" si abs(anomaly_score_z) > 2
+Vocabulaire à utiliser dans la conclusion :
+\t•\t"Conviction forte / modérée / faible" selon |conviction| (≥0.5 forte, 0.2-0.5 modérée, <0.2 faible)
+\t•\t"Convergence des lectures du jour" / "lectures qui s'alignent" / "lectures qui divergent"
+\t•\t"Direction haussière / baissière / neutre" pour décrire le biais du jour
+
+VOCABULAIRE STRICTEMENT INTERDIT (ne JAMAIS écrire ces mots, ils déclenchent
+une coupure du pipeline en aval) :
+\t•\tToute mention du nombre de spécialistes du panel — pas de "X spécialistes sur 14", pas de "X/14", pas de "panel de 14", pas de "sur 14 confirment", pas de "des 14"
+\t•\tToute valeur technique chiffrée du diagnostic interne : pas de "net_score", pas de "running_acc", pas de "anomaly_z", pas de "score composite"
+\t•\tToute mention d'architecture interne : pas de "soft-gate", pas de "wrapper", pas de "filet de sécurité", pas de "détecteur", pas de "cluster Winter", pas de "cluster Spring", pas de "orchestrateur bayésien", pas de "ensemble v1", pas de "machine learning", pas de "modèle propriétaire"
+\t•\tPas de noms techniques de spécialistes (W1, W2, S1, exp_optim_*, xpol_*)
+
+Tu peux nommer un OU deux libellés business de spécialistes (Lecteur de
+tendance, Sentinelle baissière FX, Stratège macro global…) si pertinent, mais
+seulement pour décrire ce qu'ils regardent — jamais pour révéler la taille
+du panel.
 
 """
 
@@ -320,9 +321,9 @@ Procède en 4 étapes :
 
 ---
 
-**A. Justifie la décision ensemble**
+**A. Justifie la décision Compass**
 
-La décision {DECISION_WRAPPED} est imposée par l'ensemble. Rédige 1 ou 2 phrases brèves en utilisant le vocabulaire ensemble (consensus N/14, conviction, filet de sécurité) — PAS un score composite.
+La décision {DECISION_WRAPPED} est le verdict Compass du jour. Rédige 1 ou 2 phrases brèves en utilisant le vocabulaire autorisé (conviction qualitative, convergence des lectures, direction du biais) — JAMAIS de chiffres internes ni de noms d'architecture (voir VOCABULAIRE STRICTEMENT INTERDIT ci-dessus).
 
 ---
 
@@ -340,7 +341,7 @@ Structure la réponse en phrases brèves :
 
 **C. CONCLUSION ACTIONNABLE**
 
-Rédige une recommandation claire alignée sur {DECISION_WRAPPED} en identifiant les signaux dominants. Ne contredis jamais la décision ensemble.
+Rédige une recommandation claire alignée sur {DECISION_WRAPPED} en identifiant les signaux dominants. Ne contredis jamais la décision Compass.
 \t•\tSi OPEN → cite les signaux forts cohérents avec un achat immédiat
 \t•\tSi MONITOR → liste les seuils techniques précis à surveiller
 \t•\tSi HEDGE → expose les signaux de repli dominants
@@ -376,12 +377,12 @@ Tu DOIS répondre UNIQUEMENT avec un objet JSON valide, sans texte autour.
 
 Le champ "decision" doit être EXACTEMENT {DECISION_WRAPPED} (aucune autre valeur acceptée).
 Le champ "conclusion" doit OBLIGATOIREMENT suivre ce format :
-- Ligne 1 : commence par "> " suivi d'une phrase résumé qui mentionne le consensus ensemble
+- Ligne 1 : commence par "> " suivi d'une phrase résumé qui décrit la conviction Compass du jour (forte / modérée / faible) sans citer de chiffre interne
 - Lignes suivantes : chaque indicateur analysé sur sa propre ligne, commençant par "        • "
 - Section "A SURVEILLER" : "> A SURVEILLER AUJOURD'HUI:" suivie de 3 lignes "        • " avec seuils chiffrés
 - Pas de Markdown. Pas de phrases vagues. Chaque phrase concise avec des chiffres.
 
-{{"decision": "{DECISION_WRAPPED}", "confiance": 3, "direction": "HAUSSIERE ou BAISSIERE ou NEUTRE", "conclusion": "> {N_COMMITTED} spécialistes sur 14 confirment la position {DECISION_WRAPPED}, conviction nette (net_score {NET_SCORE}).\\n        • Le CLOSE est passé de X à Y, indiquant Z.\\n        • Le VOLUME a baissé de X à Y.\\n        • OPEN INTEREST a réduit de X à Y.\\n        • Le RSI est à X, signifiant Z.\\n        • MACD à X, signal Z.\\n        • La volatilité implicite est à X%.\\n        • Le STOCK US a augmenté de X tonnes à Y tonnes.\\n        • Le STOCK EU a reculé de X tonnes à Y tonnes.\\n> A SURVEILLER AUJOURD'HUI:\\n        • Baissier si CLOSE clôture sous SUPPORT 1 à X — objectif S2 à Y.\\n        • Haussier si CLOSE dépasse RESISTANCE 1 à X — poursuite de la tendance.\\n        • Baissier si RSI passe sous X (actuellement à Y) — pression vendeuse accrue."}}
+{{"decision": "{DECISION_WRAPPED}", "confiance": 3, "direction": "HAUSSIERE ou BAISSIERE ou NEUTRE", "conclusion": "> Lecture Compass alignée sur la position {DECISION_WRAPPED}, conviction nette (forte / modérée / faible).\\n        • Le CLOSE est passé de X à Y, indiquant Z.\\n        • Le VOLUME a baissé de X à Y.\\n        • OPEN INTEREST a réduit de X à Y.\\n        • Le RSI est à X, signifiant Z.\\n        • MACD à X, signal Z.\\n        • La volatilité implicite est à X%.\\n        • Le STOCK US a augmenté de X tonnes à Y tonnes.\\n        • Le STOCK EU a reculé de X tonnes à Y tonnes.\\n> A SURVEILLER AUJOURD'HUI:\\n        • Baissier si CLOSE clôture sous SUPPORT 1 à X — objectif S2 à Y.\\n        • Haussier si CLOSE dépasse RESISTANCE 1 à X — poursuite de la tendance.\\n        • Baissier si RSI passe sous X (actuellement à Y) — pression vendeuse accrue."}}
 """
 )
 

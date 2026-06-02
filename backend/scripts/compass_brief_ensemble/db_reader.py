@@ -90,8 +90,14 @@ class EnsembleBriefData:
     technicals_snapshot: str = ""
 
     # "Persistence" — how many consecutive days the same decision has been
-    # in place. Computed by looking back at recent ensemble rows.
+    # in place. Computed by looking back at recent ensemble rows. Kept in
+    # the data class for audit; the brief generator no longer renders it.
     persistence_days: int = 1
+
+    # YTD performance of the live signal — same scoring formula as the
+    # dashboard's "Performance YTD" badge. Sourced from
+    # ``calculate_ytd_performance`` (Compass scoring J+4 horizon).
+    ytd_score: Decimal | None = None
 
 
 def _resolve_algorithm_id(session: Session) -> Any:
@@ -261,6 +267,82 @@ def _compute_running_accuracy(
     last_window = scored[-window:]
     wins = sum(1 for s in last_window if s > 0)
     return Decimal(wins) / Decimal(window)
+
+
+def _compute_ytd_score(
+    session: Session,
+    reference_date: date,
+    contract_id: Any,
+    *,
+    horizon: int = YTD_EVAL_HORIZON_DAYS,
+) -> Decimal | None:
+    """Compute the live signal's YTD performance score.
+
+    Sync counterpart of ``dashboard_service.calculate_ytd_performance``.
+    Same formula, same J+4 horizon, same ``COALESCE(ensemble, legacy)``
+    fallback — the dashboard "Performance YTD" badge and the brief read
+    aloud in the podcast must be the same number.
+
+    Returns the average score × 100 as a Decimal, or ``None`` when no
+    scored days are available (year start, fresh contract, etc.).
+    """
+    year_start = date(reference_date.year, 1, 1)
+    rows = session.execute(
+        text(
+            """
+            WITH front_month AS (
+                SELECT DISTINCT ON (cd.date) cd.date, cd.close, cd.contract_id
+                FROM pl_contract_data_daily cd
+                WHERE cd.date >= :year_start AND cd.date <= :ref_date
+                ORDER BY cd.date, cd.oi DESC NULLS LAST
+            )
+            SELECT
+                fm.date,
+                fm.close,
+                COALESCE(ens.decision, leg.decision) AS decision
+            FROM front_month fm
+            LEFT JOIN pl_indicator_daily ens
+                   ON ens.date = fm.date
+                  AND ens.contract_id = fm.contract_id
+                  AND ens.algorithm_version_id = (
+                      SELECT id FROM pl_algorithm_version
+                      WHERE name = 'ensemble_v1_softgate_wrapper'
+                      ORDER BY created_at DESC LIMIT 1)
+            LEFT JOIN pl_indicator_daily leg
+                   ON leg.date = fm.date
+                  AND leg.contract_id = fm.contract_id
+                  AND leg.algorithm_version_id = (
+                      SELECT id FROM pl_algorithm_version
+                      WHERE name = 'legacy'
+                      ORDER BY created_at DESC LIMIT 1)
+            ORDER BY fm.date ASC
+            """
+        ),
+        {"year_start": year_start, "ref_date": reference_date},
+    ).all()
+
+    if len(rows) <= horizon:
+        return None
+
+    scored: list[float] = []
+    for i in range(len(rows) - horizon):
+        current = rows[i]
+        future = rows[i + horizon]
+        if not current.decision or current.close is None or future.close is None:
+            continue
+        s = _score_day(
+            current.decision.strip().upper(),
+            float(current.close),
+            float(future.close),
+        )
+        if s is not None:
+            scored.append(s)
+
+    if not scored:
+        return None
+
+    avg = sum(scored) / len(scored)
+    return Decimal(str(avg * 100))
 
 
 def _read_persistence_days(
@@ -437,6 +519,7 @@ def read_brief_data(
     # fewer than 5 evaluable decisions (mostly historical backfills).
     computed_acc = _compute_running_accuracy(session, effective_data_date, contract_id)
     running_acc_5d = computed_acc if computed_acc is not None else orc["running_acc_5d"]
+    ytd_score = _compute_ytd_score(session, effective_data_date, contract_id)
 
     logger.info(
         "Brief data assembled: decision=%s specialists=%d persistence=%dj",
@@ -479,4 +562,5 @@ def read_brief_data(
         meteo_impact=meteo[1],
         technicals_snapshot=technicals,
         persistence_days=persistence,
+        ytd_score=ytd_score,
     )

@@ -579,10 +579,14 @@ class TestEnsembleAlignmentWithVotes:
             )
 
         second_prompt = mock_instance.call.call_args_list[1].args[0]
-        # Redacted diagnostics — convergence count without "/14"
-        assert "12 lecture(s)" in second_prompt
-        # Conviction wording instructions present
-        assert "Conviction forte / modérée / faible" in second_prompt
+        # Redacted diagnostics carry the qualitative conviction label only
+        # (no raw net_score, no committed count) — the LLM gets enough to
+        # judge but cannot quote engine internals back.
+        assert "Conviction Compass intrinsèque" in second_prompt
+        # 12 committed + net_score=1.0 → adhesion=0.926 → "forte"
+        assert "forte" in second_prompt
+        # The new confidence rubric is in the prompt
+        assert "ÉVALUATION DE LA CONFIANCE" in second_prompt
         # The VOCABULAIRE STRICTEMENT INTERDIT block must reach the LLM
         # (otherwise the LLM has no instruction to stop leaking).
         assert "VOCABULAIRE STRICTEMENT INTERDIT" in second_prompt

@@ -260,13 +260,41 @@ composite technique.
 
 Diagnostics du signal :
 \t•\tDécision : {DECISION_WRAPPED}
-\t•\tConviction (intervalle [-1, +1]) : {NET_SCORE}
-\t•\tConvergence des lectures engagées : {N_COMMITTED} lecture(s) (poids cumulés {WEIGHTS_SUM})
+\t•\tConviction Compass intrinsèque : {CONVICTION_QUALITATIVE}
 \t•\tDirection macro (signal filtré) : {MACRO_DIRECTION} (surprise={MACRO_SURPRISE}, half-life={MACRO_HALF_LIFE_DAYS}j)
 
+═══ ÉVALUATION DE LA CONFIANCE (champs "confiance" + "confiance_rationale") ═══
+
+La confiance reflète à quel point la décision Compass est appuyée par les
+facteurs externes du jour. RÈGLE FONDAMENTALE : la décision Compass est le
+verdict — les facteurs externes ne peuvent QUE renforcer la confiance ou la
+nuancer légèrement. Ils ne peuvent JAMAIS la contredire.
+
+ÉTAPE 1 — Base de la confiance, dérivée de la conviction Compass intrinsèque :
+\t•\tConviction "forte"   → base 4
+\t•\tConviction "modérée" → base 3
+\t•\tConviction "faible"  → base 2
+
+ÉTAPE 2 — Modulation par les 5 piliers externes (technique, macro, sentiment
+de marché, fondamentaux, climat). Pour chacun, juge s'il SOUTIENT, est NEUTRE,
+ou apporte une NUANCE légère par rapport à la décision Compass :
+\t•\tSOUTIEN : le pilier va clairement dans le sens de la décision (ex : HEDGE
+\t  + RSI baissier + MACD baissier + stocks en hausse → tech soutient)
+\t•\tNEUTRE : le pilier n'apporte pas de signal clair ou est mixte
+\t•\tNUANCE : le pilier introduit une légère friction (ex : sentiment légèrement
+\t  haussier sur une décision HEDGE) — JAMAIS de contradiction franche
+
+ÉTAPE 3 — Ajustement final (max ±1 par rapport à la base) :
+\t•\tMajorité de piliers SOUTIEN → +1 (max 5)
+\t•\tMajorité NEUTRE ou mixte    → 0 (garde la base)
+\t•\t1 ou 2 piliers NUANCE       → -1 (min 1)
+
+RÈGLE STRICTE : pas de -2 ou plus. Les facteurs externes ne contredisent jamais
+la décision Compass — ils ne font que nuancer la confiance autour de la base.
+
 Vocabulaire à utiliser dans la conclusion :
-\t•\t"Conviction forte / modérée / faible" selon |conviction| (≥0.5 forte, 0.2-0.5 modérée, <0.2 faible)
-\t•\t"Convergence des lectures du jour" / "lectures qui s'alignent" / "lectures qui divergent"
+\t•\t"Conviction forte / modérée / faible" pour qualifier l'engagement Compass
+\t•\t"Convergence des lectures du jour" / "lectures qui s'alignent"
 \t•\t"Direction haussière / baissière / neutre" pour décrire le biais du jour
 
 VOCABULAIRE STRICTEMENT INTERDIT (ne JAMAIS écrire ces mots, ils déclenchent
@@ -375,17 +403,21 @@ E **IMPORTANT** Format final OBLIGATOIRE ET STRICT :
 
 Tu DOIS répondre UNIQUEMENT avec un objet JSON valide, sans texte autour.
 
-Tu DOIS retourner EXACTEMENT les 4 champs suivants (aucun ne peut manquer) :
+Tu DOIS retourner EXACTEMENT les 5 champs suivants (aucun ne peut manquer) :
 \t1.\t"decision" : doit être EXACTEMENT {DECISION_WRAPPED} (aucune autre valeur acceptée)
-\t2.\t"confiance" : entier de 1 à 5 selon ta conviction sur la décision
-\t3.\t"direction" : "HAUSSIERE" ou "BAISSIERE" ou "NEUTRE" — cohérente avec la décision (HEDGE → BAISSIERE, OPEN → HAUSSIERE, MONITOR → NEUTRE)
-\t4.\t"conclusion" : suit OBLIGATOIREMENT ce format :
+\t2.\t"confiance" : entier de 1 à 5, dérivé STRICTEMENT de la rubric ÉVALUATION DE LA CONFIANCE ci-dessus (base 2/3/4 selon conviction qualitative + ajustement max ±1 selon piliers externes)
+\t3.\t"confiance_rationale" : string de 60 à 140 caractères listant 2-3 piliers dominants avec leur rôle SOUTIEN ou NUANCE. Exemples :
+\t\t•\t"Tech + macro baissiers, stocks neutres, climat NUANCE."
+\t\t•\t"Tous les piliers alignés avec la décision."
+\t\t•\t"Macro soutient, technique mixte, sentiment NUANCE."
+\t4.\t"direction" : "HAUSSIERE" ou "BAISSIERE" ou "NEUTRE" — cohérente avec la décision (HEDGE → BAISSIERE, OPEN → HAUSSIERE, MONITOR → NEUTRE)
+\t5.\t"conclusion" : suit OBLIGATOIREMENT ce format :
 \t\t•\tLigne 1 : commence par "> " suivi d'une phrase résumé qui décrit la conviction Compass du jour (forte / modérée / faible) sans citer de chiffre interne
 \t\t•\tLignes suivantes : chaque indicateur analysé sur sa propre ligne, commençant par "        • "
 \t\t•\tSection "A SURVEILLER" : "> A SURVEILLER AUJOURD'HUI:" suivie de 3 lignes "        • " avec seuils chiffrés
 \t\t•\tPas de Markdown. Pas de phrases vagues. Chaque phrase concise avec des chiffres.
 
-{{"decision": "{DECISION_WRAPPED}", "confiance": 3, "direction": "HAUSSIERE ou BAISSIERE ou NEUTRE", "conclusion": "> Lecture Compass alignée sur la position {DECISION_WRAPPED}, conviction nette (forte / modérée / faible).\\n        • Le CLOSE est passé de X à Y, indiquant Z.\\n        • Le VOLUME a baissé de X à Y.\\n        • OPEN INTEREST a réduit de X à Y.\\n        • Le RSI est à X, signifiant Z.\\n        • MACD à X, signal Z.\\n        • La volatilité implicite est à X%.\\n        • Le STOCK US a augmenté de X tonnes à Y tonnes.\\n        • Le STOCK EU a reculé de X tonnes à Y tonnes.\\n> A SURVEILLER AUJOURD'HUI:\\n        • Baissier si CLOSE clôture sous SUPPORT 1 à X — objectif S2 à Y.\\n        • Haussier si CLOSE dépasse RESISTANCE 1 à X — poursuite de la tendance.\\n        • Baissier si RSI passe sous X (actuellement à Y) — pression vendeuse accrue."}}
+{{"decision": "{DECISION_WRAPPED}", "confiance": 3, "confiance_rationale": "Tech + macro alignés, stocks neutres, climat NUANCE.", "direction": "HAUSSIERE ou BAISSIERE ou NEUTRE", "conclusion": "> Lecture Compass alignée sur la position {DECISION_WRAPPED}, conviction nette (forte / modérée / faible).\\n        • Le CLOSE est passé de X à Y, indiquant Z.\\n        • Le VOLUME a baissé de X à Y.\\n        • OPEN INTEREST a réduit de X à Y.\\n        • Le RSI est à X, signifiant Z.\\n        • MACD à X, signal Z.\\n        • La volatilité implicite est à X%.\\n        • Le STOCK US a augmenté de X tonnes à Y tonnes.\\n        • Le STOCK EU a reculé de X tonnes à Y tonnes.\\n> A SURVEILLER AUJOURD'HUI:\\n        • Baissier si CLOSE clôture sous SUPPORT 1 à X — objectif S2 à Y.\\n        • Haussier si CLOSE dépasse RESISTANCE 1 à X — poursuite de la tendance.\\n        • Baissier si RSI passe sous X (actuellement à Y) — pression vendeuse accrue."}}
 """
 )
 
@@ -399,6 +431,41 @@ def _format_optional(value: object, digits: int | None = None) -> str:
     if isinstance(value, float) and digits is not None:
         return f"{value:.{digits}f}"
     return str(value)
+
+
+def _qualitative_conviction(
+    net_score: object, n_committed: object, *, panel_size: int = 14
+) -> str:
+    """Map (net_score, n_committed) → qualitative conviction label.
+
+    The "adhesion" metric combines unanimity (|net_score|) and engagement
+    (n_committed / panel_size) into one composite that captures both axes :
+
+        adhesion = |net_score| × sqrt(n_committed / panel_size)
+
+    Thresholds (set against the 30-day prod distribution) :
+        adhesion ≥ 0.70  → "forte"
+        0.40 ≤ adhesion < 0.70 → "modérée"
+        adhesion < 0.40 → "faible"
+
+    Returns ``"faible"`` when either input is missing/invalid — the safe
+    default lets the LLM start from base 2 rather than crash.
+    """
+    import math
+
+    try:
+        ns = float(net_score) if net_score is not None else 0.0
+        nc = int(n_committed) if n_committed is not None else 0
+    except (TypeError, ValueError):
+        return "faible"
+    if panel_size <= 0:
+        return "faible"
+    adhesion = abs(ns) * math.sqrt(max(nc, 0) / panel_size)
+    if adhesion >= 0.70:
+        return "forte"
+    if adhesion >= 0.40:
+        return "modérée"
+    return "faible"
 
 
 def build_call2_prompt_ensemble(
@@ -437,6 +504,10 @@ def build_call2_prompt_ensemble(
             ),
             "NET_SCORE": _format_optional(getattr(ensemble, "net_score", None), 3),
             "N_COMMITTED": str(getattr(ensemble, "n_committed_specialists", 0)),
+            "CONVICTION_QUALITATIVE": _qualitative_conviction(
+                getattr(ensemble, "net_score", None),
+                getattr(ensemble, "n_committed_specialists", None),
+            ),
             "WEIGHTS_SUM": _format_optional(getattr(ensemble, "weights_sum", None), 2),
             "WINTER_SIGNED": _format_optional(
                 getattr(ensemble, "winter_vote_signed", None)

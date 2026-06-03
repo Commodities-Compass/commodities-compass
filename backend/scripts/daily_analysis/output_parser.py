@@ -25,6 +25,7 @@ class TradingDecisionOutput(BaseModel):
 
     decision: Literal["OPEN", "MONITOR", "HEDGE"]
     confiance: int = Field(ge=1, le=5)
+    confiance_rationale: str = Field(default="", max_length=200)
     direction: Literal["HAUSSIERE", "BAISSIERE", "NEUTRE"]
     conclusion: str
 

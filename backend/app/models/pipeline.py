@@ -233,6 +233,7 @@ class PlIndicatorDaily(Base):
     # Decision
     decision: Mapped[Optional[str]] = mapped_column(VARCHAR(50))
     confidence: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(5, 2))
+    confidence_rationale: Mapped[Optional[str]] = mapped_column(TEXT)
     direction: Mapped[Optional[str]] = mapped_column(VARCHAR(50))
     eco: Mapped[Optional[str]] = mapped_column(TEXT)
     conclusion: Mapped[Optional[str]] = mapped_column(TEXT)

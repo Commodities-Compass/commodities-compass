@@ -342,6 +342,7 @@ class DBAnalysisEngine:
                 trading = TradingDecisionOutput(
                     decision=ensemble.decision_wrapped,
                     confiance=trading.confiance,
+                    confiance_rationale=trading.confiance_rationale,
                     direction=trading.direction,
                     conclusion=trading.conclusion,
                 )
@@ -364,6 +365,7 @@ class DBAnalysisEngine:
             trading = TradingDecisionOutput(
                 decision=trading.decision,
                 confiance=trading.confiance,
+                confiance_rationale=trading.confiance_rationale,
                 direction=normalized_direction,
                 conclusion=trading.conclusion,
             )
@@ -504,6 +506,7 @@ class DBAnalysisEngine:
                     final_indicator = :final_indicator,
                     decision = :decision,
                     confidence = :confidence,
+                    confidence_rationale = :confidence_rationale,
                     direction = :direction,
                     conclusion = :conclusion
                 WHERE date = :target_date
@@ -519,6 +522,7 @@ class DBAnalysisEngine:
                 "final_indicator": final_indicator,
                 "decision": trading.decision,
                 "confidence": trading.confiance,
+                "confidence_rationale": trading.confiance_rationale or None,
                 "direction": trading.direction,
                 "conclusion": trading.conclusion,
                 "target_date": target_date,

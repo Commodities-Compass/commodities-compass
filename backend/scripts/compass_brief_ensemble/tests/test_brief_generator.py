@@ -58,6 +58,7 @@ def _sample_data(decision: str = "OPEN", **overrides) -> EnsembleBriefData:
         target_date=date(2026, 5, 27),
         decision=decision,
         confidence=4,
+        confidence_rationale="Tech + macro alignés, stocks neutres, climat NUANCE.",
         direction="HAUSSIERE",
         conclusion=(
             "Position OPEN tenable sur 4-5 sessions. Macro favorable.\n"
@@ -187,6 +188,28 @@ def test_signal_section_skips_ytd_when_missing() -> None:
 def test_signal_section_renders_negative_ytd_with_sign() -> None:
     text = render_brief(_sample_data(ytd_score=Decimal("-3.10")))
     assert "-3.10%" in text
+
+
+@pytest.mark.unit
+def test_confidence_renders_with_rationale_when_present() -> None:
+    rationale = "Macro soutient, technique mixte, sentiment NUANCE."
+    text = render_brief(_sample_data(confidence=4, confidence_rationale=rationale))
+    assert f"Confiance          : 4/5 — {rationale}" in text
+
+
+@pytest.mark.unit
+def test_confidence_falls_back_to_bare_score_when_no_rationale() -> None:
+    text = render_brief(_sample_data(confidence=3, confidence_rationale=None))
+    assert "Confiance          : 3/5" in text
+    assert "Confiance          : 3/5 — " not in text
+
+
+@pytest.mark.unit
+def test_unsafe_confidence_rationale_fails_loud() -> None:
+    """The rationale is LLM-written like conclusion — must be guarded."""
+    leaky = "Tech baissier, net_score -1.000, climat NUANCE."
+    with pytest.raises(UnsafeBriefContentError, match="confidence_rationale"):
+        render_brief(_sample_data(confidence_rationale=leaky))
 
 
 @pytest.mark.unit

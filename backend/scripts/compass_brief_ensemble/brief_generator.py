@@ -187,7 +187,11 @@ def render_brief(data: "EnsembleBriefData") -> str:
     lines.append(SEP_THIN)
     lines.append(f"  Position           : {data.decision}")
     if data.confidence is not None:
-        lines.append(f"  Confiance          : {data.confidence}/5 (lecture humaine)")
+        rationale = (data.confidence_rationale or "").strip()
+        if rationale:
+            lines.append(f"  Confiance          : {data.confidence}/5 — {rationale}")
+        else:
+            lines.append(f"  Confiance          : {data.confidence}/5")
     if data.direction:
         lines.append(f"  Direction          : {data.direction}")
     ytd = _fmt_signed_pct(data.ytd_score)
@@ -206,6 +210,7 @@ def render_brief(data: "EnsembleBriefData") -> str:
     _assert_safe(data.eco, field_name="eco")
     _assert_safe(data.press_summary, field_name="press_summary")
     _assert_safe(data.conclusion, field_name="conclusion")
+    _assert_safe(data.confidence_rationale, field_name="confidence_rationale")
 
     # ── III — Éco & press review ──────────────────────────────────────────
     lines.append("III — ÉCO & PRESS REVIEW")

@@ -49,6 +49,7 @@ class EnsembleBriefData:
     # From pl_indicator_daily (ensemble row, enriched by cc-ensemble-explainer)
     decision: str
     confidence: int | None
+    confidence_rationale: str | None
     direction: str | None
     conclusion: str | None
     eco: str | None
@@ -120,7 +121,7 @@ def _read_ensemble_row(
     row = session.execute(
         text(
             """
-            SELECT decision, confidence, direction, conclusion, eco
+            SELECT decision, confidence, confidence_rationale, direction, conclusion, eco
             FROM pl_indicator_daily
             WHERE date = :date AND contract_id = :contract AND algorithm_version_id = :algo
             LIMIT 1
@@ -532,6 +533,7 @@ def read_brief_data(
         target_date=target_date,
         decision=ind["decision"],
         confidence=ind["confidence"],
+        confidence_rationale=ind.get("confidence_rationale"),
         direction=ind["direction"],
         conclusion=ind["conclusion"],
         eco=ind["eco"],

@@ -14,6 +14,9 @@ function makeDiag(
     net_score: 0.5,
     n_committed_specialists: 10,
     wrapper_active: false,
+    confidence: 4,
+    confidence_rationale:
+      'Tech + macro alignés, stocks neutres, climat NUANCE.',
     macro_direction: 0,
     macro_surprise: null,
     macro_half_life_days: null,
@@ -26,38 +29,43 @@ function makeDiag(
 describe('buildEnsembleExplanation', () => {
   it('produces 2 non-empty sentences for a clean OPEN signal', () => {
     const result = buildEnsembleExplanation(
-      makeDiag({ decision_wrapped: 'OPEN', net_score: 0.8 }),
+      makeDiag({ decision_wrapped: 'OPEN', n_committed_specialists: 9 }),
     );
     expect(result).toHaveLength(2);
     expect(result[0]).toBeTruthy();
     expect(result[1]).toBeTruthy();
   });
 
-  it("includes the formatted net score with sign in sentence 1", () => {
-    const r = buildEnsembleExplanation(makeDiag({ net_score: 0.42 }));
-    expect(r[0]).toContain('+0.42');
-  });
-
-  it('renders negative scores with explicit minus', () => {
+  it('leads sentence 1 with the consensus framing (no raw net_score)', () => {
     const r = buildEnsembleExplanation(
-      makeDiag({ decision_wrapped: 'HEDGE', net_score: -0.72 }),
+      makeDiag({ n_committed_specialists: 12 }),
     );
-    expect(r[0]).toContain('-0.72');
+    // Consensus label + number of engaged readings — never the raw net score.
+    expect(r[0]).toMatch(/consensus/i);
+    expect(r[0]).toMatch(/12 lectures engagées/);
+    expect(r[0]).not.toMatch(/score net/);
+    expect(r[0]).not.toMatch(/net_score/);
   });
 
-  it("labels conviction as 'forte' at |score| >= 0.6", () => {
-    const r = buildEnsembleExplanation(makeDiag({ net_score: 0.6 }));
-    expect(r[0].toLowerCase()).toContain('forte');
+  it('mentions the LLM confidence score when available', () => {
+    const r = buildEnsembleExplanation(makeDiag({ confidence: 4 }));
+    expect(r[0]).toContain('4/5');
+    expect(r[0].toLowerCase()).toContain('confiance');
   });
 
-  it("labels conviction as 'marquée' at |score| in [0.249, 0.6)", () => {
-    const r = buildEnsembleExplanation(makeDiag({ net_score: 0.3 }));
-    expect(r[0].toLowerCase()).toContain('marquée');
+  it("uses 'large consensus' label at n_committed >= 10", () => {
+    const r = buildEnsembleExplanation(makeDiag({ n_committed_specialists: 12 }));
+    expect(r[0].toLowerCase()).toContain('large consensus');
   });
 
-  it("labels conviction as 'mesurée' below 0.249", () => {
-    const r = buildEnsembleExplanation(makeDiag({ net_score: 0.1 }));
-    expect(r[0].toLowerCase()).toContain('mesurée');
+  it("uses 'consensus solide' at 7 <= n_committed < 10", () => {
+    const r = buildEnsembleExplanation(makeDiag({ n_committed_specialists: 8 }));
+    expect(r[0].toLowerCase()).toContain('consensus solide');
+  });
+
+  it("uses 'consensus fragile' at n_committed < 4", () => {
+    const r = buildEnsembleExplanation(makeDiag({ n_committed_specialists: 3 }));
+    expect(r[0].toLowerCase()).toContain('consensus fragile');
   });
 
   it('uses the OPEN/HEDGE/MONITOR FR labels', () => {
@@ -85,5 +93,44 @@ describe('buildEnsembleExplanation', () => {
   it('omits macro mention when direction is null', () => {
     const r = buildEnsembleExplanation(makeDiag({ macro_direction: null }));
     expect(r[0]).not.toMatch(/porteur|défavorable|neutre/);
+  });
+
+  it('returns the rationale verbatim as sentence 2 when present', () => {
+    const rationale = 'Macro soutient, technique mixte, sentiment NUANCE.';
+    const r = buildEnsembleExplanation(
+      makeDiag({ confidence_rationale: rationale }),
+    );
+    expect(r[1]).toBe(rationale);
+  });
+
+  it('falls back to a generic sentence 2 when rationale is empty', () => {
+    const r = buildEnsembleExplanation(
+      makeDiag({ confidence_rationale: null }),
+    );
+    expect(r[1]).toMatch(/[Cc]onvergence/);
+  });
+
+  it('never quotes engine internals (no soft-gate, wrapper, orchestrateur, net_score)', () => {
+    const r = buildEnsembleExplanation(
+      makeDiag({
+        decision_wrapped: 'HEDGE',
+        soft_gate_decision: 'OPEN',
+        wrapper_active: true,
+        confidence_rationale: 'Tech baissier, macro défavorable.',
+      }),
+    );
+    const joined = r.join(' ').toLowerCase();
+    for (const tok of [
+      'soft-gate',
+      'wrapper',
+      'orchestrateur',
+      'net_score',
+      'net score',
+      'détecteur',
+      'cluster winter',
+      'cluster spring',
+    ]) {
+      expect(joined).not.toContain(tok);
+    }
   });
 });

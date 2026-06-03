@@ -475,6 +475,19 @@ class EnsembleDiagnosticsResponse(BaseModel):
         ..., description="Three-way disagreement detector fired (inactive v1.0.0)"
     )
 
+    # LLM-produced confidence (1-5) + per-pillar rationale. Both NULL on
+    # legacy rows or days where cc-ensemble-explainer has not enriched yet.
+    confidence: Optional[int] = Field(
+        None, description="LLM confidence 1-5 derived from the brief rubric"
+    )
+    confidence_rationale: Optional[str] = Field(
+        None,
+        description=(
+            "Short string (≤200 chars) listing 2-3 pillars with their role "
+            "SOUTIEN / NEUTRE / NUANCE relative to the decision."
+        ),
+    )
+
     # Diagnostics (every column NULLABLE — see pipeline-continuity rule)
     running_acc_5d: Optional[float] = Field(None)
     realized_return_5d: Optional[float] = Field(None)

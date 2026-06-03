@@ -186,6 +186,10 @@ export interface EnsembleDiagnosticsResponse {
   fired_trend: boolean;
   fired_dispersion: boolean;
   fired_three_way: boolean;
+  /** LLM confidence (1-5), derived from the brief's rubric. */
+  confidence: number | null;
+  /** Short rationale listing pillars SOUTIEN / NEUTRE / NUANCE. */
+  confidence_rationale: string | null;
   running_acc_5d: number | null;
   realized_return_5d: number | null;
   winter_vote_signed: number | null;

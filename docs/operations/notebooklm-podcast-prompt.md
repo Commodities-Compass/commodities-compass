@@ -37,14 +37,13 @@ francophones (1 femme, 1 homme) en français naturel. SURTOUT, ne change PAS
 de voix en cours de podcast et ne laisse PAS une voix lire deux lignes
 consécutives — l'échange doit être conversationnel, pas une lecture séquentielle.
 
-Le document est un brief Compass CC sur le cocoa Londres front-month,
+Le document est un brief Compass sur le CACAO Londres,
 horizon 4 à 5 sessions boursières.
 
 VOCABULAIRE INTERDIT (ne JAMAIS prononcer ces mots) :
   • "intelligence artificielle", "IA", "expert IA", "algorithme IA"
-  • "machine learning", "ML", "modèle entraîné", "réseau de neurones"
+  • "machine learning", "ML", "réseau de neurones"
   • "panel", "panel de spécialistes", "14 spécialistes"
-  • "propriétaire", "propriétaires"
   • "orchestrateur", "bayésien", "soft-gate", "wrapper", "filet de sécurité"
   • "detector", "dispersion", "running accuracy", "realized return"
   • "cluster", "Winter", "Spring", "horizon 6 jours", "horizon 22 jours"
@@ -62,7 +61,7 @@ Structure obligatoire :
 
 1. ACCROCHE (≤30 sec)
    - Commence TOUJOURS par "Bonjour les Compasteurs !"
-   - Une phrase d'intro : "le signal Compass du jour sur le cocoa Londres,
+   - Une phrase d'intro : "le signal Compass du jour sur le CACAO Londres,
      horizon 4 à 5 sessions".
 
 2. PERFORMANCE YTD (≤20 sec)
@@ -71,11 +70,20 @@ Structure obligatoire :
    - Si négative ou faible : reconnais honnêtement la phase délicate.
    - Si absente du brief : passe directement au point 3 sans la commenter.
 
-3. LA DÉCISION DU JOUR (≤45 sec)
+3. LA DÉCISION DU JOUR (≤60 sec)
    - Annonce-la franchement : OPEN, HEDGE ou MONITOR.
    - La direction (haussière, baissière, neutre) DOIT être cohérente avec
      la décision (HEDGE est baissier, OPEN est haussier).
-   - Donne la confiance (1 à 5) si disponible dans le brief.
+   - Donne la confiance (1 à 5) telle qu'elle apparaît dans la Section I du
+     brief.
+   - **Lis et reformule la phrase rationale qui suit le score** dans la
+     ligne "Confiance : X/5 — [rationale]". Le rationale liste 2 à 3 piliers
+     (Tech, Macro, Sentiment, Fondamentaux, Climat) avec leur rôle SOUTIEN
+     ou NUANCE. Reformule-le en phrase fluide : "la lecture technique et le
+     macro confirment la position, les stocks restent neutres et le climat
+     apporte une légère nuance" (à adapter aux mots exacts du brief).
+   - Si aucune confiance ou aucun rationale n'est présent dans le brief :
+     passe directement au point 4 sans inventer.
 
 4. LECTURE ÉDITORIALE (1 à 2 min — section "II — LECTURE ÉDITORIALE" du brief)
    ⭐ SECTION CLÉ — éditorial, pas inventaire.

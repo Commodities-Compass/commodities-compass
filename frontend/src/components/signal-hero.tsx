@@ -29,13 +29,6 @@ function formatLongFR(iso: string | null): string {
   return `${d.getDate()} ${FR_MONTHS_LONG[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-function convictionWord(netScore: number): string {
-  const abs = Math.abs(netScore);
-  if (abs >= 0.6) return 'Forte';
-  if (abs >= 0.249) return 'Marquée';
-  return 'Mesurée';
-}
-
 function macroWord(direction: number | null | undefined): {
   label: string;
   arrow: string;
@@ -108,8 +101,14 @@ function yearOf(iso?: string | null): number | null {
 
 /* ===================================================================
  * Conviction breakdown — left "by the numbers" magazine sidebar.
- * 4 KPI tiles in a 4-col grid separated by 1px vertical hairlines.
- * Sharp corners, no card borders, no shadows. Magazine codes.
+ *
+ * Three KPI tiles, in this order:
+ *   1. Consensus  — n_committed_specialists / 14
+ *   2. Confiance  — LLM confidence 1-5 + rationale
+ *   3. Direction  — macro direction (porteur / défavorable / neutre)
+ *
+ * Engine internals (net_score, wrapper, soft-gate, detectors) intentionally
+ * hidden — they're audit-only and live in the brief redaction.
  * =================================================================== */
 function ConvictionBreakdown({
   diag,
@@ -119,16 +118,8 @@ function ConvictionBreakdown({
   signalColor: string;
 }) {
   const macro = macroWord(diag.macro_direction);
-  const scoreStr = `${diag.net_score >= 0 ? '+' : ''}${diag.net_score.toFixed(2)}`;
 
   const tiles = [
-    {
-      eyebrow: 'Conviction',
-      big: convictionWord(diag.net_score),
-      italic: true,
-      color: signalColor,
-      caption: `${scoreStr} score net`,
-    },
     {
       eyebrow: 'Consensus',
       big: `${diag.n_committed_specialists} / 14`,
@@ -137,20 +128,21 @@ function ConvictionBreakdown({
       caption: 'spécialistes engagés',
     },
     {
-      eyebrow: 'Macro',
+      eyebrow: 'Confiance',
+      big: diag.confidence != null ? `${diag.confidence} / 5` : '—',
+      italic: false,
+      color: signalColor,
+      caption:
+        diag.confidence_rationale && diag.confidence_rationale.trim().length > 0
+          ? diag.confidence_rationale
+          : 'rationale non disponible',
+    },
+    {
+      eyebrow: 'Direction',
       big: macro.label,
       italic: true,
       color: macro.color,
-      caption: `${macro.arrow} direction`,
-    },
-    {
-      eyebrow: 'Wrapper',
-      big: diag.wrapper_active ? 'Veto' : 'Pass',
-      italic: true,
-      color: diag.wrapper_active
-        ? 'var(--color-signal-hedge)'
-        : 'var(--color-signal-open)',
-      caption: diag.wrapper_active ? 'soft-gate révisé' : 'soft-gate retenu',
+      caption: `${macro.arrow} macro`,
     },
   ];
 
@@ -170,76 +162,82 @@ function ConvictionBreakdown({
         className="conviction-grid"
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
           borderTop: '1px solid var(--ink)',
           borderBottom: '1px solid var(--rule)',
         }}
       >
-        {tiles.map((tile, i) => (
-          <div
-            key={tile.eyebrow}
-            style={{
-              padding: '14px 16px 12px',
-              borderLeft: i === 0 ? 'none' : '1px solid var(--rule)',
-              minWidth: 0,
-              overflow: 'hidden',
-            }}
-          >
-            <Eyebrow as="div" tone="subtle" size={9} tracking="0.2em">
-              {tile.eyebrow}
-            </Eyebrow>
+        {tiles.map((tile, i) => {
+          // Allow the Confiance tile caption (rationale) to wrap onto 2 lines
+          // — it's a sentence, not a kicker. Others stay single-line.
+          const captionWraps = tile.eyebrow === 'Confiance';
+          return (
             <div
+              key={tile.eyebrow}
               style={{
-                fontFamily: 'var(--font-display)',
-                fontStyle: tile.italic ? 'italic' : 'normal',
-                fontWeight: 700,
-                // Lower clamp ceiling so long words like "Défavorable" stay
-                // inside their tile on intermediate widths (1100-1500px).
-                fontSize: 'clamp(18px, 1.9vw, 24px)',
-                lineHeight: 1.1,
-                color: tile.color,
-                marginTop: 6,
-                whiteSpace: 'nowrap',
+                padding: '14px 16px 12px',
+                borderLeft: i === 0 ? 'none' : '1px solid var(--rule)',
+                minWidth: 0,
                 overflow: 'hidden',
-                textOverflow: 'ellipsis',
               }}
             >
-              {tile.big}
+              <Eyebrow as="div" tone="subtle" size={9} tracking="0.2em">
+                {tile.eyebrow}
+              </Eyebrow>
+              <div
+                style={{
+                  fontFamily: 'var(--font-display)',
+                  fontStyle: tile.italic ? 'italic' : 'normal',
+                  fontWeight: 700,
+                  fontSize: 'clamp(18px, 1.9vw, 24px)',
+                  lineHeight: 1.1,
+                  color: tile.color,
+                  marginTop: 6,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {tile.big}
+              </div>
+              <div
+                className={captionWraps ? '' : 'uppercase'}
+                style={{
+                  fontFamily: captionWraps
+                    ? 'var(--font-sans)'
+                    : 'var(--font-mono)',
+                  fontSize: captionWraps ? 11 : 9,
+                  letterSpacing: captionWraps ? 'normal' : '0.15em',
+                  color: 'var(--ink-mid)',
+                  marginTop: 4,
+                  whiteSpace: captionWraps ? 'normal' : 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: captionWraps ? 'clip' : 'ellipsis',
+                  lineHeight: captionWraps ? 1.35 : 1.2,
+                  display: captionWraps ? '-webkit-box' : 'block',
+                  WebkitLineClamp: captionWraps ? 3 : undefined,
+                  WebkitBoxOrient: captionWraps ? 'vertical' : undefined,
+                }}
+              >
+                {tile.caption}
+              </div>
             </div>
-            <div
-              className="uppercase"
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: 9,
-                letterSpacing: '0.15em',
-                color: 'var(--ink-light)',
-                marginTop: 4,
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-              }}
-            >
-              {tile.caption}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <style>{`
-        /* Switch to 2x2 grid earlier — 4 columns on screens below ~1200px
-           leaves tiles too narrow for long words ("Défavorable", "Favorable"). */
-        @media (max-width: 1199px) {
+        /* Stack to a single column under ~720px so the rationale stays
+           readable on mobile. Above that, 3 columns is OK because the
+           caption can wrap. */
+        @media (max-width: 719px) {
           .conviction-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            grid-template-columns: 1fr !important;
           }
-          .conviction-grid > div:nth-child(2) {
-            border-left: 1px solid var(--rule) !important;
-          }
-          .conviction-grid > div:nth-child(3) {
+          .conviction-grid > div {
             border-left: none !important;
-            border-top: 1px solid var(--rule);
           }
-          .conviction-grid > div:nth-child(4) {
+          .conviction-grid > div:not(:first-child) {
             border-top: 1px solid var(--rule);
           }
         }

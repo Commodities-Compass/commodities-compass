@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.pipeline import (
     PlAlgorithmConfig,
+    PlIndicatorDaily,
     PlOrchestratorDecision,
     PlSpecialistPrediction,
 )
@@ -65,6 +66,27 @@ async def get_ensemble_diagnostics(
 
     computed_acc = await _compute_running_accuracy(db, target_date, contract_id)
 
+    # Pull the human-readable confidence + per-pillar rationale that
+    # cc-ensemble-explainer writes onto the ensemble row of pl_indicator_daily.
+    # Both columns are nullable on legacy rows / un-enriched days — the
+    # frontend handles None gracefully.
+    ind_q = select(
+        PlIndicatorDaily.confidence,
+        PlIndicatorDaily.confidence_rationale,
+    ).where(
+        PlIndicatorDaily.date == target_date,
+        PlIndicatorDaily.algorithm_version_id == algo_id,
+    )
+    if contract_id is not None:
+        ind_q = ind_q.where(PlIndicatorDaily.contract_id == contract_id)
+    ind_row = (await db.execute(ind_q.limit(1))).first()
+    confidence_int = (
+        int(ind_row[0]) if ind_row is not None and ind_row[0] is not None else None
+    )
+    confidence_rationale = (
+        str(ind_row[1]) if ind_row is not None and ind_row[1] else None
+    )
+
     return {
         "date": target_date.isoformat(),
         "algorithm_version": algo_name,
@@ -78,6 +100,8 @@ async def get_ensemble_diagnostics(
         "fired_trend": bool(row.fired_trend),
         "fired_dispersion": bool(row.fired_dispersion),
         "fired_three_way": bool(row.fired_three_way),
+        "confidence": confidence_int,
+        "confidence_rationale": confidence_rationale,
         # Our computed value takes precedence; fall back to the R&D field for
         # historical rows where the window isn't long enough yet.
         "running_acc_5d": computed_acc

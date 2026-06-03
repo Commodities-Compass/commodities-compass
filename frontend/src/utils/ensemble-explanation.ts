@@ -1,16 +1,40 @@
 import type { EnsembleDiagnosticsResponse } from '@/types/dashboard';
 
+/**
+ * Why-this-decision explanation, derived templated from the ensemble row.
+ * Mirrors the new conviction breakdown order : Consensus → Confiance → Direction.
+ *
+ * Editorial rules (aligned with the brief redaction policy) :
+ *   - never quote engine internals : no `net_score`, no `soft-gate`, no
+ *     `wrapper`, no `orchestrateur`, no `running_acc_5d`. Those live in the
+ *     audit DB, not in the user-facing summary.
+ *   - never name the panel size explicitly ("14 specialists") — speak in
+ *     terms of lectures engagées vs en retrait.
+ *   - lead with consensus (how many lectures engaged), then confidence (the
+ *     LLM rubric verdict + per-pillar rationale), then macro direction.
+ *
+ * Returns 2 short sentences. Caller (SignalHero) places them in the
+ * "Pourquoi cette décision" sidebar.
+ */
 function decisionFR(d: 'OPEN' | 'HEDGE' | 'MONITOR'): string {
   if (d === 'OPEN') return 'acheteuse';
   if (d === 'HEDGE') return 'défensive';
   return 'attentiste';
 }
 
-function convictionLabel(netScore: number): string {
-  const abs = Math.abs(netScore);
-  if (abs >= 0.6) return 'forte';
-  if (abs >= 0.249) return 'marquée';
-  return 'mesurée';
+function consensusLabel(n: number): string {
+  if (n >= 10) return 'large consensus';
+  if (n >= 7) return 'consensus solide';
+  if (n >= 4) return 'consensus partiel';
+  return 'consensus fragile';
+}
+
+function confidenceLabel(score: number): string {
+  if (score >= 5) return 'très forte';
+  if (score >= 4) return 'forte';
+  if (score >= 3) return 'modérée';
+  if (score >= 2) return 'mesurée';
+  return 'faible';
 }
 
 function macroFR(direction: number | null | undefined): string | null {
@@ -20,62 +44,52 @@ function macroFR(direction: number | null | undefined): string | null {
   return 'neutre';
 }
 
-/**
- * 2 plain-French sentences derived from the ensemble diagnostics. Templated,
- * no LLM. Consumed by SignalHero.
- *
- * Tone: confidence-first. The explanation always frames the result as
- * "our orchestrator validates / calibrates the decision", never defensive.
- *
- * The 2nd sentence compares decision_wrapped vs soft_gate_decision to detect
- * an actual downgrade — wrapper_active=True alone can mean "Compass override
- * released a fired detector", which is positive for the user.
- */
-export function buildEnsembleExplanation(diag: EnsembleDiagnosticsResponse): string[] {
+export function buildEnsembleExplanation(
+  diag: EnsembleDiagnosticsResponse,
+): string[] {
   const sentences: string[] = [];
-
-  const score = diag.net_score;
-  const scoreStr = `${score >= 0 ? '+' : ''}${score.toFixed(2)}`;
-  const conviction = convictionLabel(score);
   const decision = decisionFR(diag.decision_wrapped);
+
+  // S1 — Consensus + Confidence : lead with how many lectures engaged and
+  // how strong the verdict is. No raw score, no panel size as a number
+  // mentioned explicitly beyond "X engagées".
+  const consensus = consensusLabel(diag.n_committed_specialists);
   const macro = macroFR(diag.macro_direction);
+  const macroClause =
+    macro != null
+      ? macro === 'porteur'
+        ? ' Contexte macro porteur.'
+        : macro === 'défavorable'
+          ? ' Contexte macro défavorable.'
+          : ' Contexte macro neutre.'
+      : '';
 
-  // S1 — lead with conviction, mention specialists engaged + macro context
-  const macroClause = macro
-    ? macro === 'porteur'
-      ? ' Contexte macro porteur.'
-      : macro === 'défavorable'
-        ? ' Contexte macro défavorable.'
-        : ' Contexte macro neutre.'
-    : '';
-  sentences.push(
-    `Conviction ${conviction} sur la position ${decision} (score net ${scoreStr}, ${diag.n_committed_specialists} spécialistes engagés sur 14).${macroClause}`,
-  );
-
-  // S2 — algo confidence layer: detector / wrapper / orchestrator outcome
-  const decisionChanged = diag.decision_wrapped !== diag.soft_gate_decision;
-  const anyDetectorFired =
-    diag.fired_dispersion ||
-    diag.fired_running_acc ||
-    diag.fired_trend ||
-    diag.fired_three_way;
-
-  if (decisionChanged) {
+  if (diag.confidence != null) {
+    const conf = confidenceLabel(diag.confidence);
     sentences.push(
-      `Notre orchestrateur a calibré la décision (soft-gate ${diag.soft_gate_decision} → ${diag.decision_wrapped}) pour préserver la performance face à des signaux ambigus.`,
-    );
-  } else if (anyDetectorFired) {
-    const acc =
-      diag.running_acc_5d != null ? Math.round(diag.running_acc_5d * 100) : null;
-    const accStr = acc != null ? ` ${acc}%` : '';
-    sentences.push(
-      `Nos détecteurs ont validé la robustesse du signal — la précision récente${accStr} sur 5 jours confirme la décision.`,
+      `${capitalize(consensus)} sur la position ${decision} — ${diag.n_committed_specialists} lectures engagées, confiance ${conf} (${diag.confidence}/5).${macroClause}`,
     );
   } else {
     sentences.push(
-      `Convergence des signaux techniques et macro — l'orchestrateur Compass livre la décision avec haute fiabilité.`,
+      `${capitalize(consensus)} sur la position ${decision} — ${diag.n_committed_specialists} lectures engagées.${macroClause}`,
+    );
+  }
+
+  // S2 — Per-pillar rationale when available, else a generic convergence
+  // statement. Never mentions wrapper / orchestrateur / detectors.
+  const rationale = (diag.confidence_rationale ?? '').trim();
+  if (rationale.length > 0) {
+    sentences.push(rationale);
+  } else {
+    sentences.push(
+      `Convergence des signaux techniques et fondamentaux sur la lecture du jour.`,
     );
   }
 
   return sentences;
+}
+
+function capitalize(s: string): string {
+  if (!s) return s;
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }

@@ -44,7 +44,7 @@ export interface ChartDataPoint {
   rsi_14d?: number | null;
   macd?: number | null;
   stock_us?: number | null;
-  com_net_us?: number | null;
+  com_net_eu?: number | null;
 }
 
 export interface ChartDataResponse {

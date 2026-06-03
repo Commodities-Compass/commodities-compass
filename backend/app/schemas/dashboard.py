@@ -256,7 +256,9 @@ class ChartDataPoint(BaseModel):
     rsi_14d: Optional[float] = Field(None, description="RSI 14-day")
     macd: Optional[float] = Field(None, description="MACD")
     stock_us: Optional[float] = Field(None, description="US stock levels")
-    com_net_us: Optional[float] = Field(None, description="Commercial net US")
+    com_net_eu: Optional[float] = Field(
+        None, description="ICE EU commercial (producer/merchant) net positioning"
+    )
 
 
 class ChartDataResponse(BaseModel):

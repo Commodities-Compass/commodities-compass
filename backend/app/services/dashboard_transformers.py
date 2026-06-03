@@ -129,7 +129,7 @@ def transform_to_chart_data_response(
             rsi_14d=point["rsi_14d"],
             macd=point["macd"],
             stock_us=point["stock_us"],
-            com_net_us=point["com_net_us"],
+            com_net_eu=point["com_net_eu"],
         )
         for point in chart_data
     ]

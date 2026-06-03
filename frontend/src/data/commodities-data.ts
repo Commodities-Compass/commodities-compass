@@ -502,9 +502,9 @@ export const METRIC_OPTIONS = [
     color: "hsl(var(--chart-1))",
   },
   {
-    value: "com_net_us",
-    label: "COM NET US",
-    dataKey: "com_net_us",
+    value: "com_net_eu",
+    label: "COM NET EU",
+    dataKey: "com_net_eu",
     color: "hsl(var(--chart-2))",
   },
 ];

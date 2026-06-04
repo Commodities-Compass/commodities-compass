@@ -67,8 +67,11 @@ export default function WeatherUpdateCard({ targetDate, className }: WeatherUpda
             borderLeft: '3px solid var(--ink)',
           }}
         >
-          <Eyebrow as="div" tracking="0.2em" style={{ marginBottom: 8 }}>
+          <Eyebrow as="div" tracking="0.2em" style={{ marginBottom: 2 }}>
             Bulletin du jour
+          </Eyebrow>
+          <Eyebrow as="div" tone="subtle" size={9} tracking="0.18em" style={{ marginBottom: 12 }}>
+            Horizon — conditions mesurées (Open-Meteo, ~48 h)
           </Eyebrow>
           {data.description
             .split(/\n{2,}/)

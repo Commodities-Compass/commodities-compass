@@ -4,6 +4,7 @@ import { formatFinancialText } from '@/utils/format-financial-text';
 import SentimentGauges from '@/components/sentiment-gauges';
 import EditorialTabs from '@/components/editorial-tabs';
 import SectionHeader from '@/components/section-header';
+import { Eyebrow } from '@/components/editorial';
 
 interface NewsCardProps {
   targetDate?: string;
@@ -163,6 +164,18 @@ export default function NewsCard({ targetDate, className }: NewsCardProps) {
   return (
     <section className={className} style={{ padding: '24px 0' }}>
       <SectionHeader numeral="IV" title="Press Review" />
+
+      {/* Horizon disclaimer — forward-looking risk/sentiment, distinct from the
+          current-conditions Weather section (avoids the "drought vs normal" read). */}
+      <Eyebrow
+        as="p"
+        tone="subtle"
+        size={9}
+        tracking="0.18em"
+        style={{ marginTop: -10, marginBottom: 22 }}
+      >
+        Horizon — prospectif · risque et sentiment de marché (mois à venir)
+      </Eyebrow>
 
       {/* Sentiment thematic gauges */}
       <div style={{ marginBottom: 28 }}>

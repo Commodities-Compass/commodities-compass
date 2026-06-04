@@ -38,6 +38,9 @@ export default function CampaignBlock({ campaign, campaignHealth, seasons }: Cam
           >
             Bilan saisonnier cumulé
           </div>
+          <Eyebrow as="div" tone="subtle" size={9} tracking="0.18em" style={{ marginTop: 4 }}>
+            Horizon — saisonnier · cumul de campagne
+          </Eyebrow>
         </div>
         <div className="text-right">
           <Eyebrow as="div" tone="subtle" size={9} tracking="0.22em" style={{ marginBottom: 2 }}>

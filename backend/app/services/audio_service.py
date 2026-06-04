@@ -7,6 +7,8 @@ import time
 from datetime import date, datetime, timezone
 from typing import Optional
 
+import google_auth_httplib2
+import httplib2
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -45,6 +47,7 @@ class AudioService:
     def __init__(self):
         """Initialize Google Drive service."""
         self.drive_service = None
+        self.credentials = None
         self._file_cache: dict[str, tuple[Optional[dict], float]] = {}
         self._initialize_drive_service()
 
@@ -68,17 +71,35 @@ class AudioService:
                 return
 
             credentials_dict = json.loads(settings.GOOGLE_DRIVE_CREDENTIALS_JSON)
-            credentials = service_account.Credentials.from_service_account_info(
+            self.credentials = service_account.Credentials.from_service_account_info(
                 credentials_dict,
                 scopes=["https://www.googleapis.com/auth/drive.readonly"],
             )
 
-            self.drive_service = build("drive", "v3", credentials=credentials)
+            self.drive_service = build(
+                "drive", "v3", credentials=self.credentials, cache_discovery=False
+            )
             logger.info("Google Drive service initialized successfully")
 
         except Exception as e:
             logger.error("Failed to initialize Google Drive service: %s", e)
             self.drive_service = None
+            self.credentials = None
+
+    def _authorized_http(self) -> google_auth_httplib2.AuthorizedHttp:
+        """Build a fresh, single-use HTTP transport for one Drive call.
+
+        google-api-python-client rides on httplib2, whose ``Http`` object keeps
+        TLS connections alive on the service instance for the whole process
+        lifetime and is not thread-safe. Because audio lookups are cache-gated
+        (rare, long-idle), Google closes the idle keep-alive socket; the next
+        reuse reads EOF → ``SSL: UNEXPECTED_EOF_WHILE_READING``. Handing each
+        ``execute()`` its own ``Http`` removes both the stale reuse and the
+        cross-thread sharing (calls run in ``asyncio.to_thread``).
+        """
+        return google_auth_httplib2.AuthorizedHttp(
+            self.credentials, http=httplib2.Http(timeout=30)
+        )
 
     async def get_audio_metadata(
         self,
@@ -155,15 +176,18 @@ class AudioService:
             )
 
             # Run sync Google API in thread to avoid blocking event loop.
-            # num_retries=3 handles transient network errors (SSL EOF, broken
-            # pipe, 5xx) with exponential backoff via the google-api SDK.
+            # A fresh per-call Http (see _authorized_http) prevents reusing a
+            # stale keep-alive socket; num_retries=3 still covers transient
+            # 5xx/network blips via the SDK's exponential backoff.
             request = self.drive_service.files().list(
                 q=query,
                 fields="files(id, name, mimeType)",
                 supportsAllDrives=True,
                 includeItemsFromAllDrives=True,
             )
-            response = await asyncio.to_thread(request.execute, num_retries=3)
+            response = await asyncio.to_thread(
+                request.execute, num_retries=3, http=self._authorized_http()
+            )
 
             files = response.get("files", [])
 

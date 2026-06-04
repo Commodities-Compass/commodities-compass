@@ -463,6 +463,7 @@ class TestAudioServiceErrorDiscrimination:
 
         service = AudioService.__new__(AudioService)
         service.drive_service = MagicMock()
+        service.credentials = MagicMock()
         service._file_cache = {}
 
         from googleapiclient.errors import HttpError
@@ -482,6 +483,7 @@ class TestAudioServiceErrorDiscrimination:
 
         service = AudioService.__new__(AudioService)
         service.drive_service = MagicMock()
+        service.credentials = MagicMock()
         service._file_cache = {}
 
         from googleapiclient.errors import HttpError
@@ -493,3 +495,44 @@ class TestAudioServiceErrorDiscrimination:
         with patch("asyncio.to_thread", side_effect=error):
             with pytest.raises(HttpError):
                 asyncio.run(service.get_audio_file_info(date(2026, 4, 28)))
+
+    def test_fresh_http_per_call_no_shared_connection(self):
+        """Regression: each Drive lookup uses its own httplib2 transport.
+
+        A shared, long-lived connection on the singleton caused
+        `SSL: UNEXPECTED_EOF_WHILE_READING` when Google closed the idle
+        keep-alive socket (Sentry 102892766 / 116534552 / 116534547).
+        """
+        from app.services.audio_service import AudioService
+
+        service = AudioService.__new__(AudioService)
+        service.drive_service = MagicMock()
+        service.credentials = MagicMock()
+        service._file_cache = {}
+
+        captured_http = []
+
+        async def fake_to_thread(func, *args, **kwargs):
+            captured_http.append(kwargs.get("http"))
+            return {
+                "files": [
+                    {
+                        "id": "x",
+                        "name": "20260428-CompassAudio.wav",
+                        "mimeType": "audio/wav",
+                    }
+                ]
+            }
+
+        with patch("asyncio.to_thread", side_effect=fake_to_thread):
+            # Distinct dates → two real lookups (no cache short-circuit).
+            asyncio.run(service.get_audio_file_info(date(2026, 4, 28)))
+            asyncio.run(service.get_audio_file_info(date(2026, 4, 29)))
+
+        assert len(captured_http) == 2
+        assert all(h is not None for h in captured_http), (
+            "execute() must receive an explicit per-call http transport"
+        )
+        assert captured_http[0] is not captured_http[1], (
+            "each call must get a fresh transport (no shared connection)"
+        )

@@ -115,8 +115,12 @@ def main() -> int:
         weather_data = fetch_weather()
         logger.info("Weather data: %d chars", len(weather_data))
 
-        # Step 2: Build campaign memory + Harmattan context from DB
-        logger.info("Step 2: Loading campaign memory...")
+        # Step 2: Refresh seasonal scores, then load campaign memory from DB.
+        # The seasonal scores ARE the campaign-memory source (and feed the
+        # dashboard CampaignBlock). Recompute the current campaign first —
+        # idempotent upsert — so the LLM context and the dashboard read fresh
+        # values instead of whatever the last manual --bootstrap-memory left.
+        logger.info("Step 2: Refreshing + loading campaign memory...")
 
         from scripts.meteo_agent.seasonal_memory import (
             build_campaign_memory,
@@ -125,16 +129,23 @@ def main() -> int:
             get_campaign_harmattan_days,
         )
 
-        campaign_memory = ""
-        harmattan_context = ""
         # P2b: campaign membership keyed on target_date (upcoming session)
         # rather than today; matters on month-boundary eve-of-Nov-1 cases.
         campaign = get_campaign(target_date)
+
+        # Recompute the current campaign's seasonal scores before reading them,
+        # so the LLM context + dashboard CampaignBlock are fresh (not weeks
+        # stale). Skipped on dry-run since it upserts. Isolated — see helper.
+        if not args.dry_run:
+            _refresh_seasonal_scores(target_date)
+
+        campaign_memory = ""
+        harmattan_context = ""
         try:
             from scripts.db import get_session
 
             with get_session() as session:
-                campaign_memory = build_campaign_memory(session)
+                campaign_memory = build_campaign_memory(session, target_date)
                 harmattan_days = get_campaign_harmattan_days(session, campaign)
                 # P2b: harmattan/seasonal context aligned with target_date.month.
                 harmattan_context = build_harmattan_context(
@@ -270,6 +281,38 @@ def main() -> int:
         logger.exception("Unexpected error: %s", e)
         sentry_sdk.capture_exception(e)
         return 1
+
+
+def _refresh_seasonal_scores(target_date: date_type) -> None:
+    """Recompute + upsert the current campaign's seasonal scores.
+
+    The seasonal scores are the campaign-memory source (LLM context) and feed
+    the dashboard's CampaignBlock. Without this, scores only ever change on a
+    manual ``--bootstrap-memory`` run and silently go stale.
+
+    Isolated by design: a failure (e.g. Open-Meteo archive outage) is logged
+    loud to Sentry but swallowed here, so the caller still writes the daily
+    weather observation (the load-bearing product). The idempotent upsert
+    self-heals on the next run; last good scores remain in the meantime.
+    """
+    from scripts.db import get_session
+    from scripts.meteo_agent.seasonal_memory import bootstrap_campaign, get_campaign
+
+    try:
+        with get_session() as session:
+            bootstrap_campaign(session, target_date)
+        logger.info(
+            "Seasonal scores refreshed for campaign %s", get_campaign(target_date)
+        )
+    except Exception as refresh_err:
+        logger.error(
+            "Seasonal score refresh failed (continuing, scores stale): %s",
+            refresh_err,
+        )
+        sentry_sdk.capture_message(
+            f"Meteo agent seasonal refresh failed: {refresh_err}",
+            level="error",
+        )
 
 
 def _run_bootstrap() -> int:

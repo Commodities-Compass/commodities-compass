@@ -661,19 +661,19 @@ async def get_chart_data(
     chart_rows = list(rows)
 
     # Weekly series — forward-filled per chart date from the dedicated
-    # tables. stock_us and com_net_eu are toggleable chart metrics in the
+    # tables. stock_eu and com_net_eu are toggleable chart metrics in the
     # frontend (commodities-data.ts); we keep them in the payload so the
     # chart doesn't lose options, but they're now sourced from
-    # pl_stock_observation (region='us') and pl_cot_eu_weekly (ICE Europe
-    # producer/merchant net — matches the London cocoa #7 contract).
+    # pl_stock_observation (region='eu') and pl_cot_eu_weekly (ICE Europe
+    # producer/merchant net — both match the London cocoa #7 contract).
     if chart_rows:
-        stock_us_series = await _build_forward_fill_series(
+        stock_eu_series = await _build_forward_fill_series(
             db,
             chart_dates=[r.date for r in chart_rows],
             table=PlStockObservation,
             date_col=PlStockObservation.report_date,
             extra_where=[
-                PlStockObservation.region == "us",
+                PlStockObservation.region == "eu",
                 PlStockObservation.contract_market == "cocoa",
             ],
             value_col=PlStockObservation.value_tonnes,
@@ -687,7 +687,7 @@ async def get_chart_data(
             value_col=PlCotEuWeekly.prod_merc_net,
         )
     else:
-        stock_us_series, com_net_series = {}, {}
+        stock_eu_series, com_net_series = {}, {}
 
     return [
         {
@@ -697,7 +697,7 @@ async def get_chart_data(
             "open_interest": float(row.oi) if row.oi is not None else None,
             "rsi_14d": float(row.rsi_14d) if row.rsi_14d is not None else None,
             "macd": float(row.macd) if row.macd is not None else None,
-            "stock_us": stock_us_series.get(row.date),
+            "stock_eu": stock_eu_series.get(row.date),
             "com_net_eu": com_net_series.get(row.date),
         }
         for row in chart_rows

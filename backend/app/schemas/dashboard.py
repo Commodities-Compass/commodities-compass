@@ -255,7 +255,9 @@ class ChartDataPoint(BaseModel):
     open_interest: Optional[float] = Field(None, description="Open interest")
     rsi_14d: Optional[float] = Field(None, description="RSI 14-day")
     macd: Optional[float] = Field(None, description="MACD")
-    stock_us: Optional[float] = Field(None, description="US stock levels")
+    stock_eu: Optional[float] = Field(
+        None, description="ICE Europe certified cocoa stocks (tonnes)"
+    )
     com_net_eu: Optional[float] = Field(
         None, description="ICE EU commercial (producer/merchant) net positioning"
     )

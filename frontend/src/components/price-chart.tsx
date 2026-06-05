@@ -209,7 +209,7 @@ export default function PriceChart({
   const visibleData = useMemo(() => chartResponse?.data ?? [], [chartResponse?.data]);
 
   const yAxisDomain = useMemo<[number | string, number | string]>(() => {
-    const tight = ['close', 'stock_us'];
+    const tight = ['close', 'stock_eu'];
     if (!tight.includes(selectedMetric) || visibleData.length === 0) return [0, 'auto'];
     const values = visibleData
       .map((d) => d[metricConfig.dataKey as keyof typeof d] as number)

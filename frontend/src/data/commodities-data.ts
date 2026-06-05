@@ -484,9 +484,9 @@ export const METRIC_OPTIONS = [
     color: "hsl(var(--chart-3))" 
   },
   {
-    value: "stock_us",
-    label: "STOCK US",
-    dataKey: "stock_us",
+    value: "stock_eu",
+    label: "STOCK EU",
+    dataKey: "stock_eu",
     color: "hsl(var(--chart-4))",
   },
   {

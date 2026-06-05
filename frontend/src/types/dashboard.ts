@@ -43,7 +43,7 @@ export interface ChartDataPoint {
   open_interest?: number | null;
   rsi_14d?: number | null;
   macd?: number | null;
-  stock_us?: number | null;
+  stock_eu?: number | null;
   com_net_eu?: number | null;
 }
 

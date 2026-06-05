@@ -1,0 +1,322 @@
+<!--
+  Compass CC — Auth0 Universal Login Page Template
+  ===================================================
+  Layout: editorial split (ink cover left, Auth0 widget right)
+  Source mockup: mockup/login/auth0-B-split-cover.html
+
+  HOW TO DEPLOY (Auth0 dashboard):
+    1. Auth0 dashboard → Branding → Universal Login → Customize
+    2. "Page Templates" tab → toggle ON → paste this file's content
+    3. Click "Try" to preview, "Save" to publish
+
+  REQUIRED LIQUID PLACEHOLDERS:
+    {%- auth0:head -%}    must be present once in <head>
+    {%- auth0:widget -%}  must be present exactly once in <body>
+
+  DEPENDS ON (set in dashboard → Branding → Universal Login → Customize → "Settings"):
+    - branding.logo_url     = compass-icon (upload via Logo URL field)
+    - Page background       = #F5F5F5
+    - Widget background     = #FFFFFF
+    - Widget border         = 1px solid #E5E5E5
+    - Widget border radius  = 12
+    - Header text font      = Inter (or Playfair Display if available)
+    - Body text font        = Inter
+    - Primary button bg     = #1A1A1A   (CTA + accent links)
+    - Primary button text   = #FFFFFF
+    - Button border radius  = 6
+    - Input border radius   = 6
+
+  REQUIRES Auth0 plan: Essential or higher (Page Templates feature).
+  If on Free plan, only the "Settings" tab branding will apply; this
+  template will be ignored.
+-->
+<!DOCTYPE html>
+<html lang="{{locale}}">
+<head>
+  {%- auth0:head -%}
+
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,500;0,900;1,400;1,500&family=IBM+Plex+Mono:wght@400;500&display=swap"
+    rel="stylesheet"
+  />
+
+  <style>
+    /* ====================================================
+       TOKENS — mirrors frontend/src/index.css (light only)
+       ==================================================== */
+    :root {
+      --paper: #FFFFFF;
+      --paper-off: #F5F5F5;
+      --ink: #1A1A1A;
+      --ink-dark: #333333;
+      --ink-mid: #666666;
+      --ink-light: #999999;
+      --rule: #E5E5E5;
+      --font-sans: "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      --font-display: "Playfair Display", Georgia, serif;
+      --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+    }
+
+    /* ====================================================
+       RESET — split body grid (NOT _widget-auto-layout)
+       ==================================================== */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: var(--font-sans);
+      font-feature-settings: "cv11", "ss01";
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      background: var(--paper);
+      color: var(--ink);
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      overflow-x: hidden;
+    }
+
+    /* ====================================================
+       LEFT: ink editorial cover
+       ==================================================== */
+    .cc-cover {
+      background: var(--ink);
+      color: var(--paper);
+      padding: 32px 48px;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 24px;
+      position: relative;
+      overflow: hidden;
+      min-height: 100vh;
+    }
+    .cc-cover::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        repeating-linear-gradient(0deg, rgba(255,255,255,0.025) 0 1px, transparent 1px 32px),
+        radial-gradient(700px 500px at 100% 0%, rgba(255,255,255,0.05), transparent 65%);
+      pointer-events: none;
+    }
+
+    .cc-cover-top {
+      display: flex; justify-content: space-between; align-items: center;
+      position: relative; z-index: 1;
+      padding-bottom: 14px;
+      border-bottom: 1px solid rgba(255,255,255,0.15);
+    }
+    .cc-cover-lockup { display: flex; align-items: center; gap: 12px; }
+    .cc-cover-lockup img {
+      width: 24px; height: 24px;
+      filter: invert(1) brightness(2);
+    }
+    .cc-cover-lockup .cc-wordmark {
+      font-family: var(--font-display);
+      font-weight: 900; font-size: 18px;
+      letter-spacing: 0.08em;
+    }
+    .cc-cover-stamp {
+      font-family: var(--font-mono);
+      font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase;
+      color: rgba(255,255,255,0.55);
+    }
+
+    .cc-cover-quote {
+      align-self: center;
+      max-width: 460px;
+      position: relative; z-index: 1;
+    }
+    .cc-quote-eyebrow {
+      font-family: var(--font-mono);
+      font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase;
+      color: rgba(255,255,255,0.45);
+      margin-bottom: 22px;
+      display: inline-flex; align-items: center; gap: 12px;
+    }
+    .cc-quote-eyebrow::before {
+      content: ""; width: 24px; height: 1px;
+      background: rgba(255,255,255,0.45);
+    }
+    .cc-cover blockquote {
+      font-family: var(--font-display);
+      font-weight: 400;
+      font-size: clamp(26px, 3.2vw, 38px);
+      line-height: 1.14; letter-spacing: -0.02em;
+      color: var(--paper);
+    }
+    .cc-cover blockquote em { font-style: italic; }
+    .cc-quote-attrib {
+      margin-top: 22px;
+      display: flex; align-items: center; gap: 12px;
+      font-family: var(--font-mono);
+      font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+      color: rgba(255,255,255,0.5);
+    }
+    .cc-quote-attrib .em { color: var(--paper); font-weight: 500; }
+    .cc-quote-attrib .dot {
+      width: 4px; height: 4px; border-radius: 999px;
+      background: rgba(255,255,255,0.3);
+    }
+
+    .cc-cover-foot {
+      position: relative; z-index: 1;
+      padding-top: 14px;
+      border-top: 1px solid rgba(255,255,255,0.15);
+      display: flex; justify-content: space-between; align-items: center;
+      font-family: var(--font-mono);
+      font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+      color: rgba(255,255,255,0.5);
+    }
+    .cc-cover-foot .cc-left { display: inline-flex; gap: 18px; }
+
+    /* ====================================================
+       RIGHT: paper widget slot (Auth0 widget is injected here)
+       ==================================================== */
+    .cc-right {
+      background: var(--paper-off);
+      padding: 24px;
+      position: relative;
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh;
+    }
+    .cc-paper-stamp {
+      position: absolute; top: 18px; right: 24px;
+      font-family: var(--font-mono);
+      font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase;
+      color: var(--ink-light);
+    }
+    .cc-paper-terms {
+      position: absolute; bottom: 18px; left: 24px; right: 24px;
+      display: flex; justify-content: space-between; align-items: center;
+      font-family: var(--font-mono);
+      font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase;
+      color: var(--ink-light);
+    }
+    .cc-paper-terms a {
+      color: var(--ink-mid); text-decoration: none;
+      border-bottom: 1px solid transparent;
+      transition: border-color 0.15s ease;
+    }
+    .cc-paper-terms a:hover { border-color: var(--ink-mid); }
+    .cc-paper-terms .cc-links { display: flex; gap: 16px; }
+
+    /* Wraps Auth0 widget + the Contact-us line (replacing Sign-up) */
+    .cc-widget-slot {
+      display: flex; flex-direction: column;
+      gap: 14px;
+      width: 100%;
+      max-width: 400px;
+    }
+
+    /* Light tweaks to nudge the Auth0 widget toward Compass charter.
+       Most styling is driven by dashboard "Branding" settings; these
+       rules only override what the dashboard cannot reach. */
+    .cc-widget-slot main { width: 100%; max-width: 100%; margin: 0; }
+    .cc-widget-slot h1 {
+      font-family: var(--font-display) !important;
+      font-weight: 500 !important;
+      font-style: italic !important;
+      font-size: 28px !important;
+      letter-spacing: -0.015em !important;
+      color: var(--ink) !important;
+    }
+
+    /* Contact-us replacement for the (disabled) Sign-up link */
+    .cc-contact-us {
+      text-align: center;
+      font-size: 13px;
+      color: var(--ink-mid);
+    }
+    .cc-contact-us a {
+      color: var(--ink); text-decoration: none;
+      font-weight: 500;
+      border-bottom: 1px solid var(--rule);
+      padding-bottom: 1px;
+    }
+    .cc-contact-us a:hover { border-color: var(--ink); }
+
+    /* ====================================================
+       RESPONSIVE — stack the split on mobile
+       ==================================================== */
+    @media (max-width: 980px) {
+      body { grid-template-columns: 1fr; }
+      .cc-cover { padding: 28px 22px; min-height: 320px; }
+      .cc-right { padding: 32px 22px 64px; min-height: 0; }
+      .cc-paper-stamp { display: none; }
+      .cc-cover blockquote { font-size: 24px; }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ============ LEFT: COMPASS COVER ============ -->
+  <aside class="cc-cover">
+    <div class="cc-cover-top">
+      <div class="cc-cover-lockup">
+        <img
+          src="{{ branding.logo_url | default: 'https://app.com-compass.com/compass-icon.png' }}"
+          alt="{{ tenant.name | default: 'Compass' }}"
+        />
+        <span class="cc-wordmark">COMPASS CC</span>
+      </div>
+      <div class="cc-cover-stamp">{{ tenant.name | default: 'auth.com-compass.com' }}</div>
+    </div>
+
+    <div class="cc-cover-quote">
+      <div class="cc-quote-eyebrow">A note from the desk</div>
+      <blockquote>
+        The bell rings the same for everyone.<br/>
+        <em>Conviction</em> is what changes.
+      </blockquote>
+      <div class="cc-quote-attrib">
+        <span class="em">Compass Intelligence Desk</span>
+        <span class="dot"></span>
+        <span>Cocoa markets, since 2025</span>
+      </div>
+    </div>
+
+    <div class="cc-cover-foot">
+      <div class="cc-left">
+        <span>Mon&ndash;Fri</span>
+        <span>Published 19:30 UTC</span>
+      </div>
+      <span>ICE Cocoa #7</span>
+    </div>
+  </aside>
+
+  <!-- ============ RIGHT: AUTH0 WIDGET + CONTACT US ============ -->
+  <section class="cc-right">
+    <div class="cc-paper-stamp">Reader's pass</div>
+
+    <div class="cc-widget-slot">
+      {%- auth0:widget -%}
+
+      <!--
+        Replaces the "Don't have an account? Sign up" link.
+        Sign-up is disabled at the Database Connection level
+        (Authentication → Database → Username-Password-Authentication
+         → Settings → "Disable Sign Ups" = ON), which automatically
+        hides the widget's signup link. We surface a manual contact
+        path here.
+      -->
+      <p class="cc-contact-us">
+        No account yet?
+        <a href="mailto:hedi@com-compass.com?subject=Compass%20access%20request">Contact us</a>
+      </p>
+    </div>
+
+    <div class="cc-paper-terms">
+      <span>&copy; 2026 Compass</span>
+      <span class="cc-links">
+        <a href="https://com-compass.com/terms" target="_blank" rel="noopener">Terms</a>
+        <a href="https://com-compass.com/privacy" target="_blank" rel="noopener">Privacy</a>
+      </span>
+    </div>
+  </section>
+
+</body>
+</html>

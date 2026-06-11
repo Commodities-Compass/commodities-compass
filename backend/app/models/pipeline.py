@@ -318,6 +318,9 @@ class PlSeasonalScore(Base):
     days_stress_temp: Mapped[Optional[int]] = mapped_column(INTEGER)
     avg_tmax: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(4, 1))
     harmattan_days: Mapped[Optional[int]] = mapped_column(INTEGER)
+    # Acute excess-water signal (days with precip > HEAVY_RAIN_MM_DAY). Nullable:
+    # rows computed before this feature legitimately have no value (NULL ≠ 0).
+    days_heavy_rain: Mapped[Optional[int]] = mapped_column(INTEGER)
     score: Mapped[Decimal] = mapped_column(DECIMAL(2, 1), nullable=False)
     computed_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
 

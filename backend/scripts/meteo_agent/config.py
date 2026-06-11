@@ -69,6 +69,22 @@ VALIDATION = {
     "impact_max_chars": 2000,
 }
 
+# --- Excess-water detection (symmetric counterpart to drought/Harmattan) ---
+# Excess rain only harms the crop when pods are on the tree in a humid window
+# (black pod / pourriture brune). In the dry season a positive water balance is
+# drought RELIEF, not a stressor — so excess penalties are gated to these seasons.
+# Asymmetry by design: deficit is penalized everywhere, surplus only here.
+RAINY_SEASONS: frozenset[str] = frozenset(
+    {"transition_pluies", "grande_saison_pluies", "petite_saison_pluies"}
+)
+# A day with > HEAVY_RAIN_MM_DAY of precipitation is "saturating" — conducive to
+# black pod, nutrient leaching and harvest disruption when it persists. This is
+# the excess-water analogue of a Harmattan day (acute, count-based).
+HEAVY_RAIN_MM_DAY = 20.0
+# Cumulative heavy-rain days in a rainy season → disease risk (mirror of
+# HARMATTAN_IMPACT_DAYS). Tiers applied in compute_score: 12/8/5 → -1.5/-1.0/-0.5.
+HEAVY_RAIN_IMPACT_DAYS = 12
+
 # --- Seasonal profiles for West Africa cocoa belt ---
 # Source: ICCO, CRIG (Cocoa Research Institute of Ghana), CNRA (Côte d'Ivoire)
 # Bimodal rainfall: long rains Apr-Jul, short rains Sep-Nov, dry Dec-Mar
@@ -220,13 +236,23 @@ def get_seasonal_profile(month: int) -> SeasonalProfile:
 def build_seasonal_context(month: int) -> str:
     """Build the seasonal context block for the system prompt."""
     p = get_seasonal_profile(month)
+    # Symmetric framing: in rainy seasons excess water is a real stressor (black
+    # pod), so the prompt must let the LLM qualify surplus, not just deficit.
+    excess_line = ""
+    if p.name in RAINY_SEASONS:
+        excess_line = (
+            f"\n- Excès hydrique (saison des pluies) : surplus significatif si "
+            f"bilan > +3 mm/jour sur la saison, ou > {HEAVY_RAIN_IMPACT_DAYS} jours "
+            f"de pluies intenses (>{HEAVY_RAIN_MM_DAY:.0f}mm/jour) → risque pourriture "
+            f"brune / black pod. Excès et déficit sont tous deux pénalisants ici."
+        )
     return f"""CONTEXTE SAISONNIER — {p.name.upper().replace("_", " ")} ({p.description})
 Stade phénologique : {p.phenology}
 Note de base : {p.baseline_note}
 
 SEUILS CALIBRÉS POUR CETTE SAISON (ne qualifier que si le seuil est franchi) :
 - Précipitations normales : {p.precip_normal_mm_day} mm/jour
-- Bilan hydrique : déficit significatif seulement si < {p.precip_deficit_threshold_mm_day} mm/jour sur 3+ jours
+- Bilan hydrique : déficit significatif seulement si < {p.precip_deficit_threshold_mm_day} mm/jour sur 3+ jours{excess_line}
 - Température : stress seulement si Tmax > {p.tmax_stress_threshold}°C pendant {p.tmax_stress_consecutive_days}+ jours consécutifs
 - Humidité sol 3-9cm : stress si < {p.soil_shallow_stress}%. Plage normale : {p.soil_shallow_normal_range}
 - Humidité sol 9-27cm : stress si < {p.soil_deep_stress}%

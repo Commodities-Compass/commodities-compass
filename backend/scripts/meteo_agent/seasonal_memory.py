@@ -26,8 +26,11 @@ from scripts.meteo_agent.config import (
     HARMATTAN_SEASON_MONTHS,
     HARMATTAN_WIND_DIR_MAX,
     HARMATTAN_WIND_DIR_MIN,
+    HEAVY_RAIN_IMPACT_DAYS,
+    HEAVY_RAIN_MM_DAY,
     HTTP_TIMEOUT,
     LOCATIONS,
+    RAINY_SEASONS,
     SEASONAL_PROFILES,
     SeasonalProfile,
 )
@@ -72,6 +75,9 @@ class LocationSeasonStats:
     days_stress_temp: int
     avg_tmax: float
     total_days: int
+    # Days with precip > HEAVY_RAIN_MM_DAY — acute excess-water signal (black pod
+    # risk). Default 0 keeps existing constructors (e.g. backtest helpers) valid.
+    days_heavy_rain: int = 0
 
 
 def get_campaign(target_date: date) -> str:
@@ -500,6 +506,7 @@ def compute_season_stats(
             days_stress_temp=0,
             avg_tmax=0,
             total_days=0,
+            days_heavy_rain=0,
         )
 
     return LocationSeasonStats(
@@ -512,6 +519,7 @@ def compute_season_stats(
         days_stress_temp=sum(1 for t in tmax[:n] if t > tmax_threshold),
         avg_tmax=round(sum(tmax[:n]) / n, 1),
         total_days=n,
+        days_heavy_rain=sum(1 for p in precip[:n] if p > HEAVY_RAIN_MM_DAY),
     )
 
 
@@ -523,13 +531,19 @@ def compute_score(
     """Deterministic score (1.0-5.0) based on deviation from seasonal norms.
 
     Starts at 5.0 (perfect) and applies penalties:
-    - Precipitation deviation vs seasonal norm
+    - Precipitation deviation vs seasonal norm (deficit AND excess, season-scaled)
     - Heat stress ratio (days above season's tmax threshold)
-    - Persistent water deficit (avg balance < -5 mm/day)
-    - Harmattan days (only when caller provides them, typically saison_seche)
+    - Water balance: persistent deficit (all seasons) OR persistent surplus
+      (rainy seasons only — waterlogging → black pod)
+    - Harmattan days (dry-wind, saison_seche) — acute dryness signal
+    - Heavy-rain days (rainy seasons only) — acute excess-water signal
+
+    Excess penalties are gated to rainy seasons by design: a positive water
+    balance during the dry season is drought RELIEF, not a stressor.
     """
     score = 5.0
     norm_range = _PRECIP_30D_NORMS.get(season.name, (0, 999))
+    is_rainy_season = season.name in RAINY_SEASONS
 
     # Scale norms to actual season length (norms are per 30 days)
     scale = stats.total_days / 30.0 if stats.total_days > 0 else 1.0
@@ -561,18 +575,27 @@ def compute_score(
         elif stress_ratio > 0.15:
             score -= 0.5
 
-    # Water balance penalty — tiered (was a single -5.0 threshold which missed
-    # the persistent multi-month deficits like Daloa 2024-2025 saison sèche at
-    # -3.96 mm/day for 121 days). Tiers calibrated against the 2024-2025 inland
-    # belt: -3 mm/day = real drought, -5 = severe, -6+ = catastrophic.
+    # Water balance penalty — tiered and ASYMMETRIC BY DESIGN.
+    # Deficit (was a single -5.0 threshold which missed persistent multi-month
+    # deficits like Daloa 2024-2025 saison sèche at -3.96 mm/day for 121 days):
+    # -3 mm/day = real drought, -5 = severe, -6+ = catastrophic. Penalized in
+    # every season. Surplus: only penalized in rainy seasons (waterlogged soil →
+    # black pod); a positive balance in the dry season is drought relief.
     if stats.total_days > 0:
         avg_daily_balance = stats.cumulative_balance_mm / stats.total_days
         if avg_daily_balance < -6.0:
-            score -= 1.5
+            score -= 1.5  # catastrophic deficit
         elif avg_daily_balance < -4.0:
-            score -= 1.0
+            score -= 1.0  # severe deficit
         elif avg_daily_balance < -2.5:
-            score -= 0.5
+            score -= 0.5  # real deficit
+        elif is_rainy_season:
+            if avg_daily_balance > 8.0:
+                score -= 1.5  # chronic waterlogging
+            elif avg_daily_balance > 5.0:
+                score -= 1.0
+            elif avg_daily_balance > 3.0:
+                score -= 0.5
 
     # Harmattan penalty — only when caller passes a count (i.e., saison_seche).
     # Tiered against HARMATTAN_IMPACT_DAYS (24, project's critical threshold).
@@ -583,6 +606,18 @@ def compute_score(
         elif harmattan_days >= 18:
             score -= 1.0
         elif harmattan_days >= 12:
+            score -= 0.5
+
+    # Heavy-rain penalty — acute excess-water analogue of the Harmattan penalty.
+    # Counts of intense (> HEAVY_RAIN_MM_DAY) days drive black pod / leaching /
+    # harvest disruption. Gated to rainy seasons (same asymmetry as the balance
+    # surplus tier). Tiers mirror HEAVY_RAIN_IMPACT_DAYS (12, critical).
+    if is_rainy_season:
+        if stats.days_heavy_rain >= HEAVY_RAIN_IMPACT_DAYS:
+            score -= 1.5
+        elif stats.days_heavy_rain >= 8:
+            score -= 1.0
+        elif stats.days_heavy_rain >= 5:
             score -= 0.5
 
     return max(1.0, min(5.0, round(score * 2) / 2))  # clamp + round to 0.5
@@ -609,12 +644,14 @@ def write_seasonal_scores(
                     (id, campaign, season_name, location_name, months_covered,
                      start_date, end_date,
                      total_precip_mm, total_et0_mm, cumulative_balance_mm,
-                     days_rain, days_stress_temp, avg_tmax, harmattan_days, score)
+                     days_rain, days_heavy_rain, days_stress_temp, avg_tmax,
+                     harmattan_days, score)
                 VALUES
                     (:id, :campaign, :season_name, :location_name, :months_covered,
                      :start_date, :end_date,
                      :total_precip_mm, :total_et0_mm, :cumulative_balance_mm,
-                     :days_rain, :days_stress_temp, :avg_tmax, :harmattan_days, :score)
+                     :days_rain, :days_heavy_rain, :days_stress_temp, :avg_tmax,
+                     :harmattan_days, :score)
                 ON CONFLICT ON CONSTRAINT uq_seasonal_score
                 DO UPDATE SET
                     months_covered = EXCLUDED.months_covered,
@@ -624,6 +661,7 @@ def write_seasonal_scores(
                     total_et0_mm = EXCLUDED.total_et0_mm,
                     cumulative_balance_mm = EXCLUDED.cumulative_balance_mm,
                     days_rain = EXCLUDED.days_rain,
+                    days_heavy_rain = EXCLUDED.days_heavy_rain,
                     days_stress_temp = EXCLUDED.days_stress_temp,
                     avg_tmax = EXCLUDED.avg_tmax,
                     harmattan_days = EXCLUDED.harmattan_days,
@@ -642,6 +680,7 @@ def write_seasonal_scores(
                 "total_et0_mm": stats.total_et0_mm,
                 "cumulative_balance_mm": stats.cumulative_balance_mm,
                 "days_rain": stats.days_rain,
+                "days_heavy_rain": stats.days_heavy_rain,
                 "days_stress_temp": stats.days_stress_temp,
                 "avg_tmax": stats.avg_tmax,
                 "harmattan_days": harmattan,
@@ -699,12 +738,13 @@ def compute_and_store_season(
 
         logger.info(
             "  %s: precip=%.0fmm, ET0=%.0fmm, balance=%+.0fmm, "
-            "rain=%dd, stress_temp=%dd%s, score=%.1f/5",
+            "rain=%dd, heavy_rain=%dd, stress_temp=%dd%s, score=%.1f/5",
             loc.name,
             stats.total_precip_mm,
             stats.total_et0_mm,
             stats.cumulative_balance_mm,
             stats.days_rain,
+            stats.days_heavy_rain,
             stats.days_stress_temp,
             f", harmattan={h_days}d" if h_days is not None else "",
             score_val,
@@ -760,7 +800,7 @@ def build_campaign_memory(session: Session, target_date: date | None = None) -> 
         text("""
             SELECT season_name, location_name, months_covered,
                    total_precip_mm, total_et0_mm, cumulative_balance_mm,
-                   days_stress_temp, score
+                   days_stress_temp, score, days_heavy_rain
             FROM pl_seasonal_score
             WHERE campaign = :campaign
             ORDER BY start_date, location_name
@@ -788,6 +828,7 @@ def build_campaign_memory(session: Session, target_date: date | None = None) -> 
         avg_precip = sum(float(r[3] or 0) for r in season_rows) / len(season_rows)
         avg_balance = sum(float(r[5] or 0) for r in season_rows) / len(season_rows)
         total_stress = sum(int(r[6] or 0) for r in season_rows)
+        total_heavy = sum(int(r[8] or 0) for r in season_rows)
 
         norm = _PRECIP_30D_NORMS.get(season_name, (0, 999))
         status = "en cours" if "(en cours)" in months else "terminée"
@@ -797,12 +838,19 @@ def build_campaign_memory(session: Session, target_date: date | None = None) -> 
         worst = f"{sorted_locs[0][1]} ({float(sorted_locs[0][7]):.1f}/5)"
         best = f"{sorted_locs[-1][1]} ({float(sorted_locs[-1][7]):.1f}/5)"
 
+        # Surface cumulative intense-rain days when present — the excess-water
+        # context the LLM previously lacked (drought-only framing).
+        heavy_clause = (
+            f", {total_heavy}j pluies intenses (>{HEAVY_RAIN_MM_DAY:.0f}mm) total"
+            if total_heavy > 0
+            else ""
+        )
         display_name = season_name.replace("_", " ").title()
         lines.append(
             f"• {display_name} ({months}) : {avg_score:.1f}/5 — "
             f"Précip moy {avg_precip:.0f}mm (norme {norm[0]}-{norm[1]}mm/30j), "
             f"bilan hydrique moy {avg_balance:+.0f}mm, "
-            f"{total_stress}j stress thermique total. "
+            f"{total_stress}j stress thermique total{heavy_clause}. "
             f"Meilleure: {best}, pire: {worst}. [{status}]"
         )
 

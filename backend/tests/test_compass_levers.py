@@ -129,7 +129,7 @@ def test_wrapper_captures_fired_trend_after_apply() -> None:
             "forward_return": [0.0] * 8,
         }
     )
-    votes = pd.DataFrame(columns=["date", "specialist_name", "pred"])
+    votes = pd.DataFrame(columns=pd.Index(["date", "specialist_name", "pred"]))
     returns = pd.Series([-0.02] * 8, index=dates)  # sustained decline vs the OPEN/net>0
     _, _ = w.apply(decisions, votes, returns)
     assert isinstance(w.last_fired_trend, bool)

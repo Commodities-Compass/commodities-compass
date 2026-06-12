@@ -431,7 +431,7 @@ Le frontend en sert un seul à l'utilisateur (selon `BRIEF_DEFAULT_VERSION` + ov
 
 ### 7.2 Mensuel — retraining des 14 spécialistes (à venir)
 
-Documenté dans [CAMPAIGN_5_PROD_DEPLOYMENT.md](../onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md) §7 mais **pas encore déployé en prod**. Le job `cc-ensemble-monthly-retrain` est référencé mais le scheduler n'est pas encore actif. Tant qu'il ne tourne pas, les artifacts BYTEA sont **frozen** (livraison du 2026-04-30). Conséquence : les spécialistes ne s'adaptent pas aux régimes shifts, et `running_acc_5d` n'est pas remis à NaN.
+Documenté dans [CAMPAIGN_5_PROD_DEPLOYMENT.md](../archive/onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md) §7 mais **pas encore déployé en prod**. Le job `cc-ensemble-monthly-retrain` est référencé mais le scheduler n'est pas encore actif. Tant qu'il ne tourne pas, les artifacts BYTEA sont **frozen** (livraison du 2026-04-30). Conséquence : les spécialistes ne s'adaptent pas aux régimes shifts, et `running_acc_5d` n'est pas remis à NaN.
 
 **Quand on l'activera**, attendre 5 jours de NaN running_acc → wrapper en mode default-allow → puis convergence vers le nouveau running_acc.
 
@@ -610,5 +610,5 @@ Si on lance `cc-daily-analysis --algorithm-version legacy` (cf. deploy.yml), le 
 - [docs/runbooks/brief-ensemble-evolution.md](../runbooks/brief-ensemble-evolution.md) — comment ajouter des sections au brief
 - [docs/runbooks/ensemble-failure-recovery.md](../runbooks/ensemble-failure-recovery.md) — récupération en cas de panne ensemble
 - [docs/runbooks/podcast-prompt-ensemble.md](../runbooks/podcast-prompt-ensemble.md) — prompt NotebookLM + mapping ID→libellé
-- [docs/onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md](../onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md) — déploiement initial Campaign 5 + retraining mensuel (à venir)
-- [docs/onboarding/HEDI_DATA_MAP.md](../onboarding/HEDI_DATA_MAP.md) — détail des features par spécialiste
+- [docs/archive/onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md](../archive/onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md) — déploiement initial Campaign 5 + retraining mensuel (à venir)
+- [docs/archive/onboarding/HEDI_DATA_MAP.md](../archive/onboarding/HEDI_DATA_MAP.md) — détail des features par spécialiste

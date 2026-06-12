@@ -177,7 +177,7 @@ On-demand| cc-ensemble-bootstrap-artifacts       | ENSEMBLE     | Manual (no sch
 
 **Output** : `pl_external_indicator` (partial UPSERT — préserve les colonnes ENSO).
 
-**Backfill** : `poetry run fx-scraper-backfill --verify` importe `docs/onboarding/FX/{dxy_proxy,gbpusd}_daily.csv` (~3164 rows, 2014-2026).
+**Backfill** : `poetry run fx-scraper-backfill --verify` importe `docs/archive/onboarding/FX/{dxy_proxy,gbpusd}_daily.csv` (~3164 rows, 2014-2026).
 
 ### 3.7 `cc-enso-scraper`
 
@@ -552,6 +552,6 @@ Tables et jobs présents dans la base mais plus utilisés en production :
 - [docs/runbooks/brief-dual-track.md](../runbooks/brief-dual-track.md) — opérations du dual-track
 - [docs/runbooks/pipeline-failure-recovery.md](../runbooks/pipeline-failure-recovery.md) — récupération en cas de panne
 - [docs/runbooks/ensemble-failure-recovery.md](../runbooks/ensemble-failure-recovery.md) — récupération ensemble spécifique
-- [docs/onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md](../onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md) — déploiement initial ensemble
-- [docs/onboarding/HEDI_DATA_MAP.md](../onboarding/HEDI_DATA_MAP.md) — détail features ensemble par specialist
+- [docs/archive/onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md](../archive/onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md) — déploiement initial ensemble
+- [docs/archive/onboarding/HEDI_DATA_MAP.md](../archive/onboarding/HEDI_DATA_MAP.md) — détail features ensemble par specialist
 - [CLAUDE.md](../../CLAUDE.md) — référence complète du projet (commandes, architecture, déploiement)

@@ -55,7 +55,7 @@
 
 ### Vue d'ensemble du panel
 
-> Source d'autorité : [docs/onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md](../onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md) §2 + [docs/onboarding/HEDI_DATA_MAP.md](../onboarding/HEDI_DATA_MAP.md) §1
+> Source d'autorité : [docs/archive/onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md](../archive/onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md) §2 + [docs/archive/onboarding/HEDI_DATA_MAP.md](../archive/onboarding/HEDI_DATA_MAP.md) §1
 
 Les 14 spécialistes se répartissent en **2 clusters thématiques** + plusieurs **familles techniques** :
 
@@ -536,5 +536,5 @@ WHERE date='2026-05-22' AND contract_id=<CAK26> AND algorithm_version_id=<ensemb
 - Pour tuner les prompts ensemble : éditer `CALL_1_PROMPT` (macro/weather) et `CALL_2_PROMPT_ENSEMBLE` (decision avec diagnostics) dans [backend/scripts/daily_analysis/prompts.py](../../backend/scripts/daily_analysis/prompts.py) — ce sont les mêmes prompts que cc-daily-analysis legacy utilise, donc toute modification affecte les 2 tracks.
 - [docs/runbooks/brief-ensemble-evolution.md](../runbooks/brief-ensemble-evolution.md) — comment ajouter des sections au brief
 - [docs/runbooks/ensemble-failure-recovery.md](../runbooks/ensemble-failure-recovery.md) — récupération en cas de panne ensemble
-- [docs/onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md](../onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md) — déploiement initial Campaign 5
-- [docs/onboarding/HEDI_DATA_MAP.md](../onboarding/HEDI_DATA_MAP.md) — détail des features par spécialiste
+- [docs/archive/onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md](../archive/onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md) — déploiement initial Campaign 5
+- [docs/archive/onboarding/HEDI_DATA_MAP.md](../archive/onboarding/HEDI_DATA_MAP.md) — détail des features par spécialiste

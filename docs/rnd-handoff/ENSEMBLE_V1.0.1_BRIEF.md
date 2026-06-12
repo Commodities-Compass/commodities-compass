@@ -19,6 +19,8 @@ v1.0.0 specialists are **frozen at `training_month=2026-04`** (the monthly retra
 
 **Do NOT** (refuted in production this session — don't spend R&D cycles): a 15th "reversal" specialist; a COT-positioning reversal veto; a realized-vol IV proxy. See §5.
 
+**Fastest implementation win (§9):** v1.0.0 was NOT plug-and-play — prod glued 10 integration fixes on top of the delivery. Shipping those correctly in v1.0.1 (above all: **inert seeds** + a **specced front-month chaining contract**) is the single biggest accelerator for the rollout.
+
 ---
 
 ## 1 — Why v1.0.1 (production learnings)
@@ -126,7 +128,32 @@ Each artifact carries provenance (`sha256`, `n_bytes`, `fit_train_start`, `fit_t
 
 ---
 
-## 9 — Open decisions (the handshake)
+## 9 — Integration friction from v1.0.0 — ship these differently (the fastest implementation win)
+
+> v1.0.0 was **NOT plug-and-play**: substantial prod glue stood between R&D's pack and prod. Verified inventory
+> (files / migrations / commits cited), ranked by integration-time saved. **Shipping these correctly in v1.0.1 is
+> the single biggest accelerator** for the prod rollout — and the bottom list is what NOT to do.
+
+| # | Friction | What prod had to do (cite) | v1.0.1 ask to R&D | Type |
+|---|---|---|---|---|
+| 1 | **Day-1 seed shipped `is_active=TRUE`/`compute_enabled=TRUE` → crashed prod** | Crashed `cc-compute-indicators` with `KeyError 'k'` (ensemble rows carry no power-formula params); reversed via migration `m7h8i9j0k1l2` + manual bastion UPDATE. The resolver's single-`is_active` filter would also break endpoints. | Ship seeds **inert** (`is_active=FALSE, compute_enabled=FALSE`) — prod owns cutover. Tag rows with an `algorithm_kind` so the runner dispatches instead of forcing the power-formula path. | don't-do |
+| 2 | **Vendor wrapper OR-fires its 4 detectors → far too aggressive** | Subclassed `CompassTransitionWrapper` (AND-gated dispersion release, threshold in `pl_algorithm_config`, migration `o9j0k1l2m3n4`): *"pure OR… dispersion alone vetoed 28/63 commits while running_acc averaged 0.981… coverage 17% vs R&D 46.1%."* | Make detector combination **config-driven** (per-detector veto/release thresholds), not hardcoded OR. | ship-differently |
+| 3 | **R&D data loader reads local Parquet — not shippable** | Implemented the entire `EnsembleDataLoader` Protocol seam in `db_loader.py` (market_history, recent_decisions, votes, macro). | Keep the Protocol stable; ship a **machine-checkable column+dtype contract** (the docstring literally says *"dump that snapshot and grep"*). Note Postgres `Decimal`→`float` coercion is done everywhere prod-side. | ship-differently |
+| 4 | **Single-contract lookback truncated at rolls (parity Q5) — THE biggest time-sink** | Built the `v_contract_data_chained` front-month-by-OI VIEW (migration `n8i9j0k1l2m3`, commit `8fb6695`) for GARCH lookback + `forward_return`; GARCH input went 15→393 rows. R&D trained on a flat ~2600-row CSV with **no contract dimension**. | **Spec the chaining contract** (highest-OI, tiebreaks) or ship the chaining logic; define `forward_return`/target on the chained series prod actually uses. | ship-differently |
+| 5 | **`correct` scored on the wrapped decision → self-reference loop** | Score `correct` on the **raw soft-gate** decision (`db_loader.py`, commit `c4c5b99`): *"locking it into MONITOR forever after the first override (observed live 05-07→05-20)."* | Document scoring source = raw soft-gate; ideally compute `correct`/forward-return R&D-side. | don't-do |
+| 6 | **`alpha_macro=1.477` hard-gates contrarians** | Config-capped `SoftGateOrchestrator` rebuild (this PR). α>1 ⟹ anti-macro specialist weight clamped to 0 ⟹ unanimous HEDGE through the May rebound. | Keep tuned **`alpha_macro ≤ 1.0`** (the §4.B retune — down-weight, never zero). | don't-do |
+| 7 | **Path-dep Docker build break** | Hotfix `65bb7ae` copies `vendor/` into the build context before `poetry install` (path-dep resolved before `COPY . .`; *"blocked deployment of PR #9"*). | Ship as a **versioned wheel / pinned package**, not a bare path-dep; pin exact `numpy 1.26.4`/scipy/sklearn/lightgbm in the package's own `pyproject.toml` (determinism). | ship-differently |
+| 8 | **`pd.NA` crash on the open (unrealized) horizon** | Mark pending-horizon rows `committed=FALSE` in SQL (`db_loader.py`, commit `29b71d5`) — vendor `.astype(bool).mean()` can't cast NULL. | Make the running-acc detector tolerate `pd.NA`/NULL natively. | don't-do |
+| 9 | **`EnsembleDecision`/`MacroSignal` omit diagnostics** | `_build_diagnostics()` defensive `getattr`; captured `fired_trend`/`fired_three_way` off the subclass; `MacroSignal` drops `half_life_days` → prod re-derives the piecewise breaks. | Expose all 4 fired flags + `weights_sum` + `n_committed` on `EnsembleDecision`; add `half_life_days` to `MacroSignal`. | ship-differently |
+| 10 | **SQLAlchemy-2.0 + silent-stub glue** | `_SQLAlchemy2SessionAdapter` wraps raw SQL in `text()`; made silent neutral-macro / NULL→0 fallbacks fail-loud (commits `61535dc`, `b9b185f`). | Ship `DBArtifactLoader` SQLAlchemy-2.0-native; **no silent neutral/zero fallbacks** in delivered code. | ship-differently |
+
+**Pitfalls (don't-do), one line each:** ① never ship algorithm rows live/active — shadow-only. ② don't OR-combine wrapper detectors. ③ don't score the wrapper against its own wrapped output. ④ don't let `alpha_macro>1` zero contrarians. ⑤ don't emit `pd.NA` for unrealized horizons. ⑥ don't ship silent neutral/zero fallbacks (violates pipeline-continuity). ⑦ **don't assume prod data sources exist** — R&D's design assumed GCS artifacts (prod chose `pl_model_artifact` BYTEA) and assumed COT-EU/ERA5/ENSO/FX feeds existed (they didn't — prod built the ingestion). ⑧ don't SELECT dead columns no specialist consumes (`stock_us`/`com_net_us` were removed, migration `r2m3n4o5p6q7`).
+
+**Biggest single accelerator for v1.0.1:** items 1 + 4 — ship inert seeds and spec the front-month chaining contract. Those two cost the most prod reverse-engineering on v1.0.0.
+
+---
+
+## 10 — Open decisions (the handshake)
 
 1. **Retrain window length** — rolling 12/24m as v1.0.0, or extend to capture the full 2024-26 vol cycle? (Trade-off: regime coverage vs staleness.)
 2. **`alpha_macro` final value** — R&D sets it in `soft_gate_config`; prod aligns the cap. Agree one number to avoid double-capping.

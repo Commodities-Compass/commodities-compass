@@ -30,6 +30,7 @@ Per CAMPAIGN_5_PROD_DEPLOYMENT.md §6.2:
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import logging
 import sys
 import uuid
@@ -40,6 +41,7 @@ import sentry_sdk
 from ensemble.artifact_io import DBArtifactLoader
 from ensemble.data_loader_protocol import DecideRequest
 from ensemble.ensemble_pipeline import EnsemblePipeline
+from ensemble.orchestrator.soft_gate import SoftGateOrchestrator
 from sentry_sdk.crons import monitor
 from sqlalchemy import text
 
@@ -48,8 +50,12 @@ from scripts._shared.logging import configure_logging
 from scripts._shared.sentry import bootstrap_scraper
 from scripts.contract_resolver import resolve_active, resolve_active_at_date
 from scripts.ensemble_compute.cluster_mapping_loader import (
+    REGIME_MONITOR_ATR_PCTL_KEY,
+    SOFTGATE_ALPHA_MACRO_CAP_KEY,
     load_cluster_mapping,
     load_compass_wrapper_threshold,
+    load_optional_config_float,
+    load_wrapper_config,
 )
 from scripts.ensemble_compute.compass_wrapper import CompassTransitionWrapper
 from scripts.ensemble_compute.db_loader import (
@@ -238,24 +244,14 @@ def main() -> int:
             # per north-star rule #4) — see migration o9j0k1l2m3n4.
             compass_threshold = load_compass_wrapper_threshold(session, algo_version_id)
             vendor_wrapper = pipeline.wrapper
-            # _build_diagnostics() below hardcodes fired_trend=False and
-            # fired_three_way=False — only safe while these detectors are
-            # disabled in the wrapper config. Fail-loud if a future tuning
-            # round flips them on without updating the writer plumbing.
-            if vendor_wrapper.config.use_trend_conflict:
-                raise RuntimeError(
-                    "wrapper_config.use_trend_conflict=True but _build_diagnostics "
-                    "still hardcodes fired_trend=False — update the writer to read "
-                    "the actual value from the wrapper diagnostic frame."
-                )
-            if vendor_wrapper.config.use_three_way_disagreement:
-                raise RuntimeError(
-                    "wrapper_config.use_three_way_disagreement=True but "
-                    "_build_diagnostics still hardcodes fired_three_way=False — "
-                    "update the writer to read the actual value."
-                )
+            # Config-as-data: the frozen tpw_v1 artifact gives R&D defaults, but the
+            # ``wrapper_*`` rows in pl_algorithm_config are authoritative — they let us
+            # enable detectors (e.g. trend-conflict) and tune thresholds without
+            # re-freezing the artifact. ``_build_diagnostics`` reads the real fired_trend
+            # / fired_three_way from the wrapper now, so no detector is hardcoded off.
+            wrapper_config = load_wrapper_config(session, algo_version_id)
             pipeline.wrapper = CompassTransitionWrapper(
-                config=vendor_wrapper.config,
+                config=wrapper_config,
                 cluster_mapping=vendor_wrapper.cluster_mapping,
                 dispersion_with_acc_threshold=compass_threshold,
             )
@@ -264,6 +260,31 @@ def main() -> int:
                 len(pipeline.specialists),
                 compass_threshold,
             )
+
+            # Compass lever — alpha_macro cap (config-as-data; absent row → OFF).
+            # The tuned alpha_macro=1.477 makes the macro signal a HARD gate: with α>1
+            # a specialist voting against macro_direction gets weight (1−α)→clamped 0
+            # = excluded, which forced unanimous HEDGE (net_score=−1.000) through the
+            # May-2026 rebound. Capping α<1.0 keeps (1+α·align)>0 so contrarians are
+            # down-weighted, never zeroed. Tunable / disable-able via pl_algorithm_config.
+            alpha_cap = load_optional_config_float(
+                session, algo_version_id, SOFTGATE_ALPHA_MACRO_CAP_KEY
+            )
+            if (
+                alpha_cap is not None
+                and pipeline.soft_gate.config.alpha_macro > alpha_cap
+            ):
+                logger.info(
+                    "Applying alpha_macro cap: %.4f -> %.4f",
+                    pipeline.soft_gate.config.alpha_macro,
+                    alpha_cap,
+                )
+                pipeline.soft_gate = SoftGateOrchestrator(
+                    config=dataclasses.replace(
+                        pipeline.soft_gate.config, alpha_macro=alpha_cap
+                    ),
+                    base_accuracy=pipeline.soft_gate.base_accuracy,
+                )
 
             market = load_market_history(
                 session,
@@ -295,6 +316,30 @@ def main() -> int:
             )
             decision = pipeline.decide(request)
 
+            # Compass lever — regime-MONITOR (config-as-data; absent row → OFF).
+            # EV result: in top-vol-percentile regimes the ensemble's directional
+            # accuracy (~76%) sits below the score-grid break-even (~81%), so publishing
+            # a direction is EV-negative vs MONITOR. When atr%-percentile > threshold we
+            # override a committed decision to MONITOR. ``decision_wrapped`` keeps the
+            # wrapper's output (audit); the PUBLISHED signal (pl_indicator_daily) is the
+            # regime-adjusted ``final_decision``; ``regime_monitor_fired`` records it.
+            regime_threshold = load_optional_config_float(
+                session, algo_version_id, REGIME_MONITOR_ATR_PCTL_KEY
+            )
+            regime_monitor_fired = _regime_monitor_fires(
+                market, regime_threshold, decision.wrapped_decision
+            )
+            final_decision = (
+                "MONITOR" if regime_monitor_fired else decision.wrapped_decision
+            )
+            if regime_monitor_fired:
+                logger.info(
+                    "regime-MONITOR fired: wrapped=%s -> published MONITOR "
+                    "(atr%%-pctl > %.2f)",
+                    decision.wrapped_decision,
+                    regime_threshold,
+                )
+
             logger.info(
                 "Decision: soft_gate=%s wrapped=%s (fired_run_acc=%s, fired_disp=%s)",
                 decision.soft_gate_decision.decision,
@@ -311,7 +356,10 @@ def main() -> int:
                 decision.spring_vote_signed,
             )
 
-            diagnostics = _build_diagnostics(decision, recent_decisions)
+            diagnostics = _build_diagnostics(
+                decision, recent_decisions, pipeline.wrapper, macro
+            )
+            diagnostics["regime_monitor_fired"] = regime_monitor_fired
 
             if args.dry_run:
                 logger.info("[DRY RUN] Skipping DB writes")
@@ -324,6 +372,7 @@ def main() -> int:
                 algorithm_version_id=algo_version_id,
                 decision=decision,
                 diagnostics=diagnostics,
+                final_decision=final_decision,
             )
             session.commit()
             logger.info(
@@ -356,20 +405,63 @@ def main() -> int:
         return 1
 
 
-def _build_diagnostics(decision, recent_decisions: pd.DataFrame) -> dict[str, object]:
+# Piecewise half-life from |surprise| — mirrors ensemble.macro_events.pipeline
+# MacroEventLayer._half_life_for (HALF_LIFE_BREAKS = (0.30, 0.60)). Replicated here
+# (not imported) because load_macro_signal collapses MacroEventScore → MacroSignal and
+# drops half_life_days; recomputing from surprise is cheaper than threading it through
+# the vendor Protocol. Keep in sync with the layer if R&D retunes the breaks.
+_MACRO_HALF_LIFE_BREAKS = (0.30, 0.60)
+
+
+def _macro_half_life_days(surprise: float) -> int:
+    s = abs(float(surprise))
+    if s < _MACRO_HALF_LIFE_BREAKS[0]:
+        return 1
+    if s < _MACRO_HALF_LIFE_BREAKS[1]:
+        return 3
+    return 7
+
+
+_REGIME_ATR_WINDOW = 252  # trailing sessions for the causal atr%-percentile rank
+
+
+def _regime_monitor_fires(
+    market: pd.DataFrame, threshold: float | None, wrapped_decision: str
+) -> bool:
+    """True when today's ATR%-percentile exceeds ``threshold`` and the wrapper committed.
+
+    OFF when ``threshold`` is None (config row absent) or the decision is already MONITOR.
+    atr% = atr_14d / close; the percentile is the causal rank of today's value within the
+    trailing ``_REGIME_ATR_WINDOW`` rows of market_history (last row is today, per
+    load_market_history's end_date assertion). Returns False if there isn't enough
+    history for a stable percentile.
+    """
+    if threshold is None or wrapped_decision == "MONITOR":
+        return False
+    m = market.dropna(subset=["atr_14d", "close"])
+    if len(m) < 60:
+        return False
+    atr_pct = (m["atr_14d"].astype(float) / m["close"].astype(float)).to_numpy()
+    window = atr_pct[-_REGIME_ATR_WINDOW:]
+    pctl = float((window <= atr_pct[-1]).mean())
+    return pctl > float(threshold)
+
+
+def _build_diagnostics(decision, recent_decisions, wrapper, macro) -> dict[str, object]:
     """Pull supplementary fields not on EnsembleDecision into a flat dict.
 
-    Used by db_writer to populate pl_orchestrator_decision diagnostics
-    columns that aren't directly exposed on EnsembleDecision (weights_sum,
-    n_committed_specialists, fired_trend, fired_three_way, etc.).
+    Used by db_writer to populate pl_orchestrator_decision diagnostics columns that
+    aren't directly exposed on EnsembleDecision (weights_sum, n_committed_specialists,
+    fired_trend, fired_three_way, macro_half_life_days).
 
-    ``wrapper_active`` is derived from the wrapped decision changing the
-    soft-gate decision — NOT from the raw fired_* flags. This way the
-    Compass override of dispersion-only vetoes is correctly reflected:
-    the fired_* flags stay TRUE in audit (the detectors did fire), but
-    wrapper_active is FALSE when Compass released the veto and the
-    original decision was kept. Without this rule, every released row
-    would falsely report wrapper_active=TRUE.
+    ``wrapper_active`` is derived from the wrapped decision changing the soft-gate
+    decision — NOT from the raw fired_* flags. This way the Compass override of
+    dispersion-only vetoes is correctly reflected: the fired_* flags stay TRUE in audit
+    (the detectors did fire), but wrapper_active is FALSE when Compass released the veto.
+
+    ``fired_trend`` / ``fired_three_way`` are read from the wrapper's captured today-row
+    states (``CompassTransitionWrapper.last_fired_*``) — no longer hardcoded False, so
+    enabling the trend-conflict detector via config is correctly audited.
     """
     _ = recent_decisions  # kept for ABI compat; future detectors may use it
     sg = decision.soft_gate_decision
@@ -378,15 +470,11 @@ def _build_diagnostics(decision, recent_decisions: pd.DataFrame) -> dict[str, ob
         "weights_sum": getattr(sg, "weights_sum", None),
         "n_committed_specialists": getattr(sg, "n_committed_specialists", None),
         "wrapper_active": decision.wrapped_decision != sg.decision,
-        # Detectors absent in v1.0.0 (use_trend_conflict=False,
-        # use_three_way_disagreement=False per tuned_configs JSON). Storing
-        # ``False`` is acceptable since the column is NOT NULL — they truly
-        # did not fire because they're not present. If v1.1.0 enables them,
-        # the column will accept actual True/False values; the v1.0.0 rows
-        # are then unambiguously "False because absent".
-        "fired_trend": False,
-        "fired_three_way": False,
-        "macro_half_life_days": None,
+        # Real detector states captured from today's wrapped row (config-driven now).
+        "fired_trend": bool(getattr(wrapper, "last_fired_trend", False)),
+        "fired_three_way": bool(getattr(wrapper, "last_fired_three_way", False)),
+        # Computed from macro surprise (was hardcoded None — a pipeline-continuity leak).
+        "macro_half_life_days": _macro_half_life_days(getattr(macro, "surprise", 0.0)),
     }
 
 

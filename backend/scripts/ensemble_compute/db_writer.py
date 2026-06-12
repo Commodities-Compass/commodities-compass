@@ -49,7 +49,8 @@ INSERT INTO pl_orchestrator_decision (
     running_acc_5d, realized_return_5d,
     winter_vote_signed, spring_vote_signed,
     macro_direction, macro_surprise, macro_half_life_days,
-    anomaly_score_z, prior_open, prior_hedge, prior_monitor
+    anomaly_score_z, prior_open, prior_hedge, prior_monitor,
+    regime_monitor_fired
 )
 VALUES (
     :date, :contract_id, :algorithm_version_id,
@@ -59,7 +60,8 @@ VALUES (
     :running_acc_5d, :realized_return_5d,
     :winter_vote_signed, :spring_vote_signed,
     :macro_direction, :macro_surprise, :macro_half_life_days,
-    :anomaly_score_z, :prior_open, :prior_hedge, :prior_monitor
+    :anomaly_score_z, :prior_open, :prior_hedge, :prior_monitor,
+    :regime_monitor_fired
 )
 ON CONFLICT ON CONSTRAINT uq_orchestrator_decision DO UPDATE SET
     soft_gate_decision = EXCLUDED.soft_gate_decision,
@@ -82,7 +84,8 @@ ON CONFLICT ON CONSTRAINT uq_orchestrator_decision DO UPDATE SET
     anomaly_score_z = EXCLUDED.anomaly_score_z,
     prior_open = EXCLUDED.prior_open,
     prior_hedge = EXCLUDED.prior_hedge,
-    prior_monitor = EXCLUDED.prior_monitor
+    prior_monitor = EXCLUDED.prior_monitor,
+    regime_monitor_fired = EXCLUDED.regime_monitor_fired
 """
 
 # pl_indicator_daily mirror — INSERT-or-UPDATE. The legacy compute-indicators
@@ -156,6 +159,7 @@ def write_decision(
     algorithm_version_id: uuid.UUID,
     decision: EnsembleDecision,
     diagnostics: dict,
+    final_decision: str | None = None,
 ) -> dict[str, int]:
     """Write all 3 tables for one (date, contract, ensemble_version) tuple.
 
@@ -163,8 +167,17 @@ def write_decision(
     the wrapper (anomaly_z, priors, weights_sum, etc. — keys passed
     through from the diag_df last row).
 
+    ``final_decision`` is the PUBLISHED signal after the Compass regime-MONITOR
+    lever (= MONITOR when ``diagnostics['regime_monitor_fired']`` is True, else the
+    wrapper's ``decision_wrapped``). It drives ``pl_indicator_daily.decision`` (what the
+    dashboard serves), while ``pl_orchestrator_decision.decision_wrapped`` keeps the
+    wrapper's own output for audit. Defaults to ``decision.wrapped_decision`` when not
+    passed (regime lever disabled / legacy callers).
+
     Returns counts (mostly for logging / smoke assertions).
     """
+    if final_decision is None:
+        final_decision = str(decision.wrapped_decision)
     # 1) per-specialist
     n_specialist = 0
     for name, pred in decision.per_specialist_votes.items():
@@ -227,18 +240,27 @@ def write_decision(
             "prior_monitor": _decimal_or_none(
                 getattr(sg.context, "prior_monitor", None)
             ),
+            "regime_monitor_fired": bool(
+                diagnostics.get("regime_monitor_fired", False)
+            ),
         },
     )
 
-    # 3) indicator_daily mirror — fail-loud if the FK can't bind
+    # 3) indicator_daily mirror — fail-loud if the FK can't bind.
+    # decision = PUBLISHED signal (regime-adjusted final_decision), NOT the raw
+    # wrapper output, so the dashboard serves what the regime lever decided.
     session.execute(
         text(_UPSERT_INDICATOR_DAILY),
         {
             "date": target_date,
             "contract_id": contract_id,
             "algorithm_version_id": algorithm_version_id,
-            "decision": str(decision.wrapped_decision),
-            "conclusion": _build_conclusion_text(decision),
+            "decision": final_decision,
+            "conclusion": _build_conclusion_text(
+                decision,
+                final_decision,
+                bool(diagnostics.get("regime_monitor_fired", False)),
+            ),
         },
     )
 
@@ -246,7 +268,11 @@ def write_decision(
     return {"specialist": n_specialist, "orchestrator": 1, "indicator_daily": 1}
 
 
-def _build_conclusion_text(decision: EnsembleDecision) -> str:
+def _build_conclusion_text(
+    decision: EnsembleDecision,
+    final_decision: str,
+    regime_monitor_fired: bool,
+) -> str:
     """Human-readable summary mirrored to pl_indicator_daily.conclusion."""
     fired = []
     if decision.wrapper_fired_running_acc:
@@ -254,10 +280,16 @@ def _build_conclusion_text(decision: EnsembleDecision) -> str:
     if decision.wrapper_fired_cluster_dispersion:
         fired.append("dispersion")
     fired_str = ", ".join(fired) if fired else "none"
+    regime_note = (
+        f" regime-MONITOR={decision.wrapped_decision}->MONITOR"
+        if regime_monitor_fired
+        else ""
+    )
     return (
-        f"C5 ensemble decision={decision.wrapped_decision} "
+        f"C5 ensemble decision={final_decision} "
         f"(soft-gate={decision.soft_gate_decision.decision}, "
-        f"wrapper_fired=[{fired_str}], "
+        f"wrapped={decision.wrapped_decision}, "
+        f"wrapper_fired=[{fired_str}],{regime_note} "
         f"winter={decision.winter_vote_signed:+d}, "
         f"spring={decision.spring_vote_signed:+d})"
     )

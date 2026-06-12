@@ -162,7 +162,7 @@ Le soft-gate produit une décision, mais elle peut être trompée par des **rég
 | Détecteur | Fire condition | Sémantique |
 |---|---|---|
 | `fired_running_acc` | running_acc_5d récente < seuil (≈ 0.45) | Le gate a sous-performé les 5 derniers jours — méfiance |
-| `fired_trend` | (off en v1.0.0) | Détecte un trend conflict entre clusters |
+| `fired_trend` | **ON depuis 2026-06** : sign(realized_return_7d) opposé à net_score ET \|r7d\| > `wrapper_tau_trend` (0.03) | Le prix a déjà bougé contre le commit (réactif) — FIX2, +1.69 backtest 6 mois |
 | `fired_dispersion` | n_committed_specialists trop bas + variance des votes élevée | Pas de consensus — soft-gate prend une décision sur peu de signal |
 | `fired_three_way` | (off en v1.0.0) | Détecte un three-way disagreement (Winter≠Spring≠global) |
 
@@ -183,6 +183,18 @@ Le soft-gate produit une décision, mais elle peut être trompée par des **rég
 - `decision_wrapped` : OPEN | HEDGE | MONITOR — c'est LA décision finale
 - `wrapper_active` : TRUE si wrapped ≠ soft_gate (le wrapper a effectivement changé la décision)
 - 4 booléens `fired_*` : pour audit, on garde la trace des détecteurs qui ont fired (même si le Compass override a relâché le veto)
+
+### 4.1 Leviers Compass config-as-data (2026-06)
+
+La `WrapperConfig` vient de l'artifact figé `tpw_v1`, mais les rows `wrapper_*` de `pl_algorithm_config` sont désormais **autoritaires** (loader `load_wrapper_config` → `dataclasses.replace`) : on flippe un détecteur / seuil **sans re-freezer l'artifact ni redéployer**. Trois leviers actifs, tous tunables/désactivables par config (cf. [runbook wrapper-levers-tuning.md](../runbooks/wrapper-levers-tuning.md)) :
+
+| Levier | Clé config | Valeur | Effet |
+|---|---|---|---|
+| Trend-conflict (FIX2) | `wrapper_use_trend_conflict` | `1` | Réactive le détecteur trend (réactif : le prix a déjà bougé contre le commit). +1.69 backtest 6 mois. |
+| regime-MONITOR | `compass_regime_monitor_atr_pctl` | `0.80` | Override commit→MONITOR quand `atr_14d/close` percentile(252j) > seuil. EV : en vol extrême dir-acc ~76% < break-even ~81%. ⚠️ in-sample / abstention. |
+| alpha_macro cap | `compass_softgate_alpha_macro_cap` | `0.9` | Cap le `alpha_macro` soft-gate (1.477) → un spécialiste anti-macro est sous-pondéré `(1−0.9)`, jamais zéroté. Tue l'unanimité `net_score=−1.000`. |
+
+**Composition de la décision publiée** : `soft-gate(alpha_macro cappé) → wrapper (trend/run_acc/dispersion) → regime-MONITOR override`. `decision_wrapped` garde la sortie **wrapper** (audit) ; `pl_orchestrator_decision.regime_monitor_fired` (nouvelle colonne) trace l'override ; **`pl_indicator_daily.decision` (servi par le dashboard) = la décision finale régime-ajustée**. `fired_trend` / `fired_three_way` sont désormais lus du wrapper (plus hardcodés `False`), et `macro_half_life_days` est calculé (plus `None`).
 
 ### Result on backfill 2026
 

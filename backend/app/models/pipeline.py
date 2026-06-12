@@ -828,6 +828,13 @@ class PlOrchestratorDecision(Base):
     prior_hedge: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 6))
     prior_monitor: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 6))
 
+    # Compass regime-MONITOR lever: True when the published decision was forced to
+    # MONITOR (top-vol regime) on top of the wrapper output. decision_wrapped keeps the
+    # wrapper's own output; pl_indicator_daily.decision carries the regime-adjusted final.
+    regime_monitor_fired: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
 
 

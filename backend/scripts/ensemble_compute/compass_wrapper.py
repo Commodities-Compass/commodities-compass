@@ -52,6 +52,12 @@ class CompassTransitionWrapper(TransitionProtectionWrapper):
     ) -> None:
         super().__init__(config=config, cluster_mapping=cluster_mapping)
         self.dispersion_with_acc_threshold = float(dispersion_with_acc_threshold)
+        # Captured from today's wrapped row on each apply() so the writer can persist
+        # the REAL detector states (the vendor exposes fired_running_acc / fired_dispersion
+        # on EnsembleDecision, but NOT fired_trend / fired_three_way). Default False until
+        # apply() runs. See main._build_diagnostics.
+        self.last_fired_trend: bool = False
+        self.last_fired_three_way: bool = False
 
     def apply(
         self,
@@ -63,6 +69,13 @@ class CompassTransitionWrapper(TransitionProtectionWrapper):
 
         if wrapped.empty:
             return wrapped, diag_df
+
+        # Capture today's (= last row) detector states the vendor doesn't surface on
+        # EnsembleDecision. Done BEFORE the dispersion-release rewrite below, which
+        # never touches fired_trend / fired_three_way.
+        _today = wrapped.iloc[-1]
+        self.last_fired_trend = bool(_today.get("fired_trend", False))
+        self.last_fired_three_way = bool(_today.get("fired_three_way", False))
 
         # Defensive copy: super().apply() returns a freshly-built frame in
         # the current vendor implementation, but we mutate it below — copy

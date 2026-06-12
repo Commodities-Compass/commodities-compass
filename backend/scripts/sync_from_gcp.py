@@ -46,6 +46,8 @@ SYNC_TABLES = [
     # Algorithm config (ref_contract FK)
     "pl_algorithm_version",
     "pl_algorithm_config",
+    # Model artifacts FK pl_algorithm_version — must be cleared before it (reversed-delete) and reinserted after
+    "pl_model_artifact",
     # Pipeline data
     "pl_contract_data_daily",
     "pl_derived_indicators",
@@ -55,6 +57,15 @@ SYNC_TABLES = [
     "pl_article_segment",
     "pl_weather_observation",
     "pl_seasonal_score",
+    # Ensemble (Campaign 5) — FK to pl_algorithm_version + ref_contract (both above)
+    "pl_orchestrator_decision",
+    "pl_specialist_prediction",
+    # Positioning / external / fundamentals (newer scrapers, standalone — no FK to sync tables)
+    "pl_cot_eu_weekly",
+    "pl_cot_us_weekly",
+    "pl_external_indicator",
+    "pl_stock_observation",
+    "pl_supply_demand_observation",
     # Audit tables
     "aud_pipeline_run",
     "aud_data_quality_check",
@@ -88,7 +99,11 @@ def sync_table(
 
         # Fetch all columns dynamically
         inspector = inspect(gcp_engine)
-        columns = [c["name"] for c in inspector.get_columns(table)]
+        # Exclude GENERATED columns (e.g. pl_cot_eu_weekly.prod_merc_net/m_money_net) —
+        # Postgres recomputes them on insert; writing them raises GeneratedAlways.
+        columns = [
+            c["name"] for c in inspector.get_columns(table) if not c.get("computed")
+        ]
         col_list = ", ".join(columns)
 
         rows = gc.execute(text(f"SELECT {col_list} FROM {table}")).fetchall()
@@ -180,7 +195,14 @@ def main() -> int:
             # Re-insert (table already cleared above)
             with gcp_engine.connect() as gc:
                 inspector = inspect(gcp_engine)
-                columns = [c["name"] for c in inspector.get_columns(table)]
+                # Exclude GENERATED columns (e.g. pl_cot_eu_weekly.prod_merc_net/
+                # m_money_net) — Postgres recomputes them on insert; writing them
+                # raises GeneratedAlways.
+                columns = [
+                    c["name"]
+                    for c in inspector.get_columns(table)
+                    if not c.get("computed")
+                ]
                 col_list = ", ".join(columns)
                 rows = gc.execute(text(f"SELECT {col_list} FROM {table}")).fetchall()
 

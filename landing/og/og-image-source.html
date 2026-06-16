@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Compass CC — OG Image Source (1200×630)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;900&family=Playfair+Display:ital,wght@0,500;0,900;1,400;1,500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --paper: #FFFFFF;
+    --paper-warm: #F8F4ED;
+    --ink: #1A1A1A;
+    --ink-light: #8A8A8A;
+    --rule: #E5E5E5;
+    --signal-open: #10B981;
+    --amber-glow: rgba(245,158,11,0.15);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1200px; height: 630px; overflow: hidden; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    color: var(--ink);
+    position: relative;
+    background:
+      radial-gradient(900px 600px at 10% -10%, rgba(245,158,11,0.08), transparent 60%),
+      radial-gradient(800px 600px at 95% 20%, rgba(16,185,129,0.04), transparent 60%),
+      radial-gradient(1000px 700px at 50% 110%, rgba(0,0,0,0.04), transparent 65%),
+      linear-gradient(180deg, var(--paper) 0%, var(--paper-warm) 50%, var(--paper) 100%);
+  }
+
+  .frame {
+    width: 1200px; height: 630px;
+    padding: 64px 80px;
+    display: flex; flex-direction: column;
+    justify-content: space-between;
+    position: relative;
+  }
+
+  /* Top — masthead lockup */
+  .top {
+    display: flex; align-items: center; gap: 16px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .top img { width: 32px; height: 32px; }
+  .top .wm {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-weight: 900;
+    font-size: 28px;
+    letter-spacing: 0.06em;
+    color: var(--ink);
+  }
+  .top .deck {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-style: italic;
+    font-size: 18px;
+    color: var(--ink-light);
+    margin-left: 6px;
+  }
+  .top .right {
+    margin-left: auto;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--ink-light);
+  }
+
+  /* Middle — headline */
+  .middle {
+    flex: 1;
+    display: flex; flex-direction: column; justify-content: center;
+    gap: 28px;
+    padding: 32px 0;
+    position: relative;
+  }
+  .eyebrow {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: #4A4A4A;
+    font-weight: 500;
+  }
+  h1 {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-weight: 500;
+    font-size: 96px;
+    line-height: 0.94;
+    letter-spacing: -0.025em;
+    color: var(--ink);
+    max-width: 16ch;
+  }
+  h1 em {
+    font-style: italic;
+    font-weight: 400;
+    position: relative;
+    display: inline-block;
+  }
+  h1 em::after {
+    content: "";
+    position: absolute;
+    bottom: 0.12em; left: -0.04em; right: -0.04em;
+    height: 0.18em;
+    background: var(--amber-glow);
+    border-radius: 4px;
+    z-index: -1;
+  }
+  .deck-line {
+    font-family: Georgia, serif;
+    font-style: italic;
+    font-size: 22px;
+    color: #4A4A4A;
+    max-width: 60ch;
+  }
+
+  /* Bottom — meta line + signal pill */
+  .bottom {
+    display: flex; justify-content: space-between; align-items: center;
+    padding-top: 24px;
+    border-top: 1px solid var(--rule);
+  }
+  .bottom .meta {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-light);
+  }
+  .bottom .pill {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 10px 18px;
+    background: rgba(16,185,129,0.10);
+    border: 1px solid rgba(16,185,129,0.25);
+    border-radius: 999px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.20em;
+    color: #047857;
+  }
+  .bottom .pill .dot {
+    width: 8px; height: 8px;
+    border-radius: 999px;
+    background: var(--signal-open);
+    box-shadow: 0 0 0 4px rgba(16,185,129,0.15);
+  }
+</style>
+</head>
+<body>
+  <div class="frame">
+    <div class="top">
+      <img src="../public/compass-icon.png" alt="" />
+      <span class="wm">COMPASS CC</span>
+      <span class="deck"><em>The daily ICE cocoa briefing</em></span>
+      <span class="right">com-compass.com</span>
+    </div>
+
+    <div class="middle">
+      <span class="eyebrow">Édition quotidienne · ICE Cocoa · invite-only</span>
+      <h1>Decide before<br/>the <em>bell.</em></h1>
+      <p class="deck-line">One conviction on cocoa, published every night before LIFFE's opening bell. Read in four minutes, signed by the desk.</p>
+    </div>
+
+    <div class="bottom">
+      <span class="meta">Compiled 19:30 UTC J-1 · Live 00:00 UTC J · Mon–Fri</span>
+      <span class="pill"><span class="dot"></span>OPEN — TODAY'S READING</span>
+    </div>
+  </div>
+</body>
+</html>

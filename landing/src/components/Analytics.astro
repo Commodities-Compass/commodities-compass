@@ -1,0 +1,33 @@
+---
+/**
+ * Privacy-friendly analytics — Plausible.
+ *
+ * Gated by env var `PUBLIC_PLAUSIBLE_DOMAIN`. When empty/unset, NO script
+ * is emitted, no network call is made, no third-party connection happens.
+ * That keeps preview deploys / local dev free of analytics noise.
+ *
+ * To activate in prod:
+ *   1. Create the site on plausible.io with domain = com-compass.com
+ *   2. Set PUBLIC_PLAUSIBLE_DOMAIN=com-compass.com in the build env
+ *      (Vercel: Project Settings → Env Vars · GCP: GHA workflow env)
+ *   3. Redeploy. The `<script>` tag below activates automatically.
+ *
+ * Script variant used: `script.outbound-links.js` — also tracks clicks on
+ * outbound links (mailto:, external) which is exactly what we need for the
+ * `mailto:issouf@com-compass.com` CTA conversion funnel.
+ *
+ * No cookies, no PII, no GDPR banner needed (Plausible is server-side
+ * anonymous-IP-only by design).
+ */
+const domain = import.meta.env.PUBLIC_PLAUSIBLE_DOMAIN as string | undefined;
+const enabled = typeof domain === 'string' && domain.length > 0;
+---
+
+{enabled && (
+  <script
+    is:inline
+    defer
+    data-domain={domain}
+    src="https://plausible.io/js/script.outbound-links.js"
+  ></script>
+)}

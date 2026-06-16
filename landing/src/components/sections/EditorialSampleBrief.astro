@@ -1,0 +1,41 @@
+---
+import { type Locale, t, pathFor } from '@/i18n/strings';
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const copy = t(locale).sampleBriefPage;
+---
+
+<section class="editorial-page">
+  <div class="column">
+    <p class="banner">{copy.banner}</p>
+    <p class="eyebrow">{copy.eyebrow}</p>
+
+    <div class="signal-line">
+      <span class="label">{copy.signalLabel}</span>
+      <span class="pill"><span class="dot"></span>{copy.signalPill}</span>
+      <span class="label">{copy.date}</span>
+    </div>
+
+    <h1>{copy.title} <em>{copy.titleEm}</em></h1>
+
+    <div class="drop">
+      <p set:html={copy.dropParagraph}></p>
+    </div>
+
+    {copy.paragraphs.map((p) => <p set:html={p}></p>)}
+
+    <div class="conviction-line">
+      <span>{copy.conviction}</span>
+      <span>·</span>
+      <span>{copy.horizon}</span>
+    </div>
+
+    <a href={pathFor(locale)} class="back-link">
+      ← {copy.backToHome}
+    </a>
+  </div>
+</section>

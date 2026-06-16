@@ -9,6 +9,33 @@ const { locale } = Astro.props;
 const copy = t(locale);
 
 const barHeights = [28, 50, 38, 65, 35, 55, 75, 42, 60, 32, 82, 48, 58, 70, 38, 55, 28, 68, 45, 52, 36, 62, 40, 48, 75, 55, 32, 50];
+
+/* ------------------------------------------------------------------
+   Mini sparkline — 30-day illustrative CAK26 price series.
+   Climb to mid-3050s in mid-period, decline to 2964 on the last day,
+   so the chart visually corroborates the HEDGE narrative in the brief.
+   No real data — purely editorial.
+   ------------------------------------------------------------------ */
+const prices = [
+  2820, 2845, 2860, 2890, 2910, 2935, 2960, 2980, 3010, 3025,
+  3015, 3000, 3010, 3025, 3040, 3050, 3045, 3030, 3015, 2995,
+  2985, 2998, 3005, 3015, 3010, 2995, 2980, 2975, 2964,
+];
+const CHART_W = 320;
+const CHART_H = 90;
+const PAD_X = 4;
+const PAD_Y = 8;
+const minPrice = Math.min(...prices);
+const maxPrice = Math.max(...prices);
+const xStep = (CHART_W - PAD_X * 2) / (prices.length - 1);
+const points = prices.map((p, i) => {
+  const x = PAD_X + i * xStep;
+  const y = PAD_Y + (CHART_H - PAD_Y * 2) * (1 - (p - minPrice) / (maxPrice - minPrice));
+  return { x: Number(x.toFixed(2)), y: Number(y.toFixed(2)) };
+});
+const linePath = 'M ' + points.map((p) => `${p.x},${p.y}`).join(' L ');
+const areaPath = `${linePath} L ${points[points.length - 1].x},${CHART_H - PAD_Y} L ${points[0].x},${CHART_H - PAD_Y} Z`;
+const lastPoint = points[points.length - 1];
 ---
 
 <section class="brief-section" id="brief">
@@ -37,39 +64,84 @@ const barHeights = [28, 50, 38, 65, 35, 55, 75, 42, 60, 32, 82, 48, 58, 70, 38, 
         <div class="more">{copy.brief.briefMore}</div>
       </article>
 
-      <article class="audio-card" id="compass-audio-card">
-        <span class="kicker">{copy.brief.audioKicker}</span>
-        <h4>{copy.brief.audioHeading}<br /><em>{copy.brief.audioHeadingEm}</em></h4>
-        <div class="player">
-          <button class="play" id="compass-play" aria-label={copy.brief.audioPlayLabel}>
-            <svg id="compass-play-icon" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path d="M8 5v14l11-7z" />
-            </svg>
-          </button>
-          <div class="stack">
-            <div
-              class="waveform seekable"
-              id="compass-waveform"
-              role="slider"
-              tabindex="0"
-              aria-label={copy.brief.audioSeekLabel}
-              aria-valuemin="0"
-              aria-valuemax="100"
-              aria-valuenow="0"
-            >
-              {barHeights.map((h) => <div class="bar" style={`height:${h}%`}></div>)}
-            </div>
-            <div class="time">
-              <span class="current" id="compass-time-current">0:00</span>
-              <span id="compass-time-total">0:30</span>
+      <div class="right-column">
+        <article class="audio-card" id="compass-audio-card">
+          <span class="kicker">{copy.brief.audioKicker}</span>
+          <h4>{copy.brief.audioHeading}<br /><em>{copy.brief.audioHeadingEm}</em></h4>
+          <div class="player">
+            <button class="play" id="compass-play" aria-label={copy.brief.audioPlayLabel}>
+              <svg id="compass-play-icon" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </button>
+            <div class="stack">
+              <div
+                class="waveform seekable"
+                id="compass-waveform"
+                role="slider"
+                tabindex="0"
+                aria-label={copy.brief.audioSeekLabel}
+                aria-valuemin="0"
+                aria-valuemax="100"
+                aria-valuenow="0"
+              >
+                {barHeights.map((h) => <div class="bar" style={`height:${h}%`}></div>)}
+              </div>
+              <div class="time">
+                <span class="current" id="compass-time-current">0:00</span>
+                <span id="compass-time-total">0:30</span>
+              </div>
             </div>
           </div>
-        </div>
-        <audio id="compass-audio" preload="metadata" class="audio-hidden" playsinline>
-          <source src="/compass-sample.mp3" type="audio/mpeg" />
-          Your browser does not support the audio element.
-        </audio>
-      </article>
+          <audio id="compass-audio" preload="metadata" class="audio-hidden" playsinline>
+            <source src="/compass-sample.mp3" type="audio/mpeg" />
+            Your browser does not support the audio element.
+          </audio>
+        </article>
+
+        <article class="minichart-card" aria-label={copy.brief.chartEyebrow}>
+          <span class="kicker">{copy.brief.chartEyebrow}</span>
+          <svg
+            class="minichart-svg"
+            viewBox={`0 0 ${CHART_W} ${CHART_H}`}
+            preserveAspectRatio="none"
+            aria-hidden="true"
+          >
+            <defs>
+              <linearGradient id="cc-chart-fill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="var(--color-ink)" stop-opacity="0.10" />
+                <stop offset="100%" stop-color="var(--color-ink)" stop-opacity="0" />
+              </linearGradient>
+            </defs>
+            <path d={areaPath} fill="url(#cc-chart-fill)" />
+            <path
+              d={linePath}
+              fill="none"
+              stroke="var(--color-ink)"
+              stroke-width="1.5"
+              stroke-linejoin="round"
+              stroke-linecap="round"
+              vector-effect="non-scaling-stroke"
+            />
+            <circle
+              cx={lastPoint.x}
+              cy={lastPoint.y}
+              r="3.5"
+              fill="var(--color-signal-hedge)"
+              stroke="var(--color-paper)"
+              stroke-width="1.5"
+            />
+          </svg>
+          <div class="chart-meta">
+            <div>
+              <span class="label">{copy.brief.chartTodayLabel}</span>
+              <span class="price">{copy.brief.chartCurrentPrice}</span>
+              <span class="change down">{copy.brief.chartCurrentChange}</span>
+            </div>
+            <span class="caption">{copy.brief.chartCaption}</span>
+          </div>
+        </article>
+      </div>
     </div>
   </div>
 </section>

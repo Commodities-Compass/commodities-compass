@@ -712,10 +712,15 @@ body {
 .brief-section { padding: 72px 0; }
 .brief-grid {
   display: grid;
-  /* Asymmetric — brief gets ~60%, audio gets ~40% */
+  /* Asymmetric — brief gets ~60%, audio+chart get ~40% */
   grid-template-columns: 1.4fr 1fr;
   gap: 24px;
   align-items: start;
+}
+.brief-grid .right-column {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
 .brief-card {
   backdrop-filter: blur(20px) saturate(180%);
@@ -866,6 +871,81 @@ body {
 }
 .audio-card .time .current { color: var(--color-ink); font-weight: 500; }
 .audio-card .audio-hidden { display: none; }
+
+/* Mini sparkline card (sous l'audio dans la colonne droite de la section IV) */
+.minichart-card {
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 24px;
+  padding: 28px 32px;
+  box-shadow: var(--depth-3);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  transition: transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 280ms ease;
+}
+.minichart-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--depth-4);
+}
+.minichart-card .kicker {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-light-2);
+}
+.minichart-card .minichart-svg {
+  width: 100%;
+  height: 110px;
+  display: block;
+  overflow: visible;
+}
+.minichart-card .chart-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule-soft);
+}
+.minichart-card .chart-meta > div {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.minichart-card .chart-meta .label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-light-2);
+}
+.minichart-card .chart-meta .price {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ink);
+}
+.minichart-card .chart-meta .change {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+}
+.minichart-card .chart-meta .change.down { color: var(--color-signal-hedge); }
+.minichart-card .chart-meta .change.up { color: var(--color-signal-open); }
+.minichart-card .chart-meta .caption {
+  font-family: var(--font-editorial);
+  font-style: italic;
+  font-size: 11px;
+  color: var(--ink-light-2);
+  text-align: right;
+  max-width: 50%;
+  line-height: 1.4;
+}
 
 /* ====================================================
    V — CONTACT

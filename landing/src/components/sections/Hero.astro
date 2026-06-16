@@ -1,0 +1,41 @@
+---
+import { type Locale, t } from '@/i18n/strings';
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const copy = t(locale);
+---
+
+<section class="border-b border-rule">
+  <div class="mx-auto w-full max-w-[1280px] px-6 pb-24 pt-16 lg:px-10 lg:pb-32 lg:pt-24">
+    <p class="eyebrow">{copy.hero.eyebrow}</p>
+
+    <h1 class="headline mt-6 text-[clamp(3rem,8vw,7rem)] text-ink">
+      {copy.hero.title}
+      <span class="headline-italic block">{copy.hero.titleItalic}</span>
+    </h1>
+
+    <p class="deck mt-8 max-w-2xl text-xl md:text-2xl">
+      {copy.hero.lede}
+    </p>
+
+    <div class="mt-10 flex flex-wrap items-center gap-4">
+      <a
+        href="#contact"
+        class="inline-flex items-center gap-3 border border-ink bg-ink px-6 py-3 font-mono text-xs font-medium uppercase tracking-[0.18em] text-paper transition-colors hover:bg-paper hover:text-ink"
+      >
+        {copy.hero.ctaPrimary}
+        <span aria-hidden="true">→</span>
+      </a>
+      <a
+        href="#sample"
+        class="inline-flex items-center gap-3 border border-ink px-6 py-3 font-mono text-xs font-medium uppercase tracking-[0.18em] text-ink transition-colors hover:bg-ink hover:text-paper"
+      >
+        {copy.hero.ctaSecondary}
+      </a>
+    </div>
+  </div>
+</section>

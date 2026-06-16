@@ -1,0 +1,38 @@
+---
+import { type Locale, t, pathFor } from '@/i18n/strings';
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const copy = t(locale);
+---
+
+<footer class="border-t border-rule bg-paper-off">
+  <div class="mx-auto w-full max-w-[1280px] px-6 py-12 lg:px-10">
+    <div class="flex flex-col gap-8 md:flex-row md:items-end md:justify-between">
+      <div class="flex items-start gap-4">
+        <img src="/compass-icon.png" alt="" width="36" height="36" class="h-9 w-9 opacity-80" />
+        <div>
+          <p class="font-display text-2xl font-black tracking-tight text-ink">
+            {copy.masthead.pubName}
+          </p>
+          <p class="eyebrow mt-1">{copy.footer.colophon}</p>
+        </div>
+      </div>
+
+      <div class="flex flex-col items-start gap-3 md:items-end">
+        <p class="font-editorial text-sm italic text-ink-mid max-w-md md:text-right">
+          {copy.footer.ledeDisclaimer}
+        </p>
+        <div class="flex flex-wrap items-center gap-6">
+          <a href={`${pathFor(locale)}disclaimer`} class="eyebrow hover:text-ink transition-colors">
+            {copy.footer.disclaimer}
+          </a>
+          <span class="eyebrow text-ink-light">{copy.footer.year}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</footer>

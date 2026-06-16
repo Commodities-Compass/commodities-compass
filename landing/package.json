@@ -1,0 +1,31 @@
+{
+  "name": "compass-landing",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Compass CC marketing landing — Astro 5 + Tailwind v4 + i18n FR/EN",
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro",
+    "check": "astro check",
+    "type-check": "astro check --noSync"
+  },
+  "engines": {
+    "node": ">=18.17.0"
+  },
+  "dependencies": {
+    "astro": "^5.2.0",
+    "@astrojs/mdx": "^4.0.0",
+    "@astrojs/sitemap": "^3.2.0",
+    "@astrojs/check": "^0.9.4",
+    "@tailwindcss/vite": "^4.0.0",
+    "tailwindcss": "^4.0.0",
+    "@fontsource-variable/inter": "^5.1.0",
+    "@fontsource-variable/playfair-display": "^5.1.0",
+    "@fontsource/ibm-plex-mono": "^5.1.0",
+    "typescript": "^5.6.0"
+  }
+}

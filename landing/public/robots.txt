@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://com-compass.com/sitemap-index.xml

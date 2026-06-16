@@ -1,0 +1,45 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import Hero from '@/components/sections/Hero.astro';
+import PhasePlaceholder from '@/components/sections/PhasePlaceholder.astro';
+import { t } from '@/i18n/strings';
+
+const locale = 'fr' as const;
+const copy = t(locale);
+
+const title = `${copy.masthead.pubName} — ${copy.masthead.tagline}`;
+const description = copy.hero.lede;
+---
+
+<BaseLayout
+  locale={locale}
+  title={title}
+  description={description}
+  pathname="/"
+>
+  <Hero locale={locale} />
+
+  <PhasePlaceholder
+    roman="II"
+    title={copy.signal.label}
+    hint="Signal du jour + bento (OPEN/MONITOR/HEDGE, gauges, brief, audio, YTD, hit rate). À porter depuis mockup D en Phase 2."
+  />
+
+  <PhasePlaceholder
+    roman={copy.method.sectionRoman}
+    title={copy.method.sectionTitle}
+    hint={copy.method.sectionDeck}
+  />
+
+  <PhasePlaceholder
+    roman={copy.audio.sectionRoman}
+    title={copy.audio.sectionTitle}
+    hint={copy.audio.sectionDeck}
+  />
+
+  <PhasePlaceholder
+    roman={copy.contact.sectionRoman}
+    title={copy.contact.sectionTitle}
+    hint={copy.contact.sectionDeck}
+  />
+</BaseLayout>

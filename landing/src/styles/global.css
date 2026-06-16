@@ -1,0 +1,111 @@
+@import 'tailwindcss';
+
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/playfair-display';
+@import '@fontsource-variable/playfair-display/wght-italic.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+@import '@fontsource/ibm-plex-mono/600.css';
+
+/* ------------------------------------------------------------------
+   Compass CC — brand tokens
+   Source of truth for the marketing landing.
+   Mirrors frontend/src/index.css (app dashboard) so the visual
+   continuity between com-compass.com and app.com-compass.com is exact.
+   ------------------------------------------------------------------ */
+@theme {
+  /* ink/paper palette */
+  --color-paper: #FFFFFF;
+  --color-paper-off: #F5F5F5;
+  --color-ink: #1A1A1A;
+  --color-ink-dark: #000000;
+  --color-ink-mid: #4A4A4A;
+  --color-ink-light: #8A8A8A;
+  --color-rule: #E5E5E5;
+
+  /* signal accents — used ONLY for badges, never for body copy */
+  --color-signal-open: #10B981;
+  --color-signal-monitor: #F59E0B;
+  --color-signal-hedge: #EF4444;
+
+  /* typography */
+  --font-display: 'Playfair Display Variable', Georgia, serif;
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-editorial: Georgia, 'Times New Roman', serif;
+}
+
+/* base reset */
+:root {
+  color-scheme: light;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  line-height: 1.6;
+}
+
+/* selection */
+::selection {
+  background-color: var(--color-ink);
+  color: var(--color-paper);
+}
+
+/* editorial primitives — light, reusable, used in MDX content too */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-ink-mid);
+}
+
+.headline {
+  font-family: var(--font-display);
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+
+.headline-italic {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.deck {
+  font-family: var(--font-editorial);
+  font-style: italic;
+  color: var(--color-ink-mid);
+  line-height: 1.4;
+}
+
+.hairline {
+  background-color: var(--color-rule);
+  height: 1px;
+  width: 100%;
+}
+
+/* reduce motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -172,8 +172,18 @@ SELECT
       WHERE cur.date = o.date
     )                                                                       AS forward_return
 FROM pl_orchestrator_decision o
-WHERE o.contract_id = :contract_id
-  AND o.algorithm_version_id = :algorithm_version_id
+-- Chain across contract rolls instead of filtering by a single contract_id.
+-- The join keeps only the orchestrator row whose contract was front-month-by-OI
+-- for that date (v_contract_data_chained is DISTINCT ON (date)). Two consequences:
+--   1. exactly one row per date → a CONTINUOUS trailing window across a roll
+--      boundary, so the wrapper's running_acc_5d does not reset to NaN-bootstrap
+--      just because ref_contract.is_active flipped to the new code;
+--   2. the transient duplicate a roll backfill leaves (old + new contract both
+--      have a row for the same date) is de-duped — the stale non-front-month
+--      row is dropped by the join.
+JOIN v_contract_data_chained c
+    ON c.date = o.date AND c.contract_id = o.contract_id
+WHERE o.algorithm_version_id = :algorithm_version_id
   AND o.date < :end_date
 ORDER BY o.date DESC
 LIMIT :lookback
@@ -190,6 +200,15 @@ def load_recent_orchestrator_decisions(
 ) -> pd.DataFrame:
     """Read trailing ``pl_orchestrator_decision`` rows strictly before ``end_date``.
 
+    The window chains across contract rolls via ``v_contract_data_chained``
+    (front-month-by-OI), so it is continuous across a roll boundary and the
+    wrapper's running_acc_5d detector does not reset to a NaN-bootstrap window
+    just because the active contract code changed. ``contract_id`` is kept in
+    the signature for the callsite (and parity with ``load_market_history``)
+    but is no longer used as a filter — the VIEW already picks one contract
+    per date. On a normal (non-roll) day this is identical to the old
+    contract-filtered query, since only one contract has rows per date.
+
     Joins ``pl_indicator_daily`` is NOT done here — the wrapper's
     running-acc detector evaluates correctness using a forward-return
     proxy (handled downstream in the wrapper itself by the diag_df). For
@@ -201,10 +220,10 @@ def load_recent_orchestrator_decisions(
     committed, correct. ``correct`` is NULL because we don't compute the
     forward return here (the wrapper handles it from market_history).
     """
+    _ = contract_id  # kept for ABI; window chains across contracts via the VIEW
     rows = session.execute(
         text(_RECENT_DECISIONS_SELECT),
         {
-            "contract_id": contract_id,
             "algorithm_version_id": algorithm_version_id,
             "end_date": end_date,
             "lookback": lookback,
@@ -268,14 +287,19 @@ def load_recent_orchestrator_decisions(
 
 _RECENT_VOTES_WINDOWED_SELECT = """
 SELECT
-    date::DATE          AS date,
-    specialist_name     AS specialist_name,
-    pred                AS pred
-FROM pl_specialist_prediction
-WHERE contract_id = :contract_id
-  AND algorithm_version_id = :algorithm_version_id
-  AND date BETWEEN :start_date AND (:end_date - INTERVAL '1 day')::DATE
-ORDER BY date DESC, specialist_name ASC
+    sp.date::DATE          AS date,
+    sp.specialist_name     AS specialist_name,
+    sp.pred                AS pred
+FROM pl_specialist_prediction sp
+-- Same front-month chaining as recent decisions (see _RECENT_DECISIONS_SELECT):
+-- keep the 14 votes of the contract that was front-month-by-OI per date so the
+-- cluster-dispersion detector sees a continuous window across a roll and ignores
+-- the stale-contract duplicate votes a roll backfill leaves behind.
+JOIN v_contract_data_chained c
+    ON c.date = sp.date AND c.contract_id = sp.contract_id
+WHERE sp.algorithm_version_id = :algorithm_version_id
+  AND sp.date BETWEEN :start_date AND (:end_date - INTERVAL '1 day')::DATE
+ORDER BY sp.date DESC, sp.specialist_name ASC
 """
 
 
@@ -291,14 +315,20 @@ def load_recent_specialist_votes(
 
     Returns columns: date, specialist_name, pred. Used by the wrapper's
     cluster-dispersion detector. Empty on day-1 — detector skips.
+
+    Like ``load_recent_orchestrator_decisions``, the window chains across
+    contract rolls via ``v_contract_data_chained`` (front-month-by-OI).
+    ``contract_id`` is kept in the signature for the callsite but is no longer
+    a filter; on a non-roll day this is identical to the old contract-filtered
+    query.
     """
     # Use a date-range filter so 14 specialists × lookback_days rows are
     # all returned together (LIMIT alone would truncate mid-day).
     start_date = end_date - timedelta(days=lookback_days)
+    _ = contract_id  # kept for ABI; window chains across contracts via the VIEW
     rows = session.execute(
         text(_RECENT_VOTES_WINDOWED_SELECT),
         {
-            "contract_id": contract_id,
             "algorithm_version_id": algorithm_version_id,
             "start_date": start_date,
             "end_date": end_date,

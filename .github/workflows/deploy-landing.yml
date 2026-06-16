@@ -4,40 +4,33 @@ name: Deploy Landing
 # the landing has its own cadence (content-heavy, no Docker, no DB) and we
 # don't want a landing copy edit to rebuild + redeploy 19 Cloud Run Jobs.
 #
-# Two environments:
-#   - main branch + changes under landing/**  →  prod bucket (cacaooo-landing)
-#   - feat/landing-v2 branch + changes under landing/**  →  staging bucket
+# No staging environment — the landing is fully static, dev loop runs locally
+# (`pnpm dev`), and edits go straight to prod on push-to-main. If we ever want
+# to validate before live (e.g. for a major rewrite), add a temporary staging
+# subdomain + bucket via Terraform.
 #
 # Manual trigger (workflow_dispatch) available for emergency redeploys without
-# code changes (e.g. cache invalidation after a content edit done directly in
-# the bucket — not recommended but documented for completeness).
+# code changes (e.g. cache invalidation after editing a bucket object directly
+# — not recommended but documented for completeness).
 
 on:
   push:
     branches:
       - main
-      - feat/landing-v2
     paths:
       - 'landing/**'
       - '.github/workflows/deploy-landing.yml'
   workflow_dispatch:
-    inputs:
-      target:
-        description: 'Target environment'
-        required: true
-        default: 'staging'
-        type: choice
-        options:
-          - staging
-          - prod
 
 concurrency:
-  group: deploy-landing-${{ github.ref }}
+  group: deploy-landing
   cancel-in-progress: false
 
 env:
   NODE_VERSION: '20'
   PNPM_VERSION: '10.29.2'
+  BUCKET: ${{ vars.GCP_PROJECT_ID }}-landing
+  HOST: com-compass.com
 
 jobs:
   build-and-deploy:
@@ -49,33 +42,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      # Decide target bucket + host based on ref or manual input
-      - name: Resolve target environment
-        id: env
-        run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            TARGET="${{ inputs.target }}"
-          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            TARGET="prod"
-          else
-            TARGET="staging"
-          fi
-
-          if [[ "$TARGET" == "prod" ]]; then
-            BUCKET="${{ vars.GCP_PROJECT_ID }}-landing"
-            HOST="com-compass.com"
-            PATH_MATCHER="landing-prod"
-          else
-            BUCKET="${{ vars.GCP_PROJECT_ID }}-landing-staging"
-            HOST="staging.com-compass.com"
-            PATH_MATCHER="landing-staging"
-          fi
-
-          echo "target=$TARGET"      >> "$GITHUB_OUTPUT"
-          echo "bucket=$BUCKET"      >> "$GITHUB_OUTPUT"
-          echo "host=$HOST"          >> "$GITHUB_OUTPUT"
-          echo "::notice::Deploying to $TARGET → gs://$BUCKET (host: $HOST)"
 
       - uses: pnpm/action-setup@v4
         with:
@@ -95,7 +61,7 @@ jobs:
       - name: Build Astro
         working-directory: landing
         env:
-          # Analytics gated on env var — keep empty unless explicitly enabled.
+          # Analytics gated on env var — empty unless explicitly enabled.
           # To activate Plausible: set vars.PUBLIC_PLAUSIBLE_DOMAIN at repo level.
           PUBLIC_PLAUSIBLE_DOMAIN: ${{ vars.PUBLIC_PLAUSIBLE_DOMAIN }}
         run: pnpm build
@@ -124,22 +90,18 @@ jobs:
             --delete-unmatched-destination-objects \
             --recursive \
             landing/dist \
-            gs://${{ steps.env.outputs.bucket }}
+            gs://${{ env.BUCKET }}
 
-      # Per-object Cache-Control headers (matters when cache_mode is FORCE_CACHE_ALL
-      # or USE_ORIGIN_HEADERS — current CACHE_ALL_STATIC respects these too).
-      # Fingerprinted assets in /_astro/ get 1y immutable; HTML gets 5min so a
-      # content fix propagates fast after deploy.
+      # Per-object Cache-Control headers. Fingerprinted assets in /_astro/ get
+      # 1y immutable; HTML gets 5min so a content fix propagates fast after deploy.
       - name: Set Cache-Control headers
         run: |
-          # Fingerprinted assets (Astro hashes filenames in _astro/)
           gcloud storage objects update \
-            "gs://${{ steps.env.outputs.bucket }}/_astro/**" \
+            "gs://${{ env.BUCKET }}/_astro/**" \
             --cache-control="public, max-age=31536000, immutable" \
             || echo "no _astro/ assets to update (likely empty build)"
 
-          # HTML pages — short TTL so content edits propagate fast
-          for f in $(gsutil ls "gs://${{ steps.env.outputs.bucket }}/**.html" 2>/dev/null); do
+          for f in $(gsutil ls "gs://${{ env.BUCKET }}/**.html" 2>/dev/null); do
             gcloud storage objects update "$f" \
               --cache-control="public, max-age=300, must-revalidate"
           done
@@ -148,14 +110,14 @@ jobs:
         run: |
           gcloud compute url-maps invalidate-cdn-cache cc-url-map \
             --path "/*" \
-            --host "${{ steps.env.outputs.host }}" \
+            --host "${{ env.HOST }}" \
             --async
 
       - name: Summary
         run: |
-          echo "## ✅ Landing deployed to **${{ steps.env.outputs.target }}**" >> $GITHUB_STEP_SUMMARY
+          echo "## ✅ Landing deployed to **prod**" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- Bucket: \`gs://${{ steps.env.outputs.bucket }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- Live URL: https://${{ steps.env.outputs.host }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Bucket: \`gs://${{ env.BUCKET }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Live URL: https://${{ env.HOST }}" >> $GITHUB_STEP_SUMMARY
           echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           echo "- CDN invalidation queued (async, ~1 min)" >> $GITHUB_STEP_SUMMARY

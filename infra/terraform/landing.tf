@@ -1,9 +1,9 @@
 # ==============================================================================
-# Landing site (com-compass.com + staging.com-compass.com)
+# Landing site (com-compass.com + www)
 #
-# Pattern: Cloud Storage bucket + Cloud CDN behind the existing Global HTTPS LB.
-# Two buckets (staging + prod) so we can validate on staging before swapping the
-# apex DNS. Same LB, same static IP (cc-lb-ip), no new infra surface.
+# Pattern: single Cloud Storage bucket + Cloud CDN behind the existing Global
+# HTTPS LB. No staging environment — landing is fully static, the dev loop runs
+# locally (`pnpm dev`), and edits go straight to prod on push-to-main.
 #
 # Build artifact: `landing/dist/` (Astro 5 static output, ~920 KB).
 # Pipeline: GitHub Actions (deploy-landing.yml) builds Astro and rsyncs to GCS.
@@ -15,9 +15,9 @@
 # main (see docs/user-stories/P1-landing-deploy-gcp.md for the runbook).
 # ==============================================================================
 
-# ---- Buckets (static site hosting) ----
+# ---- Bucket (static site hosting) ----
 
-resource "google_storage_bucket" "landing_prod" {
+resource "google_storage_bucket" "landing" {
   name          = "${var.project_id}-landing"
   project       = var.project_id
   location      = "EU"
@@ -30,6 +30,8 @@ resource "google_storage_bucket" "landing_prod" {
     not_found_page   = "404.html"
   }
 
+  # Versioning ON so a bad deploy can be rolled back to a prior object
+  # generation without re-running the build (see runbook).
   versioning {
     enabled = true
   }
@@ -37,47 +39,23 @@ resource "google_storage_bucket" "landing_prod" {
   labels = var.labels
 }
 
-resource "google_storage_bucket" "landing_staging" {
-  name          = "${var.project_id}-landing-staging"
-  project       = var.project_id
-  location      = "EU"
-  force_destroy = false
-
-  uniform_bucket_level_access = true
-
-  website {
-    main_page_suffix = "index.html"
-    not_found_page   = "404.html"
-  }
-
-  # Versioning off on staging — short-lived previews, no need to retain history.
-
-  labels = merge(var.labels, { environment = "staging" })
-}
-
 # ---- Public-read IAM ----
 # allUsers viewer is the canonical pattern for public static sites served via
-# Cloud CDN. Cloud CDN itself is the only "client" facing the public internet;
+# Cloud CDN. Cloud CDN is the only client facing the public internet;
 # direct bucket-URL access also works but isn't advertised.
 
-resource "google_storage_bucket_iam_member" "landing_prod_public" {
-  bucket = google_storage_bucket.landing_prod.name
+resource "google_storage_bucket_iam_member" "landing_public" {
+  bucket = google_storage_bucket.landing.name
   role   = "roles/storage.objectViewer"
   member = "allUsers"
 }
 
-resource "google_storage_bucket_iam_member" "landing_staging_public" {
-  bucket = google_storage_bucket.landing_staging.name
-  role   = "roles/storage.objectViewer"
-  member = "allUsers"
-}
+# ---- Backend bucket (Cloud CDN attach point for the LB) ----
 
-# ---- Backend buckets (Cloud CDN attach point for the LB) ----
-
-resource "google_compute_backend_bucket" "landing_prod" {
-  name        = "cc-backend-landing-prod"
+resource "google_compute_backend_bucket" "landing" {
+  name        = "cc-backend-landing"
   project     = var.project_id
-  bucket_name = google_storage_bucket.landing_prod.name
+  bucket_name = google_storage_bucket.landing.name
   enable_cdn  = true
 
   cdn_policy {
@@ -90,8 +68,7 @@ resource "google_compute_backend_bucket" "landing_prod" {
     request_coalescing = true
   }
 
-  # Custom error response: serve our /404.html for any 404 from the bucket.
-  # GCS website config already does this, but Cloud CDN can short-circuit.
+  # Security headers applied to every CDN response.
   custom_response_headers = [
     "X-Content-Type-Options: nosniff",
     "Referrer-Policy: strict-origin-when-cross-origin",
@@ -99,33 +76,10 @@ resource "google_compute_backend_bucket" "landing_prod" {
   ]
 }
 
-resource "google_compute_backend_bucket" "landing_staging" {
-  name        = "cc-backend-landing-staging"
-  project     = var.project_id
-  bucket_name = google_storage_bucket.landing_staging.name
-  enable_cdn  = true
-
-  cdn_policy {
-    cache_mode         = "CACHE_ALL_STATIC"
-    default_ttl        = 300 # 5min on staging for faster iteration
-    max_ttl            = 3600
-    client_ttl         = 300
-    negative_caching   = true
-    serve_while_stale  = 60
-    request_coalescing = true
-  }
-
-  custom_response_headers = [
-    "X-Robots-Tag: noindex, nofollow", # never let staging get indexed
-    "X-Content-Type-Options: nosniff",
-    "Referrer-Policy: strict-origin-when-cross-origin",
-  ]
-}
-
-# ---- Google-managed SSL certificates ----
-# Following the existing convention (1 cert per "site" — same pattern as
-# cc-ssl-app and cc-ssl-api). The apex cert is multi-SAN so com-compass.com
-# and www.com-compass.com share a single cert lifecycle.
+# ---- Google-managed SSL certificate ----
+# Multi-SAN so com-compass.com and www.com-compass.com share a single cert
+# lifecycle. Follows the existing convention (1 cert per "site" — same pattern
+# as cc-ssl-app and cc-ssl-api).
 
 resource "google_compute_managed_ssl_certificate" "landing_apex" {
   name    = "cc-ssl-landing-apex"
@@ -139,15 +93,6 @@ resource "google_compute_managed_ssl_certificate" "landing_apex" {
   }
 }
 
-resource "google_compute_managed_ssl_certificate" "landing_staging" {
-  name    = "cc-ssl-landing-staging"
-  project = var.project_id
-
-  managed {
-    domains = ["staging.com-compass.com"]
-  }
-}
-
 # ---- Outputs for the runbook ----
 
 output "landing_lb_ip" {
@@ -155,12 +100,7 @@ output "landing_lb_ip" {
   value       = google_compute_global_address.lb.address
 }
 
-output "landing_prod_bucket" {
-  description = "Name of the prod landing bucket (target for GHA gcloud storage rsync)."
-  value       = google_storage_bucket.landing_prod.name
-}
-
-output "landing_staging_bucket" {
-  description = "Name of the staging landing bucket."
-  value       = google_storage_bucket.landing_staging.name
+output "landing_bucket" {
+  description = "Name of the landing bucket (target for GHA gcloud storage rsync)."
+  value       = google_storage_bucket.landing.name
 }

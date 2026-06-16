@@ -29,6 +29,14 @@ function zoneOf(value: number, ranges?: IndicatorRange[]): 'RED' | 'ORANGE' | 'G
       const hi = Math.max(r.range_low, r.range_high);
       if (value >= lo && value <= hi) return r.area;
     }
+    // Value falls outside every calibrated range. The marker gets clamped to
+    // the nearest ruler edge (pct 0 or 100), so the color must match that edge
+    // zone — never the ORANGE default, which would render a green-side marker
+    // (e.g. VOL/OI below its lowest bound) as MONITOR.
+    const sorted = sortRangesByMidpoint(ranges);
+    const lowest = sorted[0];
+    const lowestLo = Math.min(lowest.range_low, lowest.range_high);
+    return value < lowestLo ? lowest.area : sorted[sorted.length - 1].area;
   }
   return 'ORANGE';
 }

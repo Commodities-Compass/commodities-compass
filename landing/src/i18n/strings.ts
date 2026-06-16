@@ -166,11 +166,18 @@ const strings = {
       microLegal: 'Avertissement',
       disclaimer: "<strong>Avertissement.</strong> Compass CC publie de l'intelligence de marché et un support à la décision pour les futures sur le cacao ICE. Cela ne constitue ni un conseil en investissement, ni une sollicitation. Le trading de futures comporte un risque substantiel de perte. Les performances passées ne préjugent pas des performances futures. Compass CC n'est pas un conseiller en investissement enregistré, un courtier, ou une plateforme de trading.",
       copyright: '© 2026 Commodities Compass · ICE Cocoa #7',
-      build: 'v1.4 · build 2026-06-12',
     },
     meta: {
       title: 'Compass CC — Le brief quotidien du cacao ICE',
       description: "Un signal, un brief, chaque matin avant la cloche. La rédaction éditoriale qui décode le marché du cacao ICE pour les desks institutionnels.",
+    },
+    notFound: {
+      pageTitle: '404 · Page introuvable — Compass CC',
+      eyebrow: 'Erreur 404',
+      title: 'Page introuvable.',
+      deck: "Cette URL n'existe pas, plus, ou a peut-être été déplacée. Pas de signal à cette adresse — retour à l'édition du jour.",
+      ctaHome: "Retour à l'accueil",
+      ctaContact: 'Signaler un lien cassé',
     },
     disclaimerPage: {
       pageTitle: 'Avertissement — Compass CC',
@@ -355,11 +362,18 @@ const strings = {
       microLegal: 'Disclaimer',
       disclaimer: "<strong>Disclaimer.</strong> Compass CC publishes market intelligence and decision support for ICE cocoa futures. It does not constitute investment advice or a solicitation. Trading futures carries a substantial risk of loss. Past performance is no guarantee of future results. Compass CC is not a registered investment advisor, broker, or trading platform.",
       copyright: '© 2026 Commodities Compass · ICE Cocoa #7',
-      build: 'v1.4 · build 2026-06-12',
     },
     meta: {
       title: 'Compass CC — The daily ICE cocoa briefing',
       description: "One signal, one brief, every morning before the bell. Compass CC: the editorial desk decoding the ICE cocoa market for institutional traders.",
+    },
+    notFound: {
+      pageTitle: '404 · Page not found — Compass CC',
+      eyebrow: 'Error 404',
+      title: 'Page not found.',
+      deck: "This URL does not exist, no longer exists, or may have moved. No signal at this address — back to today's edition.",
+      ctaHome: 'Back to home',
+      ctaContact: 'Report a broken link',
     },
     disclaimerPage: {
       pageTitle: 'Disclaimer — Compass CC',

@@ -1235,6 +1235,90 @@ footer .schedule-line {
 .editorial-page .back-link:hover { opacity: 0.6; }
 
 /* ====================================================
+   404 PAGE
+   ==================================================== */
+.not-found {
+  padding: 96px 0 120px;
+  position: relative;
+  z-index: 1;
+  text-align: center;
+}
+.not-found .ghost-404 {
+  font-family: var(--font-display);
+  font-weight: 300;
+  font-style: italic;
+  font-size: clamp(160px, 22vw, 280px);
+  line-height: 0.9;
+  letter-spacing: -0.02em;
+  color: var(--ink-light-2);
+  opacity: 0.18;
+  margin-bottom: 24px;
+  user-select: none;
+}
+.not-found .nf-split {
+  display: grid;
+  grid-template-columns: 1fr 1px 1fr;
+  gap: 32px;
+  align-items: start;
+  max-width: 880px;
+  margin: 0 auto;
+  text-align: left;
+}
+.not-found .nf-divider {
+  background: var(--rule-soft);
+  height: 100%;
+  min-height: 200px;
+  width: 1px;
+  align-self: stretch;
+}
+.not-found .nf-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 0 8px;
+}
+.not-found .nf-col .eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink-mid-2);
+  font-weight: 500;
+}
+.not-found .nf-col h1 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: clamp(28px, 3vw, 36px);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--color-ink);
+}
+.not-found .nf-col .deck {
+  font-family: var(--font-editorial);
+  font-style: italic;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink-dark);
+}
+.not-found .nf-col .cta {
+  align-self: flex-start;
+  margin-top: 12px;
+}
+
+@media (max-width: 720px) {
+  .not-found { padding: 64px 0 80px; }
+  .not-found .nf-split {
+    grid-template-columns: 1fr;
+    gap: 40px;
+  }
+  .not-found .nf-divider {
+    width: 100%;
+    height: 1px;
+    min-height: 0;
+  }
+}
+
+/* ====================================================
    RESPONSIVE
    ==================================================== */
 @media (max-width: 1100px) {

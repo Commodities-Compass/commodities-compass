@@ -1,0 +1,76 @@
+---
+import '@/styles/global.css';
+import '@/styles/landing.css';
+import Ambient from '@/components/Ambient.astro';
+import Masthead from '@/components/Masthead.astro';
+import Footer from '@/components/Footer.astro';
+import { t } from '@/i18n/strings';
+
+/**
+ * Catch-all 404 page (Astro SSG renders this for any unmatched route).
+ *
+ * In static mode we cannot have separate /404 and /en/404 routes — the host
+ * (Cloud Storage with NotFoundPage=404.html) serves ONE file regardless of
+ * the requested locale. So we render FR + EN side-by-side as an editorial
+ * split-column, with a single "back to home" CTA in each locale.
+ *
+ * The masthead/footer locale defaults to FR but the 404 content itself is
+ * bilingual — works for both /foo and /en/foo bad paths.
+ */
+const fr = t('fr').notFound;
+const en = t('en').notFound;
+const pageTitle = fr.pageTitle;
+const pageDescription = fr.deck;
+---
+
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <meta name="theme-color" content="#1A1A1A" />
+    <meta name="robots" content="noindex,follow" />
+
+    <title>{pageTitle}</title>
+    <meta name="description" content={pageDescription} />
+
+    <link rel="icon" type="image/png" href="/favicon-32.png" sizes="32x32" />
+    <link rel="icon" type="image/png" href="/favicon-16.png" sizes="16x16" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
+  </head>
+  <body>
+    <Ambient />
+    <Masthead locale="fr" />
+    <main id="content">
+      <section class="not-found">
+        <div class="wrap-narrow">
+          <div class="ghost-404" aria-hidden="true">404</div>
+
+          <div class="nf-split">
+            <article class="nf-col" lang="fr">
+              <p class="eyebrow">{fr.eyebrow}</p>
+              <h1>{fr.title}</h1>
+              <p class="deck">{fr.deck}</p>
+              <a href="/" class="cta cta-primary">
+                ← {fr.ctaHome}
+              </a>
+            </article>
+
+            <span class="nf-divider" aria-hidden="true"></span>
+
+            <article class="nf-col" lang="en">
+              <p class="eyebrow">{en.eyebrow}</p>
+              <h1>{en.title}</h1>
+              <p class="deck">{en.deck}</p>
+              <a href="/en" class="cta cta-primary">
+                ← {en.ctaHome}
+              </a>
+            </article>
+          </div>
+        </div>
+      </section>
+    </main>
+    <Footer locale="fr" />
+  </body>
+</html>

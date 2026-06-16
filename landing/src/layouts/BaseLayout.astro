@@ -24,6 +24,12 @@ const pageDescription = description ?? copy.meta.description;
 
 const canonical = new URL(pathname, Astro.site).toString();
 const ogImageUrl = new URL(ogImage, Astro.site).toString();
+
+// Hidden build timestamp (forensic debugging — visible only in page source).
+// Per-page drift is sub-second within the same build; good enough to verify
+// which release is live without exposing version data in the visible footer.
+const buildIso = new Date().toISOString();
+const buildComment = `compass-landing · built ${buildIso} · ${Astro.generator}`;
 ---
 
 <!doctype html>
@@ -61,6 +67,7 @@ const ogImageUrl = new URL(ogImage, Astro.site).toString();
 
     <JsonLd locale={locale} />
     <Analytics />
+    <Fragment set:html={`<!-- ${buildComment} -->`} />
   </head>
   <body>
     <Ambient />

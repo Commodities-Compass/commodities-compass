@@ -9,33 +9,95 @@ const { locale } = Astro.props;
 const copy = t(locale);
 ---
 
-<section class="border-b border-rule">
-  <div class="mx-auto w-full max-w-[1280px] px-6 pb-24 pt-16 lg:px-10 lg:pb-32 lg:pt-24">
-    <p class="eyebrow">{copy.hero.eyebrow}</p>
-
-    <h1 class="headline mt-6 text-[clamp(3rem,8vw,7rem)] text-ink">
-      {copy.hero.title}
-      <span class="headline-italic block">{copy.hero.titleItalic}</span>
+<section class="hero" id="hero">
+  <div class="wrap">
+    <h1>
+      {copy.hero.title}<br />
+      {copy.hero.titleAccent} <em class="accent">{copy.hero.titleAccentEm}</em>
     </h1>
 
-    <p class="deck mt-8 max-w-2xl text-xl md:text-2xl">
-      {copy.hero.lede}
-    </p>
+    <p class="lede">{copy.hero.lede}</p>
 
-    <div class="mt-10 flex flex-wrap items-center gap-4">
-      <a
-        href="#contact"
-        class="inline-flex items-center gap-3 border border-ink bg-ink px-6 py-3 font-mono text-xs font-medium uppercase tracking-[0.18em] text-paper transition-colors hover:bg-paper hover:text-ink"
-      >
+    <div class="cta-row">
+      <a href="#contact" class="cta cta-primary">
         {copy.hero.ctaPrimary}
-        <span aria-hidden="true">→</span>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3.5 8h9M9 4.5 12.5 8 9 11.5" />
+        </svg>
       </a>
-      <a
-        href="#sample"
-        class="inline-flex items-center gap-3 border border-ink px-6 py-3 font-mono text-xs font-medium uppercase tracking-[0.18em] text-ink transition-colors hover:bg-ink hover:text-paper"
-      >
+      <a href="#method" class="cta cta-ghost down">
         {copy.hero.ctaSecondary}
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M8 3.5v9M11.5 9 8 12.5 4.5 9" />
+        </svg>
       </a>
+    </div>
+
+    <aside class="hero-signal" aria-label={copy.hero.signalAside}>
+      <div class="top">
+        <span class="label">{copy.hero.signalLabel}</span>
+        <span class="signal-pill open">
+          <span class="dot"></span>{copy.hero.signalPill}
+        </span>
+      </div>
+      <h3>{copy.hero.signalHeading} <em>{copy.hero.signalHeadingEm}</em></h3>
+      <div class="stats">
+        <div class="stat">
+          <div class="l">{copy.hero.statContract}</div>
+          <div class="v">{copy.hero.statContractValue}</div>
+        </div>
+        <div class="stat">
+          <div class="l">{copy.hero.statDay}</div>
+          <div class="v up">{copy.hero.statDayValue}</div>
+        </div>
+        <div class="stat">
+          <div class="l">{copy.hero.statHorizon}</div>
+          <div class="v">{copy.hero.statHorizonValue}</div>
+        </div>
+        <div class="stat">
+          <div class="l">{copy.hero.statYtd}</div>
+          <div class="v up">{copy.hero.statYtdValue}</div>
+        </div>
+      </div>
+    </aside>
+
+    <div class="hero-mini-row">
+      <div class="mini-card">
+        <span class="icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 2v6M12 16v6M2 12h6M16 12h6M5.6 5.6l4.2 4.2M14.2 14.2l4.2 4.2M5.6 18.4l4.2-4.2M14.2 9.8l4.2-4.2" />
+          </svg>
+        </span>
+        <div class="stack">
+          <span class="l">{copy.hero.mini1Label}</span>
+          <span class="v">
+            <strong>{copy.hero.mini1ValuePrefix}</strong> {copy.hero.mini1ValueMiddle} <em>{copy.hero.mini1ValueEm}</em>
+          </span>
+        </div>
+      </div>
+      <div class="mini-card">
+        <span class="icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>
+        </span>
+        <div class="stack">
+          <span class="l">{copy.hero.mini2Label}</span>
+          <span class="v"><strong>{copy.hero.mini2ValuePrefix}</strong> {copy.hero.mini2ValueRest}</span>
+        </div>
+      </div>
+      <div class="mini-card">
+        <span class="icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 12a9 9 0 0 1 18 0v6a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3M3 12v6a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3" />
+          </svg>
+        </span>
+        <div class="stack">
+          <span class="l">{copy.hero.mini3Label}</span>
+          <span class="v"><strong>{copy.hero.mini3ValuePrefix}</strong> {copy.hero.mini3ValueRest}</span>
+        </div>
+      </div>
     </div>
   </div>
 </section>

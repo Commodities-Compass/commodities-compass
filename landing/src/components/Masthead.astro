@@ -10,42 +10,32 @@ const copy = t(locale);
 const otherLocale: Locale = locale === 'fr' ? 'en' : 'fr';
 ---
 
-<header class="sticky top-0 z-50 border-b border-rule bg-paper/85 backdrop-blur supports-[backdrop-filter]:bg-paper/70">
-  <div class="mx-auto flex w-full max-w-[1280px] items-center justify-between px-6 py-4 lg:px-10">
-    <a href={pathFor(locale)} class="flex items-center gap-3" aria-label="Compass CC">
-      <img src="/compass-icon.png" alt="" width="28" height="28" class="h-7 w-7" />
-      <span class="font-display text-xl font-black tracking-tight text-ink">
-        {copy.masthead.pubName}
-      </span>
+<header class="masthead">
+  <div class="wrap row">
+    <a class="lockup" href={pathFor(locale)}>
+      <img src="/compass-icon.png" alt="" />
+      <span class="wm">{copy.masthead.pubName}</span>
+      <span class="deck"><em>{copy.masthead.tagline}</em></span>
     </a>
-
-    <nav class="hidden items-center gap-7 md:flex" aria-label={copy.masthead.tagline}>
-      <a href={`${pathFor(locale)}#method`} class="eyebrow hover:text-ink transition-colors">
-        {copy.masthead.navMethod}
-      </a>
-      <a href={`${pathFor(locale)}#sample`} class="eyebrow hover:text-ink transition-colors">
-        {copy.masthead.navSample}
-      </a>
-      <a href={`${pathFor(locale)}#contact`} class="eyebrow hover:text-ink transition-colors">
-        {copy.masthead.navContact}
-      </a>
-    </nav>
-
-    <div class="flex items-center gap-4">
+    <nav>
+      <a href="#what">{copy.masthead.navWhat}</a>
+      <a href="#method">{copy.masthead.navMethod}</a>
+      <a href="#brief">{copy.masthead.navBrief}</a>
+      <a href="#contact">{copy.masthead.navContact}</a>
       <a
+        class="lang-switch"
         href={pathFor(otherLocale)}
-        class="eyebrow hover:text-ink transition-colors"
         hreflang={otherLocale}
-        aria-label={`Switch to ${otherLocale === 'fr' ? 'Français' : 'English'}`}
+        aria-label={copy.masthead.langSwitchAria}
       >
         {otherLocale.toUpperCase()}
       </a>
-      <a
-        href={`${pathFor(locale)}#contact`}
-        class="inline-flex items-center gap-2 border border-ink bg-ink px-4 py-2 font-mono text-[0.6875rem] font-medium uppercase tracking-[0.18em] text-paper transition-colors hover:bg-paper hover:text-ink"
-      >
-        {copy.masthead.ctaShort}
+      <a class="cta" href="#contact">
+        {copy.masthead.cta}
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3.5 8h9M9 4.5 12.5 8 9 11.5" />
+        </svg>
       </a>
-    </div>
+    </nav>
   </div>
 </header>

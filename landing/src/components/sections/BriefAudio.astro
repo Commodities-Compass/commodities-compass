@@ -1,0 +1,172 @@
+---
+import { type Locale, t } from '@/i18n/strings';
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const copy = t(locale);
+
+const barHeights = [28, 50, 38, 65, 35, 55, 75, 42, 60, 32, 82, 48, 58, 70, 38, 55, 28, 68, 45, 52, 36, 62, 40, 48, 75, 55, 32, 50];
+---
+
+<section class="brief-section" id="brief">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="num"><em>{copy.brief.sectionRoman}</em></span>
+      <span class="title">{copy.brief.sectionTitle}</span>
+      <span class="filler"></span>
+      <span class="meta">{copy.brief.sectionMeta}</span>
+    </div>
+
+    <h2 class="section-lede">{copy.brief.lede} <em>{copy.brief.ledeEm}</em></h2>
+    <p class="section-deck">{copy.brief.deck}</p>
+
+    <div class="brief-grid">
+      <article class="brief-card">
+        <div class="kicker">
+          <span>{copy.brief.briefKicker}</span>
+          <span class="badge">{copy.brief.briefBadge}</span>
+        </div>
+        <h4>{copy.brief.briefHeading} <em>{copy.brief.briefHeadingEm}</em> {copy.brief.briefHeadingTail}</h4>
+        <p set:html={copy.brief.briefP1}></p>
+        <p>{copy.brief.briefP2}</p>
+        <div class="more">{copy.brief.briefMore}</div>
+      </article>
+
+      <article class="audio-card" id="compass-audio-card">
+        <span class="kicker">{copy.brief.audioKicker}</span>
+        <h4>{copy.brief.audioHeading}<br /><em>{copy.brief.audioHeadingEm}</em></h4>
+        <div class="player">
+          <button class="play" id="compass-play" aria-label={copy.brief.audioPlayLabel}>
+            <svg id="compass-play-icon" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+          </button>
+          <div class="stack">
+            <div
+              class="waveform seekable"
+              id="compass-waveform"
+              role="slider"
+              tabindex="0"
+              aria-label={copy.brief.audioSeekLabel}
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="0"
+            >
+              {barHeights.map((h) => <div class="bar" style={`height:${h}%`}></div>)}
+            </div>
+            <div class="time">
+              <span class="current" id="compass-time-current">0:00</span>
+              <span id="compass-time-total">0:30</span>
+            </div>
+          </div>
+        </div>
+        <audio id="compass-audio" preload="metadata" class="audio-hidden" playsinline>
+          <source src="/compass-sample.mp3" type="audio/mpeg" />
+          Your browser does not support the audio element.
+        </audio>
+      </article>
+    </div>
+  </div>
+</section>
+
+<script
+  is:inline
+  define:vars={{ playLabel: copy.brief.audioPlayLabel, pauseLabel: copy.brief.audioPauseLabel }}
+>
+  (function () {
+    var audio = document.getElementById('compass-audio');
+    var card = document.getElementById('compass-audio-card');
+    var btn = document.getElementById('compass-play');
+    var icon = document.getElementById('compass-play-icon');
+    var cur = document.getElementById('compass-time-current');
+    var tot = document.getElementById('compass-time-total');
+    var wave = document.getElementById('compass-waveform');
+    if (!audio || !btn || !wave) return;
+
+    var bars = wave.querySelectorAll('.bar');
+    var ICON_PLAY = '<path d="M8 5v14l11-7z"/>';
+    var ICON_PAUSE = '<path d="M6 4h4v16H6zM14 4h4v16h-4z"/>';
+
+    function fmt(t) {
+      if (!isFinite(t)) return '0:00';
+      var m = Math.floor(t / 60);
+      var s = Math.floor(t % 60);
+      return m + ':' + (s < 10 ? '0' + s : s);
+    }
+
+    function updateBars(progress) {
+      var n = bars.length;
+      var activeCount = Math.round(progress * n);
+      for (var i = 0; i < n; i++) {
+        if (i < activeCount) bars[i].classList.add('active');
+        else bars[i].classList.remove('active');
+      }
+    }
+
+    audio.addEventListener('loadedmetadata', function () {
+      tot.textContent = fmt(audio.duration);
+    });
+
+    audio.addEventListener('timeupdate', function () {
+      cur.textContent = fmt(audio.currentTime);
+      var progress = audio.duration ? audio.currentTime / audio.duration : 0;
+      wave.setAttribute('aria-valuenow', Math.round(progress * 100));
+      updateBars(progress);
+    });
+
+    audio.addEventListener('ended', function () {
+      card.classList.remove('playing');
+      icon.innerHTML = ICON_PLAY;
+      btn.setAttribute('aria-label', playLabel);
+      audio.currentTime = 0;
+      cur.textContent = '0:00';
+      updateBars(0);
+    });
+
+    audio.addEventListener('error', function () {
+      btn.style.opacity = '0.5';
+    });
+
+    btn.addEventListener('click', function () {
+      if (audio.paused) {
+        var p = audio.play();
+        if (p && p.catch) p.catch(function () {});
+        card.classList.add('playing');
+        icon.innerHTML = ICON_PAUSE;
+        btn.setAttribute('aria-label', pauseLabel);
+      } else {
+        audio.pause();
+        card.classList.remove('playing');
+        icon.innerHTML = ICON_PLAY;
+        btn.setAttribute('aria-label', playLabel);
+      }
+    });
+
+    function seekFromEvent(e) {
+      if (!audio.duration) return;
+      var rect = wave.getBoundingClientRect();
+      var x = (e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : 0)) - rect.left;
+      var ratio = Math.max(0, Math.min(1, x / rect.width));
+      audio.currentTime = ratio * audio.duration;
+    }
+    wave.addEventListener('click', seekFromEvent);
+    wave.addEventListener('keydown', function (e) {
+      if (!audio.duration) return;
+      if (e.key === 'ArrowRight') {
+        audio.currentTime = Math.min(audio.duration, audio.currentTime + 1);
+        e.preventDefault();
+      }
+      if (e.key === 'ArrowLeft') {
+        audio.currentTime = Math.max(0, audio.currentTime - 1);
+        e.preventDefault();
+      }
+      if (e.key === ' ' || e.key === 'Enter') {
+        btn.click();
+        e.preventDefault();
+      }
+    });
+  })();
+</script>

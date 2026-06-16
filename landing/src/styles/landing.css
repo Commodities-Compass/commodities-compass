@@ -712,8 +712,9 @@ body {
 .brief-section { padding: 72px 0; }
 .brief-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
+  /* Asymmetric — brief gets ~60%, audio gets ~40% */
+  grid-template-columns: 1.4fr 1fr;
+  gap: 24px;
   align-items: start;
 }
 .brief-card {
@@ -772,38 +773,14 @@ body {
   color: var(--color-ink);
 }
 .brief-card .more {
-  margin-top: 8px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--rule-soft);
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--ink-light-2);
-}
-.brief-card .brief-meta {
-  margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid var(--rule-soft);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--ink-mid-2);
-}
-.brief-card .brief-meta > span[aria-hidden] { color: var(--ink-light-2); }
-.brief-card .brief-banner {
-  margin-top: 16px;
-  padding: 8px 12px;
-  background: rgba(245, 158, 11, 0.08);
-  border: 1px solid rgba(245, 158, 11, 0.18);
-  border-radius: 8px;
-  font-family: var(--font-editorial);
-  font-style: italic;
-  font-size: 12px;
-  line-height: 1.5;
-  color: #78350F;
 }
 .audio-card {
   backdrop-filter: blur(20px) saturate(180%);

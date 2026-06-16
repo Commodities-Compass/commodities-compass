@@ -1,5 +1,6 @@
 ---
 import { type Locale, t, pathFor } from '@/i18n/strings';
+import LangSwitch from '@/components/LangSwitch.astro';
 
 interface Props {
   locale: Locale;
@@ -7,7 +8,6 @@ interface Props {
 
 const { locale } = Astro.props;
 const copy = t(locale);
-const otherLocale: Locale = locale === 'fr' ? 'en' : 'fr';
 ---
 
 <header class="masthead">
@@ -22,20 +22,13 @@ const otherLocale: Locale = locale === 'fr' ? 'en' : 'fr';
       <a href="#method">{copy.masthead.navMethod}</a>
       <a href="#brief">{copy.masthead.navBrief}</a>
       <a href="#contact">{copy.masthead.navContact}</a>
-      <a
-        class="lang-switch"
-        href={pathFor(otherLocale)}
-        hreflang={otherLocale}
-        aria-label={copy.masthead.langSwitchAria}
-      >
-        {otherLocale.toUpperCase()}
-      </a>
       <a class="cta" href="#contact">
         {copy.masthead.cta}
         <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M3.5 8h9M9 4.5 12.5 8 9 11.5" />
         </svg>
       </a>
+      <LangSwitch locale={locale} />
     </nav>
   </div>
 </header>

@@ -128,6 +128,25 @@ body {
 }
 .masthead nav a:hover { color: var(--color-ink); }
 
+/* Sign-in link — distinct from section anchors (subtle ink + arrow) */
+.masthead nav a.sign-in {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--color-ink);
+  padding-left: 4px;
+  border-left: 1px solid var(--rule-soft);
+  padding: 0 0 0 16px;
+}
+.masthead nav a.sign-in:hover { color: var(--ink-mid-2); }
+.masthead nav a.sign-in svg { transition: transform 220ms ease; }
+.masthead nav a.sign-in:hover svg { transform: translateX(2px); }
+
 /* FR · EN toggle — both letters visible, active in ink, inactive muted */
 .masthead .lang-switch {
   display: inline-flex;
@@ -760,6 +779,32 @@ body {
   text-transform: uppercase;
   color: var(--ink-light-2);
 }
+.brief-card .brief-meta {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--rule-soft);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-mid-2);
+}
+.brief-card .brief-meta > span[aria-hidden] { color: var(--ink-light-2); }
+.brief-card .brief-banner {
+  margin-top: 16px;
+  padding: 8px 12px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.18);
+  border-radius: 8px;
+  font-family: var(--font-editorial);
+  font-style: italic;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #78350F;
+}
 .audio-card {
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
@@ -1156,11 +1201,17 @@ footer .schedule-line {
   .hero-mini-row { grid-template-columns: 1fr; }
 }
 @media (max-width: 720px) {
-  /* Hide section anchor links, keep CTA + lang switch (= conversion + i18n) */
+  /* Hide section anchor links, keep CTA + sign-in + lang switch (= conversion + i18n) */
   .masthead nav a[href^="#"]:not(.cta) { display: none; }
-  .masthead nav { gap: 12px; }
+  .masthead nav { gap: 10px; }
   .masthead .lockup .deck { display: none; }
   .masthead .lockup .wm { font-size: 18px; }
+  .masthead nav a.sign-in {
+    border-left: none;
+    padding: 0;
+    font-size: 11px;
+  }
+  .masthead nav a.sign-in svg { display: none; }
   .masthead .cta { padding: 0 14px; height: 34px; font-size: 11px; }
   .masthead .cta svg { display: none; }
   .masthead .lang-switch { padding: 4px 10px; gap: 6px; }
@@ -1193,4 +1244,6 @@ footer .schedule-line {
   .bento { grid-template-columns: 1fr; }
   .footer-grid { grid-template-columns: 1fr; }
   .hero h1 { font-size: clamp(40px, 12vw, 64px); }
+  /* Below 480px: drop sign-in to save space — primary conversion CTA wins */
+  .masthead nav a.sign-in { display: none; }
 }

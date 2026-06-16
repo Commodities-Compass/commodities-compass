@@ -1,5 +1,5 @@
 ---
-import { type Locale, t, pathFor } from '@/i18n/strings';
+import { type Locale, t } from '@/i18n/strings';
 
 interface Props {
   locale: Locale;
@@ -18,12 +18,6 @@ const copy = t(locale);
       <div class="cta-row">
         <a href={`mailto:${copy.contact.email}`} class="cta cta-primary">
           {copy.contact.ctaPrimary}
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M3.5 8h9M9 4.5 12.5 8 9 11.5" />
-          </svg>
-        </a>
-        <a href={pathFor(locale, 'sample-brief')} class="cta cta-ghost">
-          {copy.contact.ctaSecondary}
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M3.5 8h9M9 4.5 12.5 8 9 11.5" />
           </svg>

@@ -31,8 +31,17 @@ const barHeights = [28, 50, 38, 65, 35, 55, 75, 42, 60, 32, 82, 48, 58, 70, 38, 
         </div>
         <h4>{copy.brief.briefHeading} <em>{copy.brief.briefHeadingEm}</em> {copy.brief.briefHeadingTail}</h4>
         <p set:html={copy.brief.briefP1}></p>
-        <p>{copy.brief.briefP2}</p>
-        <div class="more">{copy.brief.briefMore}</div>
+        <p set:html={copy.brief.briefP2}></p>
+        <p set:html={copy.brief.briefP3}></p>
+        <p set:html={copy.brief.briefP4}></p>
+        <div class="brief-meta">
+          <span>{copy.brief.briefMetaConviction}</span>
+          <span aria-hidden="true">·</span>
+          <span>{copy.brief.briefMetaHorizon}</span>
+          <span aria-hidden="true">·</span>
+          <span>{copy.brief.briefMetaFormat}</span>
+        </div>
+        <p class="brief-banner">{copy.brief.briefBanner}</p>
       </article>
 
       <article class="audio-card" id="compass-audio-card">

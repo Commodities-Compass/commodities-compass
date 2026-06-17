@@ -64,13 +64,19 @@ def get_current_contract_code() -> str:
     return env_code
 
 
-def get_prices_url() -> str:
-    contract = get_current_contract_code()
+# How many back-months (next delivery months) to scrape in addition to the
+# active front-month, so v_contract_data_chained always spans a roll boundary.
+# 1 covers any single roll; bump to 2 to survive a fast double-roll.
+BACK_MONTHS_TO_SCRAPE = 1
+
+
+def get_prices_url(contract: str | None = None) -> str:
+    contract = contract or get_current_contract_code()
     return f"{BARCHART_BASE_URL}/{contract}/overview"
 
 
-def get_volatility_url() -> str:
-    contract = get_current_contract_code()
+def get_volatility_url(contract: str | None = None) -> str:
+    contract = contract or get_current_contract_code()
     return f"{BARCHART_BASE_URL}/{contract}/volatility-greeks?futuresOptionsView=merged"
 
 

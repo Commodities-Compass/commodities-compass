@@ -50,56 +50,111 @@ def main() -> int:
     logger.info("=" * 60)
 
     try:
-        # Step 1: Scrape data
-        logger.info("Step 1: Scraping Barchart.com...")
-        with BarchartScraper(headless=not args.headful) as scraper:
-            data = scraper.scrape_all()
+        from sqlalchemy import select
 
-        # Step 2: Validate data
-        logger.info("Step 2: Validating data...")
-        errors = DataValidator.validate_all(data)
-        if errors:
-            logger.error("Validation failed:")
-            for error in errors:
-                logger.error(f"  - {error}")
-            sentry_sdk.capture_message(
-                f"Barchart validation failed: {errors}", level="error"
-            )
-            return 1
-
-        # Step 3: Write to GCP PostgreSQL
-        logger.info("Step 3: Writing to GCP PostgreSQL...")
-        from scripts.barchart_scraper.config import get_current_contract_code
+        from app.models.reference import RefContract
+        from scripts.barchart_scraper.config import BACK_MONTHS_TO_SCRAPE
         from scripts.barchart_scraper.db_writer import write_ohlcv
+        from scripts.contract_resolver import ensure_contract, next_contract_code
         from scripts.db import get_display_date, get_session
+
+        # Step 1: resolve the active front-month + derive the back-month(s) to
+        # also capture. With both contracts present, v_contract_data_chained
+        # (front-month-by-OI) auto-switches at the true crossover, so a roll
+        # becomes a data-layer non-event — no manual backfill, no rewrite.
+        logger.info("Step 1: Resolving contracts (front + back-months)...")
+        with get_session() as session:
+            active = session.execute(
+                select(RefContract).where(RefContract.is_active.is_(True))
+            ).scalar_one_or_none()
+            if active is None:
+                raise BarchartScraperError("No active contract in ref_contract")
+            commodity_id = active.commodity_id
+            codes = [active.code]
+            code = active.code
+            for _ in range(BACK_MONTHS_TO_SCRAPE):
+                code = next_contract_code(code)
+                ensure_contract(session, code, commodity_id=commodity_id)
+                codes.append(code)
+        logger.info(
+            "Contracts to scrape (front + %d back): %s", BACK_MONTHS_TO_SCRAPE, codes
+        )
 
         display_date = get_display_date()
         logger.info("Display date (next trading day): %s", display_date)
 
-        with get_session() as session:
-            write_ohlcv(
-                session,
-                data,
-                get_current_contract_code(),
-                dry_run=args.dry_run,
-                display_date=display_date,
-            )
+        # Step 2: scrape each contract in ONE browser session. The front-month
+        # is the daily-critical output (fail-loud). Back-months are roll-smoothing
+        # and best-effort: an illiquid back-month can fail validation (e.g. zero
+        # volume) — skip it (it's not front-month yet; the next run retries).
+        logger.info("Step 2: Scraping Barchart.com...")
+        scraped: dict[str, dict] = {}
+        degraded: list[str] = []
+        with BarchartScraper(headless=not args.headful) as scraper:
+            for i, scrape_code in enumerate(codes):
+                is_front = i == 0
+                try:
+                    data = scraper.scrape_all(contract_code=scrape_code)
+                    errors = DataValidator.validate_all(data)
+                    if errors:
+                        raise BarchartScraperError(f"validation failed: {errors}")
+                    scraped[scrape_code] = data
+                except BarchartScraperError:
+                    if is_front:
+                        raise  # front-month is critical — fail loud
+                    logger.warning(
+                        "Back-month %s skipped (illiquid / not yet front-month) "
+                        "— no row this run",
+                        scrape_code,
+                    )
+                    degraded.append(scrape_code)
+                except Exception as exc:  # noqa: BLE001 — front re-raises, back logged
+                    if is_front:
+                        raise
+                    logger.error("Back-month %s scrape error: %s", scrape_code, exc)
+                    sentry_sdk.capture_message(
+                        f"Barchart back-month {scrape_code} scrape error: {exc}",
+                        level="error",
+                    )
+                    degraded.append(scrape_code)
 
+        # Step 3: write every successfully-scraped contract.
+        logger.info("Step 3: Writing to GCP PostgreSQL...")
+        with get_session() as session:
+            for write_code, data in scraped.items():
+                write_ohlcv(
+                    session,
+                    data,
+                    write_code,
+                    dry_run=args.dry_run,
+                    display_date=display_date,
+                )
+
+        front_code = codes[0]
+        front = scraped.get(front_code, {})
         sentry_sdk.set_context(
             "scrape_result",
             {
-                "date": str(data.get("date")),
-                "contract": str(data.get("contract_code")),
-                "close": str(data.get("close")),
-                "volume": str(data.get("volume")),
-                "oi": str(data.get("open_interest")),
-                "iv": str(data.get("iv")),
+                "display_date": str(display_date),
+                "front_contract": front_code,
+                "back_written": [c for c in codes[1:] if c in scraped],
+                "degraded": degraded,
+                "close": str(front.get("close")),
+                "volume": str(front.get("volume")),
+                "oi": str(front.get("open_interest")),
+                "iv": str(front.get("implied_volatility")),
                 "dry_run": args.dry_run,
             },
         )
 
         logger.info("=" * 60)
-        logger.info("SUCCESS: Scraper completed successfully")
+        logger.info(
+            "SUCCESS: scraped %d/%d contracts (front=%s%s)",
+            len(scraped),
+            len(codes),
+            front_code,
+            f", degraded={degraded}" if degraded else "",
+        )
         logger.info("=" * 60)
         return 0
 

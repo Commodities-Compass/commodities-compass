@@ -260,8 +260,10 @@ class BarchartScraper:
     # Public scrape methods
     # ------------------------------------------------------------------
 
-    def scrape_prices(self) -> dict[str, float | None]:
-        """Scrape OHLC + Volume + OI.
+    def scrape_prices(
+        self, contract_code: str | None = None
+    ) -> dict[str, float | None]:
+        """Scrape OHLC + Volume + OI for ``contract_code`` (default: active).
 
         Strategy: Barchart's XHR API omits openInterest, but the server-rendered
         HTML contains inline JSON raw blocks with ALL fields. So:
@@ -269,7 +271,7 @@ class BarchartScraper:
           2. Backup: XHR-captured data for C/H/L/V (no OI)
         """
         # Navigate + capture XHR (as backup)
-        prices_url = get_prices_url()
+        prices_url = get_prices_url(contract_code)
         captured = self._navigate_and_capture(prices_url, _find_quote_in_json)
 
         # Primary: extract from rendered HTML (has OI)
@@ -303,9 +305,11 @@ class BarchartScraper:
         )
         return data
 
-    def scrape_implied_volatility(self) -> float | None:
-        """Scrape IV. XHR interception → HTML fallback."""
-        url = get_volatility_url()
+    def scrape_implied_volatility(
+        self, contract_code: str | None = None
+    ) -> float | None:
+        """Scrape IV for ``contract_code`` (default: active). XHR → HTML fallback."""
+        url = get_volatility_url(contract_code)
         logger.info(f"IV contract: {url.split('/quotes/')[1].split('/')[0]}")
 
         captured = self._navigate_and_capture(url, _find_iv_in_json)
@@ -323,12 +327,18 @@ class BarchartScraper:
             logger.warning("Failed to extract IV from both XHR and HTML")
         return iv
 
-    def scrape_all(self) -> dict:
-        """Scrape all 6 fields (OHLC + Volume + OI + IV)."""
-        contract = get_current_contract_code()
+    def scrape_all(self, contract_code: str | None = None) -> dict:
+        """Scrape all 6 fields (OHLC + Volume + OI + IV) for ``contract_code``.
+
+        ``contract_code=None`` scrapes the active front-month (unchanged
+        behaviour). Pass an explicit code to also capture a back-month within
+        the same browser session.
+        """
+        contract = contract_code or get_current_contract_code()
         logger.info(f"Starting Barchart scrape for London cocoa #7 ({contract})")
-        data = self.scrape_prices()
-        data["implied_volatility"] = self.scrape_implied_volatility()
+        data = self.scrape_prices(contract_code)
+        data["implied_volatility"] = self.scrape_implied_volatility(contract_code)
         data["timestamp"] = datetime.now(timezone.utc)
+        data["contract_code"] = contract
         logger.info(f"Scrape complete: {data}")
         return data

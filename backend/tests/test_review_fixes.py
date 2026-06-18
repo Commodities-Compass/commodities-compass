@@ -166,7 +166,7 @@ class TestLLMParseFailure:
 
 
 class TestPositionCoercion:
-    """H4: Unexpected position values trigger error log."""
+    """H4: position coercion — genuine bad values error, missing rows stay quiet."""
 
     def test_valid_positions_pass_through(self):
         from app.services.dashboard_transformers import (
@@ -177,17 +177,22 @@ class TestPositionCoercion:
             resp = transform_to_position_status_response(pos, 5.0, date.today())
             assert resp.position == pos
 
-    def test_none_defaults_to_monitor_with_log(self, caplog):
+    def test_none_defaults_to_monitor_without_error(self, caplog):
+        """None = no decision row for the date (benign). Must NOT page at ERROR."""
         from app.services.dashboard_transformers import (
             transform_to_position_status_response,
         )
 
         import logging
 
-        with caplog.at_level(logging.ERROR):
+        with caplog.at_level(logging.INFO):
             resp = transform_to_position_status_response(None, 5.0, date.today())
         assert resp.position == "MONITOR"
-        assert "UNEXPECTED POSITION VALUE" in caplog.text
+        # Benign info log, not the "investigate immediately" error.
+        assert "UNEXPECTED POSITION VALUE" not in caplog.text
+        assert "No position decision" in caplog.text
+        error_records = [r for r in caplog.records if r.levelno >= logging.ERROR]
+        assert error_records == []
 
     def test_invalid_value_defaults_to_monitor_with_log(self, caplog):
         from app.services.dashboard_transformers import (

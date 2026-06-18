@@ -448,10 +448,13 @@ def _read_technicals(session: Session, target_date: date, contract_id: Any) -> s
         ),
         {"d": row[0]},
     ).scalar_one_or_none()
+    # value_tonnes (not value_native): EU native unit is 60 kg bags, so reading
+    # value_native printed bags next to STOCK_US tonnes — ~16.7x overstated and
+    # non-comparable. Tonnes keeps both sides in the same unit.
     stock_eu = session.execute(
         text(
             """
-            SELECT value_native FROM pl_stock_observation
+            SELECT value_tonnes FROM pl_stock_observation
             WHERE region = 'eu' AND contract_market = 'cocoa' AND report_date <= :d
             ORDER BY report_date DESC LIMIT 1
             """

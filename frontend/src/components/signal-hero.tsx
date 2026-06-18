@@ -105,7 +105,7 @@ function yearOf(iso?: string | null): number | null {
  * Three KPI tiles, in this order:
  *   1. Consensus  — n_committed_specialists / 14
  *   2. Confiance  — LLM confidence 1-5 + rationale
- *   3. Direction  — macro direction (porteur / défavorable / neutre)
+ *   3. Contexte   — macro direction (porteur / défavorable / neutre)
  *
  * Engine internals (net_score, wrapper, soft-gate, detectors) intentionally
  * hidden — they're audit-only and live in the brief redaction.
@@ -138,7 +138,7 @@ function ConvictionBreakdown({
           : 'rationale non disponible',
     },
     {
-      eyebrow: 'Direction',
+      eyebrow: 'Contexte',
       big: macro.label,
       italic: true,
       color: macro.color,

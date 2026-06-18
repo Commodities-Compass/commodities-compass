@@ -13,14 +13,12 @@ from typing import Any, Dict, List, Optional
 
 import uuid
 
-from sqlalchemy import and_, desc, outerjoin, select
+from sqlalchemy import and_, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.pipeline import (
     PlArticleSegment,
-    PlContractDataDaily,
     PlCotEuWeekly,
-    PlDerivedIndicators,
     PlFundamentalArticle,
     PlIndicatorDaily,
     PlSentimentFeature,
@@ -589,76 +587,35 @@ async def get_chart_data(
     the active contract (recent roll), falls back to a cross-contract query
     so the chart still has coverage across the requested window.
     """
-    contract_id = await get_active_contract_id(db)
-
-    base_cols = (
-        PlContractDataDaily.date,
-        PlContractDataDaily.close,
-        PlContractDataDaily.volume,
-        PlContractDataDaily.oi,
-        PlDerivedIndicators.rsi_14d,
-        PlDerivedIndicators.macd,
-    )
+    from sqlalchemy import text as sa_text
 
     # Calendar window: [window_start, window_end] inclusive.
     window_end = end_date if end_date is not None else date.today()
     window_start = window_end - timedelta(days=days)
 
-    date_filter = [
-        PlContractDataDaily.contract_id == contract_id,
-        PlContractDataDaily.date >= window_start,
-        PlContractDataDaily.date <= window_end,
-    ]
-
-    query = (
-        select(*base_cols)
-        .select_from(
-            outerjoin(
-                PlContractDataDaily,
-                PlDerivedIndicators,
-                and_(
-                    PlContractDataDaily.date == PlDerivedIndicators.date,
-                    PlContractDataDaily.contract_id == PlDerivedIndicators.contract_id,
-                ),
-            )
-        )
-        .where(and_(*date_filter))
-        .order_by(PlContractDataDaily.date)
+    # Chained front-month series so the chart spans contract rolls seamlessly.
+    # ``v_contract_data_chained`` is DISTINCT ON (date) ORDER BY oi DESC — one
+    # row per date = whatever contract was front-month that day. This replaces
+    # the old active-contract filter (which dropped ALL pre-roll history the
+    # moment the new contract went active) and its fragile row-count fallback
+    # (which never fired for short windows — e.g. the 5-day ticker series — and,
+    # once the daily back-month scrape started writing a 2nd contract per date,
+    # double-counted dates). Derived indicators join on the front-month
+    # contract per date. Mirrors the YTD cross-contract query above.
+    chart_query = sa_text(
+        """
+        SELECT c.date, c.close, c.volume, c.oi, pi.rsi_14d, pi.macd
+        FROM v_contract_data_chained c
+        LEFT JOIN pl_derived_indicators pi
+               ON pi.date = c.date AND pi.contract_id = c.contract_id
+        WHERE c.date >= :start AND c.date <= :end_date
+        ORDER BY c.date ASC
+        """
     )
-
-    result = await db.execute(query)
-    rows = result.all()
-
-    # Fallback: cross-contract read covers the window across a recent roll
-    # boundary. We expect ~5 sessions per week — fall back when the count
-    # falls noticeably short of the expected business-day coverage.
-    expected_min = max(1, int(days * 5 / 7) - 7)
-    if len(rows) < expected_min:
-        fallback_query = (
-            select(*base_cols)
-            .select_from(
-                outerjoin(
-                    PlContractDataDaily,
-                    PlDerivedIndicators,
-                    and_(
-                        PlContractDataDaily.date == PlDerivedIndicators.date,
-                        PlContractDataDaily.contract_id
-                        == PlDerivedIndicators.contract_id,
-                    ),
-                )
-            )
-            .where(
-                and_(
-                    PlContractDataDaily.date >= window_start,
-                    PlContractDataDaily.date <= window_end,
-                )
-            )
-            .order_by(PlContractDataDaily.date)
-        )
-        result = await db.execute(fallback_query)
-        rows = result.all()
-
-    chart_rows = list(rows)
+    result = await db.execute(
+        chart_query, {"start": window_start, "end_date": window_end}
+    )
+    chart_rows = list(result.all())
 
     # Weekly series — forward-filled per chart date from the dedicated
     # tables. stock_eu and com_net_eu are toggleable chart metrics in the

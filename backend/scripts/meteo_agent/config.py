@@ -52,7 +52,10 @@ HOURLY_PARAMS = [
     "rain",
 ]
 PAST_DAYS = 1
-FORECAST_DAYS = 1
+# Forward horizon = today + 5 days, matched to the brief's J+4-J+5 decision
+# window. The agent re-runs daily, so a short rolling forecast (not 10-16d) is
+# the right trade-off: enough to anticipate incoming rain/heat, refreshed daily.
+FORECAST_DAYS = 6
 
 # HTTP
 HTTP_TIMEOUT = 30
@@ -266,12 +269,21 @@ de 6 localités clés : Daloa, San-Pédro et Soubré (Côte d'Ivoire) + Kumasi, 
 RÈGLE ABSOLUE : CHIFFRER AVANT DE QUALIFIER.
 Ne jamais écrire "stress sévère", "déficit important" ou "conditions dégradées" sans avoir \
 d'abord calculé la valeur exacte et l'avoir comparée au seuil saisonnier ci-dessous. \
-Si les données ne confirment pas le qualificatif, ne l'utilise pas. \
-Préfère sous-estimer que sur-estimer l'impact.
+Si les données ne confirment pas le qualificatif, ne l'utilise pas.
+
+SYMÉTRIE DÉFICIT / EXCÈS : l'EXCÈS d'eau est un stress au même titre que le déficit. \
+En saison des pluies, un excès généralisé (bilans hydriques largement positifs, journées de \
+pluie intense, humidité relative élevée) = risque de POURRITURE BRUNE / black pod sur les \
+cabosses : il doit être chiffré et signalé, jamais minimisé en "rien à signaler". \
+Préfère sous-estimer un bruit ponctuel, mais NE SOUS-ESTIME PAS un risque prospectif confirmé \
+par les prévisions (excès persistant en saison des pluies, ou sécheresse/chaleur persistante).
 
 {seasonal_context}
 
-MÉTHODE D'ANALYSE EN 3 ÉTAPES :
+Deux blocs de contexte peuvent suivre les données dans le message : le RÉGIME CLIMATIQUE ENSO \
+(El Niño / La Niña, biais de fond) et la PRÉVISION J+1→J+5 (synthèse). Utilise-les.
+
+MÉTHODE D'ANALYSE EN 4 ÉTAPES :
 
 ÉTAPE 1 — CALCUL (obligatoire, par localité) :
 Pour chaque localité, calculer :
@@ -280,17 +292,33 @@ Pour chaque localité, calculer :
 - Humidité sol moyenne (les deux profondeurs)
 - VPD moyen et nombre d'heures au-dessus du seuil saisonnier
 
-ÉTAPE 2 — DIAGNOSTIC (par localité) :
+ÉTAPE 2 — DIAGNOSTIC CONDITIONS ACTUELLES (par localité) :
 Classer chaque localité : "normal saisonnier" / "légèrement dégradé" / "stress confirmé".
-Un diagnostic "stress confirmé" requiert AU MOINS 2 indicateurs au-delà des seuils simultanément.
-Un seul indicateur hors seuil = "légèrement dégradé", pas "stress".
+Un "stress confirmé" requiert AU MOINS 2 indicateurs au-delà des seuils simultanément — \
+côté DÉFICIT (bilan négatif, sol sec, VPD élevé, Harmattan) OU côté EXCÈS (en saison des \
+pluies : bilan fortement positif au-delà du seuil d'excès + pluies intenses, ou humidité \
+relative > seuil pourriture brune). Un seul indicateur hors seuil = "légèrement dégradé".
 
-ÉTAPE 3 — IMPACT MARCHÉ :
-L'impact sur les prix est proportionnel au nombre de localités en "stress confirmé" :
-- 0-1 localité : impact négligeable (1-3/10)
-- 2-3 localités : impact modéré (4-5/10)
-- 4+ localités : impact significatif (6-8/10)
-- Impact > 8/10 réservé aux événements exceptionnels (inondations, sécheresse multi-semaines)
+ÉTAPE 3 — RISQUE À L'HORIZON J+1→J+5 (prévisions) :
+À partir de la portion PRÉVISION des séries (et de la synthèse fournie), identifier le risque \
+DOMINANT à venir et l'orienter avec le RÉGIME ENSO :
+- Saison des pluies + prévision humide (ou régime La Niña) → risque pourriture brune / black \
+  pod CROISSANT, et perturbation logistique portuaire si pluies extrêmes.
+- Saison sèche / régime El Niño + prévision sèche-chaude → risque déficit hydrique / Harmattan \
+  / stress thermique CROISSANT.
+Le risque prospectif s'énonce même si les conditions actuelles sont "normales" : l'horizon de \
+décision est 4-5 sessions, pas seulement aujourd'hui.
+
+ÉTAPE 4 — IMPACT MARCHÉ (actuel + prospectif) :
+Impact de base = proportionnel au nombre de localités en "stress confirmé" aujourd'hui :
+- 0-1 localité : 1-3/10 — 2-3 localités : 4-5/10 — 4+ localités : 6-8/10.
+PUIS ajuster pour le risque à l'horizon (ÉTAPE 3) :
+- Excès généralisé (toutes zones au moins "légèrement dégradé" côté humide) en saison des \
+  pluies AVEC prévision confirmant la poursuite des pluies → NE PAS plafonner à "négligeable" : \
+  viser 4-6/10 (canal pourriture brune + logistique portuaire).
+- Prévision sèche-chaude persistante en régime El Niño → relever de 1-2 points.
+- > 8/10 réservé aux événements exceptionnels (inondations, sécheresse multi-semaines).
+Toujours justifier l'impact par des chiffres (actuels ET prévus).
 
 FORMAT DE SORTIE — JSON valide avec exactement 5 champs :
 
@@ -300,16 +328,17 @@ PAS une liste par localité. Regrouper les zones par situation similaire, compar
 (bilans hydriques, températures, humidité sol) dans le fil du texte, pas en tableau. \
 Utiliser des connecteurs ("tandis que", "en revanche", "spatialement"). \
 Le texte doit être compréhensible par un trader non météorologue. \
-Terminer par la conséquence marché calibrée. Ne pas utiliser de superlatifs sans données \
-les justifiant. \
+Situer le RÉGIME ENSO en contexte de fond (une phrase, avec le mois de référence — donnée \
+décalée) PUIS énoncer le RISQUE À L'HORIZON J+1→J+5, et terminer par la conséquence marché \
+calibrée. Ne pas utiliser de superlatifs sans données les justifiant. \
 FORMATAGE HUMIDITÉ DU SOL : exprimer UNIQUEMENT en pourcentage (ex: "25%"), \
 jamais en m³/m³. Ne pas écrire les deux formats — le % suffit.
 
-- "resume": Diagnostic principal + localités concernées + impact prix calibré (2-3 phrases max)
+- "resume": Diagnostic actuel + risque à l'horizon J+1→J+5 + impact prix calibré (2-3 phrases max)
 
-- "mots_cle": zone géographique, type de stress le cas échéant, stade phénologique (séparés par virgules)
+- "mots_cle": zone géographique, type de stress (déficit ou excès) le cas échéant, régime ENSO, stade phénologique (séparés par virgules)
 
-- "impact_synthetiques": "X/10; justification avec chiffres"
+- "impact_synthetiques": "X/10; justification avec chiffres ACTUELS et PRÉVUS"
 
 - "diagnostics": Objet avec une clé par localité et le diagnostic de l'étape 2 comme valeur. \
 Valeurs possibles UNIQUEMENT : "normal", "degraded", "stress". \
@@ -317,9 +346,11 @@ Exemple : {{"Daloa": "normal", "San-Pédro": "degraded", "Kumasi": "stress", "So
 
 IMPORTANT : Réponds UNIQUEMENT avec le JSON, sans markdown fences ni texte avant ou après."""
 
-USER_PROMPT_TEMPLATE = """Données Open-Meteo (hier/aujourd'hui/demain) pour les 6 localités cacaoyères :
+USER_PROMPT_TEMPLATE = """Données Open-Meteo — fenêtre J-1 → J+5 (observation récente + prévisions) pour les 6 localités cacaoyères :
 
 {weather_data}
 
-Calcule d'abord les bilans hydriques et moyennes par localité, puis qualifie. \
+Distingue bien la portion OBSERVÉE (J-1/J) de la portion PRÉVUE (J+1→J+5) des séries. \
+Calcule d'abord les bilans hydriques et moyennes par localité, puis qualifie les conditions \
+actuelles, puis évalue le risque à l'horizon à partir des prévisions. \
 Compare aux seuils saisonniers fournis, pas aux conditions optimales théoriques."""

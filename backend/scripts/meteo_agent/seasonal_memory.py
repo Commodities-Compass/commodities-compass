@@ -482,6 +482,102 @@ def build_harmattan_context(harmattan_days: int, current_month: int) -> str:
     )
 
 
+# NOAA standard ENSO classification (ONI 3-month running mean).
+ENSO_EL_NINO_THRESHOLD = 0.5
+ENSO_LA_NINA_THRESHOLD = -0.5
+# ONI lags ~2 months by construction; older than this = the monthly job stalled.
+ENSO_STALE_DAYS = 75
+
+
+def classify_enso_regime(
+    oni: float,
+    oni_date: date,
+    reference_date: date,
+    nino34: float | None = None,
+    nino34_date: date | None = None,
+) -> str:
+    """Build the ENSO regime context line for the LLM prompt (pure, testable).
+
+    Bidirectional + dynamic — reads the live ONI sign, never a hardcoded label.
+    El Niño leans drier/hotter on the West-African belt (deficit / Harmattan);
+    La Niña leans wetter (excess / black pod). Niño 3.4 is fresher than the
+    centered ONI, so it flags momentum the lagged ONI hasn't confirmed yet.
+    """
+    if oni >= ENSO_EL_NINO_THRESHOLD:
+        regime = "El Niño"
+        lean = (
+            "tendance plus SÈCHE et chaude sur la ceinture cacaoyère "
+            "ouest-africaine — risque accru de déficit hydrique / Harmattan"
+        )
+    elif oni <= ENSO_LA_NINA_THRESHOLD:
+        regime = "La Niña"
+        lean = (
+            "tendance plus HUMIDE — risque accru d'excès d'eau, "
+            "pourriture brune / black pod"
+        )
+    else:
+        regime = "neutre"
+        lean = (
+            "pas de biais climatique fort — lecture pilotée par les conditions locales"
+        )
+
+    momentum = ""
+    if nino34 is not None:
+        ref = f" ({nino34_date:%b})" if nino34_date is not None else ""
+        momentum = f" Niño 3.4 {nino34:+.2f}{ref}"
+        if nino34 >= ENSO_EL_NINO_THRESHOLD and oni < ENSO_EL_NINO_THRESHOLD:
+            momentum += " en réchauffement → bascule possible vers El Niño."
+        elif nino34 <= ENSO_LA_NINA_THRESHOLD and oni > ENSO_LA_NINA_THRESHOLD:
+            momentum += " en refroidissement → bascule possible vers La Niña."
+        else:
+            momentum += "."
+
+    stale = ""
+    if (reference_date - oni_date).days > ENSO_STALE_DAYS:
+        age = (reference_date - oni_date).days
+        stale = (
+            f" ⚠ Donnée ENSO ancienne ({age} j) — signal possiblement "
+            "obsolète, à rafraîchir."
+        )
+
+    return (
+        f"\n\nRÉGIME CLIMATIQUE ENSO (contexte de fond, indice mensuel décalé "
+        f"~2 mois) : ONI {oni:+.2f} ({oni_date:%b %Y}) → régime {regime}, "
+        f"{lean}.{momentum}{stale}"
+    )
+
+
+def build_enso_context(session: Session, reference_date: date) -> str:
+    """Read latest ONI + Niño 3.4 from pl_external_indicator → regime context.
+
+    Returns "" when no ENSO data exists (pre-backfill). The caller isolates any
+    DB failure so a missing regime never blocks the daily weather observation.
+    """
+    oni_row = session.execute(
+        text(
+            "SELECT date, enso_oni_month FROM pl_external_indicator "
+            "WHERE enso_oni_month IS NOT NULL ORDER BY date DESC LIMIT 1"
+        )
+    ).fetchone()
+    if oni_row is None:
+        return ""
+
+    nino_row = session.execute(
+        text(
+            "SELECT date, enso_nino34_anomaly FROM pl_external_indicator "
+            "WHERE enso_nino34_anomaly IS NOT NULL ORDER BY date DESC LIMIT 1"
+        )
+    ).fetchone()
+
+    return classify_enso_regime(
+        oni=float(oni_row[1]),
+        oni_date=oni_row[0],
+        reference_date=reference_date,
+        nino34=float(nino_row[1]) if nino_row is not None else None,
+        nino34_date=nino_row[0] if nino_row is not None else None,
+    )
+
+
 def compute_season_stats(
     location_data: dict,
     loc_name: str,

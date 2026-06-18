@@ -124,6 +124,7 @@ def main() -> int:
 
         from scripts.meteo_agent.seasonal_memory import (
             build_campaign_memory,
+            build_enso_context,
             build_harmattan_context,
             get_campaign,
             get_campaign_harmattan_days,
@@ -141,6 +142,7 @@ def main() -> int:
 
         campaign_memory = ""
         harmattan_context = ""
+        enso_context = ""
         try:
             from scripts.db import get_session
 
@@ -151,12 +153,16 @@ def main() -> int:
                 harmattan_context = build_harmattan_context(
                     harmattan_days, target_date.month
                 )
+                # ENSO background regime (dynamic, bidirectional, staleness-guarded).
+                enso_context = build_enso_context(session, target_date)
             if campaign_memory:
                 logger.info("Campaign memory: %d chars", len(campaign_memory))
             else:
                 logger.info("No campaign memory available (first run?)")
             if harmattan_context:
                 logger.info("Harmattan context: %s", harmattan_context.strip())
+            if enso_context:
+                logger.info("ENSO context: %s", enso_context.strip())
         except (OSError, ConnectionError) as mem_err:
             logger.warning(
                 "Campaign memory unavailable (transient): %s (continuing)", mem_err
@@ -184,10 +190,18 @@ def main() -> int:
         system_prompt = SYSTEM_PROMPT_TEMPLATE.format(seasonal_context=seasonal_context)
         memory_block = f"\n\n{campaign_memory}" if campaign_memory else ""
         harmattan_block = harmattan_context
+        # Forward-risk synthesis from the forecast portion of the series (J+1→J+5).
+        from scripts.meteo_agent.forecast import summarize_forecast
+
+        forecast_block = summarize_forecast(weather_data)
+        if forecast_block:
+            logger.info("Forecast synthesis: %s", forecast_block.strip())
         user_prompt = (
             USER_PROMPT_TEMPLATE.format(weather_data=weather_data)
             + memory_block
             + harmattan_block
+            + enso_context
+            + forecast_block
         )
         logger.info(
             "Season: %s (month %d)", seasonal_context.split("\n")[0], current_month

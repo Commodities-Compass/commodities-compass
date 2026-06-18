@@ -86,6 +86,9 @@ class EnsembleBriefData:
     # Meteo
     meteo_summary: str = ""
     meteo_impact: str = ""
+    # Campaign-trajectory line (cumulative seasonal health) — the long-term view
+    # the daily observation lacks.
+    meteo_trajectory: str = ""
 
     # Last completed session technicals (string-formatted block)
     technicals_snapshot: str = ""
@@ -421,6 +424,37 @@ def _read_meteo(session: Session, target_date: date) -> tuple[str, str]:
     return (row[0] or "", row[1] or "")
 
 
+def _read_seasonal_trajectory(session: Session, target_date: date) -> str:
+    """Compact campaign-trajectory line (cumulative seasonal health).
+
+    Reads the in-progress season of the current campaign from pl_seasonal_score
+    (same data as the dashboard CampaignBlock) — the long-term view the daily
+    observation lacks. Returns "" between seasons or before the first backfill.
+    """
+    rows = session.execute(
+        text(
+            """
+            SELECT location_name, score, days_heavy_rain, season_name
+            FROM pl_seasonal_score
+            WHERE campaign = (SELECT MAX(campaign) FROM pl_seasonal_score)
+              AND months_covered LIKE '%(en cours)%'
+            ORDER BY location_name
+            """
+        )
+    ).fetchall()
+    if not rows:
+        return ""
+    season = rows[0][3].replace("_", " ")
+    avg = sum(float(r[1]) for r in rows) / len(rows)
+    heavy = sum(int(r[2] or 0) for r in rows)
+    worst = min(rows, key=lambda r: float(r[1]))
+    return (
+        f"Trajectoire campagne — {season} : santé moyenne {avg:.1f}/5 "
+        f"({len(rows)} zones), {heavy} jour-zones de pluie intense cumulés, "
+        f"plus faible : {worst[0]} ({float(worst[1]):.1f}/5)."
+    )
+
+
 def _read_technicals(session: Session, target_date: date, contract_id: Any) -> str:
     row = session.execute(
         text(
@@ -514,6 +548,7 @@ def read_brief_data(
     specialists = _read_specialists(session, effective_data_date, contract_id, algo_id)
     press = _read_press(session, target_date)
     meteo = _read_meteo(session, target_date)
+    meteo_trajectory = _read_seasonal_trajectory(session, target_date)
     technicals = _read_technicals(session, effective_data_date, contract_id)
     persistence = _read_persistence_days(
         session, effective_data_date, contract_id, algo_id, ind["decision"]
@@ -565,6 +600,7 @@ def read_brief_data(
         press_sentiment=press[2],
         meteo_summary=meteo[0],
         meteo_impact=meteo[1],
+        meteo_trajectory=meteo_trajectory,
         technicals_snapshot=technicals,
         persistence_days=persistence,
         ytd_score=ytd_score,

@@ -47,6 +47,7 @@ from app.utils.contract_resolver import (
     get_active_contract_id,
     get_active_algorithm_version_id,
     get_algorithm_version_for_date,
+    resolve_contract_for_date,
 )
 from app.services.dashboard_transformers import (
     transform_to_position_status_response,
@@ -81,6 +82,26 @@ from app.services.audio_service import get_audio_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+async def _resolve_contract_for_request(
+    db: AsyncSession, business_date: Optional[date]
+):
+    """Front-month contract for the requested date — NOT just the active one.
+
+    For a specific historical date, resolve the contract that was front-month
+    THAT day (``resolve_contract_for_date``). This is essential across a
+    contract roll: the post-roll active contract (e.g. CAU26) has no rows for
+    pre-roll dates, so keying the date-aware algo/position lookup to the active
+    contract makes every pre-roll session fall back to legacy + a null position
+    (rendered as MONITOR). For a 'latest' (no-date) request, use the active
+    contract. Falls back to active if no contract has data for the date.
+    """
+    if business_date is not None:
+        cid = await resolve_contract_for_date(db, business_date)
+        if cid is not None:
+            return cid
+    return await get_active_contract_id(db)
 
 
 async def _resolve_algo_for_date(
@@ -182,7 +203,7 @@ async def get_position_status(
             business_date = await _parse_and_validate_date(target_date, db)
 
         # Resolve contract, then date-aware algo version (ensemble vs legacy)
-        contract_id = await get_active_contract_id(db)
+        contract_id = await _resolve_contract_for_request(db, business_date)
         algo_id, algo_name = await _resolve_algo_for_date(
             db, business_date, contract_id
         )
@@ -247,7 +268,7 @@ async def get_indicators_grid(
 
         # Resolve contract + date-aware algo version so indicators come from the
         # right version when ensemble has data for that date.
-        contract_id = await get_active_contract_id(db)
+        contract_id = await _resolve_contract_for_request(db, business_date)
         algo_id, algo_name = await _resolve_algo_for_date(
             db, business_date, contract_id
         )
@@ -316,7 +337,7 @@ async def get_recommendations(
         # produced the decision, the conclusion text is still legacy-generated.
         # source_algorithm reflects which version's pl_indicator_daily row was
         # picked so the frontend can disclose the dissonance.
-        contract_id = await get_active_contract_id(db)
+        contract_id = await _resolve_contract_for_request(db, business_date)
         algo_id, algo_name = await _resolve_algo_for_date(
             db, business_date, contract_id
         )
@@ -765,7 +786,7 @@ async def get_macro_panel_endpoint(
             business_date = await _parse_and_validate_date(target_date, db)
         resolution_date = business_date or datetime.now(timezone.utc).date()
 
-        contract_id = await get_active_contract_id(db)
+        contract_id = await _resolve_contract_for_request(db, business_date)
         algo_id, algo_name = await _resolve_algo_for_date(
             db, business_date, contract_id
         )
@@ -804,7 +825,7 @@ async def get_positioning_endpoint(
             business_date = await _parse_and_validate_date(target_date, db)
         resolution_date = business_date or datetime.now(timezone.utc).date()
 
-        contract_id = await get_active_contract_id(db)
+        contract_id = await _resolve_contract_for_request(db, business_date)
 
         data = await get_positioning(db, resolution_date, contract_id=contract_id)
         return PositioningResponse(**data)
@@ -838,7 +859,7 @@ async def get_ensemble_diagnostics_endpoint(
             business_date = await _parse_and_validate_date(target_date, db)
         resolution_date = business_date or datetime.now(timezone.utc).date()
 
-        contract_id = await get_active_contract_id(db)
+        contract_id = await _resolve_contract_for_request(db, business_date)
         algo_id, algo_name = await _resolve_algo_for_date(
             db, business_date, contract_id
         )
@@ -890,7 +911,7 @@ async def get_specialist_votes_endpoint(
             business_date = await _parse_and_validate_date(target_date, db)
         resolution_date = business_date or datetime.now(timezone.utc).date()
 
-        contract_id = await get_active_contract_id(db)
+        contract_id = await _resolve_contract_for_request(db, business_date)
         algo_id, algo_name = await _resolve_algo_for_date(
             db, business_date, contract_id
         )

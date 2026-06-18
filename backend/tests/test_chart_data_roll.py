@@ -11,6 +11,7 @@ today's session shows, nothing before the roll".
 
 from __future__ import annotations
 
+import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -43,7 +44,7 @@ def _day(i: int) -> date:
     return _BASE + timedelta(days=i)
 
 
-async def _contract(db: AsyncSession, code: str) -> "uuid.UUID":  # noqa: F821
+async def _contract(db: AsyncSession, code: str) -> uuid.UUID:
     ex = RefExchange(code=f"ICE-{code}", name="ICE", timezone="UTC")
     db.add(ex)
     await db.flush()

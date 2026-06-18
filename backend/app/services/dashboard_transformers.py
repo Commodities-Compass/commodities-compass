@@ -42,14 +42,27 @@ def transform_to_position_status_response(
     original = position
     if position:
         position = position.strip().upper()
-    if not position or position not in _VALID_POSITIONS:
-        _position_logger.error(
-            "UNEXPECTED POSITION VALUE: got %r, expected one of %s — "
-            "defaulting to MONITOR. This indicates a data quality issue "
-            "in pl_indicator_daily.decision. Investigate immediately.",
-            original,
-            _VALID_POSITIONS,
-        )
+    if position not in _VALID_POSITIONS:
+        if original is None:
+            # No decision row for the requested date — e.g. the dashboard asks
+            # for "today" before the evening pipeline has written it, or a date
+            # on the far side of a contract roll. Benign, not a data-quality
+            # issue: default to MONITOR quietly (no Sentry page).
+            _position_logger.info(
+                "No position decision for %s — defaulting to MONITOR "
+                "(no pl_indicator_daily row for this date yet).",
+                response_date,
+            )
+        else:
+            # A row exists but its decision is not a recognised position. That
+            # IS a data-quality issue worth investigating.
+            _position_logger.error(
+                "UNEXPECTED POSITION VALUE: got %r, expected one of %s — "
+                "defaulting to MONITOR. This indicates a data quality issue "
+                "in pl_indicator_daily.decision. Investigate immediately.",
+                original,
+                _VALID_POSITIONS,
+            )
         position = "MONITOR"
 
     return PositionStatusResponse(

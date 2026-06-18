@@ -7,6 +7,7 @@ Produces the same BriefData/DayData structure so brief_generator.py works unchan
 from __future__ import annotations
 
 import logging
+import uuid
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -90,10 +91,11 @@ _INDICATOR_MAP: dict[str, tuple[str, str]] = {
 }
 
 
-_INDICATOR_DAILY_JOIN = (
-    " JOIN pl_algorithm_version av ON i.algorithm_version_id = av.id AND av.is_active = true"
-    " JOIN ref_contract rc ON i.contract_id = rc.id AND rc.is_active = true"
-)
+# Active algorithm only. The CONTRACT is no longer filtered by is_active —
+# it is resolved per date from v_contract_data_chained (front-month chain) and
+# passed in as :contract_id, so the read is correct across a contract roll.
+_INDICATOR_DAILY_JOIN = " JOIN pl_algorithm_version av ON i.algorithm_version_id = av.id AND av.is_active = true"
+_INDICATOR_WHERE = " WHERE i.date = :target_date AND i.contract_id = :contract_id"
 
 # Pre-built queries — no f-string interpolation inside text()
 _INDICATOR_FULL_QUERY = text(
@@ -107,23 +109,26 @@ _INDICATOR_FULL_QUERY = text(
     " i.final_indicator, i.decision, i.eco"
     " FROM pl_indicator_daily i"
     + _INDICATOR_DAILY_JOIN
-    + " WHERE i.date = :target_date"
-    " ORDER BY i.created_at DESC LIMIT 1"
+    + _INDICATOR_WHERE
+    + " ORDER BY i.created_at DESC LIMIT 1"
 )
 _CONFIDENCE_QUERY = text(
     "SELECT i.confidence FROM pl_indicator_daily i"
     + _INDICATOR_DAILY_JOIN
-    + " WHERE i.date = :target_date ORDER BY i.created_at DESC LIMIT 1"
+    + _INDICATOR_WHERE
+    + " ORDER BY i.created_at DESC LIMIT 1"
 )
 _DIRECTION_QUERY = text(
     "SELECT i.direction FROM pl_indicator_daily i"
     + _INDICATOR_DAILY_JOIN
-    + " WHERE i.date = :target_date ORDER BY i.created_at DESC LIMIT 1"
+    + _INDICATOR_WHERE
+    + " ORDER BY i.created_at DESC LIMIT 1"
 )
 _SCORE_TEXT_QUERY = text(
     "SELECT i.conclusion FROM pl_indicator_daily i"
     + _INDICATOR_DAILY_JOIN
-    + " WHERE i.date = :target_date ORDER BY i.created_at DESC LIMIT 1"
+    + _INDICATOR_WHERE
+    + " ORDER BY i.created_at DESC LIMIT 1"
 )
 
 
@@ -148,22 +153,40 @@ class DBBriefReader:
         return BriefData(today=today, yesterday=yesterday)
 
     def _get_last_two_dates(self) -> list[date]:
-        """Get the last 2 distinct dates from pl_contract_data_daily for the active contract."""
+        """Last 2 sessions from the front-month chain (roll-robust).
+
+        Reads ``v_contract_data_chained`` (front-month-by-OI per date) instead
+        of filtering ``ref_contract.is_active``. On a contract roll the freshly
+        activated front month has only its first day of data while the prior
+        front month holds the history; the is_active filter saw a single day and
+        the brief crashed ("Need at least 2 days of data, found 1", 2026-06-17).
+        The chained series spans the roll boundary cleanly.
+        """
         result = self._session.execute(
-            text("""
-                SELECT DISTINCT d.date
-                FROM pl_contract_data_daily d
-                JOIN ref_contract c ON d.contract_id = c.id
-                WHERE c.is_active = true
-                ORDER BY d.date DESC LIMIT 2
-            """),
+            text("SELECT date FROM v_contract_data_chained ORDER BY date DESC LIMIT 2"),
         )
         return [row[0] for row in result]
 
+    def _contract_id_for_date(self, target_date: date) -> uuid.UUID | None:
+        """Resolve the front-month contract for a date from the chained series.
+
+        Returns ``None`` when the date has no chained row (no market data) —
+        callers degrade to empty sections rather than raising.
+        """
+        row = self._session.execute(
+            text(
+                "SELECT contract_id FROM v_contract_data_chained"
+                " WHERE date = :target_date LIMIT 1"
+            ),
+            {"target_date": target_date},
+        ).fetchone()
+        return row[0] if row else None
+
     def _read_day(self, target_date: date) -> DayData:
         """Read all data for a single day."""
-        technicals = self._read_technicals(target_date)
-        indicators = self._read_indicators(target_date)
+        contract_id = self._contract_id_for_date(target_date)
+        technicals = self._read_technicals(target_date, contract_id)
+        indicators = self._read_indicators(target_date, contract_id)
         press_review = self._read_press_review(target_date)
         meteo_resume, meteo_impact = self._read_meteo(target_date)
 
@@ -172,21 +195,29 @@ class DBBriefReader:
             technicals=technicals,
             indicators=indicators,
             decision=indicators.get("CONCLUSION", ""),
-            confiance=str(self._read_confidence(target_date)),
-            direction=self._read_direction(target_date),
-            score_text=self._read_score_text(target_date),
+            confiance=str(self._read_confidence(target_date, contract_id)),
+            direction=self._read_direction(target_date, contract_id),
+            score_text=self._read_score_text(target_date, contract_id),
             press_review=press_review,
             meteo_resume=meteo_resume,
             meteo_impact=meteo_impact,
         )
 
-    def _read_technicals(self, target_date: date) -> dict[str, str]:
-        """Read raw market data + derived indicators for a date (active contract).
+    def _read_technicals(
+        self, target_date: date, contract_id: uuid.UUID | None
+    ) -> dict[str, str]:
+        """Read raw market data + derived indicators for a date.
+
+        Keyed on the front-month ``contract_id`` resolved from the chained
+        series (not ``ref_contract.is_active``), so the read is correct across a
+        roll — yesterday resolves to the now-inactive prior front month.
 
         stock_us + com_net_us are weekly cadence — sourced from
         ``pl_stock_observation`` / ``pl_cot_us_weekly`` since 2026-05-27
         with the latest-on-or-before-date pattern.
         """
+        if contract_id is None:
+            return {}
         result = self._session.execute(
             text("""
                 SELECT
@@ -200,14 +231,12 @@ class DBBriefReader:
                     di.atr_14d,
                     di.bollinger_upper, di.bollinger_lower
                 FROM pl_contract_data_daily d
-                JOIN ref_contract c ON d.contract_id = c.id
                 LEFT JOIN pl_derived_indicators di
                     ON d.date = di.date AND d.contract_id = di.contract_id
-                WHERE d.date = :target_date AND c.is_active = true
-                ORDER BY d.date DESC
+                WHERE d.date = :target_date AND d.contract_id = :contract_id
                 LIMIT 1
             """),
-            {"target_date": target_date},
+            {"target_date": target_date, "contract_id": contract_id},
         )
         row = result.fetchone()
         if not row:
@@ -259,11 +288,15 @@ class DBBriefReader:
         ).fetchone()
         return int(row[0]) if row and row[0] is not None else None
 
-    def _read_indicators(self, target_date: date) -> dict[str, str]:
+    def _read_indicators(
+        self, target_date: date, contract_id: uuid.UUID | None
+    ) -> dict[str, str]:
         """Read indicator scores + norms + composite for a date."""
+        if contract_id is None:
+            return {}
         result = self._session.execute(
             _INDICATOR_FULL_QUERY,
-            {"target_date": target_date},
+            {"target_date": target_date, "contract_id": contract_id},
         )
         row = result.fetchone()
         if not row:
@@ -279,29 +312,35 @@ class DBBriefReader:
 
         return indicators
 
-    def _read_confidence(self, target_date: date) -> str:
+    def _read_confidence(self, target_date: date, contract_id: uuid.UUID | None) -> str:
         """Read LLM confidence for a date."""
+        if contract_id is None:
+            return ""
         result = self._session.execute(
             _CONFIDENCE_QUERY,
-            {"target_date": target_date},
+            {"target_date": target_date, "contract_id": contract_id},
         )
         row = result.fetchone()
         return _fmt(row[0], "int") if row and row[0] else ""
 
-    def _read_direction(self, target_date: date) -> str:
+    def _read_direction(self, target_date: date, contract_id: uuid.UUID | None) -> str:
         """Read LLM direction for a date."""
+        if contract_id is None:
+            return ""
         result = self._session.execute(
             _DIRECTION_QUERY,
-            {"target_date": target_date},
+            {"target_date": target_date, "contract_id": contract_id},
         )
         row = result.fetchone()
         return str(row[0]) if row and row[0] else ""
 
-    def _read_score_text(self, target_date: date) -> str:
+    def _read_score_text(self, target_date: date, contract_id: uuid.UUID | None) -> str:
         """Read LLM conclusion/score text for a date."""
+        if contract_id is None:
+            return ""
         result = self._session.execute(
             _SCORE_TEXT_QUERY,
-            {"target_date": target_date},
+            {"target_date": target_date, "contract_id": contract_id},
         )
         row = result.fetchone()
         return str(row[0]) if row and row[0] else ""

@@ -1,6 +1,6 @@
 # ICE Certified Cocoa Stocks Scraper (Report 41)
 
-Automated daily scraper for ICE US Cocoa Certified Stocks data. Downloads public XLS files from ice.com, parses warehouse stock totals, converts to tonnes, and dual-writes to GCP Cloud SQL (`pl_contract_data_daily.stock_us`) and Google Sheets column H (STOCK US).
+Automated daily scraper for ICE US Cocoa Certified Stocks data. Downloads public XLS files from ice.com, parses warehouse stock totals, converts to tonnes, and writes to GCP Cloud SQL (`pl_stock_observation` table with region='us').
 
 ## Discovery (2026-02-17)
 
@@ -30,15 +30,14 @@ The entire reCAPTCHA + SPA + API chain is unnecessary. ICE publishes daily XLS f
 
 ```
 ice_stocks_scraper/
-  config.py          # URLs, sheet IDs, column index, validation ranges
+  config.py          # URLs, validation ranges, user agent
   scraper.py         # download_xls() + parse_xls() + scrape()
-  db_writer.py       # GCP PostgreSQL writer (update stock_us on latest row)
-  sheets_manager.py  # Google Sheets column H writer
-  main.py            # CLI entry point (dual-write: DB then Sheets)
-  run_scraper.sh     # Cloud Run Jobs entry point
+  db_writer.py       # GCP PostgreSQL writer (pl_stock_observation)
+  main.py            # CLI entry point
+  __init__.py        # Package marker
 ```
 
-**Dependencies:** `httpx`, `xlrd`, `pandas`, `google-api-python-client` (all already in pyproject.toml)
+**Dependencies:** `httpx`, `xlrd`, `pandas` (all already in pyproject.toml)
 
 **No browser dependencies.** No Playwright, no stealth, no proxy.
 
@@ -50,8 +49,7 @@ ICE public XLS (ice.com/publicdocs/...)
   → xlrd/pandas parse
   → Extract "GRAND TOTAL" warehouse bags
   → Convert: bags × 70 / 1000 = tonnes (truncated)
-  → Write to GCP PostgreSQL pl_contract_data_daily.stock_us (non-blocking)
-  → Write to Google Sheets TECHNICALS column H
+  → Write to GCP PostgreSQL pl_stock_observation (region='us', source='ice_us_report41')
 ```
 
 ### XLS URL Pattern
@@ -86,34 +84,38 @@ Walks backwards through business days until a report is found:
 ## Usage
 
 ```bash
-# Dry run (download + parse + validate, no Sheets write)
-poetry run python -m scripts.ice_stocks_scraper.main --dry-run
+# Dry run (download + parse + validate, no DB write)
+poetry run ice-stocks-scraper --dry-run
 
-# Write to staging sheet
-poetry run python -m scripts.ice_stocks_scraper.main --sheet=staging
-
-# Write to production sheet
-poetry run python -m scripts.ice_stocks_scraper.main --sheet=production
+# Write to database
+poetry run ice-stocks-scraper
 
 # Specific date
-poetry run python -m scripts.ice_stocks_scraper.main --date=2026-02-14
+poetry run ice-stocks-scraper --date=2026-02-14
 
 # Verbose logging (debug HTTP requests)
-poetry run python -m scripts.ice_stocks_scraper.main --dry-run --verbose
+poetry run ice-stocks-scraper --dry-run --verbose
+
+# Force run on non-trading days
+poetry run ice-stocks-scraper --force
 ```
 
 ### Environment Variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON` | Yes | Service account JSON for Sheets API |
 | `DATABASE_SYNC_URL` | Yes | GCP Cloud SQL connection string |
 
 ## GCP Database Write
 
-Updates `stock_us` on the most recent `pl_contract_data_daily` row for the active contract (queried via `ref_contract.is_active`). The row must already exist — Barchart scraper creates it at 9:00 PM UTC. If no row exists, logs an error and continues to Sheets.
+Writes to `pl_stock_observation` table with:
+- `region` = 'us'
+- `report_date` = date extracted from the XLS report header
+- `value_native` = stock quantity in tonnes
+- `unit_native` = 'tonnes'
+- `source` = 'ice_us_report41'
 
-The DB write is non-blocking: if it fails, the Sheets write proceeds normally.
+The scraper does not require an existing row in `pl_contract_data_daily`. It writes independently to the `pl_stock_observation` table keyed by the report's publication date.
 
 ## Deployment (GCP Cloud Run Jobs)
 
@@ -121,13 +123,13 @@ The DB write is non-blocking: if it fails, the Sheets write proceeds normally.
 |---------|-------|
 | **Cloud Run Job** | `cc-ice-stocks-scraper` |
 | **Image** | `Dockerfile.jobs` |
-| **Cloud Scheduler** | `10 21 * * 1-5` (9:10 PM UTC weekdays only) |
+| **Cloud Scheduler** | `5 19 * * 1-5` (7:05 PM UTC weekdays) |
 | **Timeout** | 300s |
-| **Required env vars** | `GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON`, `DATABASE_SYNC_URL` |
+| **Required env vars** | `DATABASE_SYNC_URL` |
 
 ### Why This Schedule
 
-ICE Report 41 is published after US market close (~5-6 PM ET). Running at 9:10 PM UTC (10 minutes after barchart scraper) gives margin for late publications. The scraper auto-falls back to the previous business day if today's file isn't available yet.
+ICE Report 41 is published after US market close (~5-6 PM ET). Running at 7:05 PM UTC (5 minutes after barchart scraper) gives margin for late publications. The scraper auto-falls back to the previous business day if today's file isn't available yet.
 
 ### No Special Dependencies
 

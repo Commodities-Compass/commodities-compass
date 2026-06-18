@@ -205,7 +205,7 @@ Frontend code uses Auth0 variables (not VITE_ prefixed) exposed via custom Vite 
 
 ### Pipeline (GCP Cloud Run Jobs)
 
-8 Cloud Run Jobs run on Cloud Scheduler (19:00-20:15 UTC weekdays). All scrapers write to `pl_contract_data_daily` (GCP Cloud SQL). The indicator computation engine (`app/engine/`) replaces the former Google Sheets formula engine:
+Cloud Run Jobs run on Cloud Scheduler (18:30–22:10 UTC, weekday Phase A + eve-gated Phase B). **Only the barchart scraper writes to `pl_contract_data_daily`** (OHLCV+IV); since migration `r2m3n4o5p6q7` (2026-05-27) the other scrapers write dedicated tables — `pl_stock_observation` (ICE US/EU stocks), `pl_cot_us_weekly` / `pl_cot_eu_weekly` (COT), `pl_supply_demand_observation` (ECA/NCA grindings), `pl_external_indicator` (FX/ENSO). See [JOBS_AND_SCRAPERS.md](docs/architecture/JOBS_AND_SCRAPERS.md) for the full job/table map. The indicator computation engine (`app/engine/`) replaced the former Google Sheets formula engine:
 
 ```
 Scrapers → pl_contract_data_daily (raw OHLCV)
@@ -224,15 +224,19 @@ Scrapers → pl_contract_data_daily (raw OHLCV)
 
 ## Scrapers
 
-Three automated scrapers feed `pl_contract_data_daily`. Each runs as a GCP Cloud Run Job using `backend/Dockerfile.jobs` (with Playwright).
+Multiple automated scrapers run as GCP Cloud Run Jobs (`backend/Dockerfile.jobs`, Playwright where needed). **Only `barchart-scraper` writes `pl_contract_data_daily`** (OHLCV+IV). Since migration `r2m3n4o5p6q7` (2026-05-27) the weekly/quarterly fundamentals write **dedicated tables** with their own `report_date` provenance — they are no longer stamped onto the daily OHLCV row.
 
 ### Architecture
 
 ```
-pl_contract_data_daily row:
-  date | display_date | close | high | low | volume | oi | iv | stock_us | com_net_us
-  ──── barchart-scraper (inserts OHLCV+IV+display_date) ─  ──ice──   ──cftc──
-                                                          (update)  (update)
+pl_contract_data_daily row (barchart-scraper only):
+  date | display_date | open | high | low | close | volume | oi | implied_volatility
+
+Fundamentals → dedicated cadence tables (own report_date):
+  ICE US/EU stocks ............ pl_stock_observation        (ice-stocks, barchart-stocks-eu)
+  CFTC US / ICE EU COT ........ pl_cot_us_weekly / pl_cot_eu_weekly   (cftc, ice-cot-eu)
+  ECA / NCA grindings ......... pl_supply_demand_observation (eca-, nca-grindings)
+  FX (ECB) / ENSO (NOAA) ...... pl_external_indicator        (fx, enso)
 ```
 
 ### Date Semantics (display_date)

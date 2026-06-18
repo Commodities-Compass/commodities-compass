@@ -20,7 +20,7 @@ These mislead about production data flows (Sheets-vs-DB, table targets), claim l
 
 ### `backend/app/services/dashboard_service.py`
 
-- **L764** — `stale_comment` — `SIGNAL_THEMES = {"production", "chocolat"}` omits the two other live themes. Press-review config supports 4 (`production`, `chocolat`, `economie`, `transformation`); frontend `sentiment-gauges.tsx` maps all 4. New segments with the missing themes silently get `has_signal=false` with no error or log. → **Action: fix** — add `transformation` and `economie` (verify against `press_review_agent/config.py` as source of truth).
+- **L764** — ~~`stale_comment`~~ → **REVIEWED 2026-06-18: NOT A BUG (verified false positive).** `SIGNAL_THEMES = {"production", "chocolat"}` is **intentional**: `has_signal` is documented in `schemas/dashboard.py:140` as *"True for themes with Granger significance (production, chocolat)"* — transformation/economie are displayed but are not signal-bearing. Adding them would falsely mark them Granger-significant. Also `has_signal` is **not consumed by the frontend** (declared only in `types/dashboard.ts:70`, never read); all 4 gauges render regardless. → **Action: NONE.** (Optional nicety: a 1-line code comment on `SIGNAL_THEMES` citing the Granger rationale, to stop future re-flagging.) Lesson: audit findings need per-item re-verification against semantics before "fixing".
 
 ### `backend/scripts/barchart_scraper/validator.py`
 

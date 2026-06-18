@@ -1,13 +1,10 @@
 # Compass Brief Generator
 
-Generates a structured `.txt` brief from market data and uploads to Google Drive for NotebookLM podcast consumption. Supports two data sources:
-
-- **`--db` mode** (new, Phase 3.4): Reads from `pl_*` tables. No Sheets dependency.
-- **Default mode** (legacy): Reads from Google Sheets.
+Generates a structured `.txt` brief from PostgreSQL market data and uploads to Google Drive for NotebookLM podcast consumption.
 
 ## What it does
 
-1. Reads the **last 2 days** of market data (technicals, indicators, press review, weather)
+1. Reads the **last 2 days** of market data from `pl_*` tables (technicals, indicators, press review, weather)
 2. Generates a single `.txt` file with two dated sections: **VEILLE** (yesterday) and **AUJOURD'HUI** (today)
 3. Uploads to a **Shared Drive** folder ("Compass Briefs")
 4. Idempotent: re-running for the same date updates the existing file
@@ -28,32 +25,40 @@ The brief mirrors the Looker PDF content:
 ## Usage
 
 ```bash
-# DB mode (recommended)
-poetry run compass-brief --db --dry-run        # preview from DB
-poetry run compass-brief --db                  # generate + upload from DB
+# Generate and upload to Drive
+poetry run compass-brief
 
-# Legacy Sheets mode
-poetry run compass-brief --dry-run             # preview from Sheets
-poetry run compass-brief                       # generate + upload from Sheets
+# Preview to stdout (no upload)
+poetry run compass-brief --dry-run
 
 # Save locally
-poetry run compass-brief --db --output /tmp/brief.txt
+poetry run compass-brief --output /tmp/brief.txt
+
+# Run for a specific trading session date (Phase B backfill/rerun)
+poetry run compass-brief --target-date 2026-06-13
+
+# Override the trading-day gate (e.g., for backfills on non-trading days)
+poetry run compass-brief --force
+
+# Verbose logging
+poetry run compass-brief --verbose
 ```
 
 ## CLI flags
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--db` | off | Read from `pl_*` tables instead of Google Sheets |
 | `--dry-run` | off | Print brief to stdout, skip Drive upload |
 | `--output` | none | Save brief to local file path |
 | `--verbose` | off | DEBUG logging |
+| `--force` | off | Run even on non-trading days (for backfills/debugging) |
+| `--target-date` | auto | Trading session date the brief covers (YYYY-MM-DD). Defaults to `get_next_session_date()` per Phase B |
 
 ## Environment variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON` | yes | Service account JSON (read+write). Used for both Sheets reads and Drive uploads |
+| `GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON` | yes | Service account JSON (read+write). Used for Drive uploads |
 | `GOOGLE_DRIVE_BRIEFS_FOLDER_ID` | yes | Folder ID of "Compass Briefs" in Shared Drive |
 | `SENTRY_DSN` | no | Sentry monitoring DSN |
 
@@ -72,21 +77,31 @@ The service account cannot create files in regular (My Drive) folders due to Goo
 |-------|-------|
 | **Cloud Run Job** | `cc-compass-brief` |
 | **Image** | `Dockerfile.jobs` |
-| **Cloud Scheduler** | `30 21 * * 1-5` (9:30 PM UTC, weekdays) |
+| **Cloud Scheduler** | `30 19 * * 1-5` (7:30 PM UTC, weekdays) |
 | **Sentry monitor slug** | `compass-brief` |
 
 ### Pipeline position
 
 ```
- 9:00 PM UTC  -- Barchart scraper       -> TECHNICALS (CLOSE, HIGH, LOW, VOL, OI, IV)
- 9:10 PM UTC  -- ICE stocks + CFTC      -> TECHNICALS (STOCK US, COM NET US)
- 9:10 PM UTC  -- Press review agent     -> BIBLIO_ALL
- 9:10 PM UTC  -- Meteo agent            -> METEO_ALL
- 9:20 PM UTC  -- Daily analysis          -> INDICATOR + TECHNICALS (DECISION, SCORE)
- 9:30 PM UTC  -- Compass brief          -> Drive (.txt)  ← this (reads all 4 sheets)
+ 7:00 PM UTC  -- Barchart scraper       -> pl_contract_data_daily (OHLCV + IV)
+ 7:05 PM UTC  -- ICE stocks + CFTC      -> pl_contract_data_daily (STOCK US, COM NET US)
+ 7:05 PM UTC  -- Press review agent     -> pl_fundamental_article
+ 7:10 PM UTC  -- Meteo agent            -> pl_weather_observation
+ 7:15 PM UTC  -- Compute indicators     -> pl_derived_indicators + pl_indicator_daily
+ 7:20 PM UTC  -- Daily analysis         -> pl_indicator_daily (LLM decision + score)
+ 7:30 PM UTC  -- Compass brief          -> Google Drive (.txt)  ← this (reads all pl_* tables)
 ```
 
+## Phase B gate (P2b)
 
+The compass-brief job runs daily but gates on `is_eve_of_trading_day()`:
+
+- **Weekdays (Mon-Thu)**: the job fires at 19:30 UTC and generates a brief for the next trading day
+- **Friday evening**: generates a brief for Monday
+- **Saturday/Sunday**: exits cleanly (exit 0) — no false alert to Sentry cron monitor
+- **Holidays**: exits cleanly
+
+Use `--force` to bypass this gate for backfills or manual reruns on non-trading days.
 
 ## Manual workflow (current)
 
@@ -104,32 +119,38 @@ Steps 1-3 remain manual until the audio agent (US-008) is implemented.
 ```
 backend/scripts/compass_brief/
 ├── __init__.py
-├── main.py              # CLI entry point: --db (new) or legacy Sheets
-├── config.py            # Column mappings, env var helpers, spreadsheet ID
-├── db_reader.py         # [NEW] Read from pl_* tables
-├── sheets_reader.py     # [LEGACY] Read from Google Sheets
-├── brief_generator.py   # Formats data into structured text (shared)
-├── drive_uploader.py    # Uploads .txt to Shared Drive folder (shared)
-├── run_brief.sh         # Railway cron entry point
+├── main.py              # CLI entry point with Phase B gate logic
+├── config.py            # Column mappings, env var helpers
+├── db_reader.py         # Read from pl_* tables (contract-centric, roll-robust)
+├── brief_generator.py   # Formats BriefData into structured text
+├── drive_uploader.py    # Uploads .txt to Shared Drive folder
 └── README.md
 ```
 
 ## Data sources
 
-### DB mode (`--db`)
+| Table | Data | Notes |
+|-------|------|-------|
+| `pl_contract_data_daily` + `pl_derived_indicators` | OHLCV, technicals (last 2 days) | Latest 2 sessions via `v_contract_data_chained` (roll-robust) |
+| `pl_indicator_daily` | Scores, norms, decision, ECO (last 2 days) | Joins `pl_algorithm_version` for active rows only |
+| `pl_fundamental_article` (fallback: `market_research`) | Press review summaries | Filtered by `is_active=true` |
+| `pl_weather_observation` (fallback: `weather_data`) | Weather + market impact | Latest summary + impact_assessment |
+| `pl_stock_observation` | ICE US certified stocks (tonnes) | Weekly cadence, `latest-on-or-before-date` pattern |
+| `pl_cot_us_weekly` | CFTC commercial net positioning | Weekly cadence, `latest-on-or-before-date` pattern |
+| `v_contract_data_chained` | Front-month chain by OI (roll-robust) | Ensures brief spans contract roll boundaries cleanly |
 
-| Table | Data |
-|-------|------|
-| `pl_contract_data_daily` + `pl_derived_indicators` | OHLCV, technicals (last 2 days) |
-| `pl_indicator_daily` | Scores, norms, decision, ECO (last 2 days) |
-| `pl_fundamental_article` (fallback: `market_research`) | Press review summaries |
-| `pl_weather_observation` (fallback: `weather_data`) | Weather + market impact |
+## Contract roll handling
 
-### Legacy Sheets mode
+The brief reader uses `v_contract_data_chained` to resolve the front-month contract for each date, rather than filtering by `ref_contract.is_active`. This makes the brief resilient across contract rolls:
 
-| Sheet | Range | Data |
-|-------|-------|------|
-| TECHNICALS | A:AR (last 2 rows) | OHLCV, technicals, decision, score text |
-| INDICATOR | A:T (last 2 rows) | Normalised scores, conclusion, ECO analysis |
-| BIBLIO_ALL | A:C (filtered by date) | Press review summaries |
-| METEO_ALL | A:E (filtered by date) | Weather conditions + market impact |
+- **Old contracts** (rolled out but still in data): correctly resolved from the chained view
+- **New contracts** (just activated): included as soon as they appear in the chain
+
+See [contract roll procedure](../../docs/runbooks/contract-roll-procedure.md) for full details.
+
+## Fail-loud behavior
+
+- Missing credentials → raises `RuntimeError` with clear env var name
+- No recent market data (< 2 days) → raises `ValueError`
+- Stale data detected (brief data < previous session) → logs warning, skips upload, exits 0 (non-fatal, caller can retry with `--force`)
+- Drive upload fails → logs exception, exits 1 (Sentry alert)

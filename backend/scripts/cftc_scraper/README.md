@@ -1,14 +1,14 @@
-# CFTC Scraper - Simple Daily Scraper
+# CFTC Scraper - US Disaggregated COT Weekly
 
-Standalone scraper for CFTC Commitments of Traders data (COM NET US field).
+Standalone scraper for CFTC Commitments of Traders data (cocoa ICE Futures U.S.). Refactored 2026-05-27 to write full COT decomposition to `pl_cot_us_weekly` instead of updating a single field on `pl_contract_data_daily`.
 
 ## Features
 
-- **Dual-write**: Writes to GCP Cloud SQL (`pl_contract_data_daily.com_net_us`) and Google Sheets
-- **Non-blocking DB write**: If DB fails, Sheets write proceeds normally
-- **Last row update**: Finds last row with date and updates column I (Sheets) / latest row for active contract (DB)
-- **Dry-run mode**: Test without writing to DB or Sheets
-- **Environment selection**: Staging or production sheets
+- **Full COT decomposition**: Extracts Producer/Merchant, Swap Dealers, Managed Money, Other Reportables, Non-Reportable positions (long/short) plus Open Interest
+- **Idempotent UPSERT**: Keyed on `(release_date, contract_market)` — re-running Friday after a CFTC revision overwrites the row with latest numbers
+- **Fail-loud design**: Exits 1 on any parser error, stale report, or validation failure (no silent degradation)
+- **Dry-run mode**: Test without writing to database
+- **Staleness check**: Raises error if CFTC report is older than 14 days (publisher down detection)
 
 ## Usage
 
@@ -16,20 +16,19 @@ Standalone scraper for CFTC Commitments of Traders data (COM NET US field).
 
 ```bash
 # Test scrape (dry run)
-poetry run python -m scripts.cftc_scraper.main --dry-run --sheet=staging
+poetry run cftc-scraper --dry-run
 
-# Live run (staging)
-poetry run python -m scripts.cftc_scraper.main --sheet=staging
-
-# Live run (production) - ⚠️ Use with caution
-poetry run python -m scripts.cftc_scraper.main --sheet=production
+# Live run
+poetry run cftc-scraper
 ```
 
 ### Environment Variables
 
 Required:
-- `GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON` - Google Sheets service account credentials
 - `DATABASE_SYNC_URL` - GCP Cloud SQL connection string
+
+Optional:
+- `LOG_LEVEL` - logging level (default: INFO)
 
 ## Deployment (GCP Cloud Run Jobs)
 
@@ -37,68 +36,84 @@ Required:
 |---------|-------|
 | **Cloud Run Job** | `cc-cftc-scraper` |
 | **Image** | `Dockerfile.jobs` |
-| **Cloud Scheduler** | `10 21 * * 1-5` (9:10 PM UTC weekdays) |
-| **Required env vars** | `GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON`, `DATABASE_SYNC_URL` |
+| **Cloud Scheduler** | `5 19 * * 1-5` (7:05 PM UTC weekdays) |
+| **Required env vars** | `DATABASE_SYNC_URL` |
 
-Idempotent: Mon-Thu rewrites same value, Friday picks up new report. Env vars configured in Cloud Run Job env vars or Secret Manager.
+Runs weekday evenings only, idempotent on release_date. Env vars configured in Cloud Run Job env vars or Secret Manager.
 
 ## How It Works
 
-1. **Download CFTC report** from Agriculture Long Format page
-2. **Parse cocoa section** to extract Producer/Merchant Long/Short positions
-3. **Calculate COM NET US** = Long - Short
-4. **Validate range** (-100k to +100k)
-5. **Write to GCP PostgreSQL** — update `com_net_us` on latest `pl_contract_data_daily` row for active contract (non-blocking)
-6. **Find last row** with date in column A of TECHNICALS sheet
-7. **Update column I** of that row with COM NET US value
+1. **Download CFTC report** from Agriculture Long Format page (`https://www.cftc.gov/dea/futures/ag_lf.htm`)
+2. **Parse report date** from section header (e.g., "Disaggregated Commitments of Traders - Futures Only, May 19, 2026")
+3. **Derive release_date** = report_date + 3 days (CFTC Tuesday→Friday convention)
+4. **Extract cocoa section** — anchors on code 073732 (cocoa ICE Futures U.S.)
+5. **Parse "All" row** — extracts 14 numeric fields (open interest, producer/merchant long/short, swap dealers long/short/spreading, managed money long/short/spreading, other reportables long/short/spreading, non-reportables long/short)
+6. **Validate** — prod_merc_net (long - short) must be in range [-100k, +100k]
+7. **UPSERT to pl_cot_us_weekly** — keyed on (release_date, contract_market="cocoa"), idempotent on CFTC publisher revisions
 
-## Sheet Structure
+## Database Target
 
-### Data Column
-- **Column I** (index 8): COM NET US values
+Writes one row per CFTC publication to `pl_cot_us_weekly`:
 
-### Update Logic
-- Finds last row with date in column A
-- Updates column I of that row only
-- No metadata, no forward-fill
+| Column | Source | Notes |
+|--------|--------|-------|
+| `release_date` | Derived from report_date + 3 days | Friday when CFTC publishes |
+| `report_date` | Parsed from section header | Tuesday snapshot covered |
+| `contract_market` | Hardcoded | "cocoa" (ICE Futures U.S.) |
+| `prod_merc_long`, `prod_merc_short` | "All" row columns | Producer/Merchant positions |
+| `m_money_long`, `m_money_short` | "All" row columns | Managed Money positions |
+| `swap_long`, `swap_short`, `swap_spreading` | "All" row columns | Swap Dealers positions |
+| `other_rept_long`, `other_rept_short`, `other_rept_spreading` | "All" row columns | Other Reportables |
+| `non_rept_long`, `non_rept_short` | "All" row columns | Non-Reportable positions |
+| `open_interest` | "All" row column 1 | Total open interest |
+| `prod_merc_net` | GENERATED column | prod_merc_long - prod_merc_short (never written) |
+| `m_money_net` | GENERATED column | m_money_long - m_money_short (never written) |
 
 ## Error Handling
 
-- **Scraping error**: Logs error, exit 1
-- **Sheets error**: Logs error, exit 1
-- **Unexpected error**: Logs error, exit 1
+Per `.claude/rules/pipeline-error-handling.md`, the scraper fails loud and never silently recovers:
+
+- **Missing CFTC section** (code 073732 not found): Logs error, exit 1, Sentry alert
+- **Malformed "All" row** (fewer/more tokens than expected): Logs error, exit 1, Sentry alert
+- **Unparseable numbers**: Logs error, exit 1, Sentry alert
+- **Stale report** (report_date > 14 days old): Logs error, exit 1, Sentry alert (publisher down)
+- **Validation failure** (prod_merc_net outside [-100k, +100k]): Logs error, exit 1, Sentry alert
+- **Unexpected exception**: Logs full traceback, exit 1, Sentry alert
 
 ## Testing
 
 ```bash
-# Test scraper only (no sheets)
+# Test scraper only (dry run)
+poetry run cftc-scraper --dry-run
+
+# View parsed observation
 poetry run python -c "
 from scripts.cftc_scraper.scraper import CFTCScraper
 scraper = CFTCScraper()
-result = scraper.scrape()
-print(f'COM NET US: {result:,.0f}')
+obs = scraper.scrape()
+print(f'Report: {obs.report_date}, Release: {obs.release_date}')
+print(f'Prod/Merc Net: {obs.prod_merc_net:,}, M-Money Net: {obs.m_money_net:,}')
+print(f'Open Interest: {obs.open_interest:,}')
 "
-
-# Test full flow (dry run)
-poetry run python -m scripts.cftc_scraper.main --dry-run --sheet=staging
 ```
 
 ## Monitoring
 
 ### Logs
 - All logs go to stdout (Cloud Run captures automatically)
-- Sentry cron monitoring for missed/failed runs
+- Sentry cron monitor for missed/failed runs (`@monitor(monitor_slug="cftc-scraper")`)
+- Detailed context logged on success (release_date, report_date, net positions, open interest)
 
 ### Success Criteria
 - Exit code 0
-- "SUCCESS" in logs
-- Google Sheets column I updated with new value
+- "SUCCESS: CFTC scraper completed" in logs
+- `pl_cot_us_weekly` has one new or updated row for the latest CFTC release
 
 ## Maintenance
 
 ### Daily Schedule (Weekdays)
-- **21:10 UTC (10:10 PM CET)**: Automated run via Cloud Scheduler → Cloud Run Job
-- Idempotent — always reads the latest published CFTC report (updated Fridays ~9:30 PM CET)
+- **19:05 UTC (7:05 PM CET)**: Automated run via Cloud Scheduler → Cloud Run Job
+- Idempotent — UPSERT on (release_date, contract_market) means re-running after a CFTC revision overwrites the row
 
 ### Manual Run
 If automation fails, run manually:
@@ -108,29 +123,28 @@ If automation fails, run manually:
 gcloud run jobs execute cc-cftc-scraper --region europe-west9
 
 # Or run locally
-poetry run python -m scripts.cftc_scraper.main --sheet=staging
+poetry run cftc-scraper
 ```
 
 ### Troubleshooting
 
 **Scraping errors**:
-- Check CFTC website HTML structure hasn't changed
-- Verify Agriculture Long Format URL still valid: https://www.cftc.gov/dea/futures/ag_lf.htm
-- Check regex patterns in scraper.py
+- Verify CFTC report is current: https://www.cftc.gov/dea/futures/ag_lf.htm (updated Friday ~9:30 PM CET)
+- Check HTML structure hasn't changed (look for code 073732 and "Disaggregated Commitments of Traders" header)
+- Verify regex patterns in scraper.py match actual CFTC format
 
-**Sheets errors**:
-- Verify service account permissions
-- Check spreadsheet ID correct
-- Ensure sheet name (TECHNICALS or TECHNICALS_STAGING) exists
-- Confirm column A has dates and column I exists
+**Validation errors** (prod_merc_net outside range):
+- Confirm scraped numbers match the CFTC website manually
+- Check that the "All" row parser picked the correct line (not a different commodity's "All" row)
 
-## GCP Database Write
+**Stale report errors** (report > 14 days old):
+- CFTC may have stopped publishing (unlikely; they publish every Friday)
+- Scraper may be hitting a cache or archived page
+- Verify URL is correct and returning current report
 
-Updates `com_net_us` on the most recent `pl_contract_data_daily` row for the active contract (queried via `ref_contract.is_active`). The row must already exist — Barchart scraper creates it at 9:00 PM UTC. If no row exists, logs an error and continues to Sheets.
+## References
 
-Writer: `db_writer.py` — `write_com_net_us(session, commercial_net, dry_run=False)`
-
-## Future Enhancements
-
-- Smart detection: Extract report date and skip if unchanged
-- Forward-fill: Update all empty cells instead of just last row
+- CFTC Disaggregated COT: https://www.cftc.gov/dea/futures/ag_lf.htm
+- Producer/Merchant (commercial hedgers) + Managed Money (speculators) = key R&D signals for ensemble
+- Report date is Tuesday snapshot; release_date (Friday) is when public CFTC data becomes available
+- Mirrors `cc-ice-cot-eu-scraper` for pattern consistency (EU weekly COT → `pl_cot_eu_weekly`)

@@ -233,6 +233,8 @@ def render_brief(data: "EnsembleBriefData") -> str:
     lines.append(SEP_THIN)
     if data.meteo_summary:
         lines.append(data.meteo_summary)
+    if data.meteo_trajectory:
+        lines.append(data.meteo_trajectory)
     if data.meteo_impact:
         lines.append(f"Impact : {data.meteo_impact}")
     if not (data.meteo_summary or data.meteo_impact):

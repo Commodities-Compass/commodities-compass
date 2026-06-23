@@ -35,7 +35,7 @@ If you don't want to sync locally, query GCP directly via the IAP bastion — sa
 
 ### Procedure
 
-#### 1. Pull the 3 data points you need
+#### 1. Pull the 2 data points you need
 
 Last 30 trading-day closes from the chained front-month series:
 
@@ -48,7 +48,7 @@ PGPASSWORD=password psql -h localhost -p 5433 -U postgres -d commodities_compass
 "
 ```
 
-Active contract code (for the chart eyebrow):
+Active contract code (for the chart eyebrow + caption):
 
 ```bash
 PGPASSWORD=password psql -h localhost -p 5433 -U postgres -d commodities_compass -c "
@@ -56,20 +56,7 @@ PGPASSWORD=password psql -h localhost -p 5433 -U postgres -d commodities_compass
 "
 ```
 
-Day-over-day change (for the chart meta line):
-
-```bash
-PGPASSWORD=password psql -h localhost -p 5433 -U postgres -d commodities_compass -c "
-  WITH s AS (
-    SELECT date, close, LAG(close) OVER (ORDER BY date) AS prev
-    FROM v_contract_data_chained
-    ORDER BY date DESC LIMIT 2
-  )
-  SELECT date, close, prev,
-         ROUND(((close - prev) / prev * 100)::numeric, 2) AS pct_change
-  FROM s WHERE prev IS NOT NULL;
-"
-```
+**No "today" / "current price" / "D/D change" needed** — the chart shows scale only (`Échelle : £2 850 – £3 500`), derived automatically from the array's min/max. This is intentional: prevents the static landing from claiming up-to-the-tick freshness it can't deliver. See the `chartScaleLabel` rationale in the frontmatter of `BriefAudio.astro`.
 
 #### 2. Update the 30-value array
 
@@ -89,29 +76,21 @@ const prices = [
 ];
 ```
 
-#### 3. Update the 4 strings (×2 locales)
+The range (`Échelle £X – £Y`) is recomputed automatically from min/max of this array, rounded down/up to the nearest 50 — no manual update needed.
 
-File: [landing/src/i18n/strings.ts](../../landing/src/i18n/strings.ts), in both `fr.brief` and `en.brief` blocks :
+#### 3. Update the 3 strings (×2 locales) — only if the contract code rolled
+
+File: [landing/src/i18n/strings.ts](../../landing/src/i18n/strings.ts), in both `fr.brief` and `en.brief` blocks. **If the active contract code is unchanged since the last refresh, skip this step entirely.**
 
 | Key | FR | EN |
 |---|---|---|
-| `chartEyebrow` | `<CODE> · 30 derniers jours` | `<CODE> · Last 30 days` |
-| `chartCurrentPrice` | `£3 475` (espace insécable optionnel) | `£3,475` (virgule milliers) |
-| `chartCurrentChange` | `+5,49 %` (espace avant %) | `+5.49%` (sans espace) |
+| `chartEyebrow` | `<CODE> · 30 séances` | `<CODE> · 30 sessions` |
+| `chartScaleLabel` | `Échelle` | `Range` |
 | `chartCaption` | `Closes officiels <CODE> · ICE Europe` | `Official <CODE> closes · ICE Europe` |
 
-Replace `<CODE>` with the active contract code from query #1.
+Replace `<CODE>` with the active contract code from query #2.
 
-#### 4. Update dot color + change sign-class if direction flipped
-
-In [BriefAudio.astro](../../landing/src/components/sections/BriefAudio.astro), if today's D/D moved opposite direction since last refresh :
-
-- `fill="var(--color-signal-open)"` (vert) vs `fill="var(--color-signal-hedge)"` (rouge) on the SVG `<circle>` for the dot
-- `class="change up"` vs `class="change down"` on the change span in the chart-meta block
-
-Up day → `signal-open` + `up`. Down day → `signal-hedge` + `down`. The CSS already maps both classes to the right colors.
-
-#### 5. Build + verify
+#### 4. Build + verify
 
 ```bash
 cd landing
@@ -120,21 +99,21 @@ pnpm exec astro build    # 5 pages
 pnpm exec astro dev      # http://localhost:4321/#brief
 ```
 
-Visual check on the chart : the line should match the new shape, dot color matches D/D direction, eyebrow says the current contract code, meta line shows new price + percent.
+Visual check on the chart : the line should match the new shape, eyebrow says the current contract code, scale band ("Échelle £X – £Y") reflects the new min/max.
 
-#### 6. Commit + deploy
+#### 5. Commit + deploy
 
 ```bash
 git add landing/src/components/sections/BriefAudio.astro landing/src/i18n/strings.ts
-git commit -m "chore(landing): refresh chart closes (<CODE>, J=YYYY-MM-DD, latest £<price> <±X.XX%>)"
+git commit -m "chore(landing): refresh chart closes (<CODE>, J=YYYY-MM-DD)"
 git push   # GHA deploy-landing fires on push to main with landing/** changes
 ```
 
 ### Verify (post-deploy)
 
 ```bash
-curl -sS https://com-compass.com/ | grep -oE '<CODE> · 30 derniers jours'
-curl -sS https://com-compass.com/ | grep -oE 'AUJOURD.{0,3}HUI[^<]{0,40}£[0-9 ]+[^<]{0,40}%'
+curl -sS https://com-compass.com/ | grep -oE '<CODE> · 30 séances'
+curl -sS https://com-compass.com/ | grep -oE 'class="price"[^>]*>£[0-9 ]+ – £[0-9 ]+'
 ```
 
 Both should return non-empty matches.
@@ -144,8 +123,7 @@ Both should return non-empty matches.
 | Symptom | Cause | Fix |
 |---|---|---|
 | Chart line is flat / weird | Reversed the array (DESC not ASC) | Reverse before pasting |
-| Dot is on the wrong end | Same as above | Same |
-| Dot color contradicts the change | Forgot to flip both `fill=` and `class=` | Update both in lockstep |
+| Range label is wrong | Outliers in the series skewed min/max | Sanity-check the SQL output (no NULL closes, no zero rows) |
 | Eyebrow shows old contract code | Forgot to update `chartEyebrow` strings | Re-edit FR + EN |
 | Less than 30 points returned | Recent roll, new contract has < 30 days | Use `v_contract_data_chained`, not `pl_contract_data_daily` filtered by `is_active` — chained view stitches across rolls |
 

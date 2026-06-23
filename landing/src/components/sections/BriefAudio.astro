@@ -35,8 +35,17 @@ const points = prices.map((p, i) => {
   return { x: Number(x.toFixed(2)), y: Number(y.toFixed(2)) };
 });
 const linePath = 'M ' + points.map((p) => `${p.x},${p.y}`).join(' L ');
-const areaPath = `${linePath} L ${points[points.length - 1].x},${CHART_H - PAD_Y} L ${points[0].x},${CHART_H - PAD_Y} Z`;
-const lastPoint = points[points.length - 1];
+const lastX = points[points.length - 1].x;
+const firstX = points[0].x;
+const areaPath = `${linePath} L ${lastX},${CHART_H - PAD_Y} L ${firstX},${CHART_H - PAD_Y} Z`;
+
+// Range display — round min DOWN / max UP to the nearest 50 so the band
+// reads as clean order-of-magnitude (£2 850 – £3 500) rather than implying
+// up-to-the-tick freshness. Locale-aware thousands separator via Intl.
+const rangeLow = Math.floor(minPrice / 50) * 50;
+const rangeHigh = Math.ceil(maxPrice / 50) * 50;
+const numFmt = new Intl.NumberFormat(locale === 'fr' ? 'fr-FR' : 'en-US');
+const rangeFormatted = `£${numFmt.format(rangeLow)} – £${numFmt.format(rangeHigh)}`;
 ---
 
 <section class="brief-section" id="brief">
@@ -124,20 +133,11 @@ const lastPoint = points[points.length - 1];
               stroke-linecap="round"
               vector-effect="non-scaling-stroke"
             />
-            <circle
-              cx={lastPoint.x}
-              cy={lastPoint.y}
-              r="3.5"
-              fill="var(--color-signal-open)"
-              stroke="var(--color-paper)"
-              stroke-width="1.5"
-            />
           </svg>
           <div class="chart-meta">
             <div>
-              <span class="label">{copy.brief.chartTodayLabel}</span>
-              <span class="price">{copy.brief.chartCurrentPrice}</span>
-              <span class="change up">{copy.brief.chartCurrentChange}</span>
+              <span class="label">{copy.brief.chartScaleLabel}</span>
+              <span class="price">{rangeFormatted}</span>
             </div>
             <span class="caption">{copy.brief.chartCaption}</span>
           </div>

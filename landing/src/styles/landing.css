@@ -930,13 +930,6 @@ body {
   font-variant-numeric: tabular-nums;
   color: var(--color-ink);
 }
-.minichart-card .chart-meta .change {
-  font-family: var(--font-mono);
-  font-size: 13px;
-  font-weight: 600;
-}
-.minichart-card .chart-meta .change.down { color: var(--color-signal-hedge); }
-.minichart-card .chart-meta .change.up { color: var(--color-signal-open); }
 .minichart-card .chart-meta .caption {
   font-family: var(--font-editorial);
   font-style: italic;

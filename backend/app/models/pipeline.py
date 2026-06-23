@@ -159,6 +159,12 @@ class PlAlgorithmVersion(Base):
     compute_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
+    algorithm_kind: Mapped[str] = mapped_column(
+        VARCHAR(32),
+        nullable=False,
+        default="power_formula",
+        server_default="power_formula",
+    )
     description: Mapped[Optional[str]] = mapped_column(TEXT)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
 

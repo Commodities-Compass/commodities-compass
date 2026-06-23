@@ -97,6 +97,13 @@ bootstrap_scraper("ensemble-compute", script_file=__file__)
 
 
 ALGO_VERSION_NAME = "ensemble_v1_softgate_wrapper"
+
+# The live ensemble version the daily cron computes. Multiple rows share
+# ALGO_VERSION_NAME (v1.0.0 live, v1.0.1 shadow) so selection MUST be pinned by
+# (name, version) — never `WHERE name LIMIT 1`, which is non-deterministic once a
+# second same-name row exists. The atomic flip to v1.0.1 = change this default
+# (or pass --algorithm-version in the cron). Shadow backfills pass the flag.
+LIVE_ALGO_VERSION = "1.0.0"
 # Lookback for market_history: enough to cover GARCH features (~500d) plus
 # rolling 12m vol/return windows for the structural priors (260d). 600d is a
 # safe margin.
@@ -127,18 +134,39 @@ def _parse_args() -> argparse.Namespace:
             "the active contract on the target date wasn't yet today's roll."
         ),
     )
+    parser.add_argument(
+        "--algorithm-version",
+        type=str,
+        default=LIVE_ALGO_VERSION,
+        help=(
+            "pl_algorithm_version.version to compute for (paired with "
+            f"name={ALGO_VERSION_NAME!r}). Default {LIVE_ALGO_VERSION!r} = the "
+            "live row. Pass '1.0.1' to run the shadow ensemble; its rows are "
+            "written under the v1.0.1 algorithm_version_id and never touch the "
+            "live decision."
+        ),
+    )
     return parser.parse_args()
 
 
-def _resolve_algorithm_version_id(session, name: str) -> uuid.UUID:
+def _resolve_algorithm_version_id(session, name: str, version: str) -> uuid.UUID:
+    """Resolve the algorithm_version id by (name, version).
+
+    Pinning the version is mandatory: since the v1.0.1 shadow seed there are two
+    rows with name=ALGO_VERSION_NAME, so the old `WHERE name LIMIT 1` would
+    non-deterministically pick either. (name, version) is UNIQUE.
+    """
     row = session.execute(
-        text("SELECT id FROM pl_algorithm_version WHERE name = :name LIMIT 1"),
-        {"name": name},
+        text(
+            "SELECT id FROM pl_algorithm_version "
+            "WHERE name = :name AND version = :version"
+        ),
+        {"name": name, "version": version},
     ).fetchone()
     if row is None:
         raise RuntimeError(
-            f"pl_algorithm_version row missing for name={name!r}. "
-            "Run Alembic migration l6g7h8i9j0k1 to seed."
+            f"pl_algorithm_version row missing for name={name!r} version={version!r}. "
+            "Run the seed migration (v1.0.0: l6g7h8i9j0k1, v1.0.1: f1a2b3c4d5e6)."
         )
     return row[0]
 
@@ -201,8 +229,13 @@ def main() -> int:
         next_session = get_next_session_date()
         target_date = get_previous_session_date(next_session)
 
+    is_shadow = args.algorithm_version != LIVE_ALGO_VERSION
     logger.info("=" * 60)
-    logger.info("Ensemble Compute (C5 v1.0.0)")
+    logger.info(
+        "Ensemble Compute (C5 v%s%s)",
+        args.algorithm_version,
+        " — SHADOW" if is_shadow else "",
+    )
     logger.info("Date: %s", target_date)
     logger.info("Mode: %s", "DRY RUN" if args.dry_run else "LIVE")
     logger.info("=" * 60)
@@ -217,7 +250,9 @@ def main() -> int:
                 )
             else:
                 contract_id = resolve_active(session)
-            algo_version_id = _resolve_algorithm_version_id(session, ALGO_VERSION_NAME)
+            algo_version_id = _resolve_algorithm_version_id(
+                session, ALGO_VERSION_NAME, args.algorithm_version
+            )
             training_month = _latest_training_month(session, algo_version_id)
             cluster_mapping = load_cluster_mapping(session, algo_version_id)
             logger.info(

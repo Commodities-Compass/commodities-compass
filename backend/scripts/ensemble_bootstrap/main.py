@@ -37,14 +37,13 @@ logger = logging.getLogger(__name__)
 bootstrap_scraper("ensemble-bootstrap-artifacts", script_file=__file__)
 
 
-# Vendor path is fixed by the repo layout. Re-bump when R&D ships v1.x.
-_VENDOR_DIR = (
-    Path(__file__).resolve().parent.parent.parent
-    / "vendor"
-    / "campaign5_ensemble_v1.0.0"
-)
-_FROZEN_DIR = _VENDOR_DIR / "frozen"
-_LOAD_SCRIPT = _VENDOR_DIR / "tools" / "load_artifacts_to_pg.py"
+# Vendor packs live at vendor/campaign5_ensemble_v<version>/ — the frozen dir is
+# derived from --algorithm-version so bootstrapping v1.0.1 loads the v1.0.1 pack.
+_VENDOR_ROOT = Path(__file__).resolve().parent.parent.parent / "vendor"
+
+
+def _vendor_dir_for(version: str) -> Path:
+    return _VENDOR_ROOT / f"campaign5_ensemble_v{version}"
 
 
 # Default algorithm version names that the seed migration created.
@@ -86,11 +85,15 @@ def main() -> int:
     args = _parse_args()
     configure_logging(verbose=args.verbose)
 
-    if not _FROZEN_DIR.exists():
-        logger.error("Frozen dir missing: %s", _FROZEN_DIR)
+    vendor_dir = _vendor_dir_for(args.algorithm_version)
+    frozen_dir = vendor_dir / "frozen"
+    load_script = vendor_dir / "tools" / "load_artifacts_to_pg.py"
+
+    if not frozen_dir.exists():
+        logger.error("Frozen dir missing: %s", frozen_dir)
         return 1
-    if not _LOAD_SCRIPT.exists():
-        logger.error("R&D loader missing: %s", _LOAD_SCRIPT)
+    if not load_script.exists():
+        logger.error("R&D loader missing: %s", load_script)
         return 1
 
     sync_url = os.environ.get("DATABASE_SYNC_URL")
@@ -101,8 +104,8 @@ def main() -> int:
 
     logger.info("=" * 60)
     logger.info("Ensemble artefact bootstrap")
-    logger.info("Vendor:  %s", _VENDOR_DIR)
-    logger.info("Frozen:  %s", _FROZEN_DIR)
+    logger.info("Vendor:  %s", vendor_dir)
+    logger.info("Frozen:  %s", frozen_dir)
     logger.info(
         "Target:  algorithm_version=%s v%s",
         args.algorithm_version_name,
@@ -117,10 +120,10 @@ def main() -> int:
     # the DATABASE_URL contains plaintext credentials and must never leak
     # into the broader environment (Sentry breadcrumbs, child processes,
     # debug dumps).
-    sys.path.insert(0, str(_VENDOR_DIR / "tools"))
+    sys.path.insert(0, str(vendor_dir / "tools"))
     _env_vars_set = {
         "DATABASE_URL": pg_url,
-        "FROZEN_DIR": str(_FROZEN_DIR),
+        "FROZEN_DIR": str(frozen_dir),
         "ALGORITHM_VERSION_NAME": args.algorithm_version_name,
         "ALGORITHM_VERSION": args.algorithm_version,
     }

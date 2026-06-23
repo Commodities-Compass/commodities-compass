@@ -12,21 +12,26 @@ Use when one or more nightly pipeline jobs fail. Pipeline jobs are configured **
 
 ## Pipeline schedule and dependencies
 
-Reference for sequencing recovery actions. **P2b split**: Phase A is market-data driven and runs on weekday close (T); Phase B is calendar-aware and runs every evening, agent-gated on `is_eve_of_trading_day()` — writes tagged to the upcoming session (T+next).
+Reference for sequencing recovery actions. **P2b split**: Phase A is market-data driven and runs on weekday close (session T). Phase B is calendar-aware and runs every evening, agent-gated on `is_eve_of_trading_day()`; its CLI `--target-date` defaults to `next_session(today)`, but **every DB write is keyed to `data_date = previous_session(target) = T`** — the SAME row date as Phase A. (Sunday eve fires for Monday's session and therefore writes the **Friday** rows; Sat/Sun eves themselves skip.)
 
 ```
-Phase A — weekday-only, writes tagged to session T:
-19:00 UTC  cc-barchart-scraper      → pl_contract_data_daily T (OHLCV+IV)
-19:05 UTC  cc-ice-stocks-scraper    → pl_contract_data_daily T (STOCK US)
-19:05 UTC  cc-cftc-scraper          → pl_contract_data_daily T (COM NET US)
+Phase A — weekday close, writes keyed to session T (the day that just traded):
+18:30 UTC  cc-fx-scraper                 → pl_external_indicator T (FX, ECB)
+19:00 UTC  cc-barchart-scraper           → pl_contract_data_daily T (OHLCV+IV)
+19:05 UTC  cc-ice-stocks-scraper         → pl_contract_data_daily T (STOCK US)
+19:05 UTC  cc-cftc-scraper               → pl_contract_data_daily T (COM NET US)
 19:10 UTC  cc-barchart-stocks-eu-scraper → pl_contract_data_daily T (stock_eu_bags60kg)
-19:15 UTC  cc-compute-indicators    → pl_derived_indicators + pl_indicator_daily T
+19:15 UTC  cc-compute-indicators         → pl_derived_indicators + pl_indicator_daily T
+22:10 UTC  cc-ice-cot-eu-scraper         → pl_cot_eu_weekly (own report_date)
 
-Phase B — daily cron, agent-gated on eve-of-trading-day, writes tagged to T+next:
-19:00 UTC  cc-meteo-agent           → pl_weather_observation T+next   [INDEPENDENT]
-19:05 UTC  cc-press-review-agent    → pl_fundamental_article T+next
-19:20 UTC  cc-daily-analysis        → pl_indicator_daily T+next (LLM, reads T from pl_contract_data_daily)
-19:30 UTC  cc-compass-brief         → Drive YYYYMMDD-CompassBrief.txt (YYYYMMDD = T+next)
+Phase B — eve of T+next, agent-gated; ALL writes keyed to data_date = T:
+19:00 UTC  cc-meteo-agent            → pl_weather_observation T                [INDEPENDENT]
+19:05 UTC  cc-press-review-agent     → pl_fundamental_article + pl_article_segment T
+19:18 UTC  cc-ensemble-compute       → pl_orchestrator_decision + 14× pl_specialist_prediction + ensemble row in pl_indicator_daily T
+19:20 UTC  cc-daily-analysis         → UPDATE legacy row in pl_indicator_daily T   (--algorithm-version legacy)
+19:25 UTC  cc-ensemble-explainer     → UPDATE ensemble-row narrative in pl_indicator_daily T
+19:30 UTC  cc-compass-brief          → Drive <T>-CompassBrief.txt              (filename keyed on data_date T)
+19:35 UTC  cc-compass-brief-ensemble → Drive <T>-CompassBrief-Ensemble.txt
 ```
 
 **Phase B skip behaviour** (Sentry interprets as success, no alert):
@@ -44,16 +49,24 @@ gcloud run jobs execute cc-press-review-agent --region=europe-west9 --project=ca
 ### Dependency graph
 
 ```
-barchart ──┬─► ice_stocks (UPDATE same row)
-           ├─► cftc (UPDATE same row)
-           ├─► press_review (needs CLOSE)
-           └─► compute_indicators ─► daily_analysis ─► compass_brief
-                                          ▲                ▲
-meteo ────────────────────────────────────┘                │
-press_review ──────────────────────────────────────────────┘
+Phase A (market close, session T):
+barchart ──┬─► ice_stocks / cftc / barchart_stocks_eu   (UPDATE the same OHLCV row)
+           └─► compute_indicators ─► pl_derived_indicators + pl_indicator_daily T
+
+Phase B (eve of T+next, all writes keyed to T) — TWO tracks, both consume press_review:
+press_review ─► pl_fundamental_article + pl_article_segment
+     │
+     ├─► daily_analysis ─► compass_brief                          [LEGACY track]
+     │        ▲
+     │  meteo ┘
+     │
+     └─► ensemble_compute ─► ensemble_explainer ─► compass_brief_ensemble   [ENSEMBLE track]
+              ▲  (reads pl_article_segment for the MacroEventLayer)
+              │
+   compute_indicators (pl_derived_indicators) + v_contract_data_chained
 ```
 
-**Key rule**: if an upstream job fails, all downstream jobs that ran will have **degraded or wrong** input. They must be re-executed in order after the upstream is fixed.
+**Key rule**: if an upstream job fails, all downstream jobs that ran will have **degraded or wrong** input. They must be re-executed in order after the upstream is fixed. **press_review feeds BOTH tracks** — a press_review failure silently degrades the legacy narrative AND the ensemble MacroEventLayer (the ensemble decision is recomputed without the weekend/overnight news segment).
 
 ## Procedure
 
@@ -116,58 +129,135 @@ git push origin main
 
 Use the dependency graph to determine the cascade. Examples:
 
+> **⚠️ Same-eve re-run vs backfilling a past session — get the date arg right.**
+> The bare `gcloud run jobs execute <job> --wait` (no date args) relies on each job's
+> default date derived from `today()`. That is correct **only if you re-run on the same eve**
+> as the original cron. If you discover the failure the **next morning** (e.g. a Sunday-eve
+> failure found Monday), the default targets the WRONG session — pass explicit date args so
+> `data_date` lands back on the failed session T.
+>
+> Per-job date-arg convention (NOT uniform — verified against each `main.py`):
+>
+> | job(s) | flag | value to pass | meaning |
+> |---|---|---|---|
+> | press-review · ensemble-explainer · compass-brief · compass-brief-ensemble (and daily-analysis, flag `--date`) | `--target-date` | **`next_session(T)`** | the upcoming session; job derives `data_date = previous_session(it) = T` internally |
+> | ensemble-compute | `--date` | **`T`** | the `data_date` **directly** (no internal `previous_session`) |
+>
+> Add `--force` to overwrite the degraded rows the failed run already left behind.
+> daily-analysis also needs `--algorithm-version legacy` (pins the legacy row, leaves the
+> ensemble row untouched). ensemble-compute: add `--historical` **only** if a contract roll
+> happened between T and now (otherwise it resolves the wrong front-month).
+>
+> Worked example — backfilling Friday `2026-06-19` after a Sunday-eve failure (next session = Monday `2026-06-22`):
+> ```bash
+> R="--region=europe-west9 --project=cacaooo --wait"
+> gcloud run jobs execute cc-press-review-agent      $R --args="press-review,--target-date,2026-06-22,--force"
+> gcloud run jobs execute cc-ensemble-compute        $R --args="ensemble-compute,--date,2026-06-19"
+> gcloud run jobs execute cc-ensemble-explainer      $R --args="ensemble-explainer,--target-date,2026-06-22,--force"
+> gcloud run jobs execute cc-daily-analysis          $R --args="daily-analysis,--date,2026-06-22,--force,--algorithm-version,legacy"
+> gcloud run jobs execute cc-compass-brief           $R --args="compass-brief,--target-date,2026-06-22,--force"
+> gcloud run jobs execute cc-compass-brief-ensemble  $R --args="compass-brief-ensemble,--target-date,2026-06-22,--force"
+> ```
+> Verify each job SUCCEEDED before launching the next — never cascade onto a re-failed producer.
+
 #### Scenario A — barchart_scraper failed
 
-Cascade: everything downstream needs re-run.
+Root of the graph → re-run the Phase A chain, then the ENTIRE Phase B (both tracks).
 
 ```bash
-# Sequential — wait for each to finish
-gcloud run jobs execute cc-barchart-scraper       --region=europe-west9 --project=cacaooo --wait
-gcloud run jobs execute cc-ice-stocks-scraper     --region=europe-west9 --project=cacaooo --wait
-gcloud run jobs execute cc-cftc-scraper           --region=europe-west9 --project=cacaooo --wait
-gcloud run jobs execute cc-press-review-agent     --region=europe-west9 --project=cacaooo --wait
-gcloud run jobs execute cc-compute-indicators     --region=europe-west9 --project=cacaooo --wait
-gcloud run jobs execute cc-daily-analysis         --region=europe-west9 --project=cacaooo --wait
-gcloud run jobs execute cc-compass-brief          --region=europe-west9 --project=cacaooo --wait
+R="--region=europe-west9 --project=cacaooo --wait"
+# Phase A — sequential, wait for each
+gcloud run jobs execute cc-barchart-scraper           $R
+gcloud run jobs execute cc-ice-stocks-scraper         $R
+gcloud run jobs execute cc-cftc-scraper               $R
+gcloud run jobs execute cc-barchart-stocks-eu-scraper $R
+gcloud run jobs execute cc-compute-indicators         $R
 ```
+Then run the **full Phase B cascade from Scenario C** (press_review → ensemble_compute → ensemble_explainer → daily_analysis → both briefs).
 
 #### Scenario B — meteo_agent failed
 
-Cascade: only `daily_analysis` and `compass_brief` see meteo. Re-run them after fixing meteo.
+meteo feeds the narrative jobs (daily_analysis legacy **and** ensemble_explainer) + both briefs. The ensemble DECISION (ensemble_compute) does not read weather, so it need not re-run.
 
 ```bash
-gcloud run jobs execute cc-meteo-agent      --region=europe-west9 --project=cacaooo --wait
-gcloud run jobs execute cc-daily-analysis   --region=europe-west9 --project=cacaooo --wait
-gcloud run jobs execute cc-compass-brief    --region=europe-west9 --project=cacaooo --wait
+R="--region=europe-west9 --project=cacaooo --wait"
+gcloud run jobs execute cc-meteo-agent             $R
+gcloud run jobs execute cc-ensemble-explainer      $R
+gcloud run jobs execute cc-daily-analysis          $R --args="daily-analysis,--force,--algorithm-version,legacy"
+gcloud run jobs execute cc-compass-brief           $R
+gcloud run jobs execute cc-compass-brief-ensemble  $R
 ```
 
 #### Scenario C — press_review_agent failed
 
+press_review feeds BOTH tracks → re-run the full Phase B cascade. **Same-eve** form below
+(default dates). For a **next-day backfill**, use the explicit date args from the Step 4 ⚠️ note above.
+
 ```bash
-gcloud run jobs execute cc-press-review-agent  --region=europe-west9 --project=cacaooo --wait
-gcloud run jobs execute cc-daily-analysis      --region=europe-west9 --project=cacaooo --wait
-gcloud run jobs execute cc-compass-brief       --region=europe-west9 --project=cacaooo --wait
+R="--region=europe-west9 --project=cacaooo --wait"
+gcloud run jobs execute cc-press-review-agent      $R   # writes article + segment
+gcloud run jobs execute cc-ensemble-compute        $R   # re-reads segment into MacroEventLayer
+gcloud run jobs execute cc-ensemble-explainer      $R
+gcloud run jobs execute cc-daily-analysis          $R --args="daily-analysis,--force,--algorithm-version,legacy"
+gcloud run jobs execute cc-compass-brief           $R
+gcloud run jobs execute cc-compass-brief-ensemble  $R
 ```
 
 #### Scenario D — compute_indicators failed
 
+`pl_derived_indicators` feeds BOTH daily_analysis (legacy) and ensemble_compute → re-run both tracks.
+
 ```bash
-gcloud run jobs execute cc-compute-indicators  --region=europe-west9 --project=cacaooo --wait
-gcloud run jobs execute cc-daily-analysis      --region=europe-west9 --project=cacaooo --wait
-gcloud run jobs execute cc-compass-brief       --region=europe-west9 --project=cacaooo --wait
+R="--region=europe-west9 --project=cacaooo --wait"
+gcloud run jobs execute cc-compute-indicators      $R
+gcloud run jobs execute cc-ensemble-compute        $R
+gcloud run jobs execute cc-ensemble-explainer      $R
+gcloud run jobs execute cc-daily-analysis          $R --args="daily-analysis,--force,--algorithm-version,legacy"
+gcloud run jobs execute cc-compass-brief           $R
+gcloud run jobs execute cc-compass-brief-ensemble  $R
 ```
 
-#### Scenario E — daily_analysis failed
+#### Scenario E — daily_analysis failed (legacy row only)
+
+Legacy track only — the ensemble row is written by ensemble_explainer, untouched here.
 
 ```bash
-gcloud run jobs execute cc-daily-analysis  --region=europe-west9 --project=cacaooo --wait
-gcloud run jobs execute cc-compass-brief   --region=europe-west9 --project=cacaooo --wait
+R="--region=europe-west9 --project=cacaooo --wait"
+gcloud run jobs execute cc-daily-analysis  $R --args="daily-analysis,--force,--algorithm-version,legacy"
+gcloud run jobs execute cc-compass-brief   $R
 ```
 
 #### Scenario F — compass_brief failed
 
 ```bash
 gcloud run jobs execute cc-compass-brief  --region=europe-west9 --project=cacaooo --wait
+```
+
+#### Scenario G — ensemble_compute failed
+
+Cascade: ensemble_explainer + compass_brief_ensemble consume its output. Legacy track is unaffected.
+
+```bash
+R="--region=europe-west9 --project=cacaooo --wait"
+gcloud run jobs execute cc-ensemble-compute        $R
+gcloud run jobs execute cc-ensemble-explainer      $R
+gcloud run jobs execute cc-compass-brief-ensemble  $R
+```
+
+If it fails with `KeyError: 'k'` or `pl_algorithm_version row missing` / `No specialist_model
+rows`, the algorithm-version or artifact seeding is the root cause — see
+[ensemble-failure-recovery.md](./ensemble-failure-recovery.md); do NOT just relaunch.
+
+#### Scenario H — ensemble_explainer failed
+
+Only compass_brief_ensemble depends on the narrative it writes. A fail-loud
+`EnsembleRowMissingError` means ensemble_compute didn't populate the row first — fix that
+(Scenario G) before re-running.
+
+```bash
+R="--region=europe-west9 --project=cacaooo --wait"
+gcloud run jobs execute cc-ensemble-explainer      $R
+gcloud run jobs execute cc-compass-brief-ensemble  $R
 ```
 
 ### Step 5 — Verify recovery
@@ -177,16 +267,30 @@ gcloud run jobs execute cc-compass-brief  --region=europe-west9 --project=cacaoo
 
 ```sql
 SELECT
-  (SELECT MAX(date) FROM pl_contract_data_daily)  AS market_max,
-  (SELECT MAX(date) FROM pl_indicator_daily)      AS indicator_max,
-  (SELECT MAX(date) FROM pl_fundamental_article)  AS press_max,
-  (SELECT MAX(date) FROM pl_weather_observation)  AS weather_max;
+  (SELECT MAX(date) FROM pl_contract_data_daily)     AS market_max,
+  (SELECT MAX(date) FROM pl_indicator_daily)         AS indicator_max,
+  (SELECT MAX(date) FROM pl_fundamental_article)     AS press_max,
+  (SELECT MAX(article_date) FROM pl_article_segment) AS segment_max,
+  (SELECT MAX(date) FROM pl_orchestrator_decision)   AS ensemble_max,
+  (SELECT MAX(date) FROM pl_weather_observation)     AS weather_max;
 ```
 
-All four should show today's session date.
+All six should show the latest session date. **When backfilling a PAST session** (today's
+rows may already exist and dominate `MAX`), check that specific session `<T>` instead:
+
+```sql
+SELECT 'article'    AS t, COUNT(*) FROM pl_fundamental_article    WHERE date='<T>' AND is_active
+UNION ALL SELECT 'segment',    COUNT(*) FROM pl_article_segment       WHERE article_date='<T>'
+UNION ALL SELECT 'orch',       COUNT(*) FROM pl_orchestrator_decision WHERE date='<T>'
+UNION ALL SELECT 'specialist', COUNT(*) FROM pl_specialist_prediction WHERE date='<T>';
+```
+
+Both the `legacy` and `ensemble_v1_softgate_wrapper` rows in `pl_indicator_daily` for `<T>`
+should carry a non-empty `eco` + `conclusion` (narratives re-enriched). A local helper for
+the tunnel + queries lives at `.local/db-prod.sh` (gitignored).
 
 3. **Sentry**: confirm no new errors after relaunch
-4. **Audio**: confirm `<YYYYMMDD>-CompassAudio.<ext>` exists in the Drive folder (uploaded by the NotebookLM workflow downstream of compass_brief)
+4. **Audio**: confirm `<YYYYMMDD>-CompassAudio.<ext>` (legacy) / `<YYYYMMDD>-CompassAudio-Ensemble.<ext>` exists in the Drive folder. ⚠️ Re-running the brief jobs regenerates the `.txt` **only** — NotebookLM voicing is a **separate manual/external step**. If the degraded brief was already voiced, re-voice it by hand; the brief re-run does NOT refresh the audio.
 
 ## What NOT to do
 

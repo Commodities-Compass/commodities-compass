@@ -32,30 +32,15 @@ Copy-paste everything below the rule into NotebookLM:
 
 ---
 
-Lis le document et génère un script de podcast (<7 min) entre deux experts
+Lis le document et génère un script de podcast (<5 min) entre deux experts
 francophones (1 femme, 1 homme) en français naturel. SURTOUT, ne change PAS
-de voix en cours de podcast et ne laisse PAS une voix lire deux lignes
-consécutives — l'échange doit être conversationnel, pas une lecture séquentielle.
+de voix en cours de podcast l'échange doit être conversationnel, pas une lecture séquentielle.
 
 Le document est un brief Compass sur le CACAO Londres,
 horizon 4 à 5 sessions boursières.
 
 VOCABULAIRE INTERDIT (ne JAMAIS prononcer ces mots) :
   • "intelligence artificielle", "IA", "expert IA", "algorithme IA"
-  • "machine learning", "ML", "réseau de neurones"
-  • "panel", "panel de spécialistes", "14 spécialistes"
-  • "orchestrateur", "bayésien", "soft-gate", "wrapper", "filet de sécurité"
-  • "detector", "dispersion", "running accuracy", "realized return"
-  • "cluster", "Winter", "Spring", "horizon 6 jours", "horizon 22 jours"
-  • "anomalie", "anomaly score", "z-score"
-  • toute version, tout numéro de release, toute mention d'architecture
-
-VOCABULAIRE AUTORISÉ pour décrire la lecture du jour :
-  • "le signal Compass", "la lecture Compass"
-  • "une lecture technique / macro / climat / FX / volatilité"
-  • "convergence", "divergence", "biais haussier / baissier / neutre"
-  • Les libellés business des lectures cités tels quels dans le brief
-    (ex : "le Lecteur de tendance", "la Sentinelle baissière FX")
 
 Structure obligatoire :
 
@@ -100,11 +85,11 @@ Structure obligatoire :
 5. ÉCO + PRESSE (1 à 2 min — section "III — ÉCO & PRESS REVIEW" du brief)
    - Actus marché, sortie macro, demande chocolat. Ton fluide.
 
-6. MÉTÉO (≤30 sec — section "IV — WEATHER WATCH" du brief)
-   - Côte d'Ivoire + Ghana, impact court terme uniquement.
+6. MÉTÉO (≤1min — section "IV — WEATHER WATCH" du brief)
+   - Côte d'Ivoire + Ghana, impact court terme et long terme.
 
 7. SNAPSHOT TECHNIQUE (≤30 sec — section "V — CHIFFRES TECHNIQUES" du brief)
-   - Niveaux qui comptent en prose : close, RSI, MACD, ATR, stocks.
+   - Niveaux qui comptent en prose : close, RSI, MACD, stocks.
 
 8. RECOMMANDATION + À SURVEILLER (≤1 min — section "VI — RECOMMANDATIONS"
    du brief)
@@ -113,12 +98,12 @@ Structure obligatoire :
    - Lis les 3 alertes "À SURVEILLER" en prose, pas en liste.
 
 9. CLÔTURE
-   - Termine TOUJOURS par "A demain les Compasteurs !"
+   - Termine TOUJOURS par "A demain les COMPASTEURS!"
 
 CONTRAINTES TRANSVERSES :
 - Style fluide et pro, comme deux journalistes financiers qui échangent.
 - N'invente AUCUN chiffre. Utilise UNIQUEMENT ce qui est dans le document.
 - Si une section est absente ou marquée "n/a", passe au point suivant
   sans la commenter.
-- Pas d'anglicisme inutile.
-- Respect strict du vocabulaire interdit ci-dessus.
+- SURTOUT : ne change PAS de voix en cours de podcast ; l'échange reste
+  conversationnel entre une femme et un homme, en français naturel.

@@ -11,15 +11,16 @@ const copy = t(locale);
 const barHeights = [28, 50, 38, 65, 35, 55, 75, 42, 60, 32, 82, 48, 58, 70, 38, 55, 28, 68, 45, 52, 36, 62, 40, 48, 75, 55, 32, 50];
 
 /* ------------------------------------------------------------------
-   Mini sparkline — 30-day illustrative CAK26 price series.
-   Climb to mid-3050s in mid-period, decline to 2964 on the last day,
-   so the chart visually corroborates the HEDGE narrative in the brief.
-   No real data — purely editorial.
+   Mini sparkline — 30 last trading-day closes for the active contract
+   (currently CAU26 / Sep 2026), sourced from v_contract_data_chained
+   (front-month-by-OI chain so the series stays continuous across rolls).
+   Last refresh : 2026-06-22 — see docs/runbooks/landing-page-update.md
+   for the procedure to re-extract.
    ------------------------------------------------------------------ */
 const prices = [
-  2820, 2845, 2860, 2890, 2910, 2935, 2960, 2980, 3010, 3025,
-  3015, 3000, 3010, 3025, 3040, 3050, 3045, 3030, 3015, 2995,
-  2985, 2998, 3005, 3015, 3010, 2995, 2980, 2975, 2964,
+  3484, 3431, 3272, 3110, 3034, 2875, 2963, 2929, 2850, 2860,
+  3153, 3130, 3087, 2975, 2964, 3127, 3083, 3015, 2902, 2960,
+  2940, 2896, 2883, 2890, 2976, 3151, 3161, 3198, 3294, 3475,
 ];
 const CHART_W = 320;
 const CHART_H = 90;
@@ -127,7 +128,7 @@ const lastPoint = points[points.length - 1];
               cx={lastPoint.x}
               cy={lastPoint.y}
               r="3.5"
-              fill="var(--color-signal-hedge)"
+              fill="var(--color-signal-open)"
               stroke="var(--color-paper)"
               stroke-width="1.5"
             />
@@ -136,7 +137,7 @@ const lastPoint = points[points.length - 1];
             <div>
               <span class="label">{copy.brief.chartTodayLabel}</span>
               <span class="price">{copy.brief.chartCurrentPrice}</span>
-              <span class="change down">{copy.brief.chartCurrentChange}</span>
+              <span class="change up">{copy.brief.chartCurrentChange}</span>
             </div>
             <span class="caption">{copy.brief.chartCaption}</span>
           </div>

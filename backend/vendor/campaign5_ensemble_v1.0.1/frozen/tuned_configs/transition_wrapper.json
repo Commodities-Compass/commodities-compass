@@ -1,0 +1,12 @@
+{
+  "use_running_acc": true,
+  "tau_run": 0.5931087687626067,
+  "running_window": 3,
+  "min_running_n": 2,
+  "use_trend_conflict": false,
+  "tau_trend": 0.030054688827855922,
+  "trend_window": 7,
+  "use_cluster_dispersion": true,
+  "min_cluster_n": 2,
+  "use_three_way_disagreement": false
+}

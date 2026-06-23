@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ensemble"
+version = "1.0.1"
+description = "Campaign 5 production ensemble — 14 specialists + soft-gate Bayesian orchestrator + transition-protection wrapper"
+authors = [{ name = "R&D Commodities Compass" }]
+requires-python = ">=3.11,<3.13"
+readme = "README.md"
+license = { file = "LICENSE" }
+
+# v1.0.1 §9.7: bounds bracket the EXACT versions that produced the frozen pickles
+# (manifest lib_versions: numpy 1.26.4, pandas 2.2.3, scipy 1.14.1, scikit-learn 1.6.1,
+# lightgbm 4.5.0, python 3.12.8). The v1.0.0 ceilings excluded scipy/sklearn/lightgbm —
+# a fresh install would have installed unpicklable versions. Keep these in lockstep with
+# the manifest on every retrain.
+dependencies = [
+    "numpy==1.26.4",
+    "pandas>=2.2.3,<2.4",
+    "scipy>=1.14,<1.15",
+    "scikit-learn>=1.6,<1.7",
+    "lightgbm>=4.5,<4.6",
+    "arch>=6.3",
+    "hmmlearn>=0.3",
+    "optuna>=3.5",
+    "psycopg2-binary>=2.9",
+]
+
+[project.optional-dependencies]
+testing = [
+    "pytest>=8.0",
+    "pytest-cov>=4.1",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ensemble*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "unit: fast, no-IO tests (default in CI)",
+    "integration: tests that require the freezer output, a Postgres, or the R&D snapshot",
+]
+addopts = "-q -m unit"

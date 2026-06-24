@@ -204,14 +204,32 @@ def load_all_market_data(session: Session) -> pd.DataFrame:
     """Load full price history across all contracts as one continuous series.
 
     Uses DISTINCT ON (date) to pick one contract per date (highest OI =
-    front-month). This handles overlapping data from contract transitions
-    without interleaving prices from different contracts on the same date.
+    front-month), so overlapping data from contract transitions does not
+    interleave prices from different contracts on the same date.
+
+    The selection is **capped at the active contract's delivery month**
+    (``ref_contract.is_active``): the chain never rolls onto a contract whose
+    ``contract_month`` is later than the active front-month. This keeps the
+    engine aligned with daily-analysis / ensemble / dashboard (all is_active-
+    based) so a marginal or premature OI crossover on a not-yet-rolled future
+    contract cannot fork the indicator row onto a different contract than the
+    rest of the pipeline (the split-brain that crashed cc-daily-analysis on
+    2026-06-23, when CAZ26 OI nudged past CAU26 months before the real roll).
+    Rolls are gated by the explicit ``roll-contract`` action (which moves
+    is_active forward), not by raw OI. If no contract is active, the cap is a
+    no-op (falls back to pure highest-OI).
 
     Each row retains its original contract_id for per-contract DB writes.
     """
     result = session.execute(
         text("""
-            WITH market AS (
+            WITH active_month AS (
+                SELECT contract_month
+                FROM ref_contract
+                WHERE is_active = true
+                LIMIT 1
+            ),
+            market AS (
                 SELECT DISTINCT ON (d.date)
                     d.date, d.close, d.high, d.low, d.volume, d.oi,
                     d.implied_volatility,
@@ -219,6 +237,9 @@ def load_all_market_data(session: Session) -> pd.DataFrame:
                     c.code AS contract_code
                 FROM pl_contract_data_daily d
                 JOIN ref_contract c ON d.contract_id = c.id
+                WHERE c.contract_month <= COALESCE(
+                    (SELECT contract_month FROM active_month), c.contract_month
+                )
                 ORDER BY d.date, d.oi DESC NULLS LAST
             )
             SELECT

@@ -45,7 +45,7 @@ VOCABULAIRE INTERDIT (ne JAMAIS prononcer ces mots) :
 Structure obligatoire :
 
 1. ACCROCHE (≤30 sec)
-   - Commence TOUJOURS par "Bonjour les Compasteurs !"
+   - Commence TOUJOURS par "Bonjour les COMPASTEURS !"
    - Une phrase d'intro : "le signal Compass du jour sur le CACAO Londres,
      horizon 4 à 5 sessions".
 

@@ -203,31 +203,33 @@ def load_market_data(session: Session, contract_code: str) -> pd.DataFrame:
 def load_all_market_data(session: Session) -> pd.DataFrame:
     """Load full price history across all contracts as one continuous series.
 
-    Uses DISTINCT ON (date) to pick one contract per date (highest OI =
-    front-month), so overlapping data from contract transitions does not
-    interleave prices from different contracts on the same date.
+    Picks one contract per date (the front-month) via DISTINCT ON, so
+    overlapping data from contract transitions does not interleave prices from
+    different contracts on the same date.
 
-    The selection is **capped at the active contract's delivery month**
-    (``ref_contract.is_active``): the chain never rolls onto a contract whose
-    ``contract_month`` is later than the active front-month. This keeps the
-    engine aligned with daily-analysis / ensemble / dashboard (all is_active-
-    based) so a marginal or premature OI crossover on a not-yet-rolled future
-    contract cannot fork the indicator row onto a different contract than the
-    rest of the pipeline (the split-brain that crashed cc-daily-analysis on
-    2026-06-23, when CAZ26 OI nudged past CAU26 months before the real roll).
-    Rolls are gated by the explicit ``roll-contract`` action (which moves
-    is_active forward), not by raw OI. If no contract is active, the cap is a
-    no-op (falls back to pure highest-OI).
+    **Front-month rule (OI AND volume):** the chain rolls onto the next
+    delivery month only when that contract leads on BOTH open interest AND
+    volume on a given date. On a *split* (one contract leads OI, another leads
+    volume — the ambiguous window of a roll) it stays on the **incumbent**
+    (earliest ``contract_month``). A marginal/premature OI-only crossover
+    therefore does NOT roll the chain — which is what crashed the pipeline on
+    2026-06-23/24 when CAZ26 OI nudged past CAU26 while CAU26 still held the
+    volume. This rule is mirrored **verbatim** in the ``v_contract_data_chained``
+    VIEW so compute-indicators and the ensemble market_history loader always
+    agree on the front-month for a date (their disagreement is the split-brain
+    bug class this guards).
 
     Each row retains its original contract_id for per-contract DB writes.
     """
     result = session.execute(
         text("""
-            WITH active_month AS (
-                SELECT contract_month
-                FROM ref_contract
-                WHERE is_active = true
-                LIMIT 1
+            WITH per_date AS (
+                SELECT date,
+                       MAX(COALESCE(oi, 0))     AS max_oi,
+                       MAX(COALESCE(volume, 0)) AS max_vol
+                FROM pl_contract_data_daily
+                WHERE close IS NOT NULL
+                GROUP BY date
             ),
             market AS (
                 SELECT DISTINCT ON (d.date)
@@ -237,10 +239,12 @@ def load_all_market_data(session: Session) -> pd.DataFrame:
                     c.code AS contract_code
                 FROM pl_contract_data_daily d
                 JOIN ref_contract c ON d.contract_id = c.id
-                WHERE c.contract_month <= COALESCE(
-                    (SELECT contract_month FROM active_month), c.contract_month
-                )
-                ORDER BY d.date, d.oi DESC NULLS LAST
+                JOIN per_date pd ON pd.date = d.date
+                WHERE d.close IS NOT NULL
+                ORDER BY d.date,
+                    (COALESCE(d.oi, 0) >= pd.max_oi
+                     AND COALESCE(d.volume, 0) >= pd.max_vol) DESC,
+                    c.contract_month ASC
             )
             SELECT
                 m.date, m.close, m.high, m.low, m.volume, m.oi,

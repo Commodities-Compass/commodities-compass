@@ -409,7 +409,11 @@ export function t(locale: Locale): (typeof strings)[Locale] {
 }
 
 export function pathFor(locale: Locale, path: string = ''): string {
-  const clean = path.replace(/^\//, '');
-  if (locale === DEFAULT_LOCALE) return `/${clean}`.replace(/\/$/, '') || '/';
-  return `/${locale}/${clean}`.replace(/\/$/, '') || `/${locale}`;
+  // Always emit trailing slash — aligns with astro.config trailingSlash:'always'
+  // and GCS website config which auto-redirects /foo → /foo/ (or /foo/index.html)
+  // when there's no exact file match. Keeping this in one place avoids drift
+  // between component links, canonicals, and hreflang alternates.
+  const clean = path.replace(/^\/+|\/+$/g, '');
+  if (locale === DEFAULT_LOCALE) return clean ? `/${clean}/` : '/';
+  return clean ? `/${locale}/${clean}/` : `/${locale}/`;
 }

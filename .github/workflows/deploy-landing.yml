@@ -28,7 +28,6 @@ concurrency:
 
 env:
   NODE_VERSION: '20'
-  PNPM_VERSION: '10.29.2'
   BUCKET: ${{ vars.GCP_PROJECT_ID }}-landing
   HOST: com-compass.com
 
@@ -45,7 +44,9 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: ${{ env.PNPM_VERSION }}
+          # Version resolved automatically from root package.json packageManager
+          # field (pnpm@9.15.0). Pinning here caused a conflict with the root
+          # declaration and action-setup@v4 refuses to run when both are set.
           run_install: false
 
       - uses: actions/setup-node@v4

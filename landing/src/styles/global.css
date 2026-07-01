@@ -1,0 +1,49 @@
+@import 'tailwindcss';
+
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/playfair-display';
+@import '@fontsource-variable/playfair-display/wght-italic.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+@import '@fontsource/ibm-plex-mono/600.css';
+
+/* ------------------------------------------------------------------
+   Compass CC — brand tokens (root-level)
+   Owned here so Tailwind v4 `@theme` exposes them as utility classes
+   (bg-paper, text-ink, etc.) for any future Tailwind-styled content.
+   Landing page presentational CSS lives in landing.css.
+   ------------------------------------------------------------------ */
+@theme {
+  --color-paper: #FFFFFF;
+  --color-paper-off: #F5F5F5;
+  --color-ink: #1A1A1A;
+  --color-ink-dark: #000000;
+  --color-ink-mid: #4A4A4A;
+  --color-ink-light: #8A8A8A;
+  --color-rule: #E5E5E5;
+
+  --color-signal-open: #10B981;
+  --color-signal-monitor: #F59E0B;
+  --color-signal-hedge: #EF4444;
+
+  --font-display: 'Playfair Display Variable', Georgia, serif;
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-editorial: Georgia, 'Times New Roman', serif;
+}
+
+:root {
+  color-scheme: light;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background-color: var(--color-ink);
+  color: var(--color-paper);
+}

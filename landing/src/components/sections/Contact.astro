@@ -1,0 +1,28 @@
+---
+import { type Locale, t } from '@/i18n/strings';
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const copy = t(locale);
+---
+
+<section class="contact" id="contact">
+  <div class="wrap-narrow">
+    <div class="contact-card">
+      <span class="ebrow" style="margin-bottom: 24px; display: block;">{copy.contact.sectionEyebrow}</span>
+      <h2>{copy.contact.heading} <em>{copy.contact.headingEm}</em></h2>
+      <p>{copy.contact.body}</p>
+      <div class="cta-row">
+        <a href={`mailto:${copy.contact.email}`} class="cta cta-primary">
+          {copy.contact.ctaPrimary}
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3.5 8h9M9 4.5 12.5 8 9 11.5" />
+          </svg>
+        </a>
+      </div>
+    </div>
+  </div>
+</section>

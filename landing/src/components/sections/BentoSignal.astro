@@ -1,0 +1,79 @@
+---
+import { type Locale, t } from '@/i18n/strings';
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const copy = t(locale);
+---
+
+<section class="section" id="what">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="num"><em>{copy.bento.sectionRoman}</em></span>
+      <span class="title">{copy.bento.sectionTitle}</span>
+      <span class="filler"></span>
+      <span class="meta">{copy.bento.sectionMeta}</span>
+    </div>
+
+    <h2 class="section-lede">{copy.bento.lede} <em>{copy.bento.ledeEm}</em></h2>
+    <p class="section-deck">{copy.bento.deck}</p>
+
+    <div class="bento">
+      <article class="bento-cell signal-tease span-3 row-2 shape-circles glass-open">
+        <div class="shape-bg"></div>
+        <div class="shape-content">
+          <div>
+            <span class="ebrow">{copy.bento.cell1Eyebrow}</span>
+            <h3>{copy.bento.cell1Heading} <em>{copy.bento.cell1HeadingEm}</em></h3>
+          </div>
+          <div class="signal-display">
+            <span class="big">{copy.bento.cell1Signal}</span>
+            <div class="meta">
+              <span class="horizon">{copy.bento.cell1Horizon}</span><br />
+              {copy.bento.cell1Edition}
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="bento-cell span-3">
+        <div>
+          <span class="ebrow">{copy.bento.cell2Eyebrow}</span>
+          <h3>{copy.bento.cell2Heading} <em>{copy.bento.cell2HeadingEm}</em><br />{copy.bento.cell2HeadingRest}</h3>
+        </div>
+        <p>{copy.bento.cell2Body}</p>
+      </article>
+
+      <article class="bento-cell span-3 dark">
+        <div>
+          <span class="ebrow">{copy.bento.cell3Eyebrow}</span>
+          <h3>{copy.bento.cell3Heading} <em>{copy.bento.cell3HeadingEm}</em><br />{copy.bento.cell3HeadingRest}</h3>
+        </div>
+        <p>{copy.bento.cell3Body}</p>
+      </article>
+
+      <article class="bento-cell span-3 shape-grid">
+        <div class="shape-bg"></div>
+        <div class="shape-content">
+          <span class="ebrow">{copy.bento.cell4Eyebrow}</span>
+          <span class="perf-num">{copy.bento.cell4Value}</span>
+          <p style="margin-top:auto;">{copy.bento.cell4Body}</p>
+        </div>
+      </article>
+
+      <article class="bento-cell span-3">
+        <div>
+          <span class="ebrow">{copy.bento.cell5Eyebrow}</span>
+        </div>
+        <div style="display:flex; align-items:baseline; gap:12px;">
+          <span class="perf-num" style="color: var(--color-ink);">{copy.bento.cell5Value}</span>
+          <span class="ebrow ebrow-light"><em>{copy.bento.cell5Suffix}</em></span>
+        </div>
+        <p>{copy.bento.cell5Body}</p>
+      </article>
+    </div>
+  </div>
+</section>

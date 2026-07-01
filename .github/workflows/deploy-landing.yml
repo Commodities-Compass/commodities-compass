@@ -1,0 +1,123 @@
+name: Deploy Landing
+
+# Decoupled from deploy.yml (which manages backend/frontend/jobs) because
+# the landing has its own cadence (content-heavy, no Docker, no DB) and we
+# don't want a landing copy edit to rebuild + redeploy 19 Cloud Run Jobs.
+#
+# No staging environment — the landing is fully static, dev loop runs locally
+# (`pnpm dev`), and edits go straight to prod on push-to-main. If we ever want
+# to validate before live (e.g. for a major rewrite), add a temporary staging
+# subdomain + bucket via Terraform.
+#
+# Manual trigger (workflow_dispatch) available for emergency redeploys without
+# code changes (e.g. cache invalidation after editing a bucket object directly
+# — not recommended but documented for completeness).
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'landing/**'
+      - '.github/workflows/deploy-landing.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-landing
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '20'
+  PNPM_VERSION: '10.29.2'
+  BUCKET: ${{ vars.GCP_PROJECT_ID }}-landing
+  HOST: com-compass.com
+
+jobs:
+  build-and-deploy:
+    name: Build + Deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+          cache-dependency-path: landing/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: landing
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Astro
+        working-directory: landing
+        env:
+          # Analytics gated on env var — empty unless explicitly enabled.
+          # To activate Plausible: set vars.PUBLIC_PLAUSIBLE_DOMAIN at repo level.
+          PUBLIC_PLAUSIBLE_DOMAIN: ${{ vars.PUBLIC_PLAUSIBLE_DOMAIN }}
+        run: pnpm build
+
+      - name: Verify build output
+        working-directory: landing
+        run: |
+          test -f dist/index.html || (echo "❌ dist/index.html missing" && exit 1)
+          test -f dist/en/index.html || (echo "❌ dist/en/index.html missing" && exit 1)
+          test -f dist/404.html || (echo "❌ dist/404.html missing" && exit 1)
+          test -f dist/sitemap-index.xml || (echo "❌ sitemap-index.xml missing" && exit 1)
+          PAGES=$(find dist -name 'index.html' -o -name '404.html' | wc -l | tr -d ' ')
+          echo "::notice::Built $PAGES HTML pages ($(du -sh dist | cut -f1) total)"
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_SA_EMAIL }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Sync to bucket
+        run: |
+          gcloud storage rsync \
+            --delete-unmatched-destination-objects \
+            --recursive \
+            landing/dist \
+            gs://${{ env.BUCKET }}
+
+      # Per-object Cache-Control headers. Fingerprinted assets in /_astro/ get
+      # 1y immutable; HTML gets 5min so a content fix propagates fast after deploy.
+      - name: Set Cache-Control headers
+        run: |
+          gcloud storage objects update \
+            "gs://${{ env.BUCKET }}/_astro/**" \
+            --cache-control="public, max-age=31536000, immutable" \
+            || echo "no _astro/ assets to update (likely empty build)"
+
+          for f in $(gsutil ls "gs://${{ env.BUCKET }}/**.html" 2>/dev/null); do
+            gcloud storage objects update "$f" \
+              --cache-control="public, max-age=300, must-revalidate"
+          done
+
+      - name: Invalidate CDN cache
+        run: |
+          gcloud compute url-maps invalidate-cdn-cache cc-url-map \
+            --path "/*" \
+            --host "${{ env.HOST }}" \
+            --async
+
+      - name: Summary
+        run: |
+          echo "## ✅ Landing deployed to **prod**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Bucket: \`gs://${{ env.BUCKET }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Live URL: https://${{ env.HOST }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- CDN invalidation queued (async, ~1 min)" >> $GITHUB_STEP_SUMMARY

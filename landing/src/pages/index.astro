@@ -1,0 +1,18 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import Hero from '@/components/sections/Hero.astro';
+import BentoSignal from '@/components/sections/BentoSignal.astro';
+import Methodology from '@/components/sections/Methodology.astro';
+import BriefAudio from '@/components/sections/BriefAudio.astro';
+import Contact from '@/components/sections/Contact.astro';
+
+const locale = 'fr' as const;
+---
+
+<BaseLayout locale={locale} pathname="/">
+  <Hero locale={locale} />
+  <BentoSignal locale={locale} />
+  <Methodology locale={locale} />
+  <BriefAudio locale={locale} />
+  <Contact locale={locale} />
+</BaseLayout>

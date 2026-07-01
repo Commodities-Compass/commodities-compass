@@ -1,0 +1,40 @@
+---
+import { type Locale, t, pathFor } from '@/i18n/strings';
+import LangSwitch from '@/components/LangSwitch.astro';
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const copy = t(locale);
+---
+
+<header class="masthead">
+  <div class="wrap row">
+    <a class="lockup" href={pathFor(locale)}>
+      <img src="/compass-icon.png" alt="" />
+      <span class="wm">{copy.masthead.pubName}</span>
+      <span class="deck"><em>{copy.masthead.tagline}</em></span>
+    </a>
+    <nav>
+      <a href="#what">{copy.masthead.navWhat}</a>
+      <a href="#method">{copy.masthead.navMethod}</a>
+      <a href="#brief">{copy.masthead.navBrief}</a>
+      <a href="#contact">{copy.masthead.navContact}</a>
+      <a class="sign-in" href="https://app.com-compass.com" rel="noopener">
+        {copy.masthead.signIn}
+        <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3.5 8h9M9 4.5 12.5 8 9 11.5" />
+        </svg>
+      </a>
+      <a class="cta" href="#contact">
+        {copy.masthead.cta}
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3.5 8h9M9 4.5 12.5 8 9 11.5" />
+        </svg>
+      </a>
+      <LangSwitch locale={locale} />
+    </nav>
+  </div>
+</header>

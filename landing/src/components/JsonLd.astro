@@ -1,0 +1,68 @@
+---
+/**
+ * Centralised JSON-LD structured data injection.
+ *
+ * Always emits two graphs:
+ *   1. Organization  — describes the publishing entity (Compass CC)
+ *   2. WebSite       — describes this site as a publication
+ *
+ * Optionally accepts an extra `graph` prop for page-specific schemas
+ * (Article, BreadcrumbList, FAQPage…) when needed later.
+ *
+ * Renders inside a single <script type="application/ld+json"> using
+ * `@graph` aggregation per schema.org best practice.
+ */
+import { type Locale, t } from '@/i18n/strings';
+
+interface Props {
+  locale: Locale;
+  extraGraph?: Array<Record<string, unknown>>;
+}
+
+const { locale, extraGraph = [] } = Astro.props;
+const copy = t(locale);
+const siteUrl = Astro.site?.toString().replace(/\/$/, '') ?? 'https://com-compass.com';
+
+const organization = {
+  '@type': 'Organization',
+  '@id': `${siteUrl}/#organization`,
+  name: 'Compass CC',
+  alternateName: 'Commodities Compass',
+  url: siteUrl,
+  logo: {
+    '@type': 'ImageObject',
+    url: `${siteUrl}/compass-icon.png`,
+    width: 1024,
+    height: 1024,
+  },
+  description: copy.meta.description,
+  foundingDate: '2025',
+  contactPoint: {
+    '@type': 'ContactPoint',
+    contactType: 'sales',
+    email: 'issouf@com-compass.com',
+    availableLanguage: ['French', 'English'],
+  },
+  sameAs: [
+    // TODO: add LinkedIn company URL when available
+  ],
+  knowsAbout: ['ICE cocoa futures', 'commodity markets', 'cocoa supply chain', 'market intelligence'],
+};
+
+const website = {
+  '@type': 'WebSite',
+  '@id': `${siteUrl}/#website`,
+  url: siteUrl,
+  name: 'Compass CC',
+  description: copy.meta.description,
+  publisher: { '@id': `${siteUrl}/#organization` },
+  inLanguage: locale === 'fr' ? 'fr-FR' : 'en-US',
+};
+
+const graph = {
+  '@context': 'https://schema.org',
+  '@graph': [organization, website, ...extraGraph],
+};
+---
+
+<script type="application/ld+json" is:inline set:html={JSON.stringify(graph)}></script>

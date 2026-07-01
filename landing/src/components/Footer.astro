@@ -1,0 +1,46 @@
+---
+import { type Locale, t, pathFor } from '@/i18n/strings';
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const copy = t(locale);
+---
+
+<footer>
+  <div class="wrap">
+    <div class="grid">
+      <div>
+        <div class="lockup">
+          <img src="/compass-icon.png" alt="" />
+          <span class="wm">{copy.masthead.pubName}</span>
+        </div>
+        <p class="deck-foot"><em>{copy.footer.deck}</em></p>
+        <p class="schedule-line">{copy.footer.schedule}</p>
+      </div>
+      <div>
+        <h5>{copy.footer.colReadHeading}</h5>
+        <ul>
+          <li><a href="#what">{copy.footer.colRead1}</a></li>
+          <li><a href="#method">{copy.footer.colRead2}</a></li>
+          <li><a href="#brief">{copy.footer.colRead3}</a></li>
+        </ul>
+      </div>
+      <div>
+        <h5>{copy.footer.colContactHeading}</h5>
+        <ul>
+          <li><a href="#contact">{copy.footer.colContact1}</a></li>
+          <li><a href={`mailto:${copy.contact.email}`}>{copy.footer.colContact2}</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="disclaimer" set:html={copy.footer.disclaimer}></p>
+    <div class="micro">
+      <span>{copy.footer.copyright}</span>
+      <a href={pathFor(locale, 'disclaimer')} class="micro-link">{copy.footer.microLegal}</a>
+    </div>
+  </div>
+</footer>

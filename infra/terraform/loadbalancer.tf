@@ -1,12 +1,17 @@
 # ==============================================================================
 # Global HTTPS Load Balancer — custom domain routing
 #
-# Routes app.com-compass.com → frontend Cloud Run service
-#         api.com-compass.com → backend Cloud Run service
+# Routes:
+#   app.com-compass.com        → frontend Cloud Run service
+#   api.com-compass.com        → backend Cloud Run service
+#   com-compass.com + www      → landing bucket (Cloud CDN)
 #
 # Cloud Run domain mappings are NOT supported in europe-west9, so we use a
 # Global HTTPS LB with serverless NEGs instead. This is the production-standard
 # approach (used by Stripe, Vercel, every serious SaaS).
+#
+# Landing bucket + CDN config lives in landing.tf — kept separate to make
+# the static-site workstream self-contained.
 #
 # Cost: ~$18/mo (forwarding rule) + $0.008/GB egress
 # ==============================================================================
@@ -89,9 +94,11 @@ resource "google_compute_backend_service" "backend" {
 # ---- URL map (host-based routing) ----
 
 resource "google_compute_url_map" "main" {
-  name            = "cc-url-map"
-  project         = var.project_id
-  default_service = google_compute_backend_service.frontend.id
+  name    = "cc-url-map"
+  project = var.project_id
+  # Apex of the LB is the landing bucket — any unmatched host (e.g. someone
+  # hitting the LB IP directly) lands on the marketing site, not on the app.
+  default_service = google_compute_backend_bucket.landing.id
 
   host_rule {
     hosts        = ["app.com-compass.com"]
@@ -103,6 +110,11 @@ resource "google_compute_url_map" "main" {
     path_matcher = "api"
   }
 
+  host_rule {
+    hosts        = ["com-compass.com", "www.com-compass.com"]
+    path_matcher = "landing"
+  }
+
   path_matcher {
     name            = "app"
     default_service = google_compute_backend_service.frontend.id
@@ -111,6 +123,11 @@ resource "google_compute_url_map" "main" {
   path_matcher {
     name            = "api"
     default_service = google_compute_backend_service.backend.id
+  }
+
+  path_matcher {
+    name            = "landing"
+    default_service = google_compute_backend_bucket.landing.id
   }
 }
 
@@ -121,9 +138,12 @@ resource "google_compute_target_https_proxy" "main" {
   project = var.project_id
   url_map = google_compute_url_map.main.id
 
+  # SNI-based cert selection: GCP picks the right cert per request based on the
+  # Host header. Limits: max 100 certs per proxy, we use 3 (well below).
   ssl_certificates = [
     google_compute_managed_ssl_certificate.app.id,
     google_compute_managed_ssl_certificate.api.id,
+    google_compute_managed_ssl_certificate.landing_apex.id,
   ]
 }
 

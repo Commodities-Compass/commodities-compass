@@ -1,0 +1,52 @@
+---
+import { type Locale, t } from '@/i18n/strings';
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const copy = t(locale);
+
+type Block = {
+  roman: string;
+  title: string;
+  titleEm: string;
+  body: string;
+  pills: readonly string[];
+};
+
+const blocks: readonly Block[] = [
+  { roman: copy.method.p1Roman, title: copy.method.p1Title, titleEm: copy.method.p1TitleEm, body: copy.method.p1Body, pills: copy.method.p1Pills },
+  { roman: copy.method.p2Roman, title: copy.method.p2Title, titleEm: copy.method.p2TitleEm, body: copy.method.p2Body, pills: copy.method.p2Pills },
+  { roman: copy.method.p3Roman, title: copy.method.p3Title, titleEm: copy.method.p3TitleEm, body: copy.method.p3Body, pills: copy.method.p3Pills },
+  { roman: copy.method.p4Roman, title: copy.method.p4Title, titleEm: copy.method.p4TitleEm, body: copy.method.p4Body, pills: copy.method.p4Pills },
+];
+---
+
+<section class="section" id="method">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="num"><em>{copy.method.sectionRoman}</em></span>
+      <span class="title">{copy.method.sectionTitle}</span>
+      <span class="filler"></span>
+      <span class="meta">{copy.method.sectionMeta}</span>
+    </div>
+
+    <h2 class="section-lede">{copy.method.lede} <em>{copy.method.ledeEm}</em></h2>
+    <p class="section-deck">{copy.method.deck}</p>
+
+    <div class="method-grid">
+      {blocks.map((b) => (
+        <article class="method-block">
+          <span class="layer-num">{b.roman}</span>
+          <h3>{b.title} <em>{b.titleEm}</em></h3>
+          <p set:html={b.body}></p>
+          <div class="pills">
+            {b.pills.map((pill) => <span class="pill">{pill}</span>)}
+          </div>
+        </article>
+      ))}
+    </div>
+  </div>
+</section>

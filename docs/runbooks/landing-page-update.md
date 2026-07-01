@@ -6,6 +6,22 @@
 
 The landing is a static Astro 5 site served from GCS+Cloud CDN behind the existing LB. Most "updates" are content edits done directly in `landing/src/i18n/strings.ts`. This runbook covers the **non-obvious** recurring tasks where context is easy to lose between updates.
 
+## Stack ownership map
+
+Bookmark this before you spend an hour finding the right admin :
+
+| Layer | Where | Who has access |
+|---|---|---|
+| Domain registrar | Squarespace Domains (inherited from Google Domains, migrated 2024-07) | Julien |
+| DNS records | Same Squarespace Domains UI — `account.squarespace.com/domains/managed/com-compass.com/dns` | Julien |
+| DNS zone hosting (nameservers `ns-cloud-*.googledomains.com`) | Google Cloud DNS (Squarespace-owned project, not ours) | N/A — read-only for us |
+| Static hosting (Cloud Storage + CDN) | GCP project `cacaooo` (`cacaooo-landing` bucket + `cc-backend-landing`) | Hedi via `gcloud`/console |
+| Load balancer + SSL cert | GCP project `cacaooo` (`cc-url-map`, `cc-ssl-landing-apex`) | Hedi via Terraform |
+| Deploy pipeline | GitHub Actions (`deploy-landing.yml`, WIF auth to GCP) | Hedi |
+| Content (Astro codebase) | `landing/` in this repo | Hedi (+ any contributor) |
+
+For DNS changes, **do not go looking in GCP Cloud DNS** — the zone is not there. Ping Julien with the specific record changes needed (`docs/runbooks/landing-dns-change-template.md` — TBD).
+
 ## Task index
 
 | # | Task | Cadence | Last applied |

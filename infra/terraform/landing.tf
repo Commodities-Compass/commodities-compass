@@ -61,6 +61,25 @@ resource "google_storage_bucket_iam_member" "landing_gha_writer" {
   member = "serviceAccount:cc-github-actions@${var.project_id}.iam.gserviceaccount.com"
 }
 
+# Custom role for CDN cache invalidation. The predefined roles that grant
+# `compute.urlMaps.invalidateCache` (loadBalancerAdmin, networkAdmin) also
+# grant broad edit rights on the LB — overkill for a cache-invalidate action.
+# This custom role is scoped to just the single permission we need.
+resource "google_project_iam_custom_role" "cdn_invalidator" {
+  project     = var.project_id
+  role_id     = "cdnCacheInvalidator"
+  title       = "CDN Cache Invalidator"
+  description = "Allows invalidating Cloud CDN cache via url-maps.invalidateCache"
+  permissions = ["compute.urlMaps.invalidateCache"]
+  stage       = "GA"
+}
+
+resource "google_project_iam_member" "landing_gha_cdn_invalidator" {
+  project = var.project_id
+  role    = google_project_iam_custom_role.cdn_invalidator.id
+  member  = "serviceAccount:cc-github-actions@${var.project_id}.iam.gserviceaccount.com"
+}
+
 # ---- Backend bucket (Cloud CDN attach point for the LB) ----
 
 resource "google_compute_backend_bucket" "landing" {

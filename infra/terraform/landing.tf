@@ -50,6 +50,17 @@ resource "google_storage_bucket_iam_member" "landing_public" {
   member = "allUsers"
 }
 
+# Grant the GitHub Actions service account write access on the landing bucket.
+# Needed for `gcloud storage rsync --delete-unmatched-destination-objects`
+# in .github/workflows/deploy-landing.yml. Project-level roles don't cover
+# bucket-level permissions like storage.buckets.get, so this must be scoped
+# per bucket.
+resource "google_storage_bucket_iam_member" "landing_gha_writer" {
+  bucket = google_storage_bucket.landing.name
+  role   = "roles/storage.admin"
+  member = "serviceAccount:cc-github-actions@${var.project_id}.iam.gserviceaccount.com"
+}
+
 # ---- Backend bucket (Cloud CDN attach point for the LB) ----
 
 resource "google_compute_backend_bucket" "landing" {

@@ -5,9 +5,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import { ErrorFallback } from './components/ErrorFallback';
 import { initSentry, Sentry } from './sentry';
+import { registerPreloadErrorReload } from './utils/preload-error-reload';
 import './index.css';
 
 initSentry();
+registerPreloadErrorReload();
 
 const queryClient = new QueryClient({
   defaultOptions: {

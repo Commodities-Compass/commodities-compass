@@ -21,12 +21,14 @@ from scripts.compass_brief_ensemble.brief_generator import (
 from scripts.compass_brief_ensemble.db_reader import EnsembleBriefData, SpecialistVote
 
 
-# Tokens that must NEVER appear in the rendered brief. Each one is either
-# a model-family hint, an architecture leak, or an internal diagnostic name.
+# Tier 1 engine/architecture tokens that must NEVER appear in the rendered
+# brief regardless of source. Generic vocab (filet de sécurité, propriétaires,
+# machine learning) is intentionally absent: it is Tier 2 — forbidden only in
+# engine-authored fields, but legitimately allowed when it comes from external
+# press content (see test_press_summary_allows_generic_financial_vocab).
 _FORBIDDEN_TOKENS = (
     "ensemble v1",
     "Ensemble v1",
-    "machine learning",
     "soft-gate",
     "softgate",
     "wrapper",
@@ -47,9 +49,6 @@ _FORBIDDEN_TOKENS = (
     "panel de 14",
     "net_score",
     "net score",
-    "filet de sécurité",
-    "propriétaires",
-    "machine-learning",
 )
 
 
@@ -308,9 +307,35 @@ def test_unsafe_conclusion_llm_panel_count_fails_loud() -> None:
 
 @pytest.mark.unit
 def test_unsafe_press_summary_fails_loud() -> None:
-    """Defense-in-depth: even press_review (an external LLM) is checked —
-    an accidental hallucination embedding 'soft-gate' would otherwise leak
-    straight into the podcast."""
+    """Defense-in-depth: even press_review (an external LLM) is checked
+    against Tier 1 internals — an accidental hallucination embedding
+    'soft-gate' would otherwise leak straight into the podcast."""
     leaky_press = "Marché stable. Le soft-gate indique une orientation."
     with pytest.raises(UnsafeBriefContentError, match="press_summary"):
         render_brief(_sample_data(press_summary=leaky_press))
+
+
+@pytest.mark.unit
+def test_press_summary_allows_generic_financial_vocab() -> None:
+    """Regression — prod incident 2026-07-06. 'filet de sécurité' is a common
+    French financial expression that appeared verbatim in the Ghana press
+    review and aborted the whole ensemble brief. Tier 2 vocab must NOT be
+    enforced on external press content: the brief renders and the phrase
+    passes through."""
+    press = (
+        "Sur le plan politique et financier, le maintien du prix garanti "
+        "bord-champ pour la campagne 2025/26 au Ghana offre un filet de "
+        "sécurité monétaire aux producteurs."
+    )
+    text = render_brief(_sample_data(press_summary=press))
+    assert "filet de sécurité" in text
+
+
+@pytest.mark.unit
+def test_engine_authored_field_still_blocks_generic_vocab() -> None:
+    """The other half of the tiering contract: Tier 2 vocab is still a leak
+    inside a cc-ensemble-explainer field (eco/conclusion/rationale), because
+    there the engine would be describing its own mechanism."""
+    leaky_eco = "Le dispositif agit comme un filet de sécurité sur la position."
+    with pytest.raises(UnsafeBriefContentError, match="eco"):
+        render_brief(_sample_data(eco=leaky_eco))

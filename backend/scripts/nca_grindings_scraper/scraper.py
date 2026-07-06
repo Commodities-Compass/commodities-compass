@@ -1,9 +1,10 @@
-"""Orchestrator: discover NCA PDF URLs from chocolatecouncil.org, fetch + parse.
+"""Orchestrator: discover NCA PDF URLs from candyusa.com, fetch + parse.
 
-The Chocolate Council page links to every NCA quarterly PDF hosted on
-candyusa.com. Filenames are inconsistent (``Q1-2026-Cocoa-Grinds.pdf``,
+The candyusa.com listing links to every NCA quarterly PDF (also hosted on
+candyusa.com). Filenames are inconsistent (``Q1-2026-Cocoa-Grinds.pdf``,
 ``Q1_2025_Cocoa_Grinds_REV0421.pdf``, ``Q1_2023_CocoaGrinds_NCA.pdf``, …),
-so we MUST scrape the listing rather than predict URLs.
+so we MUST scrape the listing rather than predict URLs. See config.py for why
+we target candyusa.com directly instead of chocolatecouncil.org (WAF incident).
 """
 
 from __future__ import annotations

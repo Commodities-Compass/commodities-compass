@@ -59,7 +59,7 @@ On-demand| cc-ensemble-bootstrap-artifacts       | ENSEMBLE     | Manual (no sch
 | **cc-fx-scraper** | `30 18 * * 1-5` | shared | ECB SDMX 2.1 CSV | `pl_external_indicator.fx_*` | ✅ Actif |
 | **cc-enso-scraper** | `0 22 20 * *` | ENSEMBLE-only | NOAA PSL ASCII | `pl_external_indicator.enso_*` | ✅ Actif (monthly) |
 | **cc-eca-grindings-scraper** | `0 13 * * 1-5` | shared | eurococoa.com listing + PDFs | `pl_supply_demand_observation` (ECA rows) | ✅ Actif (gated) |
-| **cc-nca-grindings-scraper** | `0 14 * * 1-5` | shared | chocolatecouncil.org + candyusa PDFs | `pl_supply_demand_observation` (NCA rows) | ✅ Actif (gated) |
+| **cc-nca-grindings-scraper** | `0 14 * * 1-5` | shared | candyusa.com listing + PDFs | `pl_supply_demand_observation` (NCA rows) | ✅ Actif (gated) |
 | **cc-publication-calendar-watchdog** | `0 16 * * 1-5` | shared | `ref_publication_calendar` query | Sentry capture (no DB write) | ✅ Actif |
 | **cc-press-review-agent** | `5 19 * * *` | both | 6 news sources + Google News RSS | `pl_fundamental_article`, `pl_article_segment`, `pl_sentiment_feature` | ✅ Actif (P2b daily-gated) |
 | **cc-meteo-agent** | `0 19 * * *` | both | Open-Meteo API | `pl_weather_observation`, `pl_seasonal_score` | ✅ Actif (P2b daily-gated) |
@@ -221,7 +221,7 @@ On-demand| cc-ensemble-bootstrap-artifacts       | ENSEMBLE     | Manual (no sch
 
 **Description** : scrape les broyages North America trimestriels (NCA, ~13 plants, supplied to ICE Futures US).
 
-**Source** : listing `https://chocolatecouncil.org/cocoa-grinds-report` → PDFs hébergés sur candyusa.com (filenames inconsistants). 5 ans d'archives.
+**Source** : listing `https://candyusa.com/cocoa-grinds-report/` → PDFs hébergés sur candyusa.com (filenames inconsistants). 5 ans d'archives. On cible candyusa.com directement (l'ancien host `chocolatecouncil.org` redirige et est derrière un WAF anti-bot SiteGround qui challenge par intermittence les IP Cloud Run — Sentry 2026-07-02).
 
 **Cron** : `0 14 * * 1-5`. NCA publie ~mid-day ET.
 

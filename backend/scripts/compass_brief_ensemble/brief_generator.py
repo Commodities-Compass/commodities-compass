@@ -66,11 +66,26 @@ _THEME_LABEL = {
 
 _DECISION_TO_BIAS = {"OPEN": "bullish", "HEDGE": "bearish"}
 
-# Engine-revealing substrings that must NEVER reach NotebookLM. Anything
-# matching these (case-insensitive) in an upstream LLM-written field is
-# redacted out of the brief and treated as "not available". The check is
-# substring-only (no regex) — keeps the list explicit and trivially auditable.
-_FORBIDDEN_SUBSTRINGS: tuple[str, ...] = (
+# Engine-revealing substrings that must NEVER reach NotebookLM, split into two
+# tiers because the guard runs on fields with different provenance:
+#
+#   Tier 1 — _FORBIDDEN_INTERNALS: unambiguous engine/architecture tokens that
+#   essentially never occur in legitimate cocoa news. Checked on EVERY guarded
+#   field, INCLUDING press_summary (defense-in-depth against a press-review LLM
+#   hallucinating engine framing like "the soft-gate indicates...").
+#
+#   Tier 2 — _FORBIDDEN_ENGINE_VOCAB: generic French financial / ML vocabulary
+#   that only reveals the engine when the ENGINE itself says it. These words
+#   legitimately appear in external news (e.g. "le prix garanti bord-champ
+#   offre un filet de sécurité aux producteurs" — real Ghana press, 2026-07-06).
+#   Checked ONLY on the fields authored by cc-ensemble-explainer (eco /
+#   conclusion / confidence_rationale), NOT on press_summary — otherwise one
+#   ordinary news phrase aborts the whole brief (prod incident 2026-07-06).
+#
+# The check is substring-only (case-insensitive, no regex) — keeps the lists
+# explicit and trivially auditable. A match is fail-loud (abort), never a silent
+# redaction, per .claude/rules/pipeline-error-handling.md.
+_FORBIDDEN_INTERNALS: tuple[str, ...] = (
     "soft-gate",
     "softgate",
     "wrapper",
@@ -88,17 +103,26 @@ _FORBIDDEN_SUBSTRINGS: tuple[str, ...] = (
     "spécialistes sur 14",
     "sur 14 confirment",
     "sur 14 votent",
-    "des 14",
     "panel de 14",
     "consensus n/14",
     "net_score",
     "net score",
+    "ensemble v1",
+)
+
+# Tier 2 — generic vocab, engine-authored fields only (see note above). "des 14"
+# lives here (not in Tier 1) because it fires on plain figures like "des 14 000
+# tonnes"; as a panel-count leak it only matters inside explainer prose.
+_FORBIDDEN_ENGINE_VOCAB: tuple[str, ...] = (
+    "des 14",
     "filet de sécurité",
     "filet de securite",
     "propriétaires",
     "machine learning",
-    "ensemble v1",
 )
+
+# Union applied to cc-ensemble-explainer fields (eco / conclusion / rationale).
+_FORBIDDEN_ALL: tuple[str, ...] = _FORBIDDEN_INTERNALS + _FORBIDDEN_ENGINE_VOCAB
 
 logger = logging.getLogger(__name__)
 
@@ -106,36 +130,47 @@ logger = logging.getLogger(__name__)
 class UnsafeBriefContentError(RuntimeError):
     """An upstream LLM-written field still embeds engine internals.
 
-    Raised by the brief renderer when ``conclusion``, ``eco`` or
-    ``press_summary`` contains any token from ``_FORBIDDEN_SUBSTRINGS``.
+    Raised by the brief renderer when a guarded field matches its tier of
+    forbidden tokens: engine-authored fields (``eco`` / ``conclusion`` /
+    ``confidence_rationale``) are checked against ``_FORBIDDEN_ALL``, while
+    external ``press_summary`` is checked against ``_FORBIDDEN_INTERNALS`` only.
     Per ``.claude/rules/pipeline-error-handling.md`` the brief job must
     fail loud rather than ship a leaky `.txt` to NotebookLM — the recovery
-    path is to diagnose the upstream agent (typically
-    ``cc-ensemble-explainer`` not yet enriching ``conclusion``), fix it,
+    path is to diagnose the upstream source (``cc-ensemble-explainer`` for
+    engine fields, the press-review agent for ``press_summary``), fix it,
     and manually relaunch.
     """
 
 
-def _assert_safe(value: str | None, *, field_name: str) -> None:
+def _assert_safe(
+    value: str | None, *, field_name: str, tokens: tuple[str, ...]
+) -> None:
     """Raise ``UnsafeBriefContentError`` if ``value`` carries any forbidden
-    engine token. No-op when ``value`` is empty or safe."""
+    token from ``tokens``. No-op when ``value`` is empty or safe.
+
+    Callers pass the tier that fits the field's provenance: engine-authored
+    fields (eco / conclusion / confidence_rationale) get ``_FORBIDDEN_ALL``;
+    external content (press_summary) gets only ``_FORBIDDEN_INTERNALS`` so a
+    legitimate news phrase does not abort the brief.
+    """
     if not value:
         return
     lowered = value.lower()
-    hits = [tok for tok in _FORBIDDEN_SUBSTRINGS if tok in lowered]
+    hits = [tok for tok in tokens if tok in lowered]
     if not hits:
         return
     logger.error(
         "Brief field %s contains forbidden engine tokens %s — refusing to "
-        "render (likely cause: cc-ensemble-explainer did not enrich the "
-        "row, see runbooks/brief-dual-track.md).",
+        "render (fail-loud). For eco/conclusion/confidence_rationale the likely "
+        "cause is cc-ensemble-explainer leaking engine internals; for "
+        "press_summary an external news phrase matched a genuine internal "
+        "token. Diagnose before relaxing — see runbooks/brief-dual-track.md.",
         field_name,
         hits,
     )
     raise UnsafeBriefContentError(
         f"Refused to render brief: field '{field_name}' embeds engine "
-        f"internals ({hits}). Investigate upstream LLM enrichment, fix, "
-        "and relaunch."
+        f"internals ({hits}). Investigate upstream source, fix, and relaunch."
     )
 
 
@@ -207,10 +242,16 @@ def render_brief(data: "EnsembleBriefData") -> str:
 
     # Fail-loud guard on every LLM-written field BEFORE rendering anything
     # else — better to abort early than to emit a partial leaky brief.
-    _assert_safe(data.eco, field_name="eco")
-    _assert_safe(data.press_summary, field_name="press_summary")
-    _assert_safe(data.conclusion, field_name="conclusion")
-    _assert_safe(data.confidence_rationale, field_name="confidence_rationale")
+    _assert_safe(data.eco, field_name="eco", tokens=_FORBIDDEN_ALL)
+    _assert_safe(
+        data.press_summary, field_name="press_summary", tokens=_FORBIDDEN_INTERNALS
+    )
+    _assert_safe(data.conclusion, field_name="conclusion", tokens=_FORBIDDEN_ALL)
+    _assert_safe(
+        data.confidence_rationale,
+        field_name="confidence_rationale",
+        tokens=_FORBIDDEN_ALL,
+    )
 
     # ── III — Éco & press review ──────────────────────────────────────────
     lines.append("III — ÉCO & PRESS REVIEW")

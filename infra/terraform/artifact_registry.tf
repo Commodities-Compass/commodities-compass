@@ -13,7 +13,7 @@ resource "google_artifact_registry_repository" "docker" {
   # an untagged-DELETE — no DELETE ever matched TAGGED images. Since CI tags every
   # push with the git SHA, all 534 versions since 2026-03-30 accumulated → ~296 GB,
   # making Artifact Registry Storage the #1 line item (€21.09 in June 2026).
-  # The missing piece is `delete-old-versions`. See docs/gcp-cost-analysis/.
+  # The missing piece is `delete-old-versions`. See docs/gcp-cost-analysis/2026-06.md.
   #
   # dry_run = true → the FIRST `terraform apply` only LOGS what would be deleted
   # (Cloud Logging, resourceName ".../cleanupPolicies"). Validate the purge count,

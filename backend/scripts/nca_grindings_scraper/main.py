@@ -9,7 +9,7 @@ Cron (prod):
     0 14 * * 1-5    # 14:00 UTC weekdays (NCA publishes ~mid-day ET)
 
 Mirrors the ECA scraper: gate against ref_publication_calendar, discover
-PDFs via chocolatecouncil.org listing, fetch + parse + UPSERT, and mark the
+PDFs via the candyusa.com listing, fetch + parse + UPSERT, and mark the
 calendar row as ingested. Fail-loud, no auto-retry.
 """
 

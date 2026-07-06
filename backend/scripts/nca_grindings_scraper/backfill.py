@@ -1,8 +1,8 @@
 """One-shot backfill of NCA grindings into pl_supply_demand_observation.
 
-Walks the chocolatecouncil.org listing page (~5-6 years of quarterly PDFs
-hosted on candyusa.com), fetches and parses every PDF, UPSERTs the records,
-and populates ``actual_publication_date`` on every matching calendar row.
+Walks the candyusa.com listing page (~5-6 years of quarterly PDFs hosted on
+candyusa.com), fetches and parses every PDF, UPSERTs the records, and populates
+``actual_publication_date`` on every matching calendar row.
 """
 
 from __future__ import annotations

@@ -61,7 +61,7 @@ These mislead about production data flows (Sheets-vs-DB, table targets), claim l
 ### `backend/scripts/compass_brief/README.md`
 
 - **L5** — `doc_drift` — "Default mode (legacy): Reads from Google Sheets." Sheets reader removed in commit `dba4072` (2026-04-01); `main.py` unconditionally uses `DBBriefReader`; no `--db` flag exists. → **Action: delete** — rewrite overview to "reads exclusively from `pl_*` tables; Sheets support removed 2026-04-01".
-- **L32** — `doc_drift` — CLI examples use non-existent `--db` flag and a "Sheets mode" variant. → **Action: delete** — replace with current-only examples (`--dry-run`, `--output`, `--verbose`, `--force`, `--target-date`).
+- **L32** — `doc_drift` — CLI examples use non-existent `--db` flag and a "Sheets mode" variant. → **Action: delete** — replace with current-only examples (`--dry-run`, `--output`, `--verbose`, `--force`, `--session-date`).
 - **L45** — `doc_drift` — CLI flags table row `| --db | off | Read from pl_* instead of Google Sheets |`; flag doesn't exist. → **Action: delete** that row; rebuild table from current argparse.
 - **L81-L87** — `doc_drift` — pipeline-schedule block uses 21:XX UTC times and Sheets table names (`TECHNICALS`, `BIBLIO_ALL`, `METEO_ALL`, `INDICATOR`). Actual: 19:XX UTC, reads `pl_contract_data_daily` / `pl_indicator_daily` / `pl_fundamental_article` / `pl_weather_observation`. → **Action: update** — fix times and table names, or replace with a reference to CLAUDE.md.
 - **L110** — `doc_drift` — module-structure diagram lists `sheets_reader.py` (deleted in `dba4072`, 2026-04-01). → **Action: delete** that line from the diagram.

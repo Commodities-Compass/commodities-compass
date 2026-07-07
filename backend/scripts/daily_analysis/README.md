@@ -31,11 +31,11 @@ Core AI analysis engine: reads market data from PostgreSQL, runs two LLM calls (
 # Dry run (logs everything, writes nothing)
 poetry run daily-analysis --dry-run
 
-# Full run with next session as target date (P2b semantics)
+# Cron run — resolves to the last completed session (P2b semantics)
 poetry run daily-analysis
 
-# Specific date (backfill)
-poetry run daily-analysis --date 2026-03-20
+# Specific session date (backfill) — the row date to regenerate
+poetry run daily-analysis --session-date 2026-03-20
 
 # Specific contract override
 poetry run daily-analysis --contract CAK26
@@ -55,7 +55,7 @@ poetry run daily-analysis --force
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--contract` | active from DB | Contract code (e.g., `CAH26`). If omitted, resolves from `ref_contract.is_active`. |
-| `--date` | next session | Target session date `YYYY-MM-DD`. Defaults to `next_session_date(today())` per P2b semantics. Manual `--date` bypasses eve-of-trading-day gate (used for backfills). |
+| `--session-date` | last completed session | Session date to regenerate `YYYY-MM-DD` = the row date the analysis updates (= `data_date`). Defaults (cron) to the last completed trading session. Explicit `--session-date` bypasses the eve-of-trading-day gate (backfills). |
 | `--dry-run` | off | Log all steps but write nothing to database. |
 | `--force` | off | Overwrite existing data (bypass idempotency checks). |
 | `--verbose` | off | Set logging to DEBUG level. |
@@ -149,21 +149,22 @@ Reads z-scores and momentum from `pl_derived_indicators`, applies the power form
 
 Two distinct dates flow through this engine:
 
-- **`target_date`** (upcoming trading session, e.g., Tue eve → Wed session):
-  - Used for human-facing labels and Sentry context
-  - Used to read P2b-keyed tables like `pl_fundamental_article` (where `article_date = target_date`)
-  - CLI `--date` flag sets this explicitly
+Both are resolved once from `resolve_phase_b_dates(args.session_date)` (`scripts/db.py`):
 
-- **`data_date`** (last completed session, keyed to Phase A):
-  - Computed as `get_previous_session_date(target_date)` when `--date` is used
+- **`data_date`** (last completed session = the row date):
+  - Set directly by `--session-date` (backfill), or the cron default = last completed session
   - Used as the WHERE/UPDATE key for all writes (pl_indicator_daily, pl_signal_component, aud_llm_call)
   - Ensures writes target the same row that `cc-compute-indicators` wrote at 19:15 UTC
 
-**Example**: Tuesday 19:20 UTC (eve of Wednesday trading)
-- `target_date = 2026-03-18` (Wed, upcoming session)
-- `data_date = 2026-03-17` (Tue, last completed session)
-- Reads `pl_fundamental_article` where `article_date = 2026-03-18`
+- **`target_date`** (upcoming session = `next_session(data_date)`):
+  - Derived, never operator-facing
+  - Used for human-facing labels and Sentry context, and to frame the P2b-keyed reads
+
+**Example**: Tuesday 19:20 UTC cron (eve of Wednesday trading)
+- `data_date = 2026-03-17` (Tue, last completed session) — the row every write targets
+- `target_date = 2026-03-18` (Wed, upcoming session) — framing only
 - Writes `pl_indicator_daily` where `date = 2026-03-17` (same as `cc-compute-indicators` wrote)
+- To backfill this same row manually: `--session-date 2026-03-17`
 
 ## P2b Gate (Eve-of-Trading-Day)
 
@@ -176,7 +177,7 @@ if not is_eve_of_trading_day():
 ```
 
 Flags that bypass the gate:
-- `--date YYYY-MM-DD`: explicit backfill (forces run for any date)
+- `--session-date YYYY-MM-DD`: explicit backfill (forces run for the given session)
 - `--force`: operator override
 
 ## Algorithm Version Resolution

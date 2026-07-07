@@ -36,7 +36,7 @@ Le brief LEGACY continue à se générer normalement (cc-daily-analysis pinné s
 ### Fix
 - Si bug d'engine / prompt → éditer `backend/scripts/daily_analysis/prompts.py` (`CALL_1_PROMPT` ou `CALL_2_PROMPT_ENSEMBLE`) OU `backend/scripts/daily_analysis/db_analysis_engine.py`. ⚠ Toute modif affecte AUSSI le brief legacy puisque le code est partagé.
 - Si `EnsembleRowMissingError` → relancer d'abord cc-ensemble-compute pour générer la row manquante.
-- Tester en dry-run local sur dates historiques : `poetry run ensemble-explainer --target-date YYYY-MM-DD --dry-run`.
+- Tester en dry-run local sur dates historiques : `poetry run ensemble-explainer --session-date YYYY-MM-DD --dry-run`.
 - PR + merge + redéploiement.
 - Reprendre les schedulers : `gcloud scheduler jobs resume ...`.
 
@@ -45,7 +45,7 @@ Le brief LEGACY continue à se générer normalement (cc-daily-analysis pinné s
   ```bash
   gcloud run jobs execute cc-ensemble-explainer \
     --region europe-west9 --project cacaooo \
-    --args="ensemble-explainer,--target-date,2026-05-27,--force"
+    --args="ensemble-explainer,--session-date,2026-05-27,--force"
   ```
   Le wrapper calcule `data_date = previous_session(2026-05-27)` = 2026-05-26 et UPDATE la row à cette date.
 - Vérifier la row ensemble : `SELECT date, decision, confidence, direction, LENGTH(conclusion) FROM pl_indicator_daily i JOIN pl_algorithm_version v ON i.algorithm_version_id=v.id WHERE i.date='2026-05-26' AND v.name='ensemble_v1_softgate_wrapper'`. Conclusion attendue : ~1000-1500 chars avec marker `> A SURVEILLER AUJOURD'HUI:` + 3 bullets.
@@ -68,7 +68,7 @@ L'explainer continue à enrichir la DB (donc la décision + narrative restent di
 
 ### Diagnostic
 - Sentry → exception + stack trace
-- Tester localement : `poetry run compass-brief-ensemble --target-date 2026-05-26 --dry-run` (affiche le brief sur stdout)
+- Tester localement : `poetry run compass-brief-ensemble --session-date 2026-05-26 --dry-run` (affiche le brief sur stdout)
 - Comparer avec les tests `scripts/compass_brief_ensemble/tests/test_brief_generator.py`
 
 ### Fix
@@ -79,7 +79,7 @@ L'explainer continue à enrichir la DB (donc la décision + narrative restent di
 ```bash
 gcloud run jobs execute cc-compass-brief-ensemble \
   --region europe-west9 --project cacaooo \
-  --args="compass-brief-ensemble,--target-date,2026-05-26,--force"
+  --args="compass-brief-ensemble,--session-date,2026-05-26,--force"
 ```
 Vérifier le fichier sur Drive : `YYYYMMDD-CompassBrief-Ensemble.txt`.
 

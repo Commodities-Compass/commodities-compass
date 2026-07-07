@@ -1,0 +1,116 @@
+{
+  "trial_number": 10,
+  "objective": -2.0798442197443348,
+  "user_attrs": {
+    "ci_high_oos": 0.3087156834160309,
+    "ci_low_oos": 0.07056186964892071,
+    "config_summary": {
+      "feature_groups": [
+        "technical",
+        "cot",
+        "sentiment",
+        "fundamentals_ops"
+      ],
+      "normalization": "rolling_zscore_250",
+      "target_atr_multiple": 0.3931636810606034,
+      "base_family_spot": "lightgbm",
+      "base_family_mom": "random_forest",
+      "base_family_fund": "logistic",
+      "base_hp_spot": {
+        "n_estimators": 100,
+        "max_depth": 3,
+        "learning_rate": 0.026649122581291006,
+        "min_samples_leaf": 30
+      },
+      "base_hp_mom": {
+        "n_estimators": 100,
+        "max_depth": 5,
+        "min_samples_leaf": 18
+      },
+      "base_hp_fund": {
+        "C": 0.01548639343627373,
+        "max_iter": 1000
+      },
+      "meta_family": "logistic",
+      "meta_hp": {
+        "C": 7.278238061097503,
+        "max_iter": 1000
+      },
+      "tau_conf": 0.43052675287084285,
+      "tau_diss": 0.28933138090716726,
+      "horizon": 6,
+      "seed": 42
+    },
+    "cv_regime": 1.4306908163752627,
+    "mean_oos_coverage": 0.7378588952587255,
+    "mean_oos_efficacite": 0.18153741300619047,
+    "mean_train_efficacite": 0.08275906248445133,
+    "n_windows": 16,
+    "objective": -2.0798442197443348,
+    "penalty_ci_includes_zero": 0.0,
+    "penalty_coverage": 0.0,
+    "penalty_cv_regime": 2.2613816327505254,
+    "penalty_is_oos_gap": 0.0,
+    "std_oos_efficacite": 0.2597239096164799
+  },
+  "params": {
+    "fg_technical": 1,
+    "fg_cot": 1,
+    "fg_sentiment": 1,
+    "fg_fundamentals_ops": 1,
+    "normalization": "rolling_zscore_250",
+    "target_atr_multiple": 0.3931636810606034,
+    "family_spot": "lightgbm",
+    "family_mom": "random_forest",
+    "family_fund": "logistic",
+    "spot_n_estimators": 100,
+    "spot_max_depth": 3,
+    "spot_learning_rate": 0.026649122581291006,
+    "spot_min_samples_leaf": 30,
+    "mom_n_estimators": 100,
+    "mom_max_depth": 5,
+    "mom_min_samples_leaf": 18,
+    "fund_C": 0.01548639343627373,
+    "meta_family": "logistic",
+    "meta_C": 7.278238061097503,
+    "tau_conf": 0.43052675287084285,
+    "tau_diss": 0.28933138090716726
+  },
+  "config_summary": {
+    "feature_groups": [
+      "technical",
+      "cot",
+      "sentiment",
+      "fundamentals_ops"
+    ],
+    "normalization": "rolling_zscore_250",
+    "target_atr_multiple": 0.3931636810606034,
+    "base_family_spot": "lightgbm",
+    "base_family_mom": "random_forest",
+    "base_family_fund": "logistic",
+    "base_hp_spot": {
+      "n_estimators": 100,
+      "max_depth": 3,
+      "learning_rate": 0.026649122581291006,
+      "min_samples_leaf": 30
+    },
+    "base_hp_mom": {
+      "n_estimators": 100,
+      "max_depth": 5,
+      "min_samples_leaf": 18
+    },
+    "base_hp_fund": {
+      "C": 0.01548639343627373,
+      "max_iter": 1000
+    },
+    "meta_family": "logistic",
+    "meta_hp": {
+      "C": 7.278238061097503,
+      "max_iter": 1000
+    },
+    "tau_conf": 0.43052675287084285,
+    "tau_diss": 0.28933138090716726,
+    "horizon": 6,
+    "seed": 42
+  }
+}

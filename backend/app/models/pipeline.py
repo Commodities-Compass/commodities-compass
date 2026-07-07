@@ -892,3 +892,32 @@ class PlSupplyDemandObservation(Base):
     value: Mapped[Optional[float]] = mapped_column(DOUBLE_PRECISION)
     metadata_json: Mapped[Optional[dict]] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+
+
+class PlSessionRelease(Base):
+    """Publication marker — gates the dashboard's atomic "latest session" flip.
+
+    One row per released session date T (= ``data_date``). The dashboard exposes
+    a session as the newest/default view only once a row exists here, so users
+    never see a half-filled session mid-pipeline and the flip carries every
+    section (and, on the normal path, the NotebookLM audio) at once.
+
+    Stamped by the ``cc-publish-session`` job after it verifies data
+    completeness (indicator + press + meteo) and audio presence. Dedicated
+    table (not a column on ``pl_contract_data_daily``) keeps the raw market row
+    immutable — publication is a presentation concern, not pipeline computation.
+    See migration ``a9b8c7d6e5f4``.
+    """
+
+    __tablename__ = "pl_session_release"
+
+    session_date: Mapped[date] = mapped_column(DATE, primary_key=True)
+    published_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    has_audio: Mapped[bool] = mapped_column(
+        Boolean, server_default=text("false"), nullable=False
+    )
+    source: Mapped[str] = mapped_column(
+        VARCHAR(40), server_default="publish-session", nullable=False
+    )

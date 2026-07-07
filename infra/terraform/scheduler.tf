@@ -40,16 +40,16 @@ locals {
       schedule    = "15 19 * * 1-5"
     }
     daily-analysis = {
-      description = "Run trading analysis with LLM scoring, keyed to upcoming session (P2b calendar-aware)"
-      # P2b: daily cron — agent gates on is_eve_of_trading_day(). Reads
-      # pl_contract_data_daily for previous_session(target_date), writes
-      # LLM decision tagged to target_date (upcoming session).
+      description = "Run trading analysis with LLM scoring, keyed to last completed session (P2b calendar-aware)"
+      # P2b: daily cron — agent gates on is_eve_of_trading_day(). Reads AND
+      # writes the LLM decision at data_date = last completed session T
+      # (resolve_phase_b_dates). Backfill: --session-date T.
       schedule = "20 19 * * *"
     }
     compass-brief = {
-      description = "Generate brief for upcoming session + upload to Drive (P2b calendar-aware)"
-      # P2b: daily cron. Filename keyed on target_date so the audio fetch
-      # path on the dashboard (which looks up by session date) finds the
+      description = "Generate brief for last completed session + upload to Drive (P2b calendar-aware)"
+      # P2b: daily cron. Filename keyed on data_date (= session T) so the audio
+      # fetch path on the dashboard (which looks up by session date) finds the
       # right brief on Mon morning after a Sun-eve generation.
       schedule = "30 19 * * *"
     }
@@ -133,6 +133,18 @@ locals {
     compass-brief-ensemble = {
       description = "Ensemble brief generator + Drive upload (7-section, J+4 horizon)"
       schedule    = "35 19 * * *"
+    }
+    publish-session = {
+      description = "Dashboard publication gate — release the newest ready session (data + audio)"
+      # Every 30 min across the evening→next-morning window: hours 20-23 (after
+      # the last Phase-B job at 19:35) and 0-9 (overnight → 09:30 UTC). No-ops
+      # until a session's data is complete AND its NotebookLM audio is present,
+      # then stamps pl_session_release → the dashboard flips atomically the same
+      # evening. Morning fallback (past display_date 09:00 UTC) releases data-
+      # only so a late/absent audio never freezes the dashboard on yesterday.
+      # Idempotent (a released session is never re-processed), so the ~28
+      # runs/day are cheap. See docs/runbooks/session-publish-gate.md.
+      schedule = "*/30 20-23,0-9 * * *"
     }
   }
 }

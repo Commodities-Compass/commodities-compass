@@ -74,7 +74,7 @@ from app.services.weather_service import (
     build_daily_diagnostics,
     parse_impact_score,
 )
-from app.models.pipeline import PlContractDataDaily
+from app.models.pipeline import PlContractDataDaily, PlSessionRelease
 from app.models.reference import RefExchange, RefTradingCalendar
 from app.utils.date_utils import parse_date_string
 from app.utils.trading_calendar import TradingCalendarError, get_latest_trading_day
@@ -735,18 +735,40 @@ async def get_non_trading_days(
         result = await db.execute(query.order_by(RefTradingCalendar.date))
         non_trading_dates = [row[0].isoformat() for row in result.all()]
 
-        # Return the latest display_date that is not in the future.
-        # On April 6 (Easter Monday), MAX(display_date) = April 7 but we
-        # shouldn't show a future date — cap at today.
+        # Latest selectable/default day = the newest RELEASED session.
+        #
+        # Publication gate: a session (row date T) is exposed only once
+        # cc-publish-session has stamped its pl_session_release row — i.e. its
+        # data is complete AND (normal path) its NotebookLM audio is present.
+        # The flip is therefore atomic (never a half-filled section) and can
+        # happen the same evening T rather than waiting for the T+1 calendar
+        # date. We read the released session's display_date (what the calendar
+        # shows). No `<= today` cap here: the newest session that HAS data is
+        # by construction the last close, so its display_date (= T+1) is exactly
+        # the day we want to surface tonight — a future session can't be
+        # published because its data doesn't exist yet.
         from sqlalchemy import func as sa_func
 
         today = date.today()
-        latest_result = await db.execute(
-            select(sa_func.max(PlContractDataDaily.display_date)).where(
-                PlContractDataDaily.display_date <= today
+        released_result = await db.execute(
+            select(sa_func.max(PlContractDataDaily.display_date)).join(
+                PlSessionRelease,
+                PlSessionRelease.session_date == PlContractDataDaily.date,
             )
         )
-        latest_display = latest_result.scalar_one_or_none()
+        latest_display = released_result.scalar_one_or_none()
+
+        # Safe fallback — while pl_session_release is empty (feature dormant or
+        # before the first publish), preserve the legacy behavior: newest
+        # display_date not in the future. Guarantees zero regression until the
+        # publish job starts stamping releases.
+        if latest_display is None:
+            legacy_result = await db.execute(
+                select(sa_func.max(PlContractDataDaily.display_date)).where(
+                    PlContractDataDaily.display_date <= today
+                )
+            )
+            latest_display = legacy_result.scalar_one_or_none()
 
         # Fallback to trading calendar if no display_date populated yet
         if latest_display is None:

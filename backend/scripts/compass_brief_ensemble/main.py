@@ -73,12 +73,14 @@ def _parse_args() -> argparse.Namespace:
         help="Bypass eve-of-trading-day gate (backfill/debugging)",
     )
     parser.add_argument(
-        "--target-date",
+        "--session-date",
         type=date_type.fromisoformat,
         default=None,
         help=(
-            "Trading session date the brief targets (YYYY-MM-DD). Defaults to "
-            "get_next_session_date(today()) per P2b. Drives filename suffix."
+            "Session date to (re)generate, YYYY-MM-DD (= the row date and the "
+            "filename stem). Default (cron): the last completed trading session. "
+            "Explicit --session-date bypasses the eve-of-trading-day gate "
+            "(backfills, manual reruns)."
         ),
     )
     return parser.parse_args()
@@ -90,26 +92,20 @@ def main() -> int:
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    # P2b gate
-    from scripts.db import (
-        get_next_session_date,
-        get_previous_session_date,
-        is_eve_of_trading_day,
-    )
+    # Phase-B date pair — single source of truth (scripts/db.py). ``data_date``
+    # (= last completed session) is the row date in pl_indicator_daily /
+    # pl_orchestrator_decision / pl_specialist_prediction AND the filename stem;
+    # ``target_date`` (upcoming session) frames the press/meteo upper-bound
+    # reads. --force / --session-date bypass the eve-of-trading-day gate.
+    from scripts.db import phase_b_should_skip, resolve_phase_b_dates
 
-    target_date: date_type = args.target_date or get_next_session_date()
-    if not args.force and args.target_date is None:
-        if not is_eve_of_trading_day():
-            logger.info(
-                "Phase-B gate: tomorrow is not a trading day — skipping cleanly."
-            )
-            return 0
+    if phase_b_should_skip(args.session_date, args.force):
+        logger.info("Phase-B gate: tomorrow is not a trading day — skipping cleanly.")
+        return 0
 
-    # ``data_date`` = last completed session = the row date in
-    # pl_indicator_daily / pl_orchestrator_decision / pl_specialist_prediction.
-    # ``target_date`` remains the upcoming session for filename + press/meteo
-    # which are P2b-keyed to the upcoming session.
-    data_date: date_type = get_previous_session_date(target_date)
+    dates = resolve_phase_b_dates(args.session_date)
+    target_date: date_type = dates.target_date
+    data_date: date_type = dates.data_date
 
     logger.info("=" * 60)
     logger.info("Compass Brief Ensemble")

@@ -85,7 +85,7 @@ FX (USD/EUR + GBP/EUR daily from ECB SDMX → 4 derived columns) and ENSO (ONI +
 
 ### 9. Press review + meteo agents — `backend/scripts/press_review_agent/` + `backend/scripts/meteo_agent/`
 Phase-B LLM agents: press review (o4-mini, 6+ sources → French analysis + 4 theme sentiments) and meteo (gpt-4.1, 6 West-African stations + seasonal phenology → 24h risk + J+1→J+5 outlook).
-- **Entrypoints**: `poetry run press-review [--provider …|--target-date|--force|--dry-run]` (cron 19:05 UTC); `poetry run meteo-agent [--bootstrap-memory|--target-date|--force|--dry-run]` (cron 19:00 UTC). Both eve-gated.
+- **Entrypoints**: `poetry run press-review [--provider …|--session-date|--force|--dry-run]` (cron 19:05 UTC); `poetry run meteo-agent [--bootstrap-memory|--session-date|--force|--dry-run]` (cron 19:00 UTC). Both eve-gated.
 - **Reads**: `pl_contract_data_daily` (latest CLOSE), `ref_contract` (`is_active`), `pl_fundamental_article` (provider shadow filter), `pl_seasonal_score`, `pl_external_indicator` (ENSO regime block).
 - **Writes**: `pl_fundamental_article`, `pl_article_segment` (4 theme rows guaranteed), `pl_weather_observation`, `aud_llm_call`.
 - **Docs**: [PIPELINE_LEGACY.md](./PIPELINE_LEGACY.md) · [PIPELINE_ENSEMBLE.md](./PIPELINE_ENSEMBLE.md) · `flows/agents-fundamentals.md` (planned).
@@ -93,7 +93,7 @@ Phase-B LLM agents: press review (o4-mini, 6+ sources → French analysis + 4 th
 
 ### 10. Daily analysis agent — `backend/scripts/daily_analysis/`
 LLM decision engine (legacy track): 2 sequential gpt-4-turbo calls (macro/weather → MACROECO_BONUS; technicals → DECISION/CONFIANCE) writing narrative + signals. Also the shared engine that ensemble-explainer wraps.
-- **Entrypoints**: `poetry run daily-analysis [--dry-run|--contract|--algorithm-version|--target-date]` (cron 19:20 UTC); engine `db_analysis_engine.py` (`DBAnalysisEngine.run()`).
+- **Entrypoints**: `poetry run daily-analysis [--dry-run|--contract|--algorithm-version|--session-date]` (cron 19:20 UTC); engine `db_analysis_engine.py` (`DBAnalysisEngine.run()`).
 - **Reads**: `pl_contract_data_daily`, `pl_derived_indicators`, `pl_indicator_daily`, `pl_fundamental_article` (+`market_research` fallback), `pl_weather_observation` (+`weather_data` fallback), `pl_orchestrator_decision`, `pl_algorithm_version`, `ref_contract`, `pl_stock_observation`, `pl_cot_us_weekly`, `ref_trading_calendar`.
 - **Writes**: `pl_indicator_daily` (UPDATE narrative + decision), `pl_signal_component` (macroeco row), `aud_pipeline_run`, `aud_llm_call` (2 rows).
 - **Docs**: [PIPELINE_LEGACY.md](./PIPELINE_LEGACY.md) · `flows/daily-analysis.md` (planned).
@@ -101,7 +101,7 @@ LLM decision engine (legacy track): 2 sequential gpt-4-turbo calls (macro/weathe
 
 ### 11. Ensemble compute (Campaign 5) — `backend/scripts/ensemble_compute/`
 Daily orchestration of 14 LightGBM+GARCH specialists via Bayesian soft-gate + `TransitionProtectionWrapper`, with Compass-side relaxation (`compass_wrapper.py`). Produces the wrapped ensemble decision.
-- **Entrypoints**: `poetry run ensemble-compute [--date|--historical|--dry-run]` (cron 19:18 UTC, eve-gated); vendored R&D in `backend/vendor/campaign5_ensemble_v1.0.0/` (read-only; `v1.0.1` also vendored).
+- **Entrypoints**: `poetry run ensemble-compute [--session-date|--historical|--dry-run]` (cron 19:18 UTC, eve-gated); vendored R&D in `backend/vendor/campaign5_ensemble_v1.0.0/` (read-only; `v1.0.1` also vendored).
 - **Reads**: `v_contract_data_chained` (OHLCV/indicators + trailing 10-row decision/specialist windows, chained across rolls), `pl_derived_indicators`, `pl_orchestrator_decision`, `pl_specialist_prediction`, `pl_article_segment` (90d macro signal), `pl_algorithm_version`, `pl_algorithm_config`, `pl_model_artifact`, `ref_contract`, `ref_trading_calendar`.
 - **Writes**: `pl_specialist_prediction` (14 rows), `pl_orchestrator_decision` (1 row, ~22 diagnostics), `pl_indicator_daily` (1 row UPSERT).
 - **Docs**: [PIPELINE_ENSEMBLE.md](./PIPELINE_ENSEMBLE.md) · `docs/runbooks/wrapper-levers-tuning.md` · `docs/runbooks/ensemble-failure-recovery.md`.
@@ -109,7 +109,7 @@ Daily orchestration of 14 LightGBM+GARCH specialists via Bayesian soft-gate + `T
 
 ### 12. Briefs (legacy + ensemble) + explainer — `backend/scripts/{compass_brief,compass_brief_ensemble,ensemble_explainer}/`
 Dual-track `.txt` brief generation for NotebookLM audio. Legacy brief = yesterday+today; ensemble brief (P4) = forward-looking + 14-specialist decomposition. Explainer enriches the ensemble `pl_indicator_daily` row with LLM narrative.
-- **Entrypoints**: `poetry run compass-brief` (cron 19:30 UTC), `poetry run compass-brief-ensemble [--target-date|--dry-run]` (cron 19:35 UTC), `poetry run ensemble-explainer [--target-date|--dry-run|--force]` (cron 19:25 UTC — thin wrapper around `DBAnalysisEngine`).
+- **Entrypoints**: `poetry run compass-brief [--session-date|--force]` (cron 19:30 UTC), `poetry run compass-brief-ensemble [--session-date|--dry-run]` (cron 19:35 UTC), `poetry run ensemble-explainer [--session-date|--dry-run|--force]` (cron 19:25 UTC — thin wrapper around `DBAnalysisEngine`).
 - **Reads**: `pl_indicator_daily` (active-algo join), `pl_orchestrator_decision`, `pl_specialist_prediction`, `pl_contract_data_daily`, `pl_derived_indicators`, `pl_fundamental_article` (+`market_research`), `pl_weather_observation` (+`weather_data`), `pl_stock_observation`, `pl_cot_us_weekly`, `pl_seasonal_score`, `pl_algorithm_version`, `ref_contract`, `v_contract_data_chained`.
 - **Writes**: briefs are read-only (output to Google Drive); **explainer** writes via `DBAnalysisEngine` (updates the ensemble `pl_indicator_daily` row: `eco`, `confidence`, `direction`, `conclusion`).
 - **Docs**: `docs/runbooks/brief-dual-track.md` · `brief-rollback-procedure.md` · `brief-ensemble-evolution.md`.

@@ -12,7 +12,7 @@ Use when one or more nightly pipeline jobs fail. Pipeline jobs are configured **
 
 ## Pipeline schedule and dependencies
 
-Reference for sequencing recovery actions. **P2b split**: Phase A is market-data driven and runs on weekday close (session T). Phase B is calendar-aware and runs every evening, agent-gated on `is_eve_of_trading_day()`; its CLI `--target-date` defaults to `next_session(today)`, but **every DB write is keyed to `data_date = previous_session(target) = T`** — the SAME row date as Phase A. (Sunday eve fires for Monday's session and therefore writes the **Friday** rows; Sat/Sun eves themselves skip.)
+Reference for sequencing recovery actions. **P2b split**: Phase A is market-data driven and runs on weekday close (session T). Phase B is calendar-aware and runs every evening, agent-gated on `is_eve_of_trading_day()`; a backfill passes `--session-date T` (the session to recover) and **every DB write is keyed to that `data_date = T`** — the SAME row date as Phase A. The pair `(target_date = next_session(T), data_date = T)` is resolved once in `scripts/db.py:resolve_phase_b_dates`; `target_date` frames prompts/filenames only. (Sunday eve fires for Monday's session and therefore writes the **Friday** rows; Sat/Sun eves themselves skip.)
 
 ```
 Phase A — weekday close, writes keyed to session T (the day that just traded):
@@ -43,7 +43,7 @@ Phase B — eve of T+next, agent-gated; ALL writes keyed to data_date = T:
 To force-rerun Phase B for a specific session date:
 ```bash
 gcloud run jobs execute cc-press-review-agent --region=europe-west9 --project=cacaooo \
-  --args="press-review,--target-date,2026-05-26,--force"
+  --args="press-review,--session-date,2026-05-26,--force"
 ```
 
 ### Dependency graph
@@ -133,30 +133,32 @@ Use the dependency graph to determine the cascade. Examples:
 > The bare `gcloud run jobs execute <job> --wait` (no date args) relies on each job's
 > default date derived from `today()`. That is correct **only if you re-run on the same eve**
 > as the original cron. If you discover the failure the **next morning** (e.g. a Sunday-eve
-> failure found Monday), the default targets the WRONG session — pass explicit date args so
-> `data_date` lands back on the failed session T.
+> failure found Monday), the default targets the WRONG session — pass `--session-date T`
+> so the rows land back on the failed session T.
 >
-> Per-job date-arg convention (NOT uniform — verified against each `main.py`):
+> Date-arg convention (UNIFORM across every Phase-B job since the `--session-date`
+> refactor — one flag, one value, `data_date` derivation centralized in
+> `scripts/db.py:resolve_phase_b_dates`):
 >
 > | job(s) | flag | value to pass | meaning |
 > |---|---|---|---|
-> | press-review · ensemble-explainer · compass-brief · compass-brief-ensemble (and daily-analysis, flag `--date`) | `--target-date` | **`next_session(T)`** | the upcoming session; job derives `data_date = previous_session(it) = T` internally |
-> | ensemble-compute | `--date` | **`T`** | the `data_date` **directly** (no internal `previous_session`) |
+> | press-review · ensemble-compute · daily-analysis · ensemble-explainer · compass-brief · compass-brief-ensemble | `--session-date` | **`T`** | the session being recovered = the row date every job writes. `target_date = next_session(T)` is derived internally for prompt framing only — never operator-facing. |
 >
-> Add `--force` to overwrite the degraded rows the failed run already left behind.
-> daily-analysis also needs `--algorithm-version legacy` (pins the legacy row, leaves the
-> ensemble row untouched). ensemble-compute: add `--historical` **only** if a contract roll
+> Add `--force` to overwrite the degraded rows the failed run already left behind
+> (and to bypass the eve-of-trading-day gate). daily-analysis also needs
+> `--algorithm-version legacy` (pins the legacy row, leaves the ensemble row
+> untouched). ensemble-compute: add `--historical` **only** if a contract roll
 > happened between T and now (otherwise it resolves the wrong front-month).
 >
-> Worked example — backfilling Friday `2026-06-19` after a Sunday-eve failure (next session = Monday `2026-06-22`):
+> Worked example — backfilling Friday `2026-06-19` (every job takes the SAME session date now):
 > ```bash
 > R="--region=europe-west9 --project=cacaooo --wait"
-> gcloud run jobs execute cc-press-review-agent      $R --args="press-review,--target-date,2026-06-22,--force"
-> gcloud run jobs execute cc-ensemble-compute        $R --args="ensemble-compute,--date,2026-06-19"
-> gcloud run jobs execute cc-ensemble-explainer      $R --args="ensemble-explainer,--target-date,2026-06-22,--force"
-> gcloud run jobs execute cc-daily-analysis          $R --args="daily-analysis,--date,2026-06-22,--force,--algorithm-version,legacy"
-> gcloud run jobs execute cc-compass-brief           $R --args="compass-brief,--target-date,2026-06-22,--force"
-> gcloud run jobs execute cc-compass-brief-ensemble  $R --args="compass-brief-ensemble,--target-date,2026-06-22,--force"
+> gcloud run jobs execute cc-press-review-agent      $R --args="press-review,--session-date,2026-06-19,--force"
+> gcloud run jobs execute cc-ensemble-compute        $R --args="ensemble-compute,--session-date,2026-06-19,--force"
+> gcloud run jobs execute cc-ensemble-explainer      $R --args="ensemble-explainer,--session-date,2026-06-19,--force"
+> gcloud run jobs execute cc-daily-analysis          $R --args="daily-analysis,--session-date,2026-06-19,--force,--algorithm-version,legacy"
+> gcloud run jobs execute cc-compass-brief           $R --args="compass-brief,--session-date,2026-06-19,--force"
+> gcloud run jobs execute cc-compass-brief-ensemble  $R --args="compass-brief-ensemble,--session-date,2026-06-19,--force"
 > ```
 > Verify each job SUCCEEDED before launching the next — never cascade onto a re-failed producer.
 

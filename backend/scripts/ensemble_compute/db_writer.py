@@ -154,7 +154,7 @@ def _int_or_none(x: int | None) -> int | None:
 def write_decision(
     session: Session,
     *,
-    target_date: date_cls,
+    data_date: date_cls,
     contract_id: uuid.UUID,
     algorithm_version_id: uuid.UUID,
     decision: EnsembleDecision,
@@ -184,7 +184,7 @@ def write_decision(
         session.execute(
             text(_UPSERT_SPECIALIST),
             {
-                "date": target_date,
+                "date": data_date,
                 "contract_id": contract_id,
                 "algorithm_version_id": algorithm_version_id,
                 "specialist_name": name,
@@ -204,7 +204,7 @@ def write_decision(
     session.execute(
         text(_UPSERT_ORCHESTRATOR),
         {
-            "date": target_date,
+            "date": data_date,
             "contract_id": contract_id,
             "algorithm_version_id": algorithm_version_id,
             "soft_gate_decision": str(sg.decision),
@@ -252,7 +252,7 @@ def write_decision(
     session.execute(
         text(_UPSERT_INDICATOR_DAILY),
         {
-            "date": target_date,
+            "date": data_date,
             "contract_id": contract_id,
             "algorithm_version_id": algorithm_version_id,
             "decision": final_decision,

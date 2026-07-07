@@ -35,7 +35,7 @@ poetry run compass-brief --dry-run
 poetry run compass-brief --output /tmp/brief.txt
 
 # Run for a specific trading session date (Phase B backfill/rerun)
-poetry run compass-brief --target-date 2026-06-13
+poetry run compass-brief --session-date 2026-06-13
 
 # Override the trading-day gate (e.g., for backfills on non-trading days)
 poetry run compass-brief --force
@@ -52,7 +52,7 @@ poetry run compass-brief --verbose
 | `--output` | none | Save brief to local file path |
 | `--verbose` | off | DEBUG logging |
 | `--force` | off | Run even on non-trading days (for backfills/debugging) |
-| `--target-date` | auto | Trading session date the brief covers (YYYY-MM-DD). Defaults to `get_next_session_date()` per Phase B |
+| `--session-date` | auto | Session date to (re)generate — the row date the brief covers and its filename stem (YYYY-MM-DD). Defaults (cron) to the last completed trading session via `resolve_phase_b_dates()` |
 
 ## Environment variables
 

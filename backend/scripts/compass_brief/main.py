@@ -64,13 +64,14 @@ def _parse_args() -> argparse.Namespace:
         help="Run even on non-trading days (for backfills/debugging)",
     )
     parser.add_argument(
-        "--target-date",
+        "--session-date",
         type=date_type.fromisoformat,
         default=None,
         help=(
-            "Trading session date the brief should be tagged to (YYYY-MM-DD). "
-            "Drives the YYYYMMDD-CompassBrief.txt filename + header. "
-            "Defaults to get_next_session_date(today()) per P2b."
+            "Session date to (re)generate, YYYY-MM-DD (= the row date, and the "
+            "YYYYMMDD-CompassBrief.txt filename stem). Default (cron): the last "
+            "completed trading session. Explicit --session-date bypasses the "
+            "eve-of-trading-day gate (backfills, manual reruns)."
         ),
     )
     return parser.parse_args()
@@ -83,23 +84,24 @@ def main() -> int:
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    # P2b gate: skip cleanly when tomorrow is not a trading session.
-    # --force / --target-date bypass the gate (backfills, manual reruns).
-    from scripts.db import get_next_session_date, is_eve_of_trading_day
+    # Phase-B date pair — single source of truth (scripts/db.py). The brief
+    # covers data_date (= last completed session, also the filename stem);
+    # target_date is the upcoming session it publishes for. --force /
+    # --session-date bypass the eve-of-trading-day gate.
+    from scripts.db import phase_b_should_skip, resolve_phase_b_dates
 
-    target_date: date_type = args.target_date or get_next_session_date()
+    if phase_b_should_skip(args.session_date, args.force):
+        logger.info("Phase-B gate: tomorrow is not a trading day — skipping cleanly.")
+        return 0
 
-    if not args.force and args.target_date is None:
-        if not is_eve_of_trading_day():
-            logger.info(
-                "Phase-B gate: tomorrow is not a trading day — skipping cleanly."
-            )
-            return 0
+    dates = resolve_phase_b_dates(args.session_date)
+    target_date: date_type = dates.target_date
+    data_date: date_type = dates.data_date
 
     logger.info("=" * 60)
     logger.info("Compass Brief Generator")
     logger.info("Mode: %s", "DRY RUN" if args.dry_run else "UPLOAD")
-    logger.info("Target session: %s", target_date)
+    logger.info("Session covered: %s | Publication target: %s", data_date, target_date)
     logger.info("=" * 60)
 
     try:
@@ -126,15 +128,12 @@ def main() -> int:
         # service uses the resolved session_date when the dashboard calendar
         # fetches audio for the user-facing display_date. See
         # `_parse_and_validate_date` in the dashboard endpoint.
-        from scripts.db import get_previous_session_date
-
-        previous_session = get_previous_session_date(target_date)
-        filename = f"{previous_session.strftime('%Y%m%d')}-CompassBrief.txt"
+        filename = f"{data_date.strftime('%Y%m%d')}-CompassBrief.txt"
 
         logger.info("Generated brief: %s (%d chars)", filename, len(brief))
         logger.info(
             "Session covered: %s | Publication target: %s | Data: today=%s, yesterday=%s",
-            previous_session,
+            data_date,
             target_date,
             data.today.date,
             data.yesterday.date,
@@ -145,15 +144,15 @@ def main() -> int:
         # target_date). If older than that we'd publish a brief built on
         # stale market data; skip the upload to avoid overwriting a good
         # one. Caller can re-run with --force after the upstream catch-up.
-        data_date = datetime.strptime(data.today.date, "%m/%d/%Y").date()
+        brief_content_date = datetime.strptime(data.today.date, "%m/%d/%Y").date()
         skip_upload = False
-        if data_date < previous_session and not args.force:
+        if brief_content_date < data_date and not args.force:
             logger.warning(
-                "Brief data date %s is older than previous session %s "
+                "Brief data date %s is older than the session it covers %s "
                 "(target=%s) — skipping upload to avoid overwriting an "
                 "existing brief. Use --force to override.",
+                brief_content_date,
                 data_date,
-                previous_session,
                 target_date,
             )
             skip_upload = True
@@ -171,7 +170,9 @@ def main() -> int:
         # 6. Upload to Drive (skip if stale data would overwrite a good brief)
         if skip_upload:
             logger.info("=" * 60)
-            logger.info("SKIPPED — upload skipped (stale data for %s)", data_date)
+            logger.info(
+                "SKIPPED — upload skipped (stale data for %s)", brief_content_date
+            )
             logger.info("=" * 60)
             return 0
 

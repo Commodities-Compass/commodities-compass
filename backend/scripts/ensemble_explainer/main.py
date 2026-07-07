@@ -90,12 +90,14 @@ def _parse_args() -> argparse.Namespace:
         help="Bypass eve-of-trading-day gate (backfills / manual reruns)",
     )
     parser.add_argument(
-        "--target-date",
+        "--session-date",
         type=date_type.fromisoformat,
         default=None,
         help=(
-            "Trading session the narrative addresses (YYYY-MM-DD). "
-            "Defaults to get_next_session_date(today()) per P2b."
+            "Session date to (re)generate, YYYY-MM-DD (= the row date the "
+            "narrative enriches). Default (cron): the last completed trading "
+            "session. Explicit --session-date bypasses the eve-of-trading-day "
+            "gate (backfills, manual reruns)."
         ),
     )
     parser.add_argument(
@@ -152,24 +154,21 @@ def main() -> int:
 
     from scripts.contract_resolver import resolve_active_code
     from scripts.db import (
-        get_next_session_date,
-        get_previous_session_date,
         get_session,
-        is_eve_of_trading_day,
+        phase_b_should_skip,
+        resolve_phase_b_dates,
     )
 
-    target_date: date_type = args.target_date or get_next_session_date()
+    # Phase-B date pair — single source of truth (scripts/db.py). The narrative
+    # addresses target_date (upcoming session) but enriches the ensemble row at
+    # data_date (= last completed session).
+    if phase_b_should_skip(args.session_date, args.force):
+        logger.info("Phase-B gate: tomorrow is not a trading day — skipping cleanly.")
+        return 0
 
-    # P2b: gate the daily cron on "is tomorrow a trading day?". --force or
-    # explicit --target-date bypass the gate (backfills, manual reruns).
-    if not args.force and args.target_date is None:
-        if not is_eve_of_trading_day():
-            logger.info(
-                "Phase-B gate: tomorrow is not a trading day — skipping cleanly."
-            )
-            return 0
-
-    data_date: date_type = get_previous_session_date(target_date)
+    dates = resolve_phase_b_dates(args.session_date)
+    target_date: date_type = dates.target_date
+    data_date: date_type = dates.data_date
 
     logger.info("=" * 60)
     logger.info("Ensemble Explainer (DBAnalysisEngine auto-align wrapper)")

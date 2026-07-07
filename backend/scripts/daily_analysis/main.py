@@ -3,13 +3,13 @@
 Usage:
     poetry run daily-analysis --dry-run
     poetry run daily-analysis --contract CAK26
-    poetry run daily-analysis --date 2026-03-20
+    poetry run daily-analysis --session-date 2026-03-20
 """
 
 import argparse
 import logging
 import sys
-from datetime import datetime
+from datetime import date
 from pathlib import Path
 
 import sentry_sdk
@@ -40,13 +40,14 @@ def _parse_args() -> argparse.Namespace:
         help="Contract code (default: active contract from DB)",
     )
     parser.add_argument(
-        "--date",
-        type=str,
+        "--session-date",
+        type=date.fromisoformat,
         default=None,
         help=(
-            "Target session date YYYY-MM-DD. Default: next_session_date(today) "
-            "per P2b — writes are tagged to the upcoming trading session. "
-            "Manual --date bypasses the eve-of-trading-day gate (backfill)."
+            "Session date to (re)generate, YYYY-MM-DD (= the row date the "
+            "analysis updates). Default (cron): the last completed trading "
+            "session. Explicit --session-date bypasses the eve-of-trading-day "
+            "gate (backfills, manual reruns)."
         ),
     )
     parser.add_argument("--dry-run", action="store_true", help="Log only, no writes")
@@ -74,19 +75,6 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _resolve_date(date_str: str | None) -> datetime:
-    """P2b: default = upcoming trading session, NOT today.
-
-    Explicit --date YYYY-MM-DD always takes precedence (used by backfills).
-    """
-    if date_str:
-        return datetime.strptime(date_str, "%Y-%m-%d")
-    from scripts.db import get_next_session_date
-
-    next_session = get_next_session_date()
-    return datetime(next_session.year, next_session.month, next_session.day)
-
-
 @monitor(monitor_slug="daily-analysis")
 def main() -> int:
     args = _parse_args()
@@ -94,18 +82,16 @@ def main() -> int:
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    # P2b gate: skip cleanly when the upcoming day is not a trading session.
-    # --date or --force bypass the gate (backfills, manual reruns).
-    from scripts.db import is_eve_of_trading_day
+    # Phase-B date pair — single source of truth (scripts/db.py). --session-date
+    # or --force bypass the eve-of-trading-day gate (backfills, manual reruns).
+    from scripts.db import phase_b_should_skip, resolve_phase_b_dates
 
-    if not args.force and args.date is None:
-        if not is_eve_of_trading_day():
-            logger.info(
-                "Phase-B gate: tomorrow is not a trading day — skipping cleanly."
-            )
-            return 0
+    if phase_b_should_skip(args.session_date, args.force):
+        logger.info("Phase-B gate: tomorrow is not a trading day — skipping cleanly.")
+        return 0
 
-    target_date = _resolve_date(args.date)
+    dates = resolve_phase_b_dates(args.session_date)
+    target_date, data_date = dates.target_date, dates.data_date
 
     # Resolve contract: explicit CLI arg or active contract from DB
     contract_code: str = args.contract
@@ -117,33 +103,29 @@ def main() -> int:
             contract_code = resolve_active_code(session)
         logger.info("Resolved active contract from DB: %s", contract_code)
 
-    # Pre-flight: P2b — check for OHLCV on the PREVIOUS trading session,
-    # not the upcoming one. target_date is the upcoming session (no data yet);
-    # we need the most recent completed close.
-    from scripts.db import get_previous_session_date, has_contract_data_for_date
+    # Pre-flight: the analysis reads the last completed close (= data_date).
+    # target_date is the upcoming session and has no data yet.
+    from scripts.db import has_contract_data_for_date
 
-    target_only_date = (
-        target_date.date() if isinstance(target_date, datetime) else target_date
-    )
-    check_date = get_previous_session_date(target_only_date)
-    if not has_contract_data_for_date(check_date):
+    if not has_contract_data_for_date(data_date):
         if args.force:
             logger.warning(
-                "No data in pl_contract_data_daily for previous session %s "
+                "No data in pl_contract_data_daily for session %s "
                 "— continuing anyway (--force)",
-                check_date,
+                data_date,
             )
         else:
             logger.warning(
-                "No data in pl_contract_data_daily for previous session %s "
+                "No data in pl_contract_data_daily for session %s "
                 "— skipping analysis (upstream scraper may not have run). "
                 "Use --force to override.",
-                check_date,
+                data_date,
             )
             return 0
 
     return _run_db_pipeline(
         target_date=target_date,
+        data_date=data_date,
         contract_code=contract_code,
         llm_provider=args.llm_provider,
         llm_model=args.llm_model,
@@ -153,7 +135,8 @@ def main() -> int:
 
 
 def _run_db_pipeline(
-    target_date: datetime,
+    target_date: date,
+    data_date: date,
     contract_code: str,
     llm_provider: str,
     llm_model: str | None,
@@ -175,7 +158,7 @@ def _run_db_pipeline(
 
     logger.info("=" * 60)
     logger.info("Daily Analysis Pipeline")
-    logger.info("Date: %s", target_date.strftime("%Y-%m-%d"))
+    logger.info("Session (row date): %s | prepares: %s", data_date, target_date)
     logger.info("Contract: %s", contract_code)
     logger.info("Mode: %s", "DRY RUN" if dry_run else "FULL PIPELINE")
     logger.info("=" * 60)
@@ -192,9 +175,8 @@ def _run_db_pipeline(
                 llm_model=llm_model,
             )
             result = db_engine.run(
-                target_date=target_date.date()
-                if isinstance(target_date, datetime)
-                else target_date,
+                target_date=target_date,
+                data_date=data_date,
                 contract_code=contract_code,
                 dry_run=dry_run,
             )
@@ -202,7 +184,8 @@ def _run_db_pipeline(
         sentry_sdk.set_context(
             "daily_analysis",
             {
-                "date": target_date.strftime("%Y-%m-%d"),
+                "date": data_date.isoformat(),
+                "target_date": target_date.isoformat(),
                 "contract": contract_code,
                 "macroeco_bonus": result.macro.macroeco_bonus,
                 "final_indicator": result.final_indicator,

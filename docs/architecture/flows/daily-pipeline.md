@@ -14,11 +14,12 @@ The pipeline is split into two phases that differ on *trigger semantics* and *wh
 |---|---|---|
 | **Trigger** | Weekday-only cron (`* * 1-5`) | Daily cron (`* * *`) + in-agent gate `is_eve_of_trading_day()` |
 | **Fires when** | Mon–Fri, regardless of holidays | Eve of any trading day (Sun eve → Mon, skips Fri/Sat eves & holiday eves) |
-| **Row date written** | Session date **T** (the day trading happened) | `data_date = get_previous_session_date(target_date)` — **also T**, the just-closed session |
-| **`--target-date` default** | n/a (writes "today") | `get_next_session_date(today())` — drives prompt framing, filename, Sentry context only |
+| **Row date written** | Session date **T** (the day trading happened) | `data_date` from `resolve_phase_b_dates()` — **also T**, the just-closed session |
+| **Backfill flag** | per-scraper `--date` | uniform `--session-date T` (the row date to regenerate) across all 7 jobs |
+| **`target_date` (derived)** | n/a (writes "today") | `next_session(T)` — drives prompt framing, filename, Sentry context only; never operator-facing |
 | **Jobs** | scrapers + indicator engine | LLM agents + ensemble compute + briefs |
 
-**The invariant**: every Phase A and Phase B write for a given session lands on the **same `date = T`**. Phase B's `--target-date` is T+next (used for *framing* and brief filenames), but every DB write is re-keyed to `data_date = previous_session(target_date) = T`. This is what keeps `pl_indicator_daily`, `pl_orchestrator_decision`, `pl_fundamental_article`, `pl_weather_observation` all consistent on one session date — which is exactly what the dashboard's `_parse_and_validate_date()` resolves from `display_date = next_trading_day(T)`.
+**The invariant**: every Phase A and Phase B write for a given session lands on the **same `date = T`**. Phase B derives its pair once via `scripts/db.py:resolve_phase_b_dates(args.session_date)` — `target_date` (T+next) is used only for *framing* and brief filenames, while every DB write is keyed to `data_date = T`. This is what keeps `pl_indicator_daily`, `pl_orchestrator_decision`, `pl_fundamental_article`, `pl_weather_observation` all consistent on one session date — which is exactly what the dashboard's `_parse_and_validate_date()` resolves from `display_date = next_trading_day(T)`.
 
 **Why Phase B is daily, not weekday-only**: the old weekday-only Phase B left a ~60h Sun→Mon freshness gap. Now Phase B fires **Sunday eve** for Monday's session — and crucially, `cc-ensemble-compute` (19:18) reads the `pl_article_segment` that `cc-press-review-agent` (19:05) just wrote that same Sunday evening with `article_date = Friday`. That is the mechanism by which the ensemble decision for Friday's session incorporates news that broke over the weekend.
 
@@ -199,7 +200,7 @@ Force a Phase B rerun for a specific session date (bypass the eve gate):
 
 ```bash
 gcloud run jobs execute cc-press-review-agent --region=europe-west9 --project=cacaooo \
-  --args="press-review,--target-date,2026-05-26,--force"
+  --args="press-review,--session-date,2026-05-26,--force"
 ```
 
 Full diagnosis + per-scenario cascades: [pipeline-failure-recovery.md](../../runbooks/pipeline-failure-recovery.md). Ensemble-specific: [ensemble-failure-recovery.md](../../runbooks/ensemble-failure-recovery.md).

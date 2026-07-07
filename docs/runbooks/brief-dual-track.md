@@ -122,11 +122,11 @@ gcloud scheduler jobs pause cc-compass-brief --location europe-west1 --project c
 ```bash
 gcloud run jobs execute cc-ensemble-explainer \
   --region europe-west9 --project cacaooo \
-  --args="ensemble-explainer,--target-date,2026-05-26,--force"
+  --args="ensemble-explainer,--session-date,2026-05-26,--force"
 
 gcloud run jobs execute cc-compass-brief-ensemble \
   --region europe-west9 --project cacaooo \
-  --args="compass-brief-ensemble,--target-date,2026-05-26,--force"
+  --args="compass-brief-ensemble,--session-date,2026-05-26,--force"
 ```
 
 L'explainer doit tourner AVANT le brief (l'explainer écrit les champs LLM, le brief les lit).
@@ -136,14 +136,14 @@ L'explainer doit tourner AVANT le brief (l'explainer écrit les champs LLM, le b
 ```bash
 gcloud run jobs execute cc-daily-analysis \
   --region europe-west9 --project cacaooo \
-  --args="daily-analysis,--date,2026-05-26,--algorithm-version,legacy,--force"
+  --args="daily-analysis,--session-date,2026-05-26,--algorithm-version,legacy,--force"
 
 gcloud run jobs execute cc-compass-brief \
   --region europe-west9 --project cacaooo \
   --args="compass-brief,--force"
 ```
 
-(Le brief legacy ne supporte pas encore `--target-date` directement — il lit les 2 dernières dates de `pl_contract_data_daily`.)
+(Le brief legacy supporte désormais `--session-date` — la date de session à régénérer ; sans ce flag, il lit les 2 dernières dates de `pl_contract_data_daily`.)
 
 ## Comparaison side-by-side d'un brief sur la même date
 

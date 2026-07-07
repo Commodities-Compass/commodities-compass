@@ -81,8 +81,8 @@ gcloud run jobs execute cc-compute-indicators \
 Only if you want the crossover days' *ensemble* decisions recomputed on the true front-month, **and** the window is small (we cap at ~7 sessions), **and** you have real OHLCV+OI for them:
 ```bash
 # chronological, one date at a time; --historical resolves front-month-by-OI per date
-poetry run ensemble-compute --date <D> --historical   # for each crossover day, oldest first
-poetry run ensemble-explainer --target-date <D>       # DB narrative only (~$0.13/day)
+poetry run ensemble-compute --session-date <D> --historical   # for each crossover day, oldest first
+poetry run ensemble-explainer --session-date <D>       # DB narrative only (~$0.13/day)
 ```
 - This **overwrites** `pl_orchestrator_decision` for those days; the old (rolled-off contract) rows linger as duplicates per date — inert, because the chained-window join (PR #46) and the dashboard resolver both pick the front-month one. We don't delete produced signals (immutability).
 - **Do NOT** re-run `cc-compass-brief-ensemble` / regenerate NotebookLM podcasts for past days — those are frozen "published editions". The explainer rewrite is DB-only and does not touch Drive briefs or podcasts.

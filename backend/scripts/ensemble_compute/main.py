@@ -12,10 +12,10 @@ Sequencing on a typical evening (eve of next session): cc-meteo-agent
 cc-daily-analysis (19:20) → cc-ensemble-explainer (19:25) → briefs.
 
 Usage:
-    poetry run ensemble-compute                          # default = previous_session(next_session(today))
-    poetry run ensemble-compute --date 2026-05-15        # explicit, bypasses gate
+    poetry run ensemble-compute                              # cron default = last completed session
+    poetry run ensemble-compute --session-date 2026-05-15    # explicit row date, bypasses gate
     poetry run ensemble-compute --dry-run --verbose
-    poetry run ensemble-compute --date 2026-05-15 --force
+    poetry run ensemble-compute --session-date 2026-05-15 --force
 
 Per CAMPAIGN_5_PROD_DEPLOYMENT.md §6.2:
     - Reads pl_contract_data_daily × pl_derived_indicators for market_history.
@@ -113,25 +113,24 @@ MARKET_LOOKBACK_DAYS = 600
 def _parse_args() -> argparse.Namespace:
     parser = build_base_argparser("Compute C5 ensemble decision (soft-gate + wrapper)")
     parser.add_argument(
-        "--date",
+        "--session-date",
         type=lambda s: datetime.strptime(s, "%Y-%m-%d").date(),
         default=None,
         help=(
-            "Target session date — the WHERE/UPDATE key on "
-            "pl_orchestrator_decision/pl_specialist_prediction. "
-            "Default (no --date): previous_session(next_session(today)), i.e. "
-            "the most recent completed trading session before the upcoming "
-            "one this run prepares. Bypasses the eve-of-trading-day gate "
-            "when set explicitly."
+            "Session date to (re)generate, YYYY-MM-DD — the WHERE/UPDATE key on "
+            "pl_orchestrator_decision/pl_specialist_prediction/pl_indicator_daily. "
+            "Default (cron): the last completed trading session. Explicit "
+            "--session-date bypasses the eve-of-trading-day gate (backfills, reruns)."
         ),
     )
     parser.add_argument(
         "--historical",
         action="store_true",
         help=(
-            "Resolve the contract via front-month-by-OI on --date instead of "
-            "the current ref_contract.is_active. Use this for backfills where "
-            "the active contract on the target date wasn't yet today's roll."
+            "Resolve the contract via front-month-by-OI on --session-date "
+            "instead of the current ref_contract.is_active. Use this for "
+            "backfills where the active contract on that session wasn't yet "
+            "today's roll."
         ),
     )
     parser.add_argument(
@@ -198,36 +197,23 @@ def main() -> int:
     args = _parse_args()
     configure_logging(verbose=args.verbose)
 
-    from scripts.db import (
-        get_next_session_date,
-        get_previous_session_date,
-        get_session,
-        is_eve_of_trading_day,
-    )
+    from scripts.db import get_session, phase_b_should_skip, resolve_phase_b_dates
 
     # P2b Phase B gate: skip cleanly when the upcoming day is not a trading
-    # session. Explicit --date or --force bypass the gate (backfills, reruns).
-    # Pre-P2b semantic (today must be a trading day) replaced by eve-of-trading
-    # so Sunday eve fires for Monday's session — letting the MacroSignal pick
-    # up weekend press-review writes that target Friday's data_date.
-    if not args.force and args.date is None:
-        if not is_eve_of_trading_day():
-            logger.info(
-                "Phase-B gate: tomorrow is not a trading day — skipping cleanly."
-            )
-            return 0
+    # session. Explicit --session-date or --force bypass the gate (backfills,
+    # reruns). Eve-of-trading semantics so Sunday eve fires for Monday's
+    # session — letting the MacroSignal pick up weekend press-review writes
+    # that land on Friday's data_date.
+    if phase_b_should_skip(args.session_date, args.force):
+        logger.info("Phase-B gate: tomorrow is not a trading day — skipping cleanly.")
+        return 0
 
-    # ``target_date`` retains its existing meaning inside this file (= the
-    # session date this run computes for, used as the WHERE/UPDATE key on
-    # pl_orchestrator_decision / pl_specialist_prediction). Post-P2b, when
-    # called by the cron without --date, this is the most recent completed
-    # session (= previous_session of the upcoming target). Equal to today
-    # mid-week, equal to Friday on Sunday eve.
-    if args.date:
-        target_date = args.date
-    else:
-        next_session = get_next_session_date()
-        target_date = get_previous_session_date(next_session)
+    # ``data_date`` = the session date this run computes for = the WHERE/UPDATE
+    # key on pl_orchestrator_decision / pl_specialist_prediction /
+    # pl_indicator_daily. Cron: the most recent completed session (= today
+    # mid-week, = Friday on Sunday eve). ensemble-compute never uses target_date
+    # (T+1) — it only writes the row, so we take data_date from the pair.
+    data_date = resolve_phase_b_dates(args.session_date).data_date
 
     is_shadow = args.algorithm_version != LIVE_ALGO_VERSION
     logger.info("=" * 60)
@@ -236,17 +222,17 @@ def main() -> int:
         args.algorithm_version,
         " — SHADOW" if is_shadow else "",
     )
-    logger.info("Date: %s", target_date)
+    logger.info("Date: %s", data_date)
     logger.info("Mode: %s", "DRY RUN" if args.dry_run else "LIVE")
     logger.info("=" * 60)
 
     try:
         with get_session() as session:
             if args.historical:
-                contract_id = resolve_active_at_date(session, target_date)
+                contract_id = resolve_active_at_date(session, data_date)
                 logger.info(
                     "Historical mode: resolved front-month-by-OI for %s",
-                    target_date,
+                    data_date,
                 )
             else:
                 contract_id = resolve_active(session)
@@ -323,26 +309,26 @@ def main() -> int:
 
             market = load_market_history(
                 session,
-                end_date=target_date,
+                end_date=data_date,
                 contract_id=contract_id,
                 lookback_days=MARKET_LOOKBACK_DAYS,
             )
             recent_decisions = load_recent_orchestrator_decisions(
                 session,
-                end_date=target_date,
+                end_date=data_date,
                 contract_id=contract_id,
                 algorithm_version_id=algo_version_id,
             )
             recent_votes = load_recent_specialist_votes(
                 session,
-                end_date=target_date,
+                end_date=data_date,
                 contract_id=contract_id,
                 algorithm_version_id=algo_version_id,
             )
-            macro = load_macro_signal(session, today=target_date)
+            macro = load_macro_signal(session, today=data_date)
 
             request = DecideRequest(
-                today=pd.Timestamp(target_date),
+                today=pd.Timestamp(data_date),
                 contract_id=str(contract_id),
                 market_history=market,
                 recent_decisions=recent_decisions,
@@ -402,7 +388,7 @@ def main() -> int:
 
             counts = write_decision(
                 session,
-                target_date=target_date,
+                data_date=data_date,
                 contract_id=contract_id,
                 algorithm_version_id=algo_version_id,
                 decision=decision,
@@ -420,7 +406,7 @@ def main() -> int:
         sentry_sdk.set_context(
             "ensemble_decision",
             {
-                "target_date": target_date.isoformat(),
+                "data_date": data_date.isoformat(),
                 "wrapped_decision": decision.wrapped_decision,
                 "soft_gate_decision": decision.soft_gate_decision.decision,
                 "wrapper_fired_running_acc": decision.wrapper_fired_running_acc,
@@ -429,7 +415,7 @@ def main() -> int:
             },
         )
 
-        logger.info("SUCCESS — ensemble-compute done for %s", target_date)
+        logger.info("SUCCESS — ensemble-compute done for %s", data_date)
         return 0
 
     except (KeyboardInterrupt, SystemExit):

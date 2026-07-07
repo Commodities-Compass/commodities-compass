@@ -15,10 +15,13 @@ resource "google_artifact_registry_repository" "docker" {
   # making Artifact Registry Storage the #1 line item (€21.09 in June 2026).
   # The missing piece is `delete-old-versions`. See docs/gcp-cost-analysis/2026-06.md.
   #
-  # dry_run = true → the FIRST `terraform apply` only LOGS what would be deleted
-  # (Cloud Logging, resourceName ".../cleanupPolicies"). Validate the purge count,
-  # then set this to false and re-apply to actually reclaim the storage.
-  cleanup_policy_dry_run = true
+  # Policies are LIVE (dry_run = false). Validated 2026-07-07 before flipping:
+  # the only image versions pinned by the 21 live Cloud Run workloads (backend,
+  # frontend, jobs — all at the current main SHA) are rank #1-2 / 0-1 days old,
+  # so they are doubly protected by `keep-minimum-versions` and the 30d threshold.
+  # deploy.yml redeploys every workload on each main push, so nothing pins a stale
+  # image. To re-validate a future policy change, set this back to true first.
+  cleanup_policy_dry_run = false
 
   cleanup_policies {
     id     = "keep-minimum-versions"

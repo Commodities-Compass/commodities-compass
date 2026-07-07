@@ -27,7 +27,7 @@ Exemple : tu veux ajouter une section « EXPOSURE FX » qui utilise `data.fx_gbp
    lines.append("")
    ```
 3. Tester : `poetry run pytest scripts/compass_brief_ensemble/tests/`
-4. Dry-run : `poetry run compass-brief-ensemble --target-date 2026-05-22 --dry-run`
+4. Dry-run : `poetry run compass-brief-ensemble --session-date 2026-05-22 --dry-run`
 5. PR + merge + reprend le cron normal
 
 ### Cas 2 — La donnée n'existe pas encore dans `EnsembleBriefData`
@@ -109,7 +109,7 @@ Depuis le refactor 2026-05-27 (PR #17), `cc-ensemble-explainer` partage les prom
 
 **Procédure pour tuner ENSEMBLE des 2 tracks** :
 1. Éditer les blocs concernés dans `prompts.py` (e.g. la section "Procède en 4 étapes" ou le format de conclusion).
-2. Test local : `poetry run daily-analysis --date YYYY-MM-DD --dry-run` (legacy) + `poetry run ensemble-explainer --target-date YYYY-MM-DD --dry-run` (ensemble).
+2. Test local : `poetry run daily-analysis --session-date YYYY-MM-DD --dry-run` (legacy) + `poetry run ensemble-explainer --session-date YYYY-MM-DD --dry-run` (ensemble).
 3. Comparer les 2 outputs sur 3 dates historiques représentatives.
 4. PR + merge + observation 2-3 jours en prod.
 

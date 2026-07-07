@@ -58,7 +58,7 @@ The ensemble job is **fail-loud, no auto-retry** (rule `pipeline-error-handling.
 
 If the ensemble fails mid-pipeline (e.g., 19:18 today), the cascade impact is **zero** (downstream `cc-daily-analysis` reads legacy, `cc-compass-brief` reads legacy). Just rerun ensemble alone when ready:
 ```bash
-gcloud run jobs execute cc-ensemble-compute --region=europe-west9 --project=cacaooo --args='--date,YYYY-MM-DD'
+gcloud run jobs execute cc-ensemble-compute --region=europe-west9 --project=cacaooo --args='--session-date,YYYY-MM-DD'
 ```
 
 ## What NOT to do

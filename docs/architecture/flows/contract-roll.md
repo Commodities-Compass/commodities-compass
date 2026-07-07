@@ -142,8 +142,8 @@ Only if you want crossover-day *ensemble* decisions recomputed on the true front
 
 ```bash
 # chronological, oldest first; --historical resolves front-month-by-OI per date
-poetry run ensemble-compute --date <D> --historical
-poetry run ensemble-explainer --target-date <D>   # DB narrative only (~$0.13/day)
+poetry run ensemble-compute --session-date <D> --historical
+poetry run ensemble-explainer --session-date <D>   # DB narrative only (~$0.13/day)
 ```
 
 > ⚠️ **FOOTGUN — `--historical` uses `resolve_active_at_date` (OI), live runs use `resolve_active` (flag).** The live `cc-ensemble-compute` resolves the active contract from `ref_contract.is_active`; the backfill resolves front-month-by-OI per date. These can disagree on roll-boundary dates. That's correct (backfill wants per-date truth) but it means a backfill can write a *different* contract's decision than the live run would have.

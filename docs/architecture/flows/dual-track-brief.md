@@ -108,7 +108,7 @@ This is what keeps **brief ↔ NotebookLM audio ↔ dashboard lookup** aligned. 
 
 - `DBBriefReader.read_all()` reads the legacy row plus a yesterday/today technicals snapshot (legacy brief is T+1, "yesterday vs today" framed).
 - `generate_brief()` renders the `.txt`.
-- **Stale-data guard**: if `data.today.date < previous_session` (upstream technicals never caught up), the job **skips the upload** rather than overwrite a good brief, and exits 0. Re-run with `--force` after upstream catch-up. (Legacy `cc-compass-brief` does not yet take `--target-date`; it reads the two most recent `pl_contract_data_daily` dates.)
+- **Stale-data guard**: if `data.today.date < previous_session` (upstream technicals never caught up), the job **skips the upload** rather than overwrite a good brief, and exits 0. Re-run with `--force` after upstream catch-up. (Legacy `cc-compass-brief` now takes `--session-date` — the session date to regenerate; without it, it reads the two most recent `pl_contract_data_daily` dates.)
 - Uploads to Drive (idempotent — same filename overwrites).
 
 ---

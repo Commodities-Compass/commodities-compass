@@ -27,7 +27,7 @@ echo "Log: ${LOG}" | tee -a "${LOG}"
 
 for d in $DATES; do
   N=$((N + 1))
-  RC=$(poetry run ensemble-compute --date "$d" --historical 2>>"${LOG}" >>"${LOG}"; echo $?)
+  RC=$(poetry run ensemble-compute --session-date "$d" --historical 2>>"${LOG}" >>"${LOG}"; echo $?)
   if [ "$RC" = "0" ]; then
     N_OK=$((N_OK + 1))
     printf "[%3d/%3d] %s OK\n" "$N" "$N_TOTAL" "$d"

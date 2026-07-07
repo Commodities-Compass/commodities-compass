@@ -72,13 +72,14 @@ def main() -> int:
         help="Run even on non-trading days (for backfills/debugging)",
     )
     parser.add_argument(
-        "--target-date",
+        "--session-date",
         type=date_type.fromisoformat,
         default=None,
         help=(
-            "Trading session date the review should be tagged to "
-            "(YYYY-MM-DD). Defaults to get_next_session_date(today()) — the "
-            "upcoming trading session per P2b calendar-aware timing."
+            "Session date to (re)generate, YYYY-MM-DD (= the row date the "
+            "review lands on). Default (cron): the last completed trading "
+            "session. Explicit --session-date bypasses the eve-of-trading-day "
+            "gate (backfills, manual reruns)."
         ),
     )
 
@@ -87,32 +88,19 @@ def main() -> int:
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    # P2b: resolve target_date = upcoming trading session.
-    from scripts.db import (
-        get_next_session_date,
-        get_previous_session_date,
-        is_eve_of_trading_day,
-    )
+    # Phase-B date pair — single source of truth (scripts/db.py). The prompt
+    # addresses target_date (the upcoming session the review informs), but the
+    # ROW is dated at data_date (= last completed session) so dashboard queries
+    # align with the pl_* rows compute-indicators wrote for the same session.
+    from scripts.db import phase_b_should_skip, resolve_phase_b_dates
 
-    target_date: date_type = args.target_date or get_next_session_date()
+    if phase_b_should_skip(args.session_date, args.force):
+        logger.info("Phase-B gate: tomorrow is not a trading day — skipping cleanly.")
+        return 0
 
-    # P2b: gate the daily cron on "is tomorrow a trading day?". --force or an
-    # explicit --target-date bypass the gate (backfills, manual reruns).
-    if not args.force and args.target_date is None:
-        if not is_eve_of_trading_day():
-            logger.info(
-                "Phase-B gate: tomorrow is not a trading day — skipping cleanly."
-            )
-            return 0
-
-    # ``data_date`` = last completed trading session = the row date that
-    # matches the dashboard's session_date convention (= previous_trading_day
-    # of the display_date the frontend shows). The prompt addresses
-    # ``target_date`` (the upcoming session the review informs), but the
-    # ROW is dated at ``data_date`` so dashboard queries align with
-    # pl_contract_data_daily / pl_indicator_daily rows that compute-indicators
-    # wrote for the same session.
-    data_date: date_type = get_previous_session_date(target_date)
+    dates = resolve_phase_b_dates(args.session_date)
+    target_date: date_type = dates.target_date
+    data_date: date_type = dates.data_date
 
     providers = parse_providers(args.provider)
 

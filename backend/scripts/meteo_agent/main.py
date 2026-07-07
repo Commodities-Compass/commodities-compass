@@ -59,13 +59,14 @@ def main() -> int:
         help="Backfill seasonal scores for current campaign from Open-Meteo history, then exit",
     )
     parser.add_argument(
-        "--target-date",
+        "--session-date",
         type=date_type.fromisoformat,
         default=None,
         help=(
-            "Trading session date the observation should be tagged to "
-            "(YYYY-MM-DD). Defaults to get_next_session_date(today()) — the "
-            "upcoming trading session per P2b calendar-aware timing."
+            "Session date to (re)generate, YYYY-MM-DD (= the row date the "
+            "observation lands on). Default (cron): the last completed trading "
+            "session. Explicit --session-date bypasses the eve-of-trading-day "
+            "gate (backfills, manual reruns)."
         ),
     )
 
@@ -74,32 +75,24 @@ def main() -> int:
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    # P2b: target_date = upcoming trading session. --force or explicit
-    # --target-date bypass the gate (backfills, manual reruns).
-    from scripts.db import (
-        get_next_session_date,
-        get_previous_session_date,
-        is_eve_of_trading_day,
-    )
-
-    target_date: date_type = args.target_date or get_next_session_date()
-
-    if not args.force and args.target_date is None:
-        if not is_eve_of_trading_day():
-            logger.info(
-                "Phase-B gate: tomorrow is not a trading day — skipping cleanly."
-            )
-            return 0
-
-    # Bootstrap mode — compute and store seasonal scores, then exit
+    # Bootstrap mode — compute and store seasonal scores, then exit. Runs
+    # before the Phase-B gate: it is a manual maintenance op, independent of
+    # the trading calendar and of target_date/data_date.
     if args.bootstrap_memory:
         return _run_bootstrap()
 
-    # ``data_date`` = last completed trading session, matches the dashboard's
-    # session_date convention. The row is dated here even though the prompt
-    # frames the analysis as "preparing the upcoming session" — see press
-    # review agent for the same pattern + rationale.
-    data_date: date_type = get_previous_session_date(target_date)
+    # Phase-B date pair — single source of truth (scripts/db.py). The row is
+    # dated at data_date (= last completed session) even though the prompt
+    # frames the analysis as "preparing the upcoming session" (target_date).
+    from scripts.db import phase_b_should_skip, resolve_phase_b_dates
+
+    if phase_b_should_skip(args.session_date, args.force):
+        logger.info("Phase-B gate: tomorrow is not a trading day — skipping cleanly.")
+        return 0
+
+    dates = resolve_phase_b_dates(args.session_date)
+    target_date: date_type = dates.target_date
+    data_date: date_type = dates.data_date
 
     logger.info("=" * 60)
     logger.info("Meteo Agent - Cocoa Weather Analysis")

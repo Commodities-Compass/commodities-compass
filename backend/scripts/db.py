@@ -8,6 +8,7 @@ import logging
 import os
 from collections.abc import Generator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import date
 
 from sqlalchemy import create_engine
@@ -128,6 +129,21 @@ def is_eve_of_trading_day(
         return is_trading_day_sync(session, tomorrow, exchange_code)
 
 
+def is_trading_day(
+    check_date: date,
+    exchange_code: str = "IFEU",
+) -> bool:
+    """Return True iff ``check_date`` is a trading session for the exchange.
+
+    Opens its own short-lived session. Used to fail-loud on an operator
+    ``--session-date`` that names a weekend or exchange holiday.
+    """
+    from app.utils.trading_calendar import is_trading_day_sync
+
+    with get_session() as session:
+        return is_trading_day_sync(session, check_date, exchange_code)
+
+
 def get_previous_session_date(
     target_date: date,
     exchange_code: str = "IFEU",
@@ -142,6 +158,88 @@ def get_previous_session_date(
 
     with get_session() as session:
         return get_previous_trading_day_sync(session, target_date, exchange_code)
+
+
+@dataclass(frozen=True)
+class PhaseBDates:
+    """Immutable Phase-B date pair — the single source of truth for the split.
+
+    Every Phase-B job (meteo, press_review, ensemble_compute, daily_analysis,
+    ensemble_explainer, compass_brief, compass_brief_ensemble) derives its two
+    dates from :func:`resolve_phase_b_dates` and NEVER re-computes them inline.
+
+    Attributes:
+        target_date: T+1 — the upcoming trading session the work informs.
+            Drives prompt framing and Sentry context only. NEVER a DB write key.
+        data_date: T — the last completed session. The row date that EVERY
+            Phase-B DB write and brief filename is keyed to.
+
+    Getting this backwards (writing a row at ``target_date``) is the recurring
+    P2b bug that renders the dashboard empty the morning after — see
+    ``docs/architecture/flows/date-semantics.md``.
+    """
+
+    target_date: date
+    data_date: date
+
+
+def resolve_phase_b_dates(
+    session_date: date | None = None,
+    exchange_code: str = "IFEU",
+) -> PhaseBDates:
+    """Resolve the ``(target_date, data_date)`` pair for a Phase-B job.
+
+    Two paths, one immutable result:
+
+    * **Cron** (``session_date=None``) — derive from today. The job fires on the
+      eve of a trading day, so ``target_date`` is the upcoming session and
+      ``data_date`` is the session that just closed::
+
+          target_date = get_next_session_date(today)        # T+1
+          data_date   = get_previous_session_date(target)   # T
+
+    * **Backfill** (explicit ``session_date``) — the operator types the ROW date
+      (the session to (re)generate). ``data_date`` is exactly what they typed;
+      ``target_date`` is derived and only used for framing::
+
+          data_date   = session_date                        # T (what you type)
+          target_date = get_next_session_date(session_date) # T+1 (derived)
+
+    Both paths yield the same pair for the same underlying session, so a backfill
+    of session T produces rows identical to the cron run that first wrote T.
+    """
+    if session_date is not None:
+        # Fail-loud: an explicit --session-date must name a real trading session,
+        # otherwise the job would write a pl_* row keyed to a weekend/holiday.
+        if not is_trading_day(session_date, exchange_code):
+            raise ValueError(
+                f"--session-date {session_date} is not a {exchange_code} trading "
+                "day. Pass the session date T (the row date to regenerate), not a "
+                "weekend or exchange holiday."
+            )
+        data_date = session_date
+        target_date = get_next_session_date(session_date, exchange_code)
+    else:
+        target_date = get_next_session_date(date.today(), exchange_code)
+        data_date = get_previous_session_date(target_date, exchange_code)
+    return PhaseBDates(target_date=target_date, data_date=data_date)
+
+
+def phase_b_should_skip(
+    session_date: date | None,
+    force: bool,
+    exchange_code: str = "IFEU",
+) -> bool:
+    """Return True iff a Phase-B run should skip cleanly (exit 0).
+
+    Skips ONLY in the pure cron path — no explicit ``session_date``, no
+    ``--force`` — when tomorrow is not a trading day (Fri→Sat eve, or an eve of
+    a holiday). An explicit ``session_date`` or ``force`` always runs (backfills
+    and manual reruns bypass the gate).
+    """
+    if force or session_date is not None:
+        return False
+    return not is_eve_of_trading_day(exchange_code=exchange_code)
 
 
 def should_skip_non_trading_day(

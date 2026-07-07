@@ -258,6 +258,12 @@ jobs:
           # See docs/runbooks/brief-dual-track.md.
           deploy_job cc-ensemble-explainer       1Gi  "ensemble-explainer"
           deploy_job cc-compass-brief-ensemble   1Gi  "compass-brief-ensemble"
+          # Dashboard publication gate. Runs every 30 min across the evening→
+          # next-morning window; stamps pl_session_release once a session's data
+          # is complete + its NotebookLM audio is present (morning fallback so a
+          # late audio never freezes the dashboard). Drives the atomic same-
+          # evening flip. See docs/runbooks/session-publish-gate.md.
+          deploy_job cc-publish-session          512Mi "publish-session"
 
   sentry-release:
     name: Create Sentry Release

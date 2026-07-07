@@ -124,17 +124,24 @@ Because `data_date = previous_session(next_session(today))`:
 - **Mid-week** (Mon eve): `next_session(Mon)=Tue`, `previous_session(Tue)=Mon` → `data_date = today`.
 - **Sunday eve**: `next_session(Sun)=Mon`, `previous_session(Mon)=Fri` → `data_date = Friday`. The agents fire Sunday evening (eve of Monday=trading) and tag their rows to **Friday's** session.
 
-Helpers (all in `backend/scripts/db.py`):
+Helpers (all in `backend/scripts/db.py`) — the pair is resolved **once, never re-derived inline**:
 
-- `get_next_session_date(today)` → next trading day strictly after today (alias of `get_display_date`, named for Phase B).
-- `get_previous_session_date(target)` → last trading day strictly before target.
-- `is_eve_of_trading_day(today)` → `is_trading_day(today + 1 day)`. Pure-local question — never reads upstream history, so every holiday pattern self-corrects without special-casing. Friday→Saturday-eve = false, Sunday→Monday-eve = true.
+- **`resolve_phase_b_dates(session_date=None) → PhaseBDates(target_date, data_date)`** — the single source of truth. Cron path (`session_date=None`): `target_date = next_session(today)`, `data_date = previous_session(target_date)`. Backfill path (explicit): `data_date = session_date` (what the operator types), `target_date = next_session(session_date)`. Both paths yield the same pair for the same session.
+- **`phase_b_should_skip(session_date, force) → bool`** — the eve-of-trading-day gate. Skips only in the pure cron path (no explicit date, no `--force`) when tomorrow is not a trading day.
+- Low-level primitives (called by the helper, rarely directly): `get_next_session_date`, `get_previous_session_date`, `is_eve_of_trading_day` (= `is_trading_day(today + 1 day)`, pure-local so every holiday self-corrects: Friday→Saturday-eve = false, Sunday→Monday-eve = true).
 
-Reference implementations:
+**CLI convention (uniform across all 7 Phase-B jobs):** the operator flag is **`--session-date T`** = the row date to (re)generate (= `data_date`). What you type is what lands; `target_date` (T+1) is derived and never operator-facing. A bare cron invocation (no flag) resolves the pair from `today()`.
 
-- `backend/scripts/press_review_agent/main.py:97,115` — `target_date = get_next_session_date()`, `data_date = get_previous_session_date(target_date)`. Prompt is framed "for trading session {target_date}", but `article_date` and `pl_article_segment.article_date` are written at **`data_date`**.
-- `backend/scripts/daily_analysis/main.py:86,128` — same pattern; `check_date = get_previous_session_date(next_session)` is used both as the precondition (`has_contract_data_for_date`) and the row date.
-- `backend/scripts/ensemble_compute/main.py:201` — `next_session = get_next_session_date()`, `target_date = get_previous_session_date(next_session)` (here the engine-internal variable named `target_date` already holds the row date = T).
+Every Phase-B main is now the same three lines:
+
+```python
+if phase_b_should_skip(args.session_date, args.force):
+    return 0
+dates = resolve_phase_b_dates(args.session_date)
+target_date, data_date = dates.target_date, dates.data_date  # ensemble_compute uses data_date only
+```
+
+Reference: `backend/scripts/db.py` (`PhaseBDates`, `resolve_phase_b_dates`, `phase_b_should_skip`) + any of the 7 mains (meteo_agent, press_review_agent, ensemble_compute, daily_analysis, ensemble_explainer, compass_brief, compass_brief_ensemble). Every `pl_*` row (`article_date`, `observation_date`, `pl_orchestrator_decision.date`, …) and brief filename is keyed to `data_date = T`; prompts are framed "for trading session {target_date}".
 
 ### Why the weekend matters (the load-bearing reason for daily Phase B)
 
@@ -154,11 +161,17 @@ landing on the correct Friday row.
 
 The frontend calendar and `LiveSignalStrip` operate in `display_date` space.
 Non-trading weekdays (exchange holidays) come from
-`GET /v1/dashboard/non-trading-days?year=YYYY`, and the calendar's max selectable
-day is `latest_trading_day = MAX(display_date) WHERE display_date <= today`
-(`backend/app/api/api_v1/endpoints/dashboard.py:738-758`). The `-1 day` offset
-the frontend used to apply (`getYesterdayISO`) has been removed — the backend
-owns the full resolution.
+`GET /v1/dashboard/non-trading-days?year=YYYY`, which also returns
+`latest_trading_day` = the newest **released** session's `display_date`:
+`MAX(display_date)` joined to `pl_session_release`
+(`backend/app/api/api_v1/endpoints/dashboard.py`). A session is released by the
+`cc-publish-session` job once its data is complete and its NotebookLM audio is
+present — so the dashboard flips **atomically the same evening T** rather than
+when the calendar reaches `display_date`. While `pl_session_release` is empty the
+endpoint falls back to the legacy `MAX(display_date) WHERE display_date <= today`
+(non-breaking). See [session-publish-gate.md](../../runbooks/session-publish-gate.md).
+The `-1 day` offset the frontend used to apply (`getYesterdayISO`) has been
+removed — the backend owns the full resolution.
 
 Every dashboard endpoint runs the inbound `target_date` (a `display_date`)
 through one resolver: **`_parse_and_validate_date`**
@@ -202,10 +215,12 @@ queries the other tables at `date = T`, finds nothing, and renders empty.
 History: PR #15 (consumers), PR #16 (press/meteo producers), PR #17
 (`ensemble_explainer` = thin wrapper), PR #35 (`ensemble_compute` migration).
 
-**Rule of thumb when adding or editing a Phase-B agent:** the row you write must
-be keyed on `data_date = get_previous_session_date(get_next_session_date(today))`.
-`target_date` is only for prompt text, filenames, and Sentry context. If you find
-yourself writing a `pl_*` row at `target_date`, stop — that is the bug.
+**Rule of thumb when adding or editing a Phase-B agent:** derive the pair from
+`resolve_phase_b_dates(args.session_date)` and write every `pl_*` row at
+`data_date`. `target_date` is only for prompt text, filenames, and Sentry context.
+If you find yourself re-deriving dates inline (calling `get_next_session_date` /
+`get_previous_session_date` directly in a main) or writing a `pl_*` row at
+`target_date`, stop — that is the bug.
 
 ---
 
@@ -213,6 +228,6 @@ yourself writing a `pl_*` row at `target_date`, stop — that is the bug.
 
 - New scraper that INSERTs into `pl_contract_data_daily`? It must stamp `display_date = get_next_trading_day(date)`. New scraper that only UPDATEs columns? Never touch `date`/`display_date`.
 - New `pl_*` table? Key it on `date` = **session date** only. Do not add a second `display_date` column — there is exactly one in the system.
-- New Phase-B agent? Gate on `is_eve_of_trading_day()`, derive `data_date = get_previous_session_date(get_next_session_date(today))`, write rows at `data_date`, frame prompts/filenames with `target_date`.
+- New Phase-B agent? Expose `--session-date`, call `phase_b_should_skip(args.session_date, args.force)` then `resolve_phase_b_dates(args.session_date)`, write rows at `data_date`, frame prompts/filenames with `target_date`. Never re-derive the pair inline.
 - New dashboard consumer? Route the inbound date through `_parse_and_validate_date`, then query everything by the resolved session date.
 - All date math goes through `app/utils/trading_calendar.py` (`IFEU`) — never compute "next business day" by hand with `timedelta`. Weekends AND exchange holidays both matter.

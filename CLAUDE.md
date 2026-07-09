@@ -10,7 +10,7 @@ These describe the **business logic + data flows** without code details:
 
 - **[docs/architecture/PIPELINE_LEGACY.md](docs/architecture/PIPELINE_LEGACY.md)** — pipeline `cc-daily-analysis` + `cc-compass-brief` (LLM-as-decision-maker, T+1 horizon, operational since 18 months)
 - **[docs/architecture/PIPELINE_ENSEMBLE.md](docs/architecture/PIPELINE_ENSEMBLE.md)** — pipeline ensemble v1.0.0 : 14 ML specialists + soft-gate Bayésien + Compass wrapper + ensemble-explainer + compass-brief-ensemble (J+4-J+5 horizon, dashboard already serves this)
-- **[docs/architecture/JOBS_AND_SCRAPERS.md](docs/architecture/JOBS_AND_SCRAPERS.md)** — exhaustive catalog of all 20 Cloud Run Jobs + 17 schedulers + dependency graph + shared vs specific data tables
+- **[docs/architecture/JOBS_AND_SCRAPERS.md](docs/architecture/JOBS_AND_SCRAPERS.md)** — exhaustive catalog of all 20 Cloud Run Jobs + 19 schedulers + dependency graph + shared vs specific data tables
 
 **Flow deep-dives** ([docs/architecture/flows/](docs/architecture/flows/)) — failure-prone cross-cutting paths, esp. anything roll-related: [contract-roll](docs/architecture/flows/contract-roll.md) · [date-semantics](docs/architecture/flows/date-semantics.md) · [algo-contract-resolution](docs/architecture/flows/algo-contract-resolution.md) (the recurring roll-bug path — active-contract vs front-month-by-date) · [daily-pipeline](docs/architecture/flows/daily-pipeline.md) · [dual-track-brief](docs/architecture/flows/dual-track-brief.md). Known doc/comment drift is tracked in [docs/architecture/REMEDIATION_BACKLOG.md](docs/architecture/REMEDIATION_BACKLOG.md).
 

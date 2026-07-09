@@ -2,7 +2,7 @@
 
 > Inventaire complet des **jobs Cloud Run** et **schedulers** du pipeline Compass Cocoa. Pour chaque job : description, source, cron, output, quel(s) pipeline(s) le consomme, statut (actif / déprécié / out-of-scope), et tolérance de scraping. Document indépendant — peut être lu seul pour comprendre la photographie complète.
 
-> **Périmètre** : 20 jobs Cloud Run actifs aujourd'hui + 17 schedulers + 2 jobs candidats. Voir aussi [PIPELINE_LEGACY.md](./PIPELINE_LEGACY.md) et [PIPELINE_ENSEMBLE.md](./PIPELINE_ENSEMBLE.md) pour le contexte business.
+> **Périmètre** : 20 jobs Cloud Run actifs aujourd'hui + 19 schedulers + 2 jobs candidats. Voir aussi [PIPELINE_LEGACY.md](./PIPELINE_LEGACY.md) et [PIPELINE_ENSEMBLE.md](./PIPELINE_ENSEMBLE.md) pour le contexte business.
 
 ---
 

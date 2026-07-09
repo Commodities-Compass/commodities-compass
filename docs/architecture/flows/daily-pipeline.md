@@ -50,6 +50,7 @@ Time   Job                                Phase  Track       Writes
 19:35  cc-compass-brief-ensemble          B      ENSEMBLE    Drive: YYYYMMDD-CompassBrief-Ensemble.txt
 22:10  cc-ice-cot-eu-scraper              A      ENSEMBLE    pl_cot_eu_weekly
 ─────  ─────────────────────────────────  ─────  ──────────  ────────────────────────────────────
+20:00→09:30 (×/30)     cc-publish-session         gate  both  pl_session_release (atomic dashboard flip)
 Monthly (20th, 22:00)  cc-enso-scraper            ENSEMBLE    pl_external_indicator.enso_*
 On-demand (no cron)    cc-ensemble-bootstrap-artifacts  ENSEMBLE  pl_model_artifact (38 BYTEA rows)
 ```

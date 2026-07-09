@@ -2,7 +2,7 @@
 
 > Inventaire complet des **jobs Cloud Run** et **schedulers** du pipeline Compass Cocoa. Pour chaque job : description, source, cron, output, quel(s) pipeline(s) le consomme, statut (actif / déprécié / out-of-scope), et tolérance de scraping. Document indépendant — peut être lu seul pour comprendre la photographie complète.
 
-> **Périmètre** : 19 jobs Cloud Run actifs aujourd'hui + 16 schedulers + 2 jobs candidats. Voir aussi [PIPELINE_LEGACY.md](./PIPELINE_LEGACY.md) et [PIPELINE_ENSEMBLE.md](./PIPELINE_ENSEMBLE.md) pour le contexte business.
+> **Périmètre** : 20 jobs Cloud Run actifs aujourd'hui + 19 schedulers + 2 jobs candidats. Voir aussi [PIPELINE_LEGACY.md](./PIPELINE_LEGACY.md) et [PIPELINE_ENSEMBLE.md](./PIPELINE_ENSEMBLE.md) pour le contexte business.
 
 ---
 
@@ -27,6 +27,7 @@ Time UTC | Job                                   | Track       | Type
 19:25    | cc-ensemble-explainer                 | ENSEMBLE    | Phase B (eve-gated, LLM)
 19:30    | cc-compass-brief                      | LEGACY      | Phase B (eve-gated, Drive)
 19:35    | cc-compass-brief-ensemble             | ENSEMBLE    | Phase B (eve-gated, Drive)
+20:00-09 | cc-publish-session (×/30 window)      | both        | Publication gate → dashboard flip
 22:10    | cc-ice-cot-eu-scraper                 | ENSEMBLE-only| Phase A (weekly snapshot)
 ─────────┼───────────────────────────────────────┼─────────────┼──────────────────
 Monthly  | cc-enso-scraper                       | ENSEMBLE-only| 20 of month at 22:00 UTC
@@ -44,6 +45,7 @@ On-demand| cc-ensemble-bootstrap-artifacts       | ENSEMBLE     | Manual (no sch
 - `Phase B` : Eve of next trading day (daily cron + agent gate `is_eve_of_trading_day()`)
 - `Calendar-gated quarterly` : Daily cron, agent gate sur `ref_publication_calendar`
 - `Daily safety watchdog` : Daily cron, agent alerte si publications en retard
+- `Publication gate` : Cron `*/30` fenêtre soir→matin, release une séance quand data + audio prêts → flip atomique du dashboard (repli data-only le lendemain 09:00 UTC)
 
 ---
 
@@ -69,6 +71,7 @@ On-demand| cc-ensemble-bootstrap-artifacts       | ENSEMBLE     | Manual (no sch
 | **cc-daily-analysis** | `20 19 * * *` | LEGACY | `pl_contract_data_daily`, `pl_derived_indicators`, `pl_indicator_daily`, `pl_fundamental_article`, `pl_weather_observation` | UPDATE `pl_indicator_daily` legacy row (LLM) | ✅ Actif (P2b daily-gated, `--algorithm-version legacy`) |
 | **cc-compass-brief** | `30 19 * * *` | LEGACY | `pl_indicator_daily` (active row), `pl_contract_data_daily` last 2 dates, `pl_fundamental_article`, `pl_weather_observation` | Drive: `YYYYMMDD-CompassBrief.txt` | ✅ Actif (P2b daily-gated) |
 | **cc-compass-brief-ensemble** | `35 19 * * *` | ENSEMBLE | Ensemble row + orchestrator + 14 specialists + press + meteo + technicals | Drive: `YYYYMMDD-CompassBrief-Ensemble.txt` | 🆕 P4 (2026-05) |
+| **cc-publish-session** | `*/30 20-23,0-9 * * *` | both | `pl_indicator_daily` + `pl_fundamental_article` + `pl_weather_observation` + Drive audio | `pl_session_release` (1 row / séance publiée) | 🆕 (2026-07) |
 | **cc-ensemble-bootstrap-artifacts** | (manual) | ENSEMBLE | R&D frozen artifact pack | `pl_model_artifact` BYTEA rows | ✅ Actif (no scheduler) |
 
 ---
@@ -391,6 +394,20 @@ Voir détail dans [PIPELINE_ENSEMBLE.md](./PIPELINE_ENSEMBLE.md) §7.
 **Trigger manuel** : `gcloud run jobs execute cc-ensemble-bootstrap-artifacts --region europe-west9 --project cacaooo`.
 
 **Output** : 38 rows dans `pl_model_artifact`.
+
+### 3.20 `cc-publish-session`
+
+> Code : [backend/scripts/publish_session/](../../backend/scripts/publish_session/)
+
+**Track** : both (gate de publication du dashboard, indépendant du track)
+
+**Description** : release une séance dans `pl_session_release` une fois sa data complète (indicator + press + meteo) ET l'audio NotebookLM présent dans Drive → le dashboard bascule sur la nouvelle séance **de façon atomique et le soir même**, au lieu d'attendre le lendemain. Repli matinal (passé `display_date(T)` 09:00 UTC) : release en données-seules pour ne jamais bloquer le dashboard sur la veille (l'audio joue quand même dès son upload — le endpoint audio lit Drive directement, `has_audio` n'est qu'une métadonnée).
+
+**Cron** : `*/30 20-23,0-9 * * *` — toutes les 30 min, fenêtre soir (après le dernier job Phase B à 19:35) → 09:30 UTC le lendemain. No-op tant que data+audio pas prêts, puis publie. Idempotent (une séance publiée n'est jamais re-traitée).
+
+**Output** : `pl_session_release` (`session_date` PK, `published_at`, `has_audio`, `source`). Le endpoint dashboard `latest_trading_day` = la séance publiée la plus récente (`MAX(display_date)` join `pl_session_release`), avec repli sûr vers l'ancien `MAX(display_date) <= today` tant que la table est vide → **non cassant**.
+
+**Runbook** : [session-publish-gate.md](../runbooks/session-publish-gate.md).
 
 ---
 

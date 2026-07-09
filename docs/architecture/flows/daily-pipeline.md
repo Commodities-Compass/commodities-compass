@@ -50,6 +50,7 @@ Time   Job                                Phase  Track       Writes
 19:35  cc-compass-brief-ensemble          B      ENSEMBLE    Drive: YYYYMMDD-CompassBrief-Ensemble.txt
 22:10  cc-ice-cot-eu-scraper              A      ENSEMBLE    pl_cot_eu_weekly
 ─────  ─────────────────────────────────  ─────  ──────────  ────────────────────────────────────
+20:00→09:30 (×/30)     cc-publish-session         gate  both  pl_session_release (atomic dashboard flip)
 Monthly (20th, 22:00)  cc-enso-scraper            ENSEMBLE    pl_external_indicator.enso_*
 On-demand (no cron)    cc-ensemble-bootstrap-artifacts  ENSEMBLE  pl_model_artifact (38 BYTEA rows)
 ```
@@ -66,6 +67,7 @@ On-demand (no cron)    cc-ensemble-bootstrap-artifacts  ENSEMBLE  pl_model_artif
 | Phase B (eve-gated) | `M H * * *` | `is_eve_of_trading_day()` → exit 0 on Fri/Sat/holiday eve | meteo, press-review, ensemble-compute, daily-analysis, ensemble-explainer, compass-brief, compass-brief-ensemble |
 | Calendar-gated | `M H * * 1-5` | `ref_publication_calendar` window → exit 0 if no publi pending | eca-grindings, nca-grindings |
 | Daily watchdog | `0 16 * * 1-5` | Always runs; non-zero exit only if rows overdue ≥ 21d | publication-calendar-watchdog |
+| Publication gate | `*/30 20-23,0-9 * * *` | Every 30 min evening→morning; no-op until data+audio ready, then releases `pl_session_release` (atomic dashboard flip; morning fallback data-only past `display_date(T)` 09:00 UTC) | publish-session |
 | Monthly | `0 22 20 * *` | Fires the 20th (dow MUST be `*` — Cloud Scheduler ORs dom+dow) | enso-scraper |
 | Manual | none | n/a | ensemble-bootstrap-artifacts |
 

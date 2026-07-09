@@ -99,10 +99,25 @@ resource "google_compute_backend_bucket" "landing" {
   }
 
   # Security headers applied to every CDN response.
+  # HSTS max-age=2y + includeSubDomains + preload → eligible for
+  # https://hstspreload.org submission (Chrome/Firefox/Safari built-in list).
+  # CSP is strict for a fully-static site: only same-origin assets, plausible.io
+  # allowed under connect-src (activated later via PUBLIC_PLAUSIBLE_DOMAIN env var).
+  # 'unsafe-inline' on script-src / style-src is needed for the inline audio
+  # player script (BriefAudio.astro) and Astro's inlined critical CSS —
+  # acceptable because no user input surface = no XSS injection vector.
+  # object-src 'none' blocks <embed>/<object>/<applet> (legacy Flash-era holes).
+  # frame-ancestors 'none' = anti-clickjacking (equivalent + stronger than X-Frame-Options).
+  # base-uri 'self' + form-action 'none' close remaining CSP escape hatches.
   custom_response_headers = [
+    "Strict-Transport-Security: max-age=63072000; includeSubDomains; preload",
+    "Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; media-src 'self'; connect-src 'self' https://plausible.io; frame-ancestors 'none'; base-uri 'self'; form-action 'none'; object-src 'none'; upgrade-insecure-requests",
     "X-Content-Type-Options: nosniff",
+    "X-Frame-Options: DENY",
     "Referrer-Policy: strict-origin-when-cross-origin",
-    "Permissions-Policy: geolocation=(), microphone=(), camera=()",
+    "Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(), usb=(), fullscreen=(self), display-capture=(), autoplay=(self)",
+    "Cross-Origin-Opener-Policy: same-origin",
+    "Cross-Origin-Resource-Policy: same-origin",
   ]
 }
 
@@ -120,6 +135,72 @@ resource "google_compute_managed_ssl_certificate" "landing_apex" {
       "com-compass.com",
       "www.com-compass.com",
     ]
+  }
+}
+
+# ---- Outputs for the runbook ----
+
+# ---- Uptime monitoring ----
+# Free tier (1M checks/mo/project incl.). Multi-region checks catch regional
+# LB issues + regional Cloud CDN edge failures. Notification channel is
+# reused from monitoring.tf (google_monitoring_notification_channel.email).
+
+resource "google_monitoring_uptime_check_config" "landing_https" {
+  display_name = "Landing HTTPS Availability"
+  timeout      = "10s"
+  period       = "60s"
+
+  http_check {
+    path         = "/"
+    port         = 443
+    use_ssl      = true
+    validate_ssl = true
+
+    accepted_response_status_codes {
+      status_class = "STATUS_CLASS_2XX"
+    }
+  }
+
+  monitored_resource {
+    type = "uptime_url"
+    labels = {
+      project_id = var.project_id
+      host       = "com-compass.com"
+    }
+  }
+}
+
+resource "google_monitoring_alert_policy" "landing_uptime" {
+  display_name = "Landing HTTPS Check Failed"
+  combiner     = "OR"
+
+  conditions {
+    display_name = "https://com-compass.com/ is down"
+
+    condition_threshold {
+      filter          = "resource.type = \"uptime_url\" AND metric.type = \"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.labels.check_id = \"${google_monitoring_uptime_check_config.landing_https.uptime_check_id}\""
+      duration        = "300s"
+      comparison      = "COMPARISON_GT"
+      threshold_value = 1
+
+      aggregations {
+        alignment_period     = "300s"
+        per_series_aligner   = "ALIGN_NEXT_OLDER"
+        cross_series_reducer = "REDUCE_COUNT_FALSE"
+        group_by_fields      = ["resource.label.host"]
+      }
+
+      trigger {
+        count = 1
+      }
+    }
+  }
+
+  notification_channels = [google_monitoring_notification_channel.email.name]
+
+  documentation {
+    content   = "Landing https://com-compass.com/ is not responding. Check LB backend bucket + CDN + bucket content: https://console.cloud.google.com/net-services/loadbalancing/details/http/cc-url-map?project=${var.project_id}"
+    mime_type = "text/markdown"
   }
 }
 

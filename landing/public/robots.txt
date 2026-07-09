@@ -1,4 +1,105 @@
+# -----------------------------------------------------------------------------
+# Compass CC — Landing (com-compass.com)
+#
+# Default: allow all reputable crawlers (Googlebot, Bingbot, DuckDuckBot, etc.)
+# Block:
+#   1. LLM / AI training scrapers (opt-out of training data harvest)
+#   2. Aggressive SEO analytics bots (Ahrefs, SEMrush, Bytespider)
+# Both categories bill bandwidth without ROI for a B2B invite-only site.
+# -----------------------------------------------------------------------------
+
 User-agent: *
 Allow: /
 
+# ------ LLM training scrapers (block) ------
+# Docs: https://platform.openai.com/docs/gptbot
+User-agent: GPTBot
+Disallow: /
+
+# Docs: https://chatgpt.com/robots.txt
+User-agent: ChatGPT-User
+Disallow: /
+
+# Docs: https://openai.com/api/robots-txt/
+User-agent: OAI-SearchBot
+Disallow: /
+
+# Anthropic Claude training crawler
+User-agent: ClaudeBot
+Disallow: /
+
+# Anthropic Claude fetch-on-user-behalf (still opt out — we don't want summaries of paid content)
+User-agent: Claude-Web
+Disallow: /
+
+# Anthropic Claude search crawler
+User-agent: anthropic-ai
+Disallow: /
+
+# Google Bard/Gemini training opt-out (does NOT affect Googlebot search indexing)
+User-agent: Google-Extended
+Disallow: /
+
+# Common Crawl — feeds many downstream LLM training pipelines
+User-agent: CCBot
+Disallow: /
+
+# Amazon LLM training
+User-agent: Amazonbot
+Disallow: /
+
+# Meta AI training crawler
+User-agent: Meta-ExternalAgent
+Disallow: /
+
+# Facebook / Meta LLM fetch
+User-agent: FacebookBot
+Disallow: /
+
+# Apple Intelligence training opt-out (does NOT affect Applebot search indexing)
+User-agent: Applebot-Extended
+Disallow: /
+
+# ByteDance / TikTok training crawler
+User-agent: Bytespider
+Disallow: /
+
+# Perplexity training crawler
+User-agent: PerplexityBot
+Disallow: /
+
+# Cohere training crawler
+User-agent: cohere-ai
+Disallow: /
+
+# Diffbot
+User-agent: Diffbot
+Disallow: /
+
+# omgili (used by AI data brokers)
+User-agent: omgili
+Disallow: /
+
+# ------ Aggressive SEO analytics scanners (block) ------
+# These crawlers bulk-scan every site on the internet for competitive intel
+# and don't respect crawl-delay. Zero business value for a B2B invite-only site.
+User-agent: AhrefsBot
+Disallow: /
+
+User-agent: SemrushBot
+Disallow: /
+
+User-agent: MJ12bot
+Disallow: /
+
+User-agent: DotBot
+Disallow: /
+
+User-agent: rogerbot
+Disallow: /
+
+User-agent: BLEXBot
+Disallow: /
+
+# ------ Sitemap for reputable search engines ------
 Sitemap: https://com-compass.com/sitemap-index.xml

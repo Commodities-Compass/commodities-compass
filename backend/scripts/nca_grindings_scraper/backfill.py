@@ -16,6 +16,7 @@ import sentry_sdk
 from scripts._shared.cli import build_base_argparser
 from scripts._shared.logging import configure_logging
 from scripts._shared.sentry import bootstrap_scraper
+from scripts.nca_grindings_scraper.browser import NcaBrowser
 from scripts.nca_grindings_scraper.db_writer import upsert_nca_records
 from scripts.nca_grindings_scraper.parser import NcaParseError
 from scripts.nca_grindings_scraper.scraper import (
@@ -56,40 +57,42 @@ def main() -> int:
     from scripts.db import get_session
 
     try:
-        pdf_urls = discover_pdf_urls()
         n_processed = 0
         n_records = 0
 
-        with get_session() as session:
-            for period_label, pdf_url in sorted(pdf_urls.items()):
-                try:
-                    records = fetch_and_parse(period_label, pdf_url)
-                except (NcaScraperError, NcaParseError) as exc:
-                    logger.error(
-                        "NCA backfill: failed %s (%s) — skipping",
-                        period_label,
-                        exc,
-                    )
-                    sentry_sdk.capture_exception(exc)
-                    continue
+        with NcaBrowser() as browser:
+            pdf_urls = discover_pdf_urls(browser)
 
-                n_processed += 1
-                n_records += len(records)
-
-                if args.dry_run:
-                    for rec in records:
-                        logger.info(
-                            "[DRY RUN] %s %s=%.2f (pub %s)",
-                            rec.period_label,
-                            rec.metric_name,
-                            rec.value,
-                            rec.publication_date,
+            with get_session() as session:
+                for period_label, pdf_url in sorted(pdf_urls.items()):
+                    try:
+                        records = fetch_and_parse(browser, period_label, pdf_url)
+                    except (NcaScraperError, NcaParseError) as exc:
+                        logger.error(
+                            "NCA backfill: failed %s (%s) — skipping",
+                            period_label,
+                            exc,
                         )
-                else:
-                    upsert_nca_records(session, records, pdf_url=pdf_url)
+                        sentry_sdk.capture_exception(exc)
+                        continue
 
-            if not args.dry_run:
-                session.commit()
+                    n_processed += 1
+                    n_records += len(records)
+
+                    if args.dry_run:
+                        for rec in records:
+                            logger.info(
+                                "[DRY RUN] %s %s=%.2f (pub %s)",
+                                rec.period_label,
+                                rec.metric_name,
+                                rec.value,
+                                rec.publication_date,
+                            )
+                    else:
+                        upsert_nca_records(session, records, pdf_url=pdf_url)
+
+                if not args.dry_run:
+                    session.commit()
 
         logger.info("=" * 60)
         logger.info(

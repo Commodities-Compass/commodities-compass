@@ -9,7 +9,7 @@ All queries read from pl_* tables (contract-centric).
 import logging
 import re
 from datetime import date, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 import uuid
 
@@ -177,24 +177,25 @@ async def get_position_from_technicals(
 # ---------------------------------------------------------------------------
 
 
-async def calculate_ytd_performance(
-    db: AsyncSession, reference_date: Optional[date] = None
-) -> float:
-    """Calculate YTD performance by replicating the CONCLUSION scoring server-side.
+async def _decision_aware_front_month_series(
+    db: AsyncSession, start_date: date, end_date: date
+) -> Sequence[Any]:
+    """Return ``(date, close, decision)`` rows for the front-month contract
+    that CARRIES a scorable decision, per date, ordered by date ASC.
 
-    Date-aware decision source — uses the SAME decision that the system would
-    have shipped live each day:
-      * For dates with an ensemble row: ensemble's ``decision`` (which mirrors
-        the orchestrator's ``decision_wrapped`` — i.e. post-Compass override).
-      * For older dates: legacy decision.
-
-    Cross-contract: uses a DISTINCT ON (date) subquery to pick the
-    front-month contract per date (highest OI), so YTD scoring spans
-    contract rolls seamlessly.
+    Roll-safe cross-contract series shared by the YTD walk
+    (``calculate_ytd_performance``) and the ensemble diagnostics
+    ``running_acc_5d`` (``ensemble_diagnostics_service``). ``scored`` first
+    collects every ``(date, contract)`` that carries a decision — ensemble
+    preferred over legacy. Restricting to those two version ids keeps
+    shadow-mode algos (power10years, future shadow versions) from ever dragging
+    the front-month onto a contract they alone wrote. ``front_month`` then
+    picks, per date, the highest-OI contract *among those that carry a
+    decision*, so an OI crossover to a not-yet-rolled contract (e.g. CAZ26
+    leading OI in July 2026 while decisions still land on the active CAU26) can
+    no longer silently drop days — the pre-fix bug that froze the YTD once
+    OHLCV rolled ahead of the decision contract.
     """
-    if reference_date is None:
-        reference_date = date.today()
-
     from sqlalchemy import text as sa_text
 
     from app.utils.contract_resolver import (
@@ -209,56 +210,89 @@ async def calculate_ytd_performance(
         # Fall back to the historical "active" lookup as a defensive default.
         legacy_id = await get_active_algorithm_version_id(db)
 
-    start_of_year = get_year_start_date(reference_date)
-
-    # Cross-contract query: for each date, pick the contract with highest OI
-    # then COALESCE the ensemble decision over the legacy one (decision shipped
-    # live to the user each day).
     query = sa_text("""
-        WITH front_month AS (
+        WITH scored AS (
+            SELECT
+                d.date,
+                d.contract_id,
+                COALESCE(ens.decision, leg.decision) AS decision
+            FROM (
+                SELECT DISTINCT date, contract_id
+                FROM pl_indicator_daily
+                WHERE date >= :start AND date <= :end_date
+            ) d
+            LEFT JOIN pl_indicator_daily ens
+                   ON ens.date = d.date
+                  AND ens.contract_id = d.contract_id
+                  AND ens.algorithm_version_id = :ensemble_id
+            LEFT JOIN pl_indicator_daily leg
+                   ON leg.date = d.date
+                  AND leg.contract_id = d.contract_id
+                  AND leg.algorithm_version_id = :legacy_id
+            WHERE COALESCE(ens.decision, leg.decision) IS NOT NULL
+        ),
+        front_month AS (
             SELECT DISTINCT ON (cd.date) cd.date, cd.close, cd.contract_id
             FROM pl_contract_data_daily cd
+            JOIN scored s ON s.date = cd.date AND s.contract_id = cd.contract_id
             WHERE cd.date >= :start AND cd.date <= :end_date
             ORDER BY cd.date, cd.oi DESC NULLS LAST
         )
-        SELECT
-            fm.date,
-            fm.close,
-            COALESCE(ens.decision, leg.decision) AS decision
+        SELECT fm.date, fm.close, s.decision
         FROM front_month fm
-        LEFT JOIN pl_indicator_daily ens
-               ON ens.date = fm.date
-              AND ens.contract_id = fm.contract_id
-              AND ens.algorithm_version_id = :ensemble_id
-        LEFT JOIN pl_indicator_daily leg
-               ON leg.date = fm.date
-              AND leg.contract_id = fm.contract_id
-              AND leg.algorithm_version_id = :legacy_id
+        JOIN scored s ON s.date = fm.date AND s.contract_id = fm.contract_id
         ORDER BY fm.date ASC
     """)
 
     result = await db.execute(
         query,
         {
-            "start": start_of_year,
-            "end_date": reference_date,
+            "start": start_date,
+            "end_date": end_date,
             "ensemble_id": str(ensemble_id) if ensemble_id is not None else None,
             "legacy_id": str(legacy_id) if legacy_id is not None else None,
         },
     )
-    rows = result.all()
+    return result.all()
+
+
+async def calculate_ytd_performance(
+    db: AsyncSession, reference_date: Optional[date] = None
+) -> float:
+    """Calculate YTD performance by replicating the CONCLUSION scoring server-side.
+
+    Date-aware decision source — uses the SAME decision that the system would
+    have shipped live each day:
+      * For dates with an ensemble row: ensemble's ``decision`` (which mirrors
+        the orchestrator's ``decision_wrapped`` — i.e. post-Compass override).
+      * For older dates: legacy decision.
+
+    Cross-contract & roll-safe via ``_decision_aware_front_month_series``: for
+    each date it scores the highest-OI contract *that carries a decision*, so
+    YTD spans contract rolls without silently dropping days when OHLCV OI rolls
+    ahead of the contract the decisions are written on.
+    """
+    if reference_date is None:
+        reference_date = date.today()
+
+    start_of_year = get_year_start_date(reference_date)
+    rows = await _decision_aware_front_month_series(db, start_of_year, reference_date)
 
     scores: list[float] = []
-    skipped = 0
+    unscorable: list[str] = []
     horizon = YTD_EVAL_HORIZON_DAYS
-    # Skip the last `horizon` rows — they don't have a T+horizon close yet
-    # (decision was made too recently to be evaluated against future price).
+    # Skip the last `horizon` rows — they have no T+horizon close yet (decision
+    # too recent to evaluate against a future price). That's expected, not an
+    # anomaly, so they're excluded from the range rather than flagged below.
     for i in range(len(rows) - horizon):
         current = rows[i]
         next_row = rows[i + horizon]
 
-        if not current.decision or current.close is None or next_row.close is None:
-            skipped += 1
+        if not current.decision:
+            unscorable.append(f"{current.date} (no decision)")
+            continue
+        if current.close is None or next_row.close is None:
+            unscorable.append(f"{current.date} (missing close)")
             continue
 
         score = _score_day(
@@ -266,14 +300,22 @@ async def calculate_ytd_performance(
             float(current.close),
             float(next_row.close),
         )
-        if score is not None:
-            scores.append(score)
+        if score is None:
+            unscorable.append(f"{current.date} (bad label '{current.decision}')")
+            continue
+        scores.append(score)
 
-    if skipped:
-        logger.warning(
-            "YTD calculation: skipped %d/%d rows (missing decision or close)",
-            skipped,
+    if unscorable:
+        # Post-Option-B ``front_month`` only yields contracts that carry a
+        # decision, so any non-scorable day inside the evaluable window is a
+        # genuine anomaly (missing OHLCV close, unrecognized decision label, or
+        # a roll/contract split-brain re-emerging). Log LOUD — the silent
+        # `logger.warning` skip is exactly what let the freeze go unnoticed.
+        logger.error(
+            "YTD: %d/%d evaluable days non-scorable — %s",
+            len(unscorable),
             max(len(rows) - horizon, 0),
+            ", ".join(unscorable[:25]),
         )
 
     if not scores:

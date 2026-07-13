@@ -46,7 +46,7 @@ _SESSIONS = [date_cls(2026, 1, d) for d in (5, 6, 7, 8, 9, 12, 13, 14, 15, 16, 1
 # CAU26 closes — the contract that actually carries the decisions. Chosen so
 # the post-crossover days (i≥5) score very differently (+1.25 recoveries) from
 # the pre-crossover ones, making a regression numerically obvious.
-_CAU_CLOSES = [100, 102, 104, 106, 108, 90, 92, 94, 96, 120, 122, 124]
+_CAU_CLOSES: list[float] = [100, 102, 104, 106, 108, 90, 92, 94, 96, 120, 122, 124]
 # The crossover: from index 5 on, CAZ26 has higher OI but NO decision row.
 _CROSSOVER_IDX = 5
 

@@ -15,7 +15,7 @@ import uuid
 from datetime import date as date_cls
 from typing import Any, Optional
 
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.pipeline import (
@@ -24,7 +24,11 @@ from app.models.pipeline import (
     PlOrchestratorDecision,
     PlSpecialistPrediction,
 )
-from app.services.dashboard_service import YTD_EVAL_HORIZON_DAYS, _score_day
+from app.services.dashboard_service import (
+    YTD_EVAL_HORIZON_DAYS,
+    _decision_aware_front_month_series,
+    _score_day,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -133,45 +137,18 @@ async def _compute_running_accuracy(
     A decision made at T is evaluable on T+horizon. We pick the ``window``
     most recent decisions D such that D + horizon ≤ target_date, score each
     with the same formula as the YTD metric, then return the share of
-    positive scores. Cross-contract aware via front-month-by-OI per date,
-    same pattern as ``calculate_ytd_performance``.
+    positive scores. Roll-safe cross-contract series via the shared
+    ``_decision_aware_front_month_series`` — same helper the YTD walk uses, so
+    an OI crossover to a not-yet-rolled contract can't silently drop days here
+    either (pre-fix this used a raw OI-only front-month and degraded to the
+    R&D bootstrap value for post-roll dates).
 
     Returns None if fewer than ``window`` evaluable decisions exist in the
     last ~30 sessions (caller falls back to the upstream R&D value).
     """
-    query = text("""
-        WITH front_month AS (
-            SELECT DISTINCT ON (cd.date) cd.date, cd.close, cd.contract_id
-            FROM pl_contract_data_daily cd
-            WHERE cd.date <= :ref_date AND cd.date >= :start_date
-            ORDER BY cd.date, cd.oi DESC NULLS LAST
-        )
-        SELECT
-            fm.date,
-            fm.close,
-            COALESCE(ens.decision, leg.decision) AS decision
-        FROM front_month fm
-        LEFT JOIN pl_indicator_daily ens
-               ON ens.date = fm.date
-              AND ens.contract_id = fm.contract_id
-              AND ens.algorithm_version_id = (
-                  SELECT id FROM pl_algorithm_version
-                  WHERE name = 'ensemble_v1_softgate_wrapper'
-                  ORDER BY created_at DESC LIMIT 1)
-        LEFT JOIN pl_indicator_daily leg
-               ON leg.date = fm.date
-              AND leg.contract_id = fm.contract_id
-              AND leg.algorithm_version_id = (
-                  SELECT id FROM pl_algorithm_version
-                  WHERE name = 'legacy'
-                  ORDER BY created_at DESC LIMIT 1)
-        ORDER BY fm.date ASC
-    """)
     # ~45 calendar days ≈ ~30 trading sessions, plenty to cover horizon + window
     start_date = date_cls.fromordinal(target_date.toordinal() - 45)
-    rows = (
-        await db.execute(query, {"ref_date": target_date, "start_date": start_date})
-    ).all()
+    rows = await _decision_aware_front_month_series(db, start_date, target_date)
     if len(rows) <= horizon:
         return None
 

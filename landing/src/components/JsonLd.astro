@@ -49,11 +49,20 @@ const organization = {
   knowsAbout: ['ICE cocoa futures', 'commodity markets', 'cocoa supply chain', 'market intelligence'],
 };
 
+// WebSite schema — Google uses `name` for the SERP "site name" display
+// (the string shown next to the favicon in search results). `alternateName`
+// helps Google recognise "Commodities Compass" as a variant. Site name
+// replaces the raw domain in Google SERPs in ~1-4 weeks after Google
+// trusts the signals on a new domain.
+// Ref: https://developers.google.com/search/docs/appearance/site-names
+// NB: no `potentialAction` (SearchAction) — the landing is fully static
+// with no search endpoint; a false SearchAction would be penalised.
 const website = {
   '@type': 'WebSite',
   '@id': `${siteUrl}/#website`,
   url: siteUrl,
   name: 'Compass CC',
+  alternateName: ['Commodities Compass', 'com-compass'],
   description: copy.meta.description,
   publisher: { '@id': `${siteUrl}/#organization` },
   inLanguage: locale === 'fr' ? 'fr-FR' : 'en-US',

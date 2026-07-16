@@ -30,11 +30,23 @@ Briefs are generated automatically (no LLM cost — templated from the DB rows).
 ## Serving (dashboard)
 
 The dashboard resolves audio by `(version, language)` →
-`YYYYMMDD-CompassAudio{-Ensemble}{-EN}.{wav|m4a|mp4}`, with a fail-safe fallback
-chain (`-Ensemble-EN → -EN → -Ensemble → ""`). It **never serves an FR audio
-under the EN label** silently — if the EN audio is missing, the player degrades
-(no audio) rather than mislabelling. `BRIEF_DEFAULT_VERSION` still picks the
-default track; `?language=` + the frontend language selection pick the edition.
+`YYYYMMDD-CompassAudio{-Ensemble}{-EN}.{wav|m4a|mp4}`. The candidate list is
+**language-consistent by construction** (`audio_service._candidate_suffixes`):
+
+- **EN** (ensemble-only): tries `-Ensemble-EN`, then a bare `-EN` — both
+  English. It **never** falls back to an FR file (`-Ensemble` / no-suffix), so a
+  missing EN audio degrades to no-audio in the player rather than mislabelling
+  an FR track under the EN edition (i18n decisions D3/D4). Because EN is
+  ensemble-only, the `version` param is effectively ignored for EN.
+- **FR**: the exact per-version file (`-Ensemble` for ensemble, no suffix for
+  legacy) — unchanged, no cross-version fallback (the two tracks stay
+  independent).
+
+`BRIEF_DEFAULT_VERSION` still picks the default FR track. The frontend language
+selection travels to the backend via the `Accept-Language` header; the
+`/dashboard/audio` response then embeds `?language=` on the returned stream URL
+so the unauthenticated `<audio>` element streams the matching edition. An
+explicit `?language=` query param overrides the header.
 
 ## Failure / gaps
 

@@ -83,8 +83,13 @@ export const useWeather = (targetDate?: string) => {
 };
 
 export const useAudio = (targetDate?: string) => {
+  const { language } = useLanguage();
   return useQuery<AudioResponse>({
-    queryKey: ['audio', targetDate],
+    // `language` in the key cache-busts on a switch; the actual edition is
+    // carried to the backend by the Accept-Language header (client.ts), and the
+    // returned stream URL embeds `?language=` so the <audio> element streams the
+    // matching edition. The EN edition is ensemble-only and never serves FR.
+    queryKey: ['audio', targetDate, language],
     queryFn: () => dashboardApi.getAudio(targetDate),
     staleTime: 5 * 60 * 1000, // 5 min — audio availability can change (pipeline timing)
     refetchOnMount: true,

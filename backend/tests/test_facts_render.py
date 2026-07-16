@@ -15,7 +15,7 @@ from scripts.daily_analysis.accuracy_gate import (
 )
 from scripts.daily_analysis.facts import FactsPayload, MetricPair, build_facts_payload
 from scripts.daily_analysis.render import get_renderer
-from scripts.daily_analysis.render import fr
+from scripts.daily_analysis.render import en, fr
 
 # Real 2026-07-02 numbers (today) + 2026-07-01 (yesterday).
 TODAY_ROW = {
@@ -132,7 +132,7 @@ class TestFrenchRenderer:
 
     def test_registry_returns_fr(self, facts: FactsPayload):
         assert get_renderer("fr") is fr
-        assert get_renderer("en") is fr  # falls back until US-3 adds EN
+        assert get_renderer("xx") is fr  # unknown language falls back to FR
 
     def test_partial_facts_render_available_only(self):
         p = build_facts_payload(
@@ -146,6 +146,42 @@ class TestFrenchRenderer:
         watch = fr.render_watch_section(p)
         assert "SUPPORT 1" in watch
         assert "RESISTANCE 1" not in watch  # r1 absent
+
+
+class TestEnglishRenderer:
+    def test_fact_bullets_numbers(self, facts: FactsPayload):
+        body = en.render_fact_bullets(facts)
+        assert (
+            "CLOSE settles at 3746, vs 3817 the prior session — bearish trend." in body
+        )
+        assert "RSI at 60.9521 — neutral zone." in body
+        assert (
+            "US stocks at 212,482 tonnes, vs 211,245 tonnes the prior session" in body
+        )
+        assert body.count("        • ") == 8
+
+    def test_watch_section(self, facts: FactsPayload):
+        watch = en.render_watch_section(facts)
+        assert watch.startswith("> TO WATCH TODAY:")
+        assert (
+            "Bearish if CLOSE breaks below SUPPORT 1 (3686.33) "
+            "— target SUPPORT 2 at 3626.67." in watch
+        )
+        assert "Bearish if RSI slips below 58 (currently 60.9521)" in watch
+        assert watch.count("        • ") == 3
+
+    def test_registry_returns_en(self):
+        assert get_renderer("en") is en
+
+    def test_numbers_identical_across_languages(self, facts: FactsPayload):
+        import re
+
+        pattern = re.compile(r"-?\d[\d,]*\.?\d*")
+        fr_nums = sorted(pattern.findall(fr.render_conclusion("x", facts)))
+        en_nums = sorted(pattern.findall(en.render_conclusion("x", facts)))
+        # Numbers come from the same FactsPayload — correct by construction,
+        # identical regardless of language. Only the prose differs.
+        assert fr_nums == en_nums
 
 
 class TestAccuracyGate:

@@ -9,12 +9,13 @@ from __future__ import annotations
 
 from types import ModuleType
 
-from scripts.daily_analysis.render import fr
+from scripts.daily_analysis.render import en, fr
 
 DEFAULT_LANG = "fr"
 
 _RENDERERS: dict[str, ModuleType] = {
     fr.LANG: fr,
+    en.LANG: en,
 }
 
 

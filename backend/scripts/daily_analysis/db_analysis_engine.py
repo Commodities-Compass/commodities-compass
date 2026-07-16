@@ -34,10 +34,12 @@ from scripts.daily_analysis.output_parser import (
     parse_macro_output,
     parse_trading_output,
 )
-from scripts.daily_analysis.prompts import (
-    build_call1_prompt,
-    build_call2_prompt,
-    build_call2_prompt_ensemble,
+from scripts.daily_analysis.accuracy_gate import assert_no_hallucinated_numbers
+from scripts.daily_analysis.prompts import build_call1_prompt
+from scripts.daily_analysis.render import get_renderer
+from scripts.daily_analysis.voice_prompts import (
+    build_call2_voice_prompt,
+    build_call2_voice_prompt_ensemble,
 )
 
 logger = logging.getLogger(__name__)
@@ -303,13 +305,13 @@ class DBAnalysisEngine:
         # --- Step 4: LLM Call #2 — Trading decision ---
         logger.info("Step 4: LLM Call #2 — Trading decision...")
         if align_on_ensemble and ensemble is not None:
-            call2_prompt = build_call2_prompt_ensemble(
+            call2_prompt = build_call2_voice_prompt_ensemble(
                 technicals_today=inputs.technicals.today,
                 technicals_yesterday=inputs.technicals.yesterday,
                 ensemble=ensemble,
             )
         else:
-            call2_prompt = build_call2_prompt(
+            call2_prompt = build_call2_voice_prompt(
                 technicals_today=inputs.technicals.today,
                 technicals_yesterday=inputs.technicals.yesterday,
                 final_indicator=final_indicator,
@@ -339,12 +341,8 @@ class DBAnalysisEngine:
                     trading.decision,
                     ensemble.decision_wrapped,
                 )
-                trading = TradingDecisionOutput(
-                    decision=ensemble.decision_wrapped,
-                    confiance=trading.confiance,
-                    confiance_rationale=trading.confiance_rationale,
-                    direction=trading.direction,
-                    conclusion=trading.conclusion,
+                trading = trading.model_copy(
+                    update={"decision": ensemble.decision_wrapped}
                 )
 
         # Sanity-check #2 : direction must be coherent with decision. The LLM
@@ -362,13 +360,25 @@ class DBAnalysisEngine:
                 trading.decision,
                 normalized_direction,
             )
-            trading = TradingDecisionOutput(
-                decision=trading.decision,
-                confiance=trading.confiance,
-                confiance_rationale=trading.confiance_rationale,
-                direction=normalized_direction,
-                conclusion=trading.conclusion,
+            trading = trading.model_copy(update={"direction": normalized_direction})
+
+        # --- Assemble the conclusion deterministically from the facts ---
+        # US-1 facts/voice: the LLM wrote only the qualitative headline; the
+        # fact-bullets + à-surveiller are rendered from the DB facts so no number
+        # is ever re-typed by the model. The accuracy gate fails loud if the
+        # headline / rationale cite a figure not grounded in the facts.
+        facts = inputs.technicals.facts
+        if facts is not None:
+            assert_no_hallucinated_numbers(
+                f"{trading.headline} {trading.confiance_rationale}", facts
             )
+            # Language is FR today; US-3 threads the target language here.
+            conclusion_text = get_renderer("fr").render_conclusion(
+                trading.headline, facts
+            )
+        else:
+            conclusion_text = trading.headline
+        trading = trading.model_copy(update={"conclusion": conclusion_text})
 
         # --- Step 5: Write results to DB ---
         if not dry_run:

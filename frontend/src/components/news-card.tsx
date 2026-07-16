@@ -23,15 +23,19 @@ function parseSections(content: string): ParsedSections {
   const PRE = String.raw`^#{0,3}\s*\**`;
   const POST = String.raw`\**\s*[.:;]?\s*$`;
 
+  // Section headers are language-agnostic: FR (OFFRE / FONDAMENTAUX / MARCHÉ /
+  // SENTIMENT MARCHÉ) and EN (SUPPLY / FUNDAMENTALS / MARKET / MARKET SENTIMENT).
+  // The two-word "… SENTIMENT" variants MUST precede the bare MARKET/MARCHÉ so
+  // the more specific header wins.
   const sectionMap: { pattern: RegExp; target: keyof ParsedSections }[] = [
-    { pattern: new RegExp(`${PRE}SENTIMENT\\s+MARCH[EÉ]${POST}`, 'im'), target: 'overall' },
-    { pattern: new RegExp(`${PRE}MARCH[EÉ]${POST}`, 'im'), target: 'technicals' },
-    { pattern: new RegExp(`${PRE}FONDAMENTAUX${POST}`, 'im'), target: 'fundamentals' },
-    { pattern: new RegExp(`${PRE}OFFRE${POST}`, 'im'), target: 'fundamentals' },
+    { pattern: new RegExp(`${PRE}(?:SENTIMENT\\s+MARCH[EÉ]|MARKET\\s+SENTIMENT)${POST}`, 'im'), target: 'overall' },
+    { pattern: new RegExp(`${PRE}(?:MARCH[EÉ]|MARKET)${POST}`, 'im'), target: 'technicals' },
+    { pattern: new RegExp(`${PRE}(?:FONDAMENTAUX|FUNDAMENTALS)${POST}`, 'im'), target: 'fundamentals' },
+    { pattern: new RegExp(`${PRE}(?:OFFRE|SUPPLY)${POST}`, 'im'), target: 'fundamentals' },
   ];
 
   const headerLine = new RegExp(
-    `${PRE}(?:SENTIMENT\\s+MARCH[EÉ]|MARCH[EÉ]|FONDAMENTAUX|OFFRE)${POST}`,
+    `${PRE}(?:SENTIMENT\\s+MARCH[EÉ]|MARKET\\s+SENTIMENT|MARCH[EÉ]|MARKET|FONDAMENTAUX|FUNDAMENTALS|OFFRE|SUPPLY)${POST}`,
     'gim',
   );
 

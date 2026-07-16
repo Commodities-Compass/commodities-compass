@@ -26,6 +26,10 @@ class Language(StrEnum):
 DEFAULT_LANGUAGE: Language = Language.FR
 SUPPORTED_LANGUAGES: frozenset[Language] = frozenset(Language)
 
+# Pipeline-agent CLI: the accepted --language values. ``both`` runs every
+# language in one execution (no per-language Cloud Run jobs).
+LANGUAGE_CLI_CHOICES: tuple[str, ...] = ("fr", "en", "both")
+
 
 def _parse_known(value: str | None) -> Language | None:
     """Return the matching :class:`Language` for a code, or ``None``."""
@@ -63,3 +67,17 @@ def resolve_language(
                 return parsed
 
     return default
+
+
+def expand_languages(language_arg: str) -> list[Language]:
+    """Expand a pipeline-agent ``--language`` value into the languages to run.
+
+    ``both`` → ``[FR, EN]`` — **FR first**: translated rows (e.g. the EN
+    ``pl_indicator_daily`` row) copy the FR row, so the FR run must complete
+    first. A single known language returns just that one; anything unknown
+    falls back to ``[DEFAULT_LANGUAGE]`` (fail-safe, never raises).
+    """
+    if language_arg == "both":
+        return [Language.FR, Language.EN]
+    parsed = _parse_known(language_arg)
+    return [parsed] if parsed is not None else [DEFAULT_LANGUAGE]

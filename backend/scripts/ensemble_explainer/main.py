@@ -43,7 +43,11 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.i18n import DEFAULT_LANGUAGE
+from app.core.i18n import (
+    DEFAULT_LANGUAGE,
+    LANGUAGE_CLI_CHOICES,
+    expand_languages,
+)
 from app.core.sentry import init_sentry
 from scripts.daily_analysis.db_analysis_engine import (
     AnalysisWriteError,
@@ -112,9 +116,13 @@ def _parse_args() -> argparse.Namespace:
     # have written first.
     parser.add_argument(
         "--language",
-        choices=["fr", "en"],
+        choices=LANGUAGE_CLI_CHOICES,
         default="fr",
-        help="Content language of the narrative prose fields (default: fr).",
+        help=(
+            "Content language of the narrative prose fields (default: fr). "
+            "'both' runs fr then en in one execution (fr first — en copies "
+            "the fr ensemble row)."
+        ),
     )
     return parser.parse_args()
 
@@ -212,27 +220,38 @@ def main() -> int:
         # → engine.run() auto-aligns on the ensemble row in
         # pl_orchestrator_decision, uses CALL_2_PROMPT_ENSEMBLE with the
         # diagnostics block, and writes the narrative to the ensemble row.
+        #
+        # 'both' → fr first (its own session commits), then en (copies the fr
+        # ensemble row). A failure in any language raises and is caught below;
+        # any already-committed language is left intact.
         db_url = str(settings.DATABASE_SYNC_URL)
         sqla_engine = create_engine(db_url)
-        with Session(sqla_engine) as session:
-            db_engine = DBAnalysisEngine(session)  # NO algorithm_version_name
-            result = db_engine.run(
-                target_date=target_date,
-                contract_code=contract_code,
-                data_date=data_date,
-                dry_run=args.dry_run,
-                language=args.language,
-            )
+        result = None
+        for lang in expand_languages(args.language):
+            with Session(sqla_engine) as session:
+                db_engine = DBAnalysisEngine(session)  # NO algorithm_version_name
+                result = db_engine.run(
+                    target_date=target_date,
+                    contract_code=contract_code,
+                    data_date=data_date,
+                    dry_run=args.dry_run,
+                    language=str(lang),
+                )
 
-        if not result.ensemble_aligned:
-            # Defense in depth : the pre-flight already guarantees the ensemble
-            # row exists, so reaching this branch would mean the engine resolved
-            # to a different row (e.g. a race between pre-flight and engine.run).
-            raise EnsembleRowMissingError(
-                f"DBAnalysisEngine did NOT auto-align on ensemble for "
-                f"date={data_date} contract={contract_code}. "
-                "Investigate pl_orchestrator_decision freshness."
-            )
+            if not result.ensemble_aligned:
+                # Defense in depth : the pre-flight already guarantees the
+                # ensemble row exists, so reaching this branch would mean the
+                # engine resolved to a different row (a race between pre-flight
+                # and engine.run).
+                raise EnsembleRowMissingError(
+                    f"DBAnalysisEngine did NOT auto-align on ensemble for "
+                    f"date={data_date} contract={contract_code} language={lang}. "
+                    "Investigate pl_orchestrator_decision freshness."
+                )
+            logger.info("Ensemble narrative written for language=%s", lang)
+
+        # `expand_languages` never returns empty, so result is always set here.
+        assert result is not None
 
         sentry_sdk.set_context(
             "ensemble_explainer",

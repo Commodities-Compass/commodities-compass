@@ -12,6 +12,7 @@ import sentry_sdk
 from dotenv import load_dotenv
 from sentry_sdk.crons import monitor
 
+from app.core.i18n import LANGUAGE_CLI_CHOICES, expand_languages
 from app.core.sentry import init_sentry
 from scripts.press_review_agent.config import (
     LOG_FORMAT,
@@ -86,12 +87,13 @@ def main() -> int:
     )
     parser.add_argument(
         "--language",
-        choices=["fr", "en"],
+        choices=LANGUAGE_CLI_CHOICES,
         default="fr",
         help=(
             "Review language (default: fr). 'en' writes a native English "
-            "(Ghana) article row alongside the fr row; the ensemble-facing "
-            "article segments are written by the fr run only."
+            "(Ghana) article row alongside the fr row; 'both' runs fr then en "
+            "in one execution. The ensemble-facing article segments are always "
+            "written by the fr run only."
         ),
     )
 
@@ -147,126 +149,143 @@ def main() -> int:
         successful_sources = sum(1 for r in news_results if r.success)
         logger.info(f"Google News: {len(headlines)} headlines fetched")
 
-        # Step 3: Build prompts (identical for all providers)
+        from scripts.press_review_agent.db_writer import (
+            write_article,
+            write_llm_call,
+            write_theme_sentiments,
+        )
+
+        # Step 3-5: per-language build → call providers → validate → write.
+        # Sources are fetched once above. 'both' runs fr then en (fr first): the
+        # fr run writes the ensemble-facing article segments; the en run writes
+        # only its native-English prose article row. A language with no
+        # successful provider aborts the remaining languages (fr-first).
         # P2b: prompt frames the review as "for trading session {target_date}",
         # distinct from the prior close date used to anchor the technical context.
-        # Native-language prompt set (EN reads the same sources, writes English).
-        system_prompt = SYSTEM_PROMPT_EN if args.language == "en" else SYSTEM_PROMPT
-        user_prompt_template = (
-            USER_PROMPT_TEMPLATE_EN if args.language == "en" else USER_PROMPT_TEMPLATE
-        )
-        user_prompt = user_prompt_template.format(
-            target_date=target_date.isoformat(),
-            close_date=close_date_str,
-            close=close_price,
-            contract_code=contract_code,
-            contract_month=contract_month,
-            source_count=successful_sources,
-            sources_text=sources_text,
-        )
-        logger.info(
-            f"Prompt built: {len(user_prompt)} chars, {successful_sources} sources"
-        )
-
-        # Step 4: Call LLM providers in parallel
-        logger.info(f"Step 3: Calling {len(providers)} LLM provider(s)...")
-        llm_results: list[LLMResult] = asyncio.run(
-            call_providers(providers, system_prompt, user_prompt)
-        )
-
-        # Step 5: Validate + write for each successful provider
-        logger.info("Step 4: Validating and writing results...")
+        overall_ok = True
         any_success = False
-
-        for result in llm_results:
-            if not result.success:
-                logger.error(
-                    f"[{result.provider.value}] LLM call failed: {result.error}"
-                )
-                sentry_sdk.capture_message(
-                    f"Press review LLM failed: {result.provider.value} "
-                    f"- {result.error}",
-                    level="error",
-                )
-                continue
-
-            errors = validate_output(result.parsed, result.provider)
-            if errors:
-                logger.error(f"[{result.provider.value}] Validation failed: {errors}")
-                sentry_sdk.capture_message(
-                    f"Press review validation failed: {result.provider.value} "
-                    f"- {errors}",
-                    level="error",
-                )
-                continue
-
-            # DB write
-            from scripts.press_review_agent.db_writer import (
-                write_article,
-                write_llm_call,
-                write_theme_sentiments,
+        llm_results: list[LLMResult] = []
+        for lang in expand_languages(args.language):
+            system_prompt = SYSTEM_PROMPT_EN if lang == "en" else SYSTEM_PROMPT
+            user_prompt_template = (
+                USER_PROMPT_TEMPLATE_EN if lang == "en" else USER_PROMPT_TEMPLATE
+            )
+            user_prompt = user_prompt_template.format(
+                target_date=target_date.isoformat(),
+                close_date=close_date_str,
+                close=close_price,
+                contract_code=contract_code,
+                contract_month=contract_month,
+                source_count=successful_sources,
+                sources_text=sources_text,
+            )
+            logger.info(
+                "[%s] Prompt built: %d chars — calling %d provider(s)...",
+                lang,
+                len(user_prompt),
+                len(providers),
+            )
+            llm_results = asyncio.run(
+                call_providers(providers, system_prompt, user_prompt)
             )
 
-            with get_session() as session:
-                # P2b: article_date = data_date (= last completed session).
-                # The dashboard queries pl_fundamental_article.date by
-                # session_date (= previous_trading_day(display_date)). If we
-                # store the press at target_date (upcoming session) the
-                # dashboard fetches 0 rows on the morning after.
-                article_id = write_article(
-                    session,
-                    result.provider,
-                    result.parsed,
-                    article_date=data_date,
-                    language=args.language,
-                    dry_run=args.dry_run,
-                    source_count=successful_sources,
-                    total_sources=len(news_results),
-                    force=args.force,
-                )
-                write_llm_call(
-                    session,
-                    result.provider,
-                    result.usage,
-                    result.latency_ms,
-                    dry_run=args.dry_run,
-                )
+            lang_success = False
+            for result in llm_results:
+                if not result.success:
+                    logger.error(
+                        "[%s/%s] LLM call failed: %s",
+                        result.provider.value,
+                        lang,
+                        result.error,
+                    )
+                    sentry_sdk.capture_message(
+                        f"Press review LLM failed: {result.provider.value}/{lang} "
+                        f"- {result.error}",
+                        level="error",
+                    )
+                    continue
 
-                # Theme sentiments — additive, non-blocking. FR RUN ONLY.
-                # pl_article_segment has NO language dimension and feeds the
-                # (language-agnostic) ensemble macro signal. An EN set would be a
-                # second summary of the SAME news → the ensemble would double-
-                # count it. So the segments stay owned by the fr run; the EN run
-                # still emits theme_sentiments (kept in the prompt so the shared
-                # validator passes) but discards them here.
-                if result.parsed is not None and args.language == "fr":
-                    try:
-                        # P2b: theme sentiments share the same date as the
-                        # article row → data_date (= last completed session),
-                        # not target_date. Keeps pl_article_segment in sync
-                        # with pl_fundamental_article so the sentiment
-                        # batch-read in dashboard_service.get_theme_sentiments
-                        # finds rows for session_date.
-                        write_theme_sentiments(
-                            session,
-                            article_id or uuid.uuid4(),
-                            data_date,
-                            result.parsed.get("theme_sentiments") or {},
-                            result.provider,
-                            dry_run=args.dry_run,
-                            force=args.force,
-                        )
-                    except Exception as e:
-                        logger.error(
-                            "[%s] Theme sentiment write FAILED: %s",
-                            result.provider.value,
-                            e,
-                        )
-                        raise
+                errors = validate_output(result.parsed, result.provider)
+                if errors:
+                    logger.error(
+                        "[%s/%s] Validation failed: %s",
+                        result.provider.value,
+                        lang,
+                        errors,
+                    )
+                    sentry_sdk.capture_message(
+                        f"Press review validation failed: "
+                        f"{result.provider.value}/{lang} - {errors}",
+                        level="error",
+                    )
+                    continue
 
-            any_success = True
+                with get_session() as session:
+                    # P2b: article_date = data_date (= last completed session).
+                    # The dashboard queries pl_fundamental_article.date by
+                    # session_date (= previous_trading_day(display_date)). If we
+                    # store the press at target_date (upcoming session) the
+                    # dashboard fetches 0 rows on the morning after.
+                    article_id = write_article(
+                        session,
+                        result.provider,
+                        result.parsed,
+                        article_date=data_date,
+                        language=str(lang),
+                        dry_run=args.dry_run,
+                        source_count=successful_sources,
+                        total_sources=len(news_results),
+                        force=args.force,
+                    )
+                    write_llm_call(
+                        session,
+                        result.provider,
+                        result.usage,
+                        result.latency_ms,
+                        dry_run=args.dry_run,
+                    )
 
-        # Sentry context
+                    # Theme sentiments — additive, non-blocking. FR RUN ONLY.
+                    # pl_article_segment has NO language dimension and feeds the
+                    # (language-agnostic) ensemble macro signal. An EN set would
+                    # be a second summary of the SAME news → the ensemble would
+                    # double-count it. So the segments stay owned by the fr run;
+                    # the EN run still emits theme_sentiments (kept in the prompt
+                    # so the shared validator passes) but discards them here.
+                    if result.parsed is not None and lang == "fr":
+                        try:
+                            # P2b: theme sentiments share the same date as the
+                            # article row → data_date (= last completed session),
+                            # not target_date. Keeps pl_article_segment in sync
+                            # with pl_fundamental_article so the sentiment
+                            # batch-read in dashboard_service.get_theme_sentiments
+                            # finds rows for session_date.
+                            write_theme_sentiments(
+                                session,
+                                article_id or uuid.uuid4(),
+                                data_date,
+                                result.parsed.get("theme_sentiments") or {},
+                                result.provider,
+                                dry_run=args.dry_run,
+                                force=args.force,
+                            )
+                        except Exception as e:
+                            logger.error(
+                                "[%s] Theme sentiment write FAILED: %s",
+                                result.provider.value,
+                                e,
+                            )
+                            raise
+
+                lang_success = True
+                any_success = True
+
+            if not lang_success:
+                overall_ok = False
+                logger.error("[%s] No provider succeeded for this language.", lang)
+                break  # fr-first: don't attempt en if fr fully failed
+
+        # Sentry context (from the last language's provider results)
         sentry_sdk.set_context(
             "press_review",
             {
@@ -293,6 +312,9 @@ def main() -> int:
             sentry_sdk.capture_message(
                 "Press review: ALL providers failed", level="error"
             )
+            return 1
+        if not overall_ok:
+            logger.error("At least one language run failed -- see logs above")
             return 1
 
         logger.info("=" * 60)

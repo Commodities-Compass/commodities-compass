@@ -2,7 +2,13 @@
 
 import pytest
 
-from app.core.i18n import DEFAULT_LANGUAGE, Language, resolve_language
+from app.core.i18n import (
+    DEFAULT_LANGUAGE,
+    LANGUAGE_CLI_CHOICES,
+    Language,
+    expand_languages,
+    resolve_language,
+)
 
 
 class TestResolveLanguage:
@@ -36,3 +42,20 @@ class TestResolveLanguage:
         assert Language.FR == "fr"
         assert Language.EN == "en"
         assert f"{Language.EN}" == "en"
+
+
+class TestExpandLanguages:
+    def test_both_is_fr_first(self):
+        # FR must come first — translated rows copy the fr row.
+        assert expand_languages("both") == [Language.FR, Language.EN]
+
+    def test_single_language(self):
+        assert expand_languages("fr") == [Language.FR]
+        assert expand_languages("en") == [Language.EN]
+
+    def test_unknown_falls_back_to_default(self):
+        assert expand_languages("de") == [DEFAULT_LANGUAGE]
+        assert expand_languages("") == [DEFAULT_LANGUAGE]
+
+    def test_cli_choices_shape(self):
+        assert LANGUAGE_CLI_CHOICES == ("fr", "en", "both")

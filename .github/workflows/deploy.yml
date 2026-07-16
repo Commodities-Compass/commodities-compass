@@ -213,14 +213,18 @@ jobs:
           deploy_job cc-barchart-scraper     2Gi  "barchart-scraper"
           deploy_job cc-ice-stocks-scraper   512Mi "ice-stocks-scraper"
           deploy_job cc-cftc-scraper         512Mi "cftc-scraper"
-          deploy_job cc-press-review-agent   1Gi  "press-review"
-          deploy_job cc-meteo-agent          1Gi  "meteo-agent"
+          # --language both → one execution writes the fr row then the native
+          # EN (Ghana) row (no per-language jobs). EN content is generated but
+          # stays unserved until VITE_FEATURE_LANG_SWITCHER is flipped ON.
+          deploy_job cc-press-review-agent   1Gi  "press-review,--language,both"
+          deploy_job cc-meteo-agent          1Gi  "meteo-agent,--language,both"
           deploy_job cc-compute-indicators   1Gi  "compute-indicators,--all-contracts,--all-versions"
           # Pinned to "legacy" so daily-analysis NEVER overwrites the
           # C5 ensemble's pl_indicator_daily row, even when the ensemble
           # version is the one with is_active=TRUE. See
           # docs/user-stories/P2-daily-analysis-version-flag.md.
-          deploy_job cc-daily-analysis       1Gi  "daily-analysis,--algorithm-version,legacy"
+          # --language both → fr row (UPDATE) then en row (Option-A copy of fr).
+          deploy_job cc-daily-analysis       1Gi  "daily-analysis,--algorithm-version,legacy,--language,both"
           deploy_job cc-compass-brief        1Gi  "compass-brief"
           # External-data scrapers for Campaign 5 ensemble (ENSO monthly, FX daily).
           # Write to pl_external_indicator (commodity-agnostic). See
@@ -256,7 +260,8 @@ jobs:
           # run independently of the legacy track (cc-daily-analysis + cc-compass-brief
           # which remain active for the legacy brief on the same dates).
           # See docs/runbooks/brief-dual-track.md.
-          deploy_job cc-ensemble-explainer       1Gi  "ensemble-explainer"
+          # --language both → fr ensemble narrative then en (Option-A copy).
+          deploy_job cc-ensemble-explainer       1Gi  "ensemble-explainer,--language,both"
           deploy_job cc-compass-brief-ensemble   1Gi  "compass-brief-ensemble"
           # Dashboard publication gate. Runs every 30 min across the evening→
           # next-morning window; stamps pl_session_release once a session's data

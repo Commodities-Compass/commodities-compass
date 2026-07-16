@@ -31,12 +31,13 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.i18n import LANGUAGE_CLI_CHOICES, expand_languages
 from app.core.sentry import init_sentry
 from scripts.compass_brief.drive_uploader import DriveUploader
 from scripts.compass_brief_ensemble.brief_generator import render_brief
 from scripts.compass_brief_ensemble.config import (
-    FILENAME_PATTERN,
     LOG_FORMAT,
+    filename_for,
     get_credentials_json,
     get_drive_briefs_folder_id,
 )
@@ -83,6 +84,17 @@ def _parse_args() -> argparse.Namespace:
             "(backfills, manual reruns)."
         ),
     )
+    parser.add_argument(
+        "--language",
+        choices=LANGUAGE_CLI_CHOICES,
+        default="fr",
+        help=(
+            "Brief language (default: fr). 'en' renders the native-English "
+            "(Ghana) ensemble brief → '-EN' filename; 'both' renders fr then "
+            "en in one execution (no per-language jobs). The EN edition is "
+            "ensemble-only (US-4 scope)."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -107,19 +119,21 @@ def main() -> int:
     target_date: date_type = dates.target_date
     data_date: date_type = dates.data_date
 
+    # Filename stem is keyed on the SESSION date (= data_date), not the
+    # publication date (target_date / display_date). This keeps brief +
+    # NotebookLM audio + dashboard audio lookup aligned: audio_service resolves
+    # the session_date when the dashboard calendar fetches audio for the
+    # user-facing display_date. See `_parse_and_validate_date` in the dashboard
+    # endpoint. The per-language suffix (`-EN`) is added by config.filename_for.
+    date_stem = data_date.strftime("%Y%m%d")
+    langs = expand_languages(args.language)
+
     logger.info("=" * 60)
     logger.info("Compass Brief Ensemble")
     logger.info("Mode: %s", "DRY RUN" if args.dry_run else "LIVE UPLOAD")
+    logger.info("Language: %s -> %s", args.language, [str(lang) for lang in langs])
     logger.info("Target session: %s | Data session: %s", target_date, data_date)
     logger.info("=" * 60)
-
-    # Filename is keyed on the SESSION date (= data_date), not the publication
-    # date (target_date / display_date). This keeps brief + NotebookLM audio +
-    # dashboard audio lookup aligned: audio_service.get_audio_file_info uses
-    # the resolved session_date when the dashboard calendar fetches audio for
-    # the user-facing display_date. See `_parse_and_validate_date` in
-    # dashboard endpoint.
-    filename = FILENAME_PATTERN.format(date=data_date.strftime("%Y%m%d"))
 
     try:
         from scripts.contract_resolver import resolve_active
@@ -127,45 +141,80 @@ def main() -> int:
         db_url = str(settings.DATABASE_SYNC_URL)
         engine = create_engine(db_url)
 
+        # Drive handles are resolved once, only when actually uploading.
+        uploader: DriveUploader | None = None
+        folder_id: str | None = None
+        if not args.dry_run:
+            uploader = DriveUploader(get_credentials_json())
+            folder_id = get_drive_briefs_folder_id()
+
+        uploaded: list[tuple[str, str]] = []
+        last_data = None
+
+        # fr-first, sequential per language: read → render → publish, then move
+        # to the next language. If the EN read/render fails, the FR brief has
+        # already been uploaded (committed-language preserved), and the raised
+        # error still fails the job (exit 1) so the EN gap is visible in Sentry.
         with Session(engine) as session:
             contract_id = resolve_active(session)
             logger.info("Active contract id: %s", contract_id)
-            data = read_brief_data(
-                session, target_date, contract_id, data_date=data_date
-            )
 
-        brief = render_brief(data)
-        logger.info("Generated brief: %s (%d chars)", filename, len(brief))
+            for language in (str(lang) for lang in langs):
+                logger.info("--- Brief [%s] ---", language)
+                data = read_brief_data(
+                    session,
+                    target_date,
+                    contract_id,
+                    data_date=data_date,
+                    language=language,
+                )
+                brief = render_brief(data, language=language)
+                filename = filename_for(date_stem, language)
+                logger.info("Generated brief: %s (%d chars)", filename, len(brief))
 
-        if args.output:
-            Path(args.output).write_text(brief, encoding="utf-8")
-            logger.info("Saved to %s", args.output)
+                if args.output:
+                    out_path = Path(args.output)
+                    # For a multi-language run, keep FR at the given path and
+                    # write EN to a `-en` sibling so neither overwrites.
+                    if len(langs) > 1 and language != "fr":
+                        out_path = out_path.with_name(
+                            f"{out_path.stem}-{language}{out_path.suffix}"
+                        )
+                    out_path.write_text(brief, encoding="utf-8")
+                    logger.info("Saved to %s", out_path)
+
+                if args.dry_run:
+                    print(f"\n===== {filename} [{language}] =====\n" + brief)
+                    last_data = data
+                    continue
+
+                assert uploader is not None and folder_id is not None
+                file_id = uploader.upload(brief, filename, folder_id)
+                uploaded.append((filename, file_id))
+                last_data = data
+                logger.info("Uploaded %s (id=%s)", filename, file_id)
 
         if args.dry_run:
-            print("\n" + brief)
             return 0
-
-        # Upload to Drive (same folder as legacy brief; filename suffix
-        # discriminates them).
-        creds = get_credentials_json()
-        uploader = DriveUploader(creds)
-        folder_id = get_drive_briefs_folder_id()
-        file_id = uploader.upload(brief, filename, folder_id)
 
         sentry_sdk.set_context(
             "compass_brief_ensemble",
             {
                 "target_date": target_date.isoformat(),
-                "filename": filename,
-                "file_id": file_id,
-                "decision": data.decision,
-                "persistence_days": data.persistence_days,
-                "n_specialists": len(data.specialists),
+                "language": args.language,
+                "uploaded": [name for name, _ in uploaded],
+                "decision": last_data.decision if last_data else None,
+                "persistence_days": (last_data.persistence_days if last_data else None),
+                "n_specialists": len(last_data.specialists) if last_data else 0,
             },
         )
 
         logger.info("=" * 60)
-        logger.info("SUCCESS — %s uploaded (id=%s)", filename, file_id)
+        logger.info(
+            "SUCCESS — %d brief(s) uploaded: %s",
+            len(uploaded),
+            ", ".join(name for name, _ in uploaded),
+        )
         logger.info("=" * 60)
         return 0
 

@@ -28,6 +28,20 @@ from scripts.compass_brief_ensemble.config import ALGORITHM_NAME, ALGORITHM_VERS
 
 logger = logging.getLogger(__name__)
 
+# ``pl_seasonal_score.season_name`` is a stored FR-derived slug (canonical set
+# defined by the meteo agent's SeasonalProfile in scripts/meteo_agent/config.py).
+# The FR brief de-underscores it in place ("grande saison pluies"); the EN brief
+# maps it to a native English season name (West-African bimodal cocoa calendar)
+# so the trajectory line read aloud in the Ghana podcast is fully English. An
+# unknown slug degrades to the de-underscored form (never a KeyError).
+_SEASON_NAME_EN = {
+    "saison_seche": "dry season",
+    "transition_pluies": "rains transition",
+    "grande_saison_pluies": "main rainy season",
+    "petite_saison_seche": "short dry season",
+    "petite_saison_pluies": "short rainy season",
+}
+
 
 class EnsembleBriefDataMissingError(RuntimeError):
     """Raised when required ensemble data is missing for the target date."""
@@ -119,23 +133,36 @@ def _resolve_algorithm_id(session: Session) -> Any:
 
 
 def _read_ensemble_row(
-    session: Session, target_date: date, contract_id: Any, algo_id: Any
+    session: Session,
+    target_date: date,
+    contract_id: Any,
+    algo_id: Any,
+    language: str,
 ) -> dict:
+    # eco / conclusion / confidence_rationale are language-specific prose; the
+    # numeric fields are byte-identical across languages (Option-A EN-row copy).
+    # Filter by language so the EN brief reads the EN row's prose, not the FR's.
     row = session.execute(
         text(
             """
             SELECT decision, confidence, confidence_rationale, direction, conclusion, eco
             FROM pl_indicator_daily
-            WHERE date = :date AND contract_id = :contract AND algorithm_version_id = :algo
+            WHERE date = :date AND contract_id = :contract
+              AND algorithm_version_id = :algo AND language = :language
             LIMIT 1
             """
         ),
-        {"date": target_date, "contract": contract_id, "algo": algo_id},
+        {
+            "date": target_date,
+            "contract": contract_id,
+            "algo": algo_id,
+            "language": language,
+        },
     ).fetchone()
     if row is None:
         raise EnsembleBriefDataMissingError(
             f"No ensemble row in pl_indicator_daily for date={target_date} "
-            f"contract={contract_id}."
+            f"contract={contract_id} language={language}."
         )
     return dict(row._mapping)
 
@@ -366,6 +393,10 @@ def _read_persistence_days(
 
     Returns 1 if only the current day matches, 2 if today + yesterday match,
     etc. Capped at ``lookback_days``.
+
+    Pinned to ``language = 'fr'``: the decision is language-agnostic and the FR
+    row is the canonical, always-present series. Filtering by the request
+    language would collapse the window to the few days an EN row exists.
     """
     rows = session.execute(
         text(
@@ -373,7 +404,7 @@ def _read_persistence_days(
             SELECT date, decision
             FROM pl_indicator_daily
             WHERE contract_id = :contract AND algorithm_version_id = :algo
-              AND date <= :date
+              AND date <= :date AND language = 'fr'
             ORDER BY date DESC
             LIMIT :limit
             """
@@ -394,46 +425,59 @@ def _read_persistence_days(
     return max(persistence, 1)
 
 
-def _read_press(session: Session, target_date: date) -> tuple[str, str, str]:
+def _read_press(
+    session: Session, target_date: date, language: str
+) -> tuple[str, str, str]:
+    # Press prose is generated natively per language (US-3c) — read the row for
+    # the requested language, not the FR row translated.
     row = session.execute(
         text(
             """
             SELECT summary, impact_synthesis, COALESCE(sentiment, '')
             FROM pl_fundamental_article
-            WHERE is_active = true AND date <= :date
+            WHERE is_active = true AND date <= :date AND language = :language
             ORDER BY date DESC LIMIT 1
             """
         ),
-        {"date": target_date},
+        {"date": target_date, "language": language},
     ).fetchone()
     if row is None:
         return "", "", ""
     return (row[0] or "", row[1] or "", row[2] or "")
 
 
-def _read_meteo(session: Session, target_date: date) -> tuple[str, str]:
+def _read_meteo(session: Session, target_date: date, language: str) -> tuple[str, str]:
+    # Weather bulletin is generated natively per language (US-3c) — read the
+    # row for the requested language.
     row = session.execute(
         text(
             """
             SELECT summary, impact_assessment
             FROM pl_weather_observation
-            WHERE date <= :date
+            WHERE date <= :date AND language = :language
             ORDER BY date DESC LIMIT 1
             """
         ),
-        {"date": target_date},
+        {"date": target_date, "language": language},
     ).fetchone()
     if row is None:
         return "", ""
     return (row[0] or "", row[1] or "")
 
 
-def _read_seasonal_trajectory(session: Session, target_date: date) -> str:
+def _read_seasonal_trajectory(
+    session: Session, target_date: date, language: str = "fr"
+) -> str:
     """Compact campaign-trajectory line (cumulative seasonal health).
 
     Reads the in-progress season of the current campaign from pl_seasonal_score
     (same data as the dashboard CampaignBlock) — the long-term view the daily
     observation lacks. Returns "" between seasons or before the first backfill.
+
+    ``pl_seasonal_score`` has no language dimension (scores are numeric,
+    location-keyed); only the surrounding prose is rendered per language. The
+    ``months_covered LIKE '%(en cours)%'`` filter matches a stored FR data
+    marker, not display text — it stays FR regardless of output language.
     """
     rows = session.execute(
         text(
@@ -448,10 +492,20 @@ def _read_seasonal_trajectory(session: Session, target_date: date) -> str:
     ).fetchall()
     if not rows:
         return ""
-    season = rows[0][3].replace("_", " ")
+    raw_season = rows[0][3]
+    if language == "en":
+        season = _SEASON_NAME_EN.get(raw_season, raw_season.replace("_", " "))
+    else:
+        season = raw_season.replace("_", " ")
     avg = sum(float(r[1]) for r in rows) / len(rows)
     heavy = sum(int(r[2] or 0) for r in rows)
     worst = min(rows, key=lambda r: float(r[1]))
+    if language == "en":
+        return (
+            f"Campaign trajectory — {season}: average health {avg:.1f}/5 "
+            f"({len(rows)} zones), {heavy} zone-days of heavy rain cumulated, "
+            f"weakest: {worst[0]} ({float(worst[1]):.1f}/5)."
+        )
     return (
         f"Trajectoire campagne — {season} : santé moyenne {avg:.1f}/5 "
         f"({len(rows)} zones), {heavy} jour-zones de pluie intense cumulés, "
@@ -459,7 +513,9 @@ def _read_seasonal_trajectory(session: Session, target_date: date) -> str:
     )
 
 
-def _read_technicals(session: Session, target_date: date, contract_id: Any) -> str:
+def _read_technicals(
+    session: Session, target_date: date, contract_id: Any, language: str = "fr"
+) -> str:
     row = session.execute(
         text(
             """
@@ -472,7 +528,11 @@ def _read_technicals(session: Session, target_date: date, contract_id: Any) -> s
         {"date": target_date, "contract": contract_id},
     ).fetchone()
     if row is None:
-        return "(pas de données technicals)"
+        return (
+            "(no technicals data)"
+            if language == "en"
+            else "(pas de données technicals)"
+        )
 
     # stocks + CFTC net live in dedicated tables since 2026-05-27;
     # forward-fill the latest weekly observation on/before the row date.
@@ -517,8 +577,9 @@ def _read_technicals(session: Session, target_date: date, contract_id: Any) -> s
             return f"{float(value):,.{precision}f}{unit}"
         return f"{value}{unit}"
 
+    date_label = "Session close" if language == "en" else "Date close"
     return (
-        f"Date close : {row[0]}\n"
+        f"{date_label} : {row[0]}\n"
         f"  CLOSE={_fmt(row[1])} | HIGH={_fmt(row[2])} | LOW={_fmt(row[3])}\n"
         f"  VOLUME={_fmt(row[4], '', 0)} | OI={_fmt(row[5], '', 0)} | IV={_fmt(row[6])}\n"
         f"  STOCK_US={_fmt(stock_us)} | STOCK_EU={_fmt(stock_eu)} | COM_NET={_fmt(com_net)}"
@@ -531,6 +592,7 @@ def read_brief_data(
     contract_id: Any,
     *,
     data_date: date | None = None,
+    language: str = "fr",
 ) -> EnsembleBriefData:
     """Read all rows needed to render the ensemble brief. Fail-loud if the
     ensemble decision row or orchestrator row is missing (cc-ensemble-compute
@@ -544,16 +606,23 @@ def read_brief_data(
             (ensemble-compute + ensemble-explainer) wrote the rows we read.
             Defaults to ``target_date`` for backward compatibility (historical
             backfills where both were the same date).
+        language: Output language (``fr`` default). Drives the language-scoped
+            prose reads (ensemble narrative, press, meteo, trajectory,
+            technicals labels). Language-agnostic reads (orchestrator,
+            specialists, YTD, persistence) stay pinned to the canonical FR
+            series — decisions/numbers are identical across languages.
     """
     effective_data_date = data_date or target_date
     algo_id = _resolve_algorithm_id(session)
-    ind = _read_ensemble_row(session, effective_data_date, contract_id, algo_id)
+    ind = _read_ensemble_row(
+        session, effective_data_date, contract_id, algo_id, language
+    )
     orc = _read_orchestrator(session, effective_data_date, contract_id, algo_id)
     specialists = _read_specialists(session, effective_data_date, contract_id, algo_id)
-    press = _read_press(session, target_date)
-    meteo = _read_meteo(session, target_date)
-    meteo_trajectory = _read_seasonal_trajectory(session, target_date)
-    technicals = _read_technicals(session, effective_data_date, contract_id)
+    press = _read_press(session, target_date, language)
+    meteo = _read_meteo(session, target_date, language)
+    meteo_trajectory = _read_seasonal_trajectory(session, target_date, language)
+    technicals = _read_technicals(session, effective_data_date, contract_id, language)
     persistence = _read_persistence_days(
         session, effective_data_date, contract_id, algo_id, ind["decision"]
     )

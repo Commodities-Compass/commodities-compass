@@ -43,6 +43,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.i18n import DEFAULT_LANGUAGE
 from app.core.sentry import init_sentry
 from scripts.daily_analysis.db_analysis_engine import (
     AnalysisWriteError,
@@ -105,6 +106,16 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="Contract code (default: active contract from DB)",
     )
+    # Content language of the ensemble narrative's 3 prose fields. Default 'fr'
+    # (source-of-truth ensemble row). 'en' copies the numbers from the fr
+    # ensemble row and writes only EN prose (D3-EN-rows) — the fr explainer must
+    # have written first.
+    parser.add_argument(
+        "--language",
+        choices=["fr", "en"],
+        default="fr",
+        help="Content language of the narrative prose fields (default: fr).",
+    )
     return parser.parse_args()
 
 
@@ -116,6 +127,10 @@ def _assert_ensemble_row_present(
     Without this check the engine's auto-align would silently fall back to
     the legacy row when no ensemble row exists, breaking the dual-track
     invariant. Fail-loud early before wasting 2 gpt-4-turbo calls.
+
+    The row that must exist is always the source-of-truth (fr) ensemble row:
+    the fr explainer enriches it in place, and an en run copies its numbers
+    (D3-EN-rows). So this gate is language-independent — it always checks fr.
     """
     row = session.execute(
         text(
@@ -128,6 +143,7 @@ def _assert_ensemble_row_present(
               AND v.name = :ensemble_algo
               AND v.version = :ensemble_ver
               AND i.date = :data_date
+              AND i.language = :src_language
             LIMIT 1
             """
         ),
@@ -136,6 +152,7 @@ def _assert_ensemble_row_present(
             "ensemble_algo": ALGORITHM_NAME,
             "ensemble_ver": ALGORITHM_VERSION,
             "data_date": data_date,
+            "src_language": DEFAULT_LANGUAGE.value,
         },
     ).fetchone()
     if row is None:
@@ -173,6 +190,7 @@ def main() -> int:
     logger.info("=" * 60)
     logger.info("Ensemble Explainer (DBAnalysisEngine auto-align wrapper)")
     logger.info("Mode: %s", "DRY RUN" if args.dry_run else "LIVE")
+    logger.info("Language: %s", args.language)
     logger.info(
         "Target session: %s | Data session (row date): %s", target_date, data_date
     )
@@ -203,6 +221,7 @@ def main() -> int:
                 contract_code=contract_code,
                 data_date=data_date,
                 dry_run=args.dry_run,
+                language=args.language,
             )
 
         if not result.ensemble_aligned:
@@ -220,6 +239,7 @@ def main() -> int:
             {
                 "target_date": target_date.isoformat(),
                 "data_date": data_date.isoformat(),
+                "language": args.language,
                 "decision": result.trading.decision,
                 "confidence": result.trading.confiance,
                 "direction": result.trading.direction,

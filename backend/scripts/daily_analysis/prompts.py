@@ -101,6 +101,114 @@ Exemples :
 {{"date": "19/12/2024", "macroeco_bonus": 0.00, "eco": "Aucune nouvelle macro significative, marchés en attente des données de production trimestrielles."}}
 """
 
+# English edition (US-3, EN/Ghana). Native English generation — NOT a literal
+# translation of the FR output: the model writes a fresh English ``eco`` here,
+# it never re-types the French sentence. The JSON shape (date / macroeco_bonus /
+# eco) and the -0.10..+0.10 score scale are identical to the FR prompt so the
+# parser + downstream numeric pipeline are language-agnostic.
+CALL_1_PROMPT_EN = """\
+🎯 Optimised version for continuous values
+You are an expert cocoa-market analyst. Your daily task is to analyse today's macro-economic news that could move cocoa prices.
+Two information sources to process:
+
+Today's or yesterday's macro-economic news:
+{MACRONEWS}
+Weather context:
+– {METEOTODAY}: today's weather summary
+– {METEONEWS}: condensed history of the last 3 years for the main cocoa-growing regions
+
+
+📊 STEP-BY-STEP ANALYSIS
+
+READ CAREFULLY each item in the macro-economic news.
+Treat every source as potentially critical. Any information on production, weather, stocks, consumption, currencies or agricultural policy must be examined seriously.
+Then analyse today's weather summary in the light of the weather history.
+Assess whether current conditions confirm, break or reinforce a recent weather trend.
+
+Identify durable anomalies such as:
+- Drought, water deficit
+- Excessive rain, saturated soils
+- Harmattan or dry winds
+- Vegetative stress or disease
+➡️ If these conditions threaten flowering, pod-set or pod growth, treat them as BULLISH for prices (expected drop in supply or quality).
+➡️ Conversely, if conditions favour healthy growth, good pod-set or an abundant harvest, that reinforces a BEARISH read (ample supply, quality improvement, easing on the markets).
+
+🎯 QUANTITATIVE IMPACT ASSESSMENT
+
+Summarise the day's event (or the absence of one) in a single synthetic sentence of 30 words maximum under the ECO variable.
+Cite only one main fact, even if several signals exist.
+Assess the market impact on a continuous scale:
+
+Market impact | MACROECO BONUS score
+Very bearish (major crisis, expected collapse) | -0.10
+Strongly bearish (confirmed bad news) | -0.08
+Moderately bearish (clear negative trend) | -0.06
+Slightly bearish (minor negative signals) | -0.04
+Weakly bearish (negative nuances) | -0.02
+Neutral (no significant impact) | 0.00
+Weakly bullish (positive nuances) | +0.02
+Slightly bullish (minor positive signals) | +0.04
+Moderately bullish (clear positive trend) | +0.06
+Strongly bullish (confirmed good news) | +0.08
+Very bullish (supply crisis, expected spike) | +0.10
+
+📋 PRECISE ASSESSMENT CRITERIA
+BULLISH factors (+0.02 to +0.10):
+
+Rainfall deficit in producing regions
+Conflict / political instability in Côte d'Ivoire / Ghana
+Cocoa-tree disease (black pod, swollen shoot)
+Rising input costs (fertiliser, fuel)
+EUR/USD depreciation (makes cocoa dearer for Europeans)
+Low stocks reported by ICCO
+Rising chocolate demand (holidays, new markets)
+
+BEARISH factors (-0.02 to -0.10):
+
+Favourable rains, optimal weather conditions
+Political stability, government agreements
+New plantings, expanded acreage
+Lower production costs, farm subsidies
+EUR/USD appreciation (cocoa cheaper for Europeans)
+High stocks, production surplus
+Slowing consumption, economic recession
+
+
+⚠️ STRICT RULES
+
+Never invent a trend if no concrete news is given.
+Do not say "not enough information", you must conclude clearly.
+Be categorical or factual, even when there is no significant news.
+Use the FULL -0.10 to +0.10 range according to the real intensity of the impact.
+
+
+📤 STRICT OUTPUT FORM (do not change at all)
+
+You MUST reply ONLY with a valid JSON object, no surrounding text:
+{{"date": "DD/MM/YYYY", "macroeco_bonus": 0.00, "eco": "synthetic sentence of 30 words maximum"}}
+
+Examples:
+{{"date": "19/12/2024", "macroeco_bonus": -0.06, "eco": "Heavy rains in Côte d'Ivoire support pod development, 2025 output seen up 8%."}}
+{{"date": "19/12/2024", "macroeco_bonus": 0.04, "eco": "Mild USD/EUR tension unfavourable to European importers, chocolate demand steady despite inflation."}}
+{{"date": "19/12/2024", "macroeco_bonus": 0.00, "eco": "No significant macro news, markets awaiting quarterly production data."}}
+"""
+
+# Per-language Call #1 template + empty-context placeholders.
+_CALL_1_PROMPT: dict[str, str] = {"fr": CALL_1_PROMPT, "en": CALL_1_PROMPT_EN}
+
+_CALL_1_PLACEHOLDERS: dict[str, dict[str, str]] = {
+    "fr": {
+        "macronews": "(aucune actualité disponible)",
+        "meteotoday": "(aucune donnée météo du jour)",
+        "meteonews": "(aucun historique météo disponible)",
+    },
+    "en": {
+        "macronews": "(no news available)",
+        "meteotoday": "(no weather data for today)",
+        "meteonews": "(no weather history available)",
+    },
+}
+
 # ---------------------------------------------------------------------------
 # Call #2 — Trading Decision & Recommendation
 # DEPRECATED (US-1c facts/voice): CALL_2_PROMPT / CALL_2_PROMPT_ENSEMBLE and
@@ -216,12 +324,21 @@ Le champ "conclusion" doit OBLIGATOIREMENT suivre ce format exact :
 """
 
 
-def build_call1_prompt(macronews: str, meteotoday: str, meteonews: str) -> str:
-    """Build the Call #1 prompt with context variables injected."""
-    return CALL_1_PROMPT.format(
-        MACRONEWS=macronews or "(aucune actualité disponible)",
-        METEOTODAY=meteotoday or "(aucune donnée météo du jour)",
-        METEONEWS=meteonews or "(aucun historique météo disponible)",
+def build_call1_prompt(
+    macronews: str, meteotoday: str, meteonews: str, language: str = "fr"
+) -> str:
+    """Build the Call #1 prompt in ``language`` (fr | en), context injected.
+
+    The ``eco`` field is one of the 3 native-language prose fields (D3): the EN
+    prompt asks for a fresh English summary, never a translation of the FR one.
+    Unknown languages fall back to French.
+    """
+    template = _CALL_1_PROMPT.get(language, _CALL_1_PROMPT["fr"])
+    placeholders = _CALL_1_PLACEHOLDERS.get(language, _CALL_1_PLACEHOLDERS["fr"])
+    return template.format(
+        MACRONEWS=macronews or placeholders["macronews"],
+        METEOTODAY=meteotoday or placeholders["meteotoday"],
+        METEONEWS=meteonews or placeholders["meteonews"],
     )
 
 

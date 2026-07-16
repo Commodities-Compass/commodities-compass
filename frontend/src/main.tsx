@@ -6,6 +6,7 @@ import App from './App';
 import { ErrorFallback } from './components/ErrorFallback';
 import { initSentry, Sentry } from './sentry';
 import { registerPreloadErrorReload } from './utils/preload-error-reload';
+import './i18n'; // initialize i18next (side effect) before the app renders
 import './index.css';
 
 initSentry();

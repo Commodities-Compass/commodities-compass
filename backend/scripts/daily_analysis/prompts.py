@@ -103,6 +103,13 @@ Exemples :
 
 # ---------------------------------------------------------------------------
 # Call #2 — Trading Decision & Recommendation
+# DEPRECATED (US-1c facts/voice): CALL_2_PROMPT / CALL_2_PROMPT_ENSEMBLE and
+# their build_call2_prompt* functions below are superseded by voice_prompts.py
+# — the LLM now emits a voice-only headline and the engine renders the numbered
+# conclusion from the FactsPayload. These are dead (unreferenced) and slated for
+# removal. NOTE: ENSEMBLE_DIAGNOSTICS_BLOCK, _format_optional and
+# _qualitative_conviction (further down) ARE still used by voice_prompts.py and
+# must stay.
 # Model: gpt-4-turbo | Temperature: 0.7 | Max tokens: 2048
 # Input: all 42 TOD/YES variables + {FINAL_INDICATOR} + {FINAL_CONCLUSION}
 # Output: DECISION, CONFIANCE, DIRECTION, CONCLUSION

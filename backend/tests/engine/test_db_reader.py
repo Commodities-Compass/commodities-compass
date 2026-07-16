@@ -86,4 +86,4 @@ class TestPromptVariableMapping:
             # Keys should not contain characters that break str.format()
             assert "{" not in tod_key
             assert "}" not in tod_key
-            # %K and %D will be converted to pctK/pctD by build_call2_prompt
+            # %K and %D will be converted to pctK/pctD by build_call2_voice_prompt

@@ -218,8 +218,9 @@ def main() -> int:
 
         # Invoke the legacy DBAnalysisEngine WITHOUT pinning algorithm_version
         # → engine.run() auto-aligns on the ensemble row in
-        # pl_orchestrator_decision, uses CALL_2_PROMPT_ENSEMBLE with the
-        # diagnostics block, and writes the narrative to the ensemble row.
+        # pl_orchestrator_decision, builds the ensemble-aware Call #2 voice
+        # prompt (voice_prompts.build_call2_voice_prompt_ensemble, which injects
+        # the diagnostics block), and writes the narrative to the ensemble row.
         #
         # 'both' → fr first (its own session commits), then en (copies the fr
         # ensemble row). A failure in any language raises and is caught below;

@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 class TechnicalsData:
     """Today + yesterday technical data formatted for LLM prompts.
 
-    Matches the interface expected by build_call2_prompt():
+    Matches the interface expected by build_call2_voice_prompt():
     - today: dict of {CLOSETOD: "2057", HIGHTOD: "2162", ...}
     - yesterday: dict of {CLOSEYES: "2100", HIGHYES: "2200", ...}
     """

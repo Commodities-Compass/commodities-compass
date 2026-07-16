@@ -15,8 +15,11 @@ from app.core.sentry import init_sentry
 from scripts.meteo_agent.config import (
     LOG_FORMAT,
     SYSTEM_PROMPT_TEMPLATE,
+    SYSTEM_PROMPT_TEMPLATE_EN,
     USER_PROMPT_TEMPLATE,
+    USER_PROMPT_TEMPLATE_EN,
     build_seasonal_context,
+    build_seasonal_context_en,
 )
 from scripts.meteo_agent.llm_client import call_openai
 from scripts.meteo_agent.validator import validate_output
@@ -69,6 +72,15 @@ def main() -> int:
             "gate (backfills, manual reruns)."
         ),
     )
+    parser.add_argument(
+        "--language",
+        choices=["fr", "en"],
+        default="fr",
+        help=(
+            "Bulletin language (default: fr). 'en' writes a native English "
+            "(Ghana) row that coexists with the fr row for the same session."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -97,6 +109,7 @@ def main() -> int:
     logger.info("=" * 60)
     logger.info("Meteo Agent - Cocoa Weather Analysis")
     logger.info("Mode: %s", "DRY RUN" if args.dry_run else "LIVE")
+    logger.info("Language: %s", args.language)
     logger.info(
         "Target session: %s | Data session (row date): %s", target_date, data_date
     )
@@ -179,8 +192,23 @@ def main() -> int:
         # P2b: seasonal context tied to target_date.month so eve-of-November-1
         # runs see November thresholds, not the previous month's.
         current_month = target_date.month
-        seasonal_context = build_seasonal_context(current_month)
-        system_prompt = SYSTEM_PROMPT_TEMPLATE.format(seasonal_context=seasonal_context)
+        # Native-language prompt set. The auxiliary context blocks below
+        # (campaign memory, Harmattan, ENSO, forecast) are still FR-generated;
+        # the EN system prompt instructs the model to read them for their data
+        # but write its entire output in English. Threading language through
+        # those helpers is a follow-up.
+        if args.language == "en":
+            seasonal_context = build_seasonal_context_en(current_month)
+            system_prompt = SYSTEM_PROMPT_TEMPLATE_EN.format(
+                seasonal_context=seasonal_context
+            )
+            user_prompt_template = USER_PROMPT_TEMPLATE_EN
+        else:
+            seasonal_context = build_seasonal_context(current_month)
+            system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
+                seasonal_context=seasonal_context
+            )
+            user_prompt_template = USER_PROMPT_TEMPLATE
         memory_block = f"\n\n{campaign_memory}" if campaign_memory else ""
         harmattan_block = harmattan_context
         # Forward-risk synthesis from the forecast portion of the series (J+1→J+5).
@@ -190,7 +218,7 @@ def main() -> int:
         if forecast_block:
             logger.info("Forecast synthesis: %s", forecast_block.strip())
         user_prompt = (
-            USER_PROMPT_TEMPLATE.format(weather_data=weather_data)
+            user_prompt_template.format(weather_data=weather_data)
             + memory_block
             + harmattan_block
             + enso_context
@@ -232,6 +260,7 @@ def main() -> int:
                 session,
                 result.parsed,
                 observation_date=data_date,
+                language=args.language,
                 dry_run=args.dry_run,
                 force=args.force,
             )
@@ -266,6 +295,7 @@ def main() -> int:
             {
                 "target_date": target_date.isoformat(),
                 "data_date": data_date.isoformat(),
+                "language": args.language,
                 "weather_data_chars": len(weather_data),
                 "usage": result.usage,
                 "latency_ms": result.latency_ms,

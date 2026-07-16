@@ -263,6 +263,94 @@ SEUILS CALIBRÉS POUR CETTE SAISON (ne qualifier que si le seuil est franchi) :
 - Humidité relative : < {p.rh_low_pest_threshold}% = risque mirides, > {p.rh_high_disease_threshold}% = risque pourriture brune"""
 
 
+# --- English (Ghana edition) seasonal prose --------------------------------
+# The numeric thresholds stay in SeasonalProfile (single source of truth, shared
+# by both languages); only the language-specific prose (name / description /
+# phenology / baseline) is authored natively in English here, keyed by profile
+# name. Native English — NOT a literal translation of the FR strings.
+_SEASONAL_PROSE_EN: dict[str, dict[str, str]] = {
+    "saison_seche": {
+        "name_en": "DRY SEASON",
+        "description": (
+            "Dry season (Harmattan). End of the main crop. A moderate water "
+            "deficit is NORMAL — the trees are in relative dormancy. Heat stress "
+            "and dry wind are the real risks, not the lack of rain."
+        ),
+        "phenology": "dormancy / end of main crop",
+        "baseline_note": "Limited weather impact — trees dormant, harvest finished or ending",
+    },
+    "transition_pluies": {
+        "name_en": "RAINY-SEASON TRANSITION",
+        "description": (
+            "Transition into the main rainy season. Vegetative recovery, "
+            "flowering and pod-set under way. Growing sensitivity to water "
+            "stress. The first rains are critical for pod-set."
+        ),
+        "phenology": "flowering / pod-set (early mid-crop)",
+        "baseline_note": "HIGH weather impact — flowering is very sensitive to water stress",
+    },
+    "grande_saison_pluies": {
+        "name_en": "MAIN RAINY SEASON",
+        "description": (
+            "Main rainy season. Cherelle (young pod) development. Primary risk = "
+            "excess water (brown pod, black pod). A deficit is ABNORMAL and "
+            "concerning at this stage."
+        ),
+        "phenology": "cherelle development / mid-crop",
+        "baseline_note": "CRITICAL weather impact — cherelles very vulnerable, both excess and deficit dangerous",
+    },
+    "petite_saison_seche": {
+        "name_en": "SHORT DRY SEASON",
+        "description": (
+            "Short dry season. Mid-crop pod maturation. A normal rainfall pause. "
+            "Moderate stress is tolerated by the maturing pods."
+        ),
+        "phenology": "mid-crop maturation",
+        "baseline_note": "Moderate weather impact — maturing pods tolerate stress better",
+    },
+    "petite_saison_pluies": {
+        "name_en": "SHORT RAINY SEASON",
+        "description": (
+            "Short rainy season. Mid-crop harvest + flowering for the main crop. "
+            "Critical window: excess humidity = black pod on ripe pods, deficit = "
+            "poor flowering for the coming main crop."
+        ),
+        "phenology": "mid-crop harvest + main-crop flowering",
+        "baseline_note": "HIGH weather impact — dual stake: harvest under way + next campaign's flowering",
+    },
+}
+
+
+def build_seasonal_context_en(month: int) -> str:
+    """English (Ghana) counterpart of :func:`build_seasonal_context`.
+
+    Reuses the numeric thresholds from :class:`SeasonalProfile`; the season
+    prose comes from the native-English lookup above.
+    """
+    p = get_seasonal_profile(month)
+    prose = _SEASONAL_PROSE_EN.get(p.name, _SEASONAL_PROSE_EN["saison_seche"])
+    excess_line = ""
+    if p.name in RAINY_SEASONS:
+        excess_line = (
+            f"\n- Water surplus (rainy season): significant if the balance "
+            f"exceeds +3 mm/day over the season, or more than {HEAVY_RAIN_IMPACT_DAYS} "
+            f"days of intense rain (>{HEAVY_RAIN_MM_DAY:.0f}mm/day) → brown pod / "
+            f"black pod risk. Both surplus and deficit are penalising here."
+        )
+    return f"""SEASONAL CONTEXT — {prose["name_en"]} ({prose["description"]})
+Phenological stage: {prose["phenology"]}
+Baseline note: {prose["baseline_note"]}
+
+THRESHOLDS CALIBRATED FOR THIS SEASON (only qualify if the threshold is crossed):
+- Normal precipitation: {p.precip_normal_mm_day} mm/day
+- Water balance: significant deficit only if < {p.precip_deficit_threshold_mm_day} mm/day over 3+ days{excess_line}
+- Temperature: stress only if Tmax > {p.tmax_stress_threshold}°C for {p.tmax_stress_consecutive_days}+ consecutive days
+- Soil moisture 3-9cm: stress if < {p.soil_shallow_stress}%. Normal range: {p.soil_shallow_normal_range}
+- Soil moisture 9-27cm: stress if < {p.soil_deep_stress}%
+- VPD: stress if > {p.vpd_stress_threshold} kPa. Normal range: {p.vpd_normal_range}
+- Relative humidity: < {p.rh_low_pest_threshold}% = mirid risk, > {p.rh_high_disease_threshold}% = brown pod risk"""
+
+
 SYSTEM_PROMPT_TEMPLATE = """Tu es un analyste quantitatif du marché du cacao. Tu analyses les données météo \
 de 6 localités clés : Daloa, San-Pédro et Soubré (Côte d'Ivoire) + Kumasi, Takoradi et Goaso (Ghana).
 
@@ -354,3 +442,103 @@ Distingue bien la portion OBSERVÉE (J-1/J) de la portion PRÉVUE (J+1→J+5) de
 Calcule d'abord les bilans hydriques et moyennes par localité, puis qualifie les conditions \
 actuelles, puis évalue le risque à l'horizon à partir des prévisions. \
 Compare aux seuils saisonniers fournis, pas aux conditions optimales théoriques."""
+
+
+# --- English (Ghana) edition prompts ---------------------------------------
+# Native English generation for the Ghana cocoa-trader audience — NOT a literal
+# translation of the FR prompt. Same 4-step method, same output contract: the
+# JSON KEYS stay French (texte / resume / mots_cle / impact_synthetiques /
+# diagnostics — the parser + db_writer depend on them) and the diagnostics enum
+# values stay ("normal" / "degraded" / "stress"); only the prose VALUES are
+# English. Ghana zones (Kumasi, Takoradi, Goaso) are framed first.
+SYSTEM_PROMPT_TEMPLATE_EN = """You are a quantitative cocoa-market analyst writing for West-African (Ghana) \
+cocoa exporters and traders. You analyse weather data for 6 key locations: Kumasi, Takoradi and \
+Goaso (Ghana) + Daloa, San-Pédro and Soubré (Côte d'Ivoire).
+
+ABSOLUTE RULE: QUANTIFY BEFORE YOU QUALIFY.
+Never write "severe stress", "significant deficit" or "degraded conditions" without first \
+computing the exact value and comparing it to the seasonal threshold below. \
+If the data do not confirm the qualifier, do not use it.
+
+DEFICIT / SURPLUS SYMMETRY: EXCESS water is a stressor, just like deficit. \
+In the rainy seasons a widespread surplus (strongly positive water balances, intense-rain days, \
+high relative humidity) = BROWN POD / black pod risk on the pods: it must be quantified and \
+flagged, never dismissed as "nothing to report". Prefer to under-state a one-off noise, but DO \
+NOT under-state a prospective risk confirmed by the forecast (persistent surplus in the rainy \
+seasons, or persistent drought/heat).
+
+{seasonal_context}
+
+Some context blocks may follow the data in the message: campaign memory, the ENSO CLIMATE \
+REGIME (El Niño / La Niña, background bias) and the J+1→J+5 FORECAST synthesis. THESE BLOCKS MAY \
+BE WRITTEN IN FRENCH — read them for their figures and their signal, but write your ENTIRE output \
+in English. Use them.
+
+FOUR-STEP ANALYSIS METHOD:
+
+STEP 1 — COMPUTE (mandatory, per location):
+For each location, compute:
+- Water balance = Σ precipitation − Σ ET0 (in mm, + or − sign)
+- Mean max temperature and the number of days above the seasonal threshold
+- Mean soil moisture (both depths)
+- Mean VPD and the number of hours above the seasonal threshold
+
+STEP 2 — DIAGNOSE CURRENT CONDITIONS (per location):
+Classify each location: "normal for the season" / "slightly degraded" / "confirmed stress".
+A "confirmed stress" requires AT LEAST 2 indicators past their thresholds at once — on the \
+DEFICIT side (negative balance, dry soil, high VPD, Harmattan) OR the SURPLUS side (in the rainy \
+seasons: strongly positive balance beyond the surplus threshold + intense rain, or relative \
+humidity > brown-pod threshold). A single indicator past threshold = "slightly degraded".
+
+STEP 3 — RISK AT THE J+1→J+5 HORIZON (forecast):
+From the FORECAST portion of the series (and the synthesis provided), identify the DOMINANT \
+risk ahead and orient it with the ENSO REGIME:
+- Rainy season + wet forecast (or La Niña regime) → RISING brown pod / black pod risk, plus port \
+  logistics disruption if the rain is extreme.
+- Dry season / El Niño regime + dry-hot forecast → RISING water-deficit / Harmattan / heat-stress risk.
+State the prospective risk even when current conditions are "normal": the decision horizon is \
+4-5 sessions, not just today.
+
+STEP 4 — MARKET IMPACT (current + prospective):
+Base impact = proportional to the number of locations in "confirmed stress" today:
+- 0-1 location: 1-3/10 — 2-3 locations: 4-5/10 — 4+ locations: 6-8/10.
+THEN adjust for the horizon risk (STEP 3):
+- Widespread surplus (all zones at least "slightly degraded" on the wet side) in a rainy season \
+  WITH a forecast confirming the rain continues → DO NOT cap at "negligible": aim for 4-6/10 \
+  (brown-pod channel + port logistics).
+- Persistent dry-hot forecast in an El Niño regime → raise by 1-2 points.
+- > 8/10 is reserved for exceptional events (flooding, multi-week drought).
+Always justify the impact with figures (current AND forecast).
+
+OUTPUT FORMAT — valid JSON with exactly 5 fields (keep these exact French field names):
+
+- "texte": a NARRATIVE, flowing analysis written like a professional weather bulletin — NOT a \
+per-location list. Group zones by similar situation, compare across countries (Ghana vs Côte \
+d'Ivoire), note spatial trends. Weave the key figures (water balances, temperatures, soil \
+moisture) into the flow of the text, not into a table. Use connectors ("while", "by contrast", \
+"spatially"). The text must be understandable by a non-meteorologist trader. Put the ENSO REGIME \
+in the background (one sentence, with the reference month — lagged data) THEN state the J+1→J+5 \
+RISK, and close with the calibrated market consequence. Do not use superlatives without data to \
+back them. SOIL-MOISTURE FORMATTING: express it ONLY as a percentage (e.g. "25%"), never as \
+m³/m³. Do not write both formats — the % alone is enough.
+
+- "resume": current diagnosis + J+1→J+5 risk + calibrated price impact (2-3 sentences max)
+
+- "mots_cle": geographic zone, stress type (deficit or surplus where relevant), ENSO regime, phenological stage (comma-separated)
+
+- "impact_synthetiques": "X/10; justification with CURRENT and FORECAST figures"
+
+- "diagnostics": an object with one key per location and the STEP-2 diagnosis as the value. \
+Allowed values ONLY: "normal", "degraded", "stress". \
+Example: {{"Kumasi": "normal", "Takoradi": "degraded", "Goaso": "stress", "Daloa": "normal", "San-Pédro": "degraded", "Soubré": "normal"}}
+
+IMPORTANT: reply ONLY with the JSON, no markdown fences and no text before or after."""
+
+USER_PROMPT_TEMPLATE_EN = """Open-Meteo data — J-1 → J+5 window (recent observation + forecast) for the 6 cocoa locations:
+
+{weather_data}
+
+Clearly separate the OBSERVED portion (J-1/J) from the FORECAST portion (J+1→J+5) of the series. \
+First compute the water balances and per-location means, then qualify the current conditions, \
+then assess the horizon risk from the forecast. Compare against the seasonal thresholds provided, \
+not against theoretical optimal conditions."""

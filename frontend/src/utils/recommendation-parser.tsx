@@ -12,14 +12,21 @@ export interface ParsedRecommendations {
 export function parseConclusion(items: string[]): ParsedRecommendations {
   const result: ParsedRecommendations = { analysis: [], watchlist: [] };
   let inWatchlist = false;
+  let seenHeader = false;
 
   for (const item of items) {
     const trimmed = item.trim();
     if (!trimmed) continue;
 
-    if (/a surveiller/i.test(trimmed)) {
-      inWatchlist = true;
-      continue;
+    // Section headers start with ">". The first is the headline (analysis);
+    // the second marks the watch section. Keying on structure — not the French
+    // words "A SURVEILLER" — keeps this working for any localized header.
+    if (/^>/.test(trimmed)) {
+      if (seenHeader) {
+        inWatchlist = true;
+        continue; // drop the watch-section header line itself
+      }
+      seenHeader = true;
     }
 
     const cleaned = trimmed.replace(/^>\s*/, "");

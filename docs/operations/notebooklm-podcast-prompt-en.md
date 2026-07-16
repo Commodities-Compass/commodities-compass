@@ -97,7 +97,8 @@ Mandatory structure:
    - Côte d'Ivoire + Ghana, short-term and longer-term impact. Frame Ghana
      first for this edition.
 
-7. TECHNICAL SNAPSHOT (≤30 sec — section "V — TECHNICAL SNAPSHOT" of the brief)
+7. TECHNICAL SNAPSHOT (≤30 sec — section "V — TECHNICAL SNAPSHOT — LAST
+   SESSION" of the brief)
    - The levels that matter, in prose: close, RSI, MACD, stocks (in tonnes).
 
 8. RECOMMENDATION + TO WATCH (≤1 min — section "VI — OPERATIONAL

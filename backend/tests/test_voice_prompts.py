@@ -69,3 +69,23 @@ class TestEnsembleVoicePrompt:
         # |net_score|=0.8, n_committed=12 -> adhesion ~0.74 -> "forte"
         p = build_call2_voice_prompt_ensemble(_TODAY, _YDAY, _Ens())
         assert "Conviction Compass intrinsèque : forte" in p
+
+
+class TestEnglishVoicePrompt:
+    def test_legacy_en_requests_headline(self):
+        p = build_call2_voice_prompt(_TODAY, _YDAY, 1.5, "MONITOR", language="en")
+        assert '"headline"' in p
+        assert "editorial read" in p  # EN task
+        assert "MONITOR" in p
+        assert "A SURVEILLER" not in p
+
+    def test_ensemble_en_pins_decision_and_forbidden_vocab(self):
+        p = build_call2_voice_prompt_ensemble(_TODAY, _YDAY, _Ens(), language="en")
+        assert "HEDGE" in p  # decision pinned
+        assert "STRICTLY FORBIDDEN VOCABULARY" in p
+        assert '"confiance_rationale"' in p  # JSON field name stays French
+
+    def test_ensemble_en_conviction_label_translated(self):
+        # forte -> EN "strong"
+        p = build_call2_voice_prompt_ensemble(_TODAY, _YDAY, _Ens(), language="en")
+        assert "Intrinsic Compass conviction: strong" in p

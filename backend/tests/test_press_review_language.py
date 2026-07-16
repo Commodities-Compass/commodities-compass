@@ -10,6 +10,7 @@ EN run discards its theme_sentiments (enforced in main.py).
 from __future__ import annotations
 
 from datetime import date
+from typing import Any
 
 import pytest
 from sqlalchemy import select
@@ -26,7 +27,7 @@ from scripts.press_review_agent.db_writer import (
 )
 
 
-def _parsed(tag: str) -> dict[str, str]:
+def _parsed(tag: str) -> dict[str, Any]:
     return {
         "resume": f"{tag} review body summarising supply, fundamentals and market tone.",
         "mots_cle": f"{tag}; London CAN26 2,531 GBP/t; grindings down",

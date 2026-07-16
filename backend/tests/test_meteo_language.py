@@ -8,6 +8,7 @@ coexists with the FR row for the same session. Numeric thresholds are shared
 from __future__ import annotations
 
 from datetime import date
+from typing import Any
 
 import pytest
 from sqlalchemy import select
@@ -23,7 +24,7 @@ from scripts.meteo_agent.db_writer import (
 )
 
 
-def _parsed(tag: str) -> dict[str, str]:
+def _parsed(tag: str) -> dict[str, Any]:
     return {
         "texte": f"{tag} bulletin body — flowing narrative well over the two "
         "hundred character minimum so the validator would be satisfied. "

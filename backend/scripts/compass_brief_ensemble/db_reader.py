@@ -210,10 +210,73 @@ def _read_specialists(
     return [SpecialistVote(name=r[0], pred=r[1], window_months=r[2]) for r in rows]
 
 
+def _decision_aware_front_month_rows(
+    session: Session, start_date: date, end_date: date
+) -> list[Any]:
+    """Roll-safe decision-aware front-month series — ``(date, close, decision)``
+    ordered by date ASC.
+
+    Sync mirror of ``dashboard_service._decision_aware_front_month_series``
+    (added by #65). Per date it picks the highest-OI contract *that carries a
+    decision* (ensemble preferred over legacy, pinned to ``language='fr'`` since
+    the EN row copies the language-agnostic decision), so the YTD /
+    running-accuracy the brief reads aloud stays identical to the dashboard
+    across a contract roll. #65 fixed this in the two async services but left
+    this sync copy on the old OI-only front-month, which silently dropped days
+    once OHLCV OI rolled ahead of the contract the decisions were written on
+    (the CAU26/CAZ26 freeze) — see issue #67.
+    """
+    return session.execute(
+        text(
+            """
+            WITH scored AS (
+                SELECT
+                    d.date,
+                    d.contract_id,
+                    COALESCE(ens.decision, leg.decision) AS decision
+                FROM (
+                    SELECT DISTINCT date, contract_id
+                    FROM pl_indicator_daily
+                    WHERE date >= :start AND date <= :end_date
+                ) d
+                LEFT JOIN pl_indicator_daily ens
+                       ON ens.date = d.date
+                      AND ens.contract_id = d.contract_id
+                      AND ens.language = 'fr'
+                      AND ens.algorithm_version_id = (
+                          SELECT id FROM pl_algorithm_version
+                          WHERE name = 'ensemble_v1_softgate_wrapper'
+                          ORDER BY created_at DESC LIMIT 1)
+                LEFT JOIN pl_indicator_daily leg
+                       ON leg.date = d.date
+                      AND leg.contract_id = d.contract_id
+                      AND leg.language = 'fr'
+                      AND leg.algorithm_version_id = (
+                          SELECT id FROM pl_algorithm_version
+                          WHERE name = 'legacy'
+                          ORDER BY created_at DESC LIMIT 1)
+                WHERE COALESCE(ens.decision, leg.decision) IS NOT NULL
+            ),
+            front_month AS (
+                SELECT DISTINCT ON (cd.date) cd.date, cd.close, cd.contract_id
+                FROM pl_contract_data_daily cd
+                JOIN scored s ON s.date = cd.date AND s.contract_id = cd.contract_id
+                WHERE cd.date >= :start AND cd.date <= :end_date
+                ORDER BY cd.date, cd.oi DESC NULLS LAST
+            )
+            SELECT fm.date, fm.close, s.decision
+            FROM front_month fm
+            JOIN scored s ON s.date = fm.date AND s.contract_id = fm.contract_id
+            ORDER BY fm.date ASC
+            """
+        ),
+        {"start": start_date, "end_date": end_date},
+    ).all()
+
+
 def _compute_running_accuracy(
     session: Session,
     reference_date: date,
-    contract_id: Any,
     *,
     window: int = 5,
     horizon: int = YTD_EVAL_HORIZON_DAYS,
@@ -224,7 +287,9 @@ def _compute_running_accuracy(
     Same logic, same horizon constant (J+4), same COALESCE(ensemble, legacy)
     fallback : a decision made at T is evaluable on T+horizon, we pick the
     most recent ``window`` evaluable decisions, score each via _score_day,
-    and return the share of positive scores.
+    and return the share of positive scores. Roll-safe cross-contract series
+    via ``_decision_aware_front_month_rows`` (issue #67), so this stays in lock
+    step with the dashboard's ``running_acc_5d`` across a roll.
 
     Why we recompute it for the brief instead of trusting
     ``pl_orchestrator_decision.running_acc_5d``: the R&D field can be NaN
@@ -236,46 +301,7 @@ def _compute_running_accuracy(
     caller can then fall back to the upstream R&D value if they want.
     """
     start_date = date.fromordinal(reference_date.toordinal() - 45)
-    rows = session.execute(
-        text(
-            """
-            WITH front_month AS (
-                SELECT DISTINCT ON (cd.date) cd.date, cd.close, cd.contract_id
-                FROM pl_contract_data_daily cd
-                WHERE cd.date <= :ref_date AND cd.date >= :start_date
-                  AND cd.contract_id = :contract
-                ORDER BY cd.date, cd.oi DESC NULLS LAST
-            )
-            SELECT
-                fm.date,
-                fm.close,
-                COALESCE(ens.decision, leg.decision) AS decision
-            FROM front_month fm
-            LEFT JOIN pl_indicator_daily ens
-                   ON ens.date = fm.date
-                  AND ens.contract_id = fm.contract_id
-                  AND ens.language = 'fr'
-                  AND ens.algorithm_version_id = (
-                      SELECT id FROM pl_algorithm_version
-                      WHERE name = 'ensemble_v1_softgate_wrapper'
-                      ORDER BY created_at DESC LIMIT 1)
-            LEFT JOIN pl_indicator_daily leg
-                   ON leg.date = fm.date
-                  AND leg.contract_id = fm.contract_id
-                  AND leg.language = 'fr'
-                  AND leg.algorithm_version_id = (
-                      SELECT id FROM pl_algorithm_version
-                      WHERE name = 'legacy'
-                      ORDER BY created_at DESC LIMIT 1)
-            ORDER BY fm.date ASC
-            """
-        ),
-        {
-            "ref_date": reference_date,
-            "start_date": start_date,
-            "contract": contract_id,
-        },
-    ).all()
+    rows = _decision_aware_front_month_rows(session, start_date, reference_date)
 
     if len(rows) <= horizon:
         return None
@@ -305,7 +331,6 @@ def _compute_running_accuracy(
 def _compute_ytd_score(
     session: Session,
     reference_date: date,
-    contract_id: Any,
     *,
     horizon: int = YTD_EVAL_HORIZON_DAYS,
 ) -> Decimal | None:
@@ -313,48 +338,16 @@ def _compute_ytd_score(
 
     Sync counterpart of ``dashboard_service.calculate_ytd_performance``.
     Same formula, same J+4 horizon, same ``COALESCE(ensemble, legacy)``
-    fallback — the dashboard "Performance YTD" badge and the brief read
-    aloud in the podcast must be the same number.
+    fallback, same roll-safe decision-aware front-month
+    (``_decision_aware_front_month_rows``, issue #67) — the dashboard
+    "Performance YTD" badge and the brief read aloud in the podcast must be the
+    same number, including across a contract roll.
 
     Returns the average score × 100 as a Decimal, or ``None`` when no
     scored days are available (year start, fresh contract, etc.).
     """
     year_start = date(reference_date.year, 1, 1)
-    rows = session.execute(
-        text(
-            """
-            WITH front_month AS (
-                SELECT DISTINCT ON (cd.date) cd.date, cd.close, cd.contract_id
-                FROM pl_contract_data_daily cd
-                WHERE cd.date >= :year_start AND cd.date <= :ref_date
-                ORDER BY cd.date, cd.oi DESC NULLS LAST
-            )
-            SELECT
-                fm.date,
-                fm.close,
-                COALESCE(ens.decision, leg.decision) AS decision
-            FROM front_month fm
-            LEFT JOIN pl_indicator_daily ens
-                   ON ens.date = fm.date
-                  AND ens.contract_id = fm.contract_id
-                  AND ens.language = 'fr'
-                  AND ens.algorithm_version_id = (
-                      SELECT id FROM pl_algorithm_version
-                      WHERE name = 'ensemble_v1_softgate_wrapper'
-                      ORDER BY created_at DESC LIMIT 1)
-            LEFT JOIN pl_indicator_daily leg
-                   ON leg.date = fm.date
-                  AND leg.contract_id = fm.contract_id
-                  AND leg.language = 'fr'
-                  AND leg.algorithm_version_id = (
-                      SELECT id FROM pl_algorithm_version
-                      WHERE name = 'legacy'
-                      ORDER BY created_at DESC LIMIT 1)
-            ORDER BY fm.date ASC
-            """
-        ),
-        {"year_start": year_start, "ref_date": reference_date},
-    ).all()
+    rows = _decision_aware_front_month_rows(session, year_start, reference_date)
 
     if len(rows) <= horizon:
         return None
@@ -627,11 +620,13 @@ def read_brief_data(
         session, effective_data_date, contract_id, algo_id, ind["decision"]
     )
     # Compute the Compass-formula running accuracy (J+4 horizon, same as the
-    # dashboard YTD). Falls back to the raw R&D field when the window has
-    # fewer than 5 evaluable decisions (mostly historical backfills).
-    computed_acc = _compute_running_accuracy(session, effective_data_date, contract_id)
+    # dashboard YTD). Roll-safe decision-aware front-month (issue #67), so both
+    # match the dashboard across a roll. Falls back to the raw R&D field when
+    # the window has fewer than 5 evaluable decisions (mostly historical
+    # backfills). Both are cross-contract — no ``contract_id`` needed.
+    computed_acc = _compute_running_accuracy(session, effective_data_date)
     running_acc_5d = computed_acc if computed_acc is not None else orc["running_acc_5d"]
-    ytd_score = _compute_ytd_score(session, effective_data_date, contract_id)
+    ytd_score = _compute_ytd_score(session, effective_data_date)
 
     logger.info(
         "Brief data assembled: decision=%s specialists=%d persistence=%dj",

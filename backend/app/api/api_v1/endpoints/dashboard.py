@@ -16,6 +16,7 @@ from app.core.rate_limit import limiter
 
 from app.core.database import get_db
 from app.core.auth import get_current_user
+from app.core.i18n import resolve_language
 from app.schemas.auth import NonTradingDaysResponse
 from app.schemas.dashboard import (
     PositionStatusResponse,
@@ -306,6 +307,10 @@ async def get_recommendations(
         default=None,
         description="Specific date for recommendations (YYYY-MM-DD format)",
     ),
+    language: Optional[str] = Query(
+        default=None,
+        description="Content language ('fr' | 'en'). Falls back to Accept-Language, else 'fr'.",
+    ),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> RecommendationsResponse:
@@ -342,8 +347,9 @@ async def get_recommendations(
             db, business_date, contract_id
         )
 
+        lang = resolve_language(language, request.headers.get("accept-language"))
         recommendations, raw_score, rec_date = await get_latest_recommendations(
-            db, business_date, contract_id=contract_id, algo_id=algo_id
+            db, business_date, contract_id=contract_id, algo_id=algo_id, language=lang
         )
 
         if not recommendations and not raw_score:
@@ -425,6 +431,10 @@ async def get_news(
     target_date: Optional[str] = Query(
         default=None, description="Specific date for news (YYYY-MM-DD format)"
     ),
+    language: Optional[str] = Query(
+        default=None,
+        description="Content language ('fr' | 'en'). Falls back to Accept-Language, else 'fr'.",
+    ),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> NewsResponse:
@@ -452,7 +462,10 @@ async def get_news(
             business_date = await _parse_and_validate_date(target_date, db)
 
         # Get market research from service layer
-        market_research = await get_latest_market_research(db, business_date)
+        lang = resolve_language(language, request.headers.get("accept-language"))
+        market_research = await get_latest_market_research(
+            db, business_date, language=lang
+        )
 
         if not market_research:
             raise HTTPException(status_code=404, detail="No news data found")
@@ -519,6 +532,10 @@ async def get_weather(
     target_date: Optional[str] = Query(
         default=None, description="Specific date for weather data (YYYY-MM-DD format)"
     ),
+    language: Optional[str] = Query(
+        default=None,
+        description="Content language ('fr' | 'en'). Falls back to Accept-Language, else 'fr'.",
+    ),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> WeatherEnrichedResponse:
@@ -528,7 +545,8 @@ async def get_weather(
         if target_date:
             business_date = await _parse_and_validate_date(target_date, db)
 
-        weather_data = await get_latest_weather_data(db, business_date)
+        lang = resolve_language(language, request.headers.get("accept-language"))
+        weather_data = await get_latest_weather_data(db, business_date, language=lang)
         if not weather_data:
             raise HTTPException(status_code=404, detail="No weather data found")
 

@@ -465,6 +465,7 @@ async def get_latest_recommendations(
     *,
     contract_id: Optional[uuid.UUID] = None,
     algo_id: Optional[uuid.UUID] = None,
+    language: str = "fr",
 ) -> tuple[List[str], Optional[str], Optional[date]]:
     """Get the latest recommendations from pl_indicator_daily.conclusion.
 
@@ -495,7 +496,12 @@ async def get_latest_recommendations(
     if algo_id is None:
         algo_id = await get_active_algorithm_version_id(db)
 
-    base_select = select(PlIndicatorDaily.conclusion, PlIndicatorDaily.date)
+    # Language filter is inherited by all four fallback steps below: the
+    # fallback relaxes contract/algo, but NEVER language — we must never serve
+    # one language's narrative under another language's label.
+    base_select = select(PlIndicatorDaily.conclusion, PlIndicatorDaily.date).where(
+        PlIndicatorDaily.language == language
+    )
 
     # Step 1: contract + algo + (date)
     query = base_select.where(
@@ -724,12 +730,15 @@ async def _build_forward_fill_series(
 
 
 async def get_latest_market_research(
-    db: AsyncSession, target_date: Optional[date] = None
+    db: AsyncSession,
+    target_date: Optional[date] = None,
+    language: str = "fr",
 ) -> Optional[Dict[str, Any]]:
     """Get the latest active fundamental article."""
     query = (
         select(PlFundamentalArticle)
         .where(PlFundamentalArticle.is_active.is_(True))
+        .where(PlFundamentalArticle.language == language)
         .order_by(
             desc(PlFundamentalArticle.date),
             desc(PlFundamentalArticle.created_at),
@@ -854,12 +863,18 @@ async def get_theme_sentiments(
 
 
 async def get_latest_weather_data(
-    db: AsyncSession, target_date: Optional[date] = None
+    db: AsyncSession,
+    target_date: Optional[date] = None,
+    language: str = "fr",
 ) -> Optional[Dict[str, Any]]:
     """Get the latest weather observation."""
-    query = select(PlWeatherObservation).order_by(
-        desc(PlWeatherObservation.date),
-        desc(PlWeatherObservation.created_at),
+    query = (
+        select(PlWeatherObservation)
+        .where(PlWeatherObservation.language == language)
+        .order_by(
+            desc(PlWeatherObservation.date),
+            desc(PlWeatherObservation.created_at),
+        )
     )
 
     if target_date:

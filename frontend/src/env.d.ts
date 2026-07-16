@@ -6,6 +6,7 @@ interface ImportMetaEnv {
   readonly AUTH0_API_AUDIENCE: string;
   readonly AUTH0_REDIRECT_URI: string;
   readonly API_BASE_URL: string;
+  readonly VITE_FEATURE_LANG_SWITCHER: string;
   readonly MODE: string;
 }
 

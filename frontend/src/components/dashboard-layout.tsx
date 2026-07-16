@@ -7,10 +7,14 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useDashboardDate } from '@/hooks/useDashboardDate';
+import { useLanguage } from '@/hooks/useLanguage';
+import type { Language } from '@/contexts/LanguageContext';
 import DateSelector from '@/components/date-selector';
 import LiveSignalStrip from '@/components/live-signal-strip';
 import MastheadPulse from '@/components/masthead-pulse';
@@ -23,6 +27,8 @@ interface DashboardLayoutProps {
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const { user, logout } = useAuth();
   const { currentDate, calendarDate, setCurrentDate, sessionDate } = useDashboardDate();
+  const { language, setLanguage } = useLanguage();
+  const showLangSwitcher = import.meta.env.VITE_FEATURE_LANG_SWITCHER === 'true';
 
   const rawName = user?.name && !user.name.includes('@') ? user.name : null;
   const displayName =
@@ -108,6 +114,18 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                       )}
                     </div>
                   </DropdownMenuLabel>
+                  {showLangSwitcher && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuRadioGroup
+                        value={language}
+                        onValueChange={(value) => setLanguage(value as Language)}
+                      >
+                        <DropdownMenuRadioItem value="fr">FR</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="en">EN</DropdownMenuRadioItem>
+                      </DropdownMenuRadioGroup>
+                    </>
+                  )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={logout}>
                     <LogOutIcon className="mr-2 h-4 w-4" />

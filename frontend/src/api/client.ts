@@ -22,6 +22,8 @@ export const apiClient = axios.create({
 
 apiClient.interceptors.request.use(
   async (config) => {
+    config.headers['Accept-Language'] = localStorage.getItem('cc_language') || 'fr';
+
     // Try tokenGetter first (fresh token via Auth0 SDK)
     if (tokenGetter) {
       try {

@@ -94,14 +94,14 @@ ON CONFLICT ON CONSTRAINT uq_orchestrator_decision DO UPDATE SET
 # server default on this table; ``gen_random_uuid()`` is supplied here.
 _UPSERT_INDICATOR_DAILY = """
 INSERT INTO pl_indicator_daily (
-    id, date, contract_id, algorithm_version_id,
+    id, date, contract_id, algorithm_version_id, language,
     decision, conclusion
 )
 VALUES (
-    gen_random_uuid(), :date, :contract_id, :algorithm_version_id,
+    gen_random_uuid(), :date, :contract_id, :algorithm_version_id, :language,
     :decision, :conclusion
 )
-ON CONFLICT (date, contract_id, algorithm_version_id) DO UPDATE SET
+ON CONFLICT (date, contract_id, algorithm_version_id, language) DO UPDATE SET
     decision = EXCLUDED.decision,
     conclusion = EXCLUDED.conclusion
 """
@@ -160,6 +160,7 @@ def write_decision(
     decision: EnsembleDecision,
     diagnostics: dict,
     final_decision: str | None = None,
+    language: str = "fr",
 ) -> dict[str, int]:
     """Write all 3 tables for one (date, contract, ensemble_version) tuple.
 
@@ -255,6 +256,7 @@ def write_decision(
             "date": data_date,
             "contract_id": contract_id,
             "algorithm_version_id": algorithm_version_id,
+            "language": language,
             "decision": final_decision,
             "conclusion": _build_conclusion_text(
                 decision,

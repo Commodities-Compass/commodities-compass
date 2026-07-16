@@ -69,6 +69,7 @@ export default defineConfig(({ mode }) => {
       'import.meta.env.SENTRY_DSN': JSON.stringify(env.SENTRY_DSN),
       'import.meta.env.ENVIRONMENT': JSON.stringify(env.ENVIRONMENT ?? 'production'),
       'import.meta.env.GIT_COMMIT_SHA': JSON.stringify(env.GIT_COMMIT_SHA),
+      'import.meta.env.VITE_FEATURE_LANG_SWITCHER': JSON.stringify(env.VITE_FEATURE_LANG_SWITCHER ?? 'false'),
     },
   }
 })

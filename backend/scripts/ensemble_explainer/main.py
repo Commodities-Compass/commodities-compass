@@ -43,6 +43,11 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.i18n import (
+    DEFAULT_LANGUAGE,
+    LANGUAGE_CLI_CHOICES,
+    expand_languages,
+)
 from app.core.sentry import init_sentry
 from scripts.daily_analysis.db_analysis_engine import (
     AnalysisWriteError,
@@ -105,6 +110,20 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="Contract code (default: active contract from DB)",
     )
+    # Content language of the ensemble narrative's 3 prose fields. Default 'fr'
+    # (source-of-truth ensemble row). 'en' copies the numbers from the fr
+    # ensemble row and writes only EN prose (D3-EN-rows) — the fr explainer must
+    # have written first.
+    parser.add_argument(
+        "--language",
+        choices=LANGUAGE_CLI_CHOICES,
+        default="fr",
+        help=(
+            "Content language of the narrative prose fields (default: fr). "
+            "'both' runs fr then en in one execution (fr first — en copies "
+            "the fr ensemble row)."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -116,6 +135,10 @@ def _assert_ensemble_row_present(
     Without this check the engine's auto-align would silently fall back to
     the legacy row when no ensemble row exists, breaking the dual-track
     invariant. Fail-loud early before wasting 2 gpt-4-turbo calls.
+
+    The row that must exist is always the source-of-truth (fr) ensemble row:
+    the fr explainer enriches it in place, and an en run copies its numbers
+    (D3-EN-rows). So this gate is language-independent — it always checks fr.
     """
     row = session.execute(
         text(
@@ -128,6 +151,7 @@ def _assert_ensemble_row_present(
               AND v.name = :ensemble_algo
               AND v.version = :ensemble_ver
               AND i.date = :data_date
+              AND i.language = :src_language
             LIMIT 1
             """
         ),
@@ -136,6 +160,7 @@ def _assert_ensemble_row_present(
             "ensemble_algo": ALGORITHM_NAME,
             "ensemble_ver": ALGORITHM_VERSION,
             "data_date": data_date,
+            "src_language": DEFAULT_LANGUAGE.value,
         },
     ).fetchone()
     if row is None:
@@ -173,6 +198,7 @@ def main() -> int:
     logger.info("=" * 60)
     logger.info("Ensemble Explainer (DBAnalysisEngine auto-align wrapper)")
     logger.info("Mode: %s", "DRY RUN" if args.dry_run else "LIVE")
+    logger.info("Language: %s", args.language)
     logger.info(
         "Target session: %s | Data session (row date): %s", target_date, data_date
     )
@@ -192,34 +218,48 @@ def main() -> int:
 
         # Invoke the legacy DBAnalysisEngine WITHOUT pinning algorithm_version
         # → engine.run() auto-aligns on the ensemble row in
-        # pl_orchestrator_decision, uses CALL_2_PROMPT_ENSEMBLE with the
-        # diagnostics block, and writes the narrative to the ensemble row.
+        # pl_orchestrator_decision, builds the ensemble-aware Call #2 voice
+        # prompt (voice_prompts.build_call2_voice_prompt_ensemble, which injects
+        # the diagnostics block), and writes the narrative to the ensemble row.
+        #
+        # 'both' → fr first (its own session commits), then en (copies the fr
+        # ensemble row). A failure in any language raises and is caught below;
+        # any already-committed language is left intact.
         db_url = str(settings.DATABASE_SYNC_URL)
         sqla_engine = create_engine(db_url)
-        with Session(sqla_engine) as session:
-            db_engine = DBAnalysisEngine(session)  # NO algorithm_version_name
-            result = db_engine.run(
-                target_date=target_date,
-                contract_code=contract_code,
-                data_date=data_date,
-                dry_run=args.dry_run,
-            )
+        result = None
+        for lang in expand_languages(args.language):
+            with Session(sqla_engine) as session:
+                db_engine = DBAnalysisEngine(session)  # NO algorithm_version_name
+                result = db_engine.run(
+                    target_date=target_date,
+                    contract_code=contract_code,
+                    data_date=data_date,
+                    dry_run=args.dry_run,
+                    language=str(lang),
+                )
 
-        if not result.ensemble_aligned:
-            # Defense in depth : the pre-flight already guarantees the ensemble
-            # row exists, so reaching this branch would mean the engine resolved
-            # to a different row (e.g. a race between pre-flight and engine.run).
-            raise EnsembleRowMissingError(
-                f"DBAnalysisEngine did NOT auto-align on ensemble for "
-                f"date={data_date} contract={contract_code}. "
-                "Investigate pl_orchestrator_decision freshness."
-            )
+            if not result.ensemble_aligned:
+                # Defense in depth : the pre-flight already guarantees the
+                # ensemble row exists, so reaching this branch would mean the
+                # engine resolved to a different row (a race between pre-flight
+                # and engine.run).
+                raise EnsembleRowMissingError(
+                    f"DBAnalysisEngine did NOT auto-align on ensemble for "
+                    f"date={data_date} contract={contract_code} language={lang}. "
+                    "Investigate pl_orchestrator_decision freshness."
+                )
+            logger.info("Ensemble narrative written for language=%s", lang)
+
+        # `expand_languages` never returns empty, so result is always set here.
+        assert result is not None
 
         sentry_sdk.set_context(
             "ensemble_explainer",
             {
                 "target_date": target_date.isoformat(),
                 "data_date": data_date.isoformat(),
+                "language": args.language,
                 "decision": result.trading.decision,
                 "confidence": result.trading.confiance,
                 "direction": result.trading.direction,

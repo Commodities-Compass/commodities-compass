@@ -1,4 +1,5 @@
 import { PlayIcon, PauseIcon, Loader2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useAudio } from '@/hooks/useDashboard';
 import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import SectionHeader from '@/components/section-header';
@@ -30,6 +31,7 @@ function formatTime(time: number): string {
 }
 
 export default function PodcastPlayer({ audioDate, className }: PodcastPlayerProps) {
+  const { t } = useTranslation();
   const [isPlaying, setIsPlaying] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
   const [isAudioReady, setIsAudioReady] = useState(false);
@@ -140,7 +142,7 @@ export default function PodcastPlayer({ audioDate, className }: PodcastPlayerPro
                 color: 'var(--ink)',
               }}
             >
-              {audioData?.title || 'Bulletin du jour'}
+              {audioData?.title || t('weather.podcast_bulletin_default')}
             </div>
             <div
               className="uppercase mt-1"
@@ -159,7 +161,7 @@ export default function PodcastPlayer({ audioDate, className }: PodcastPlayerPro
             type="button"
             onClick={togglePlayPause}
             disabled={isLoading || !hasAudio}
-            aria-label={isPlaying ? 'Pause' : 'Play'}
+            aria-label={isPlaying ? t('podcast.pause') : t('podcast.play')}
             className="podcast-play-btn"
             style={{
               width: 56,
@@ -193,7 +195,7 @@ export default function PodcastPlayer({ audioDate, className }: PodcastPlayerPro
             className="flex items-center gap-[2px] cursor-pointer"
             onClick={handleWaveformClick}
             role="progressbar"
-            aria-label="Audio progress"
+            aria-label={t('podcast.audio_progress')}
             aria-valuemin={0}
             aria-valuemax={duration || 100}
             aria-valuenow={currentTime}
@@ -227,7 +229,7 @@ export default function PodcastPlayer({ audioDate, className }: PodcastPlayerPro
               letterSpacing: '0.1em',
             }}
           >
-            {isLoading ? 'CHARGEMENT…' : 'AUCUN BULLETIN DISPONIBLE'}
+            {isLoading ? t('podcast.loading_short') : t('podcast.no_bulletin')}
           </div>
         )}
 

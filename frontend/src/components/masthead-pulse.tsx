@@ -1,6 +1,10 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { usePositionStatus, useChartData } from '@/hooks/useDashboard';
 import { useDashboardDate } from '@/hooks/useDashboardDate';
+import { useLanguage } from '@/hooks/useLanguage';
+import type { Language } from '@/contexts/LanguageContext';
+import { formatDate } from '@/utils/format-locale';
 import { Eyebrow, DotSeparator } from '@/components/editorial';
 
 function fmtPct(n: number | null | undefined): string {
@@ -8,12 +12,11 @@ function fmtPct(n: number | null | undefined): string {
   return `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`;
 }
 
-function formatShortDate(iso?: string | null): string {
+function formatShortDate(iso: string | null | undefined, language: Language): string {
   if (!iso) return '—';
   const d = new Date(iso.slice(0, 10) + 'T00:00:00');
   if (Number.isNaN(d.getTime())) return iso;
-  const months = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin', 'juil', 'aoû', 'sep', 'oct', 'nov', 'déc'];
-  return `${d.getDate()} ${months[d.getMonth()]}`;
+  return formatDate(d, language, 'd MMM');
 }
 
 interface SessionDelta {
@@ -57,6 +60,8 @@ function pickBestSession(
  * No sparkline, no KPI duplication with the breakdown / score card.
  * ========================================================================= */
 export default function MastheadPulse() {
+  const { t } = useTranslation();
+  const { language } = useLanguage();
   const { currentDate } = useDashboardDate();
   const { data: pos } = usePositionStatus(currentDate);
   // 365 days = covers full YTD even at end of year. React Query dedupes
@@ -121,7 +126,7 @@ export default function MastheadPulse() {
         style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}
       >
         <Eyebrow tone="muted" size={10} tracking="0.22em">
-          Meilleure session
+          {t('dashboard.best_session_label')}
         </Eyebrow>
         <span
           className="tabular-nums"
@@ -144,7 +149,7 @@ export default function MastheadPulse() {
               color: 'var(--ink-mid)',
             }}
           >
-            {formatShortDate(best.date)}
+            {formatShortDate(best.date, language)}
           </span>
         )}
       </span>

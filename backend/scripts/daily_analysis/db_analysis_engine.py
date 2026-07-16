@@ -20,7 +20,9 @@ from datetime import date
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.core.i18n import DEFAULT_LANGUAGE
 from app.engine.composite import compute_decision, compute_score
+from app.models.pipeline import PlIndicatorDaily
 from app.utils.converters import to_float
 from app.engine.types import AlgorithmConfig, LEGACY_V1
 from scripts.daily_analysis.db_reader import (
@@ -34,10 +36,12 @@ from scripts.daily_analysis.output_parser import (
     parse_macro_output,
     parse_trading_output,
 )
-from scripts.daily_analysis.prompts import (
-    build_call1_prompt,
-    build_call2_prompt,
-    build_call2_prompt_ensemble,
+from scripts.daily_analysis.accuracy_gate import assert_no_hallucinated_numbers
+from scripts.daily_analysis.prompts import build_call1_prompt
+from scripts.daily_analysis.render import get_renderer
+from scripts.daily_analysis.voice_prompts import (
+    build_call2_voice_prompt,
+    build_call2_voice_prompt_ensemble,
 )
 
 logger = logging.getLogger(__name__)
@@ -49,6 +53,77 @@ _DIRECTION_FOR_DECISION: dict[str, str] = {
     "HEDGE": "BAISSIERE",
     "MONITOR": "NEUTRE",
 }
+
+
+# --- Translated-row materialisation (D3-EN-rows, Option A) -----------------
+# A non-default-language (e.g. 'en') run does NOT recompute numbers: it copies
+# every language-agnostic column from the default-language (source-of-truth) row
+# and overrides only the 3 native-language prose fields. Numbers are therefore
+# byte-identical across languages by construction. The column list is derived
+# from the model, so a new column is copied automatically — no silent gap on the
+# translated row (pipeline-continuity rule).
+_INDICATOR_DAILY_COLUMNS: tuple[str, ...] = tuple(
+    c.name for c in PlIndicatorDaily.__table__.columns
+)
+# Prose fields overridden with the native-language content (bound params).
+_TRANSLATED_PROSE_COLUMNS: tuple[str, ...] = (
+    "eco",
+    "conclusion",
+    "confidence_rationale",
+)
+# Key columns identifying the row — never mutated on the ON CONFLICT update.
+_TRANSLATED_KEY_COLUMNS: frozenset[str] = frozenset(
+    {"id", "date", "contract_id", "algorithm_version_id", "language"}
+)
+# Columns left to their DB server default on the translated row (fresh timestamp).
+_TRANSLATED_SERVER_DEFAULT_COLUMNS: frozenset[str] = frozenset({"created_at"})
+
+
+def _build_translated_upsert_sql() -> str:
+    """Build the INSERT…SELECT…ON CONFLICT that materialises a translated row.
+
+    Copies the source-language row (``:source_language``) for the same
+    (date, contract, algorithm_version) into ``:language``, replacing ``id``
+    with a fresh UUID and overriding the 3 prose columns with bound params.
+    ``ON CONFLICT DO UPDATE`` makes re-runs idempotent: numbers refresh from the
+    source row, prose refreshes from the params. The column list comes from the
+    model (safe — no user input), so the statement self-maintains on schema
+    changes.
+    """
+    insert_cols = [
+        c
+        for c in _INDICATOR_DAILY_COLUMNS
+        if c not in _TRANSLATED_SERVER_DEFAULT_COLUMNS
+    ]
+
+    def _select_expr(col: str) -> str:
+        if col == "id":
+            return ":new_id"
+        if col == "language":
+            return ":language"
+        if col in _TRANSLATED_PROSE_COLUMNS:
+            return f":{col}"
+        return col
+
+    select_list = ", ".join(_select_expr(c) for c in insert_cols)
+    insert_list = ", ".join(insert_cols)
+    update_set = ", ".join(
+        f"{c} = EXCLUDED.{c}" for c in insert_cols if c not in _TRANSLATED_KEY_COLUMNS
+    )
+    return f"""
+        INSERT INTO pl_indicator_daily ({insert_list})
+        SELECT {select_list}
+        FROM pl_indicator_daily
+        WHERE date = :source_date
+          AND contract_id = :contract_id
+          AND algorithm_version_id = :algo_version_id
+          AND language = :source_language
+        ON CONFLICT ON CONSTRAINT uq_indicator_daily
+        DO UPDATE SET {update_set}
+    """
+
+
+_TRANSLATED_UPSERT_SQL: str = _build_translated_upsert_sql()
 
 
 def _coherent_direction(decision: str, llm_direction: str | None) -> str:
@@ -187,8 +262,14 @@ class DBAnalysisEngine:
         *,
         data_date: date | None = None,
         dry_run: bool = False,
+        language: str = DEFAULT_LANGUAGE,
     ) -> AnalysisResult:
         """Execute the full pipeline for a given date.
+
+        ``language`` (fr | en) selects the native-language prompts + renderer
+        for the 3 prose fields (eco / conclusion / confidence_rationale). The
+        default-language run owns the numbers; a translated run copies them from
+        the default-language row and overrides only the prose (D3-EN-rows).
 
         Two distinct dates flow through the engine since the P2b refactor :
           * ``target_date`` — the upcoming trading session this decision
@@ -260,6 +341,7 @@ class DBAnalysisEngine:
             macronews=inputs.context.macronews,
             meteotoday=inputs.context.meteotoday,
             meteonews=inputs.context.meteonews,
+            language=language,
         )
         call1_response = self._llm.call(
             call1_prompt,
@@ -303,17 +385,19 @@ class DBAnalysisEngine:
         # --- Step 4: LLM Call #2 — Trading decision ---
         logger.info("Step 4: LLM Call #2 — Trading decision...")
         if align_on_ensemble and ensemble is not None:
-            call2_prompt = build_call2_prompt_ensemble(
+            call2_prompt = build_call2_voice_prompt_ensemble(
                 technicals_today=inputs.technicals.today,
                 technicals_yesterday=inputs.technicals.yesterday,
                 ensemble=ensemble,
+                language=language,
             )
         else:
-            call2_prompt = build_call2_prompt(
+            call2_prompt = build_call2_voice_prompt(
                 technicals_today=inputs.technicals.today,
                 technicals_yesterday=inputs.technicals.yesterday,
                 final_indicator=final_indicator,
                 final_conclusion=final_conclusion,
+                language=language,
             )
         call2_response = self._llm.call(
             call2_prompt,
@@ -339,12 +423,8 @@ class DBAnalysisEngine:
                     trading.decision,
                     ensemble.decision_wrapped,
                 )
-                trading = TradingDecisionOutput(
-                    decision=ensemble.decision_wrapped,
-                    confiance=trading.confiance,
-                    confiance_rationale=trading.confiance_rationale,
-                    direction=trading.direction,
-                    conclusion=trading.conclusion,
+                trading = trading.model_copy(
+                    update={"decision": ensemble.decision_wrapped}
                 )
 
         # Sanity-check #2 : direction must be coherent with decision. The LLM
@@ -362,13 +442,24 @@ class DBAnalysisEngine:
                 trading.decision,
                 normalized_direction,
             )
-            trading = TradingDecisionOutput(
-                decision=trading.decision,
-                confiance=trading.confiance,
-                confiance_rationale=trading.confiance_rationale,
-                direction=normalized_direction,
-                conclusion=trading.conclusion,
+            trading = trading.model_copy(update={"direction": normalized_direction})
+
+        # --- Assemble the conclusion deterministically from the facts ---
+        # US-1 facts/voice: the LLM wrote only the qualitative headline; the
+        # fact-bullets + à-surveiller are rendered from the DB facts so no number
+        # is ever re-typed by the model. The accuracy gate fails loud if the
+        # headline / rationale cite a figure not grounded in the facts.
+        facts = inputs.technicals.facts
+        if facts is not None:
+            assert_no_hallucinated_numbers(
+                f"{trading.headline} {trading.confiance_rationale}", facts
             )
+            conclusion_text = get_renderer(language).render_conclusion(
+                trading.headline, facts
+            )
+        else:
+            conclusion_text = trading.headline
+        trading = trading.model_copy(update={"conclusion": conclusion_text})
 
         # --- Step 5: Write results to DB ---
         if not dry_run:
@@ -382,6 +473,7 @@ class DBAnalysisEngine:
                 trading=trading,
                 call1_response=call1_response,
                 call2_response=call2_response,
+                language=language,
             )
         else:
             logger.info("Step 5: [DRY RUN] Skipping DB write")
@@ -480,9 +572,16 @@ class DBAnalysisEngine:
         trading: TradingDecisionOutput,
         call1_response: LLMResponse,
         call2_response: LLMResponse,
+        language: str = DEFAULT_LANGUAGE,
     ) -> None:
-        """Write analysis results to pl_indicator_daily + aud_llm_call."""
-        # Get contract_id and algorithm_version_id
+        """Write analysis results to pl_indicator_daily + aud_llm_call.
+
+        The default-language (fr) run owns the numbers: it UPDATEs the row's LLM
+        columns in place and refreshes the macroeco signal component. A
+        translated (e.g. en) run materialises its own row via Option A — copy
+        the numbers from the fr row, override only the 3 prose fields — and
+        leaves the language-agnostic signal component untouched.
+        """
         contract_row = self._session.execute(
             text("SELECT id FROM ref_contract WHERE code = :code"),
             {"code": contract_code},
@@ -494,9 +593,60 @@ class DBAnalysisEngine:
 
         algo_version_id = self._resolve_algorithm_version_id()
 
-        # Update pl_indicator_daily with LLM outputs only.
-        # Technical indicators (momentum, z-scores) are owned by compute-indicators
-        # and must not be overwritten here.
+        if language == DEFAULT_LANGUAGE:
+            self._update_default_indicator_row(
+                target_date=target_date,
+                contract_code=contract_code,
+                contract_id=contract_id,
+                algo_version_id=algo_version_id,
+                macro=macro,
+                final_indicator=final_indicator,
+                trading=trading,
+                language=language,
+            )
+            self._update_macroeco_signal(
+                target_date=target_date,
+                contract_id=contract_id,
+                algo_version_id=algo_version_id,
+                macro=macro,
+            )
+        else:
+            self._upsert_translated_indicator_row(
+                target_date=target_date,
+                contract_code=contract_code,
+                contract_id=contract_id,
+                algo_version_id=algo_version_id,
+                macro=macro,
+                trading=trading,
+                language=language,
+            )
+
+        self._write_llm_audit(call1_response, call2_response)
+        self._session.commit()
+        logger.info(
+            "Results written to pl_indicator_daily (%s) + 2 aud_llm_call rows",
+            language,
+        )
+
+    def _update_default_indicator_row(
+        self,
+        *,
+        target_date: date,
+        contract_code: str,
+        contract_id: uuid.UUID,
+        algo_version_id: uuid.UUID | None,
+        macro: MacroAnalysisOutput,
+        final_indicator: float,
+        trading: TradingDecisionOutput,
+        language: str,
+    ) -> None:
+        """UPDATE the default-language row's LLM columns in place.
+
+        Technical indicators (momentum, z-scores) are owned by compute-indicators
+        and must not be overwritten here. The ``language`` filter is load-bearing
+        since the unique constraint widened: without it this UPDATE would also
+        overwrite a coexisting translated row.
+        """
         result = self._session.execute(
             text("""
                 UPDATE pl_indicator_daily
@@ -512,6 +662,7 @@ class DBAnalysisEngine:
                 WHERE date = :target_date
                   AND contract_id = :contract_id
                   AND algorithm_version_id = :algo_version_id
+                  AND language = :language
             """),
             {
                 "macroeco_bonus": macro.macroeco_bonus,
@@ -528,17 +679,32 @@ class DBAnalysisEngine:
                 "target_date": target_date,
                 "contract_id": contract_id,
                 "algo_version_id": algo_version_id,
+                "language": language,
             },
         )
         if result.rowcount == 0:
             raise AnalysisWriteError(
                 f"pl_indicator_daily UPDATE matched 0 rows for date={target_date} "
                 f"contract={contract_code} algorithm_version_id={algo_version_id} "
-                "— compute-indicators must run first to create the row. "
-                "Re-run cc-compute-indicators, then re-run cc-daily-analysis."
+                f"language={language} — compute-indicators must run first to "
+                "create the row. Re-run cc-compute-indicators, then re-run "
+                "cc-daily-analysis."
             )
 
-        # Update macroeco signal component with LLM-provided values
+    def _update_macroeco_signal(
+        self,
+        *,
+        target_date: date,
+        contract_id: uuid.UUID,
+        algo_version_id: uuid.UUID | None,
+        macro: MacroAnalysisOutput,
+    ) -> None:
+        """Refresh the macroeco signal component (language-agnostic numbers).
+
+        Only the default-language run writes this — pl_signal_component has no
+        language dimension and its values are identical across languages by
+        construction, so a translated run must not touch it.
+        """
         from app.engine.composite import _power_term
 
         macroeco_contribution = _power_term(
@@ -570,7 +736,51 @@ class DBAnalysisEngine:
                 target_date,
             )
 
-        # Write LLM audit trail — create parent pipeline run first
+    def _upsert_translated_indicator_row(
+        self,
+        *,
+        target_date: date,
+        contract_code: str,
+        contract_id: uuid.UUID,
+        algo_version_id: uuid.UUID | None,
+        macro: MacroAnalysisOutput,
+        trading: TradingDecisionOutput,
+        language: str,
+    ) -> None:
+        """Materialise the translated row (D3-EN-rows, Option A).
+
+        Copies every number from the default-language row and overrides only the
+        3 prose fields with native-language content — so figures are byte-
+        identical across languages. Fails loud if the source row is absent: the
+        translated run depends on the default run having written first.
+        """
+        result = self._session.execute(
+            text(_TRANSLATED_UPSERT_SQL),
+            {
+                "new_id": uuid.uuid4(),
+                "language": language,
+                "source_language": DEFAULT_LANGUAGE.value,
+                "eco": macro.eco,
+                "conclusion": trading.conclusion,
+                "confidence_rationale": trading.confiance_rationale or None,
+                "source_date": target_date,
+                "contract_id": contract_id,
+                "algo_version_id": algo_version_id,
+            },
+        )
+        if result.rowcount == 0:
+            raise AnalysisWriteError(
+                f"Translated ({language}) row UPSERT copied 0 rows for "
+                f"date={target_date} contract={contract_code} "
+                f"algorithm_version_id={algo_version_id} — the source "
+                f"'{DEFAULT_LANGUAGE.value}' row must exist first. Run the "
+                f"'{DEFAULT_LANGUAGE.value}' analysis before the '{language}' run."
+            )
+
+    def _write_llm_audit(
+        self, call1_response: LLMResponse, call2_response: LLMResponse
+    ) -> None:
+        """Write the LLM audit trail: parent pipeline run + one row per call."""
         pipeline_run_id = uuid.uuid4()
         self._session.execute(
             text("""
@@ -609,9 +819,6 @@ class DBAnalysisEngine:
                     "latency_ms": response.latency_ms,
                 },
             )
-
-        self._session.commit()
-        logger.info("Results written to pl_indicator_daily + 2 aud_llm_call rows")
 
     def _log_inputs(self, inputs: PipelineInputs) -> None:
         t = inputs.technicals

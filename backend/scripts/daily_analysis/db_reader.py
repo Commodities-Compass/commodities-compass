@@ -14,6 +14,8 @@ from decimal import Decimal
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from scripts.daily_analysis.facts import FactsPayload, build_facts_payload
+
 logger = logging.getLogger(__name__)
 
 
@@ -21,7 +23,7 @@ logger = logging.getLogger(__name__)
 class TechnicalsData:
     """Today + yesterday technical data formatted for LLM prompts.
 
-    Matches the interface expected by build_call2_prompt():
+    Matches the interface expected by build_call2_voice_prompt():
     - today: dict of {CLOSETOD: "2057", HIGHTOD: "2162", ...}
     - yesterday: dict of {CLOSEYES: "2100", HIGHYES: "2200", ...}
     """
@@ -30,6 +32,9 @@ class TechnicalsData:
     yesterday: dict[str, str]
     today_date: str  # MM/DD/YYYY format for LLM
     today_date_iso: date  # ISO date for DB queries
+    # Typed, language-agnostic facts for the deterministic conclusion renderer
+    # (US-1 facts/voice refactor). None only when the read failed entirely.
+    facts: FactsPayload | None = None
 
 
 @dataclass
@@ -240,7 +245,7 @@ class DBReader:
                 d.date,
                 d.close, d.high, d.low, d.volume, d.oi,
                 d.implied_volatility,
-                di.r1, di.pivot, di.s1,
+                di.r2, di.r1, di.pivot, di.s1, di.s2,
                 di.ema12, di.ema26,
                 di.macd, di.macd_signal,
                 di.rsi_14d,
@@ -292,6 +297,7 @@ class DBReader:
                 yesterday=empty_yes,
                 today_date=target_date.strftime("%m/%d/%Y"),
                 today_date_iso=target_date,
+                facts=build_facts_payload({}, {}, session_date=target_date),
             )
 
         today_row = dict(zip(columns, rows[0]))
@@ -333,6 +339,9 @@ class DBReader:
             yesterday=yesterday_vars,
             today_date=today_row["date"].strftime("%m/%d/%Y"),
             today_date_iso=today_row["date"],
+            facts=build_facts_payload(
+                today_row, yesterday_row, session_date=today_row["date"]
+            ),
         )
 
     def _latest_stock_tonnes(self, on_or_before: date, *, region: str) -> float | None:

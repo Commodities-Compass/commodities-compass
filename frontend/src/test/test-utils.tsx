@@ -2,6 +2,8 @@ import { type ReactElement } from 'react'
 import { render, type RenderOptions } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
+import { LanguageProvider } from '@/contexts/LanguageContext'
+import '@/i18n' // initialize i18next for component tests using useTranslation
 
 function createTestQueryClient() {
   return new QueryClient({
@@ -17,9 +19,11 @@ function createTestQueryClient() {
 function AllProviders({ children }: { children: React.ReactNode }) {
   const queryClient = createTestQueryClient()
   return (
-    <QueryClientProvider client={queryClient}>
-      <MemoryRouter>{children}</MemoryRouter>
-    </QueryClientProvider>
+    <LanguageProvider>
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>{children}</MemoryRouter>
+      </QueryClientProvider>
+    </LanguageProvider>
   )
 }
 

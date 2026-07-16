@@ -206,6 +206,11 @@ class PlIndicatorDaily(Base):
     algorithm_version_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("pl_algorithm_version.id"), nullable=False
     )
+    # Content language (keying dimension). Default FR: existing content is
+    # French. Values map to app.core.i18n.Language ("fr" | "en").
+    language: Mapped[str] = mapped_column(
+        VARCHAR(5), nullable=False, default="fr", server_default="fr"
+    )
 
     # Raw indicator scores (-6 to +6 range)
     rsi_score: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
@@ -245,6 +250,7 @@ class PlIndicatorDaily(Base):
             "date",
             "contract_id",
             "algorithm_version_id",
+            "language",
             name="uq_indicator_daily",
         ),
         Index("ix_indicator_daily_date", "date"),
@@ -257,7 +263,10 @@ class PlFundamentalArticle(Base):
     __tablename__ = "pl_fundamental_article"
     __table_args__ = (
         UniqueConstraint(
-            "date", "llm_provider", name="uq_fundamental_article_date_provider"
+            "date",
+            "llm_provider",
+            "language",
+            name="uq_fundamental_article_date_provider",
         ),
     )
 
@@ -271,6 +280,10 @@ class PlFundamentalArticle(Base):
     sentiment: Mapped[Optional[str]] = mapped_column(VARCHAR(50))
     impact_synthesis: Mapped[Optional[str]] = mapped_column(TEXT)
     llm_provider: Mapped[str] = mapped_column(VARCHAR(50), nullable=False)
+    # Content language (keying dimension). Default FR (existing content is French).
+    language: Mapped[str] = mapped_column(
+        VARCHAR(5), nullable=False, default="fr", server_default="fr"
+    )
     is_active: Mapped[bool] = mapped_column(default=False, server_default="false")
     source_count: Mapped[Optional[int]] = mapped_column()
     total_sources: Mapped[Optional[int]] = mapped_column()
@@ -281,10 +294,16 @@ class PlWeatherObservation(Base):
     """Weather data. Replaces METEO_ALL / weather_data."""
 
     __tablename__ = "pl_weather_observation"
-    __table_args__ = (UniqueConstraint("date", name="uq_weather_observation_date"),)
+    __table_args__ = (
+        UniqueConstraint("date", "language", name="uq_weather_observation_date"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     date: Mapped[date] = mapped_column(DATE, nullable=False, index=True)
+    # Content language (keying dimension). Default FR (existing content is French).
+    language: Mapped[str] = mapped_column(
+        VARCHAR(5), nullable=False, default="fr", server_default="fr"
+    )
     region: Mapped[Optional[str]] = mapped_column(VARCHAR(100))
     observation: Mapped[Optional[str]] = mapped_column(TEXT)
     summary: Mapped[Optional[str]] = mapped_column(TEXT)

@@ -6,8 +6,10 @@ import {
 } from '@/components/ui/popover';
 import { CalendarIcon } from 'lucide-react';
 import { format, parseISO, isFuture } from 'date-fns';
-import { fr } from 'date-fns/locale';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useLanguage } from '@/hooks/useLanguage';
+import { formatDate } from '@/utils/format-locale';
 
 interface DateSelectorProps {
   /** Date displayed on the trigger pill + highlighted in the popover (= today's real date by default; or whatever the user has picked). */
@@ -24,6 +26,8 @@ export default function DateSelector({
   sessionDate,
   className,
 }: DateSelectorProps) {
+  const { t } = useTranslation();
+  const { language } = useLanguage();
   const [isOpen, setIsOpen] = useState(false);
   const selectedDate = parseISO(calendarDate);
 
@@ -58,15 +62,15 @@ export default function DateSelector({
               minHeight: 36,
               transition: 'color 120ms',
             }}
-            aria-label="Select session date"
+            aria-label={t('common.select_session_date')}
           >
             <CalendarIcon style={{ width: 12, height: 12 }} />
             <span style={{ color: 'var(--ink)', fontWeight: 600 }}>
-              {format(selectedDate, 'd MMM yyyy', { locale: fr })}
+              {formatDate(selectedDate, language, 'd MMM yyyy')}
             </span>
             {sessionDate && sessionDate.slice(0, 10) !== calendarDate && (
               <span style={{ color: 'var(--ink-light)' }}>
-                · session {format(parseISO(sessionDate), 'd MMM', { locale: fr })}
+                {t('common.session_prefix')} {formatDate(parseISO(sessionDate), language, 'd MMM')}
               </span>
             )}
           </button>

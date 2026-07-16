@@ -225,10 +225,12 @@ async def _decision_aware_front_month_series(
                    ON ens.date = d.date
                   AND ens.contract_id = d.contract_id
                   AND ens.algorithm_version_id = :ensemble_id
+                  AND ens.language = 'fr'
             LEFT JOIN pl_indicator_daily leg
                    ON leg.date = d.date
                   AND leg.contract_id = d.contract_id
                   AND leg.algorithm_version_id = :legacy_id
+                  AND leg.language = 'fr'
             WHERE COALESCE(ens.decision, leg.decision) IS NOT NULL
         ),
         front_month AS (
@@ -243,6 +245,11 @@ async def _decision_aware_front_month_series(
         JOIN scored s ON s.date = fm.date AND s.contract_id = fm.contract_id
         ORDER BY fm.date ASC
     """)
+    # The `scored` CTE pins ens/leg to language='fr' (DEFAULT_LANGUAGE): the
+    # `decision` is language-agnostic (the EN row copies it), so without the
+    # filter each (date, contract) fans out to 2 rows once EN content exists →
+    # the horizon-indexed scoring loop in the callers pairs mismatched sessions
+    # and the YTD / running-acc figures drift.
 
     result = await db.execute(
         query,
@@ -507,6 +514,7 @@ async def get_latest_recommendations(
     *,
     contract_id: Optional[uuid.UUID] = None,
     algo_id: Optional[uuid.UUID] = None,
+    language: str = "fr",
 ) -> tuple[List[str], Optional[str], Optional[date]]:
     """Get the latest recommendations from pl_indicator_daily.conclusion.
 
@@ -537,7 +545,12 @@ async def get_latest_recommendations(
     if algo_id is None:
         algo_id = await get_active_algorithm_version_id(db)
 
-    base_select = select(PlIndicatorDaily.conclusion, PlIndicatorDaily.date)
+    # Language filter is inherited by all four fallback steps below: the
+    # fallback relaxes contract/algo, but NEVER language — we must never serve
+    # one language's narrative under another language's label.
+    base_select = select(PlIndicatorDaily.conclusion, PlIndicatorDaily.date).where(
+        PlIndicatorDaily.language == language
+    )
 
     # Step 1: contract + algo + (date)
     query = base_select.where(
@@ -766,12 +779,15 @@ async def _build_forward_fill_series(
 
 
 async def get_latest_market_research(
-    db: AsyncSession, target_date: Optional[date] = None
+    db: AsyncSession,
+    target_date: Optional[date] = None,
+    language: str = "fr",
 ) -> Optional[Dict[str, Any]]:
     """Get the latest active fundamental article."""
     query = (
         select(PlFundamentalArticle)
         .where(PlFundamentalArticle.is_active.is_(True))
+        .where(PlFundamentalArticle.language == language)
         .order_by(
             desc(PlFundamentalArticle.date),
             desc(PlFundamentalArticle.created_at),
@@ -896,12 +912,18 @@ async def get_theme_sentiments(
 
 
 async def get_latest_weather_data(
-    db: AsyncSession, target_date: Optional[date] = None
+    db: AsyncSession,
+    target_date: Optional[date] = None,
+    language: str = "fr",
 ) -> Optional[Dict[str, Any]]:
     """Get the latest weather observation."""
-    query = select(PlWeatherObservation).order_by(
-        desc(PlWeatherObservation.date),
-        desc(PlWeatherObservation.created_at),
+    query = (
+        select(PlWeatherObservation)
+        .where(PlWeatherObservation.language == language)
+        .order_by(
+            desc(PlWeatherObservation.date),
+            desc(PlWeatherObservation.created_at),
+        )
     )
 
     if target_date:
@@ -941,17 +963,24 @@ async def get_stress_history(
     db: AsyncSession,
     days: int = 7,
     target_date: Optional[date] = None,
+    language: str = "fr",
 ) -> List[Dict[str, Any]]:
     """Build per-location stress history from the last N weather observations.
 
     Returns a list of dicts with: location_name, country, current_status,
     streak_days, trend, history (list of statuses oldest→newest).
+
+    The ``language`` filter is load-bearing: pl_weather_observation is keyed on
+    ``(date, language)``, so without it the ``LIMIT days`` window spans half as
+    many distinct dates once EN content exists, corrupting the per-location
+    timeline. Mirrors ``get_latest_weather_data``.
     """
     ref = target_date or date.today()
     query = (
         select(PlWeatherObservation.date, PlWeatherObservation.diagnostics)
         .where(
             PlWeatherObservation.date <= ref,
+            PlWeatherObservation.language == language,
             PlWeatherObservation.diagnostics.is_not(None),
         )
         .order_by(desc(PlWeatherObservation.date))

@@ -11,12 +11,16 @@ import sentry_sdk
 from dotenv import load_dotenv
 from sentry_sdk.crons import monitor
 
+from app.core.i18n import LANGUAGE_CLI_CHOICES, expand_languages
 from app.core.sentry import init_sentry
 from scripts.meteo_agent.config import (
     LOG_FORMAT,
     SYSTEM_PROMPT_TEMPLATE,
+    SYSTEM_PROMPT_TEMPLATE_EN,
     USER_PROMPT_TEMPLATE,
+    USER_PROMPT_TEMPLATE_EN,
     build_seasonal_context,
+    build_seasonal_context_en,
 )
 from scripts.meteo_agent.llm_client import call_openai
 from scripts.meteo_agent.validator import validate_output
@@ -69,6 +73,16 @@ def main() -> int:
             "gate (backfills, manual reruns)."
         ),
     )
+    parser.add_argument(
+        "--language",
+        choices=LANGUAGE_CLI_CHOICES,
+        default="fr",
+        help=(
+            "Bulletin language (default: fr). 'en' writes a native English "
+            "(Ghana) row that coexists with the fr row; 'both' writes fr then "
+            "en in one execution (no per-language jobs)."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -97,6 +111,7 @@ def main() -> int:
     logger.info("=" * 60)
     logger.info("Meteo Agent - Cocoa Weather Analysis")
     logger.info("Mode: %s", "DRY RUN" if args.dry_run else "LIVE")
+    logger.info("Language: %s", args.language)
     logger.info(
         "Target session: %s | Data session (row date): %s", target_date, data_date
     )
@@ -174,13 +189,16 @@ def main() -> int:
             except ImportError:
                 raise mem_err from None
 
-        # Step 3: Build prompt and call LLM
-        logger.info("Step 3: Calling OpenAI for analysis...")
+        # Step 3-5: per-language build → call → validate → write.
+        # Shared, language-independent inputs are computed ONCE here; only the
+        # prompt + LLM call + row write loop per language. The auxiliary context
+        # blocks (campaign memory, Harmattan, ENSO, forecast) stay FR-generated;
+        # the EN system prompt instructs the model to read them for their data
+        # but write its entire output in English. Threading language through
+        # those helpers is a follow-up.
         # P2b: seasonal context tied to target_date.month so eve-of-November-1
         # runs see November thresholds, not the previous month's.
         current_month = target_date.month
-        seasonal_context = build_seasonal_context(current_month)
-        system_prompt = SYSTEM_PROMPT_TEMPLATE.format(seasonal_context=seasonal_context)
         memory_block = f"\n\n{campaign_memory}" if campaign_memory else ""
         harmattan_block = harmattan_context
         # Forward-risk synthesis from the forecast portion of the series (J+1→J+5).
@@ -189,91 +207,124 @@ def main() -> int:
         forecast_block = summarize_forecast(weather_data)
         if forecast_block:
             logger.info("Forecast synthesis: %s", forecast_block.strip())
-        user_prompt = (
-            USER_PROMPT_TEMPLATE.format(weather_data=weather_data)
-            + memory_block
-            + harmattan_block
-            + enso_context
-            + forecast_block
-        )
-        logger.info(
-            "Season: %s (month %d)", seasonal_context.split("\n")[0], current_month
-        )
-        result = asyncio.run(call_openai(system_prompt, user_prompt))
 
-        if not result.success:
-            logger.error("LLM call failed: %s", result.error)
-            sentry_sdk.capture_message(
-                f"Meteo agent LLM failed: {result.error}", level="error"
-            )
-            return 1
-
-        # Step 4: Validate output
-        logger.info("Step 4: Validating output...")
-        errors = validate_output(result.parsed)
-        if errors:
-            logger.error("Validation failed: %s", errors)
-            sentry_sdk.capture_message(
-                f"Meteo agent validation failed: {errors}", level="error"
-            )
-            return 1
-
-        # Step 5: Write to GCP PostgreSQL
-        logger.info("Step 5: Writing to GCP PostgreSQL...")
         from scripts.db import get_session
         from scripts.meteo_agent.db_writer import write_llm_call, write_observation
 
-        with get_session() as session:
-            # P2b: observation_date = data_date (= last completed session).
-            # Dashboard queries pl_weather_observation.date == session_date
-            # (= previous_trading_day(display_date)); writing at target_date
-            # would leave session_date empty on the morning after.
-            write_observation(
-                session,
-                result.parsed,
-                observation_date=data_date,
-                dry_run=args.dry_run,
-                force=args.force,
+        overall_ok = True
+        any_written = False
+        last_result = None
+        for lang in expand_languages(args.language):
+            logger.info("Step 3 [%s]: Building prompt + calling OpenAI...", lang)
+            if lang == "en":
+                seasonal_context = build_seasonal_context_en(current_month)
+                system_prompt = SYSTEM_PROMPT_TEMPLATE_EN.format(
+                    seasonal_context=seasonal_context
+                )
+                user_prompt_template = USER_PROMPT_TEMPLATE_EN
+            else:
+                seasonal_context = build_seasonal_context(current_month)
+                system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
+                    seasonal_context=seasonal_context
+                )
+                user_prompt_template = USER_PROMPT_TEMPLATE
+            user_prompt = (
+                user_prompt_template.format(weather_data=weather_data)
+                + memory_block
+                + harmattan_block
+                + enso_context
+                + forecast_block
             )
-            write_llm_call(
-                session, result.usage, result.latency_ms, dry_run=args.dry_run
+            logger.info(
+                "Season: %s (month %d) [%s]",
+                seasonal_context.split("\n")[0],
+                current_month,
+                lang,
+            )
+            result = asyncio.run(call_openai(system_prompt, user_prompt))
+
+            if not result.success:
+                logger.error("[%s] LLM call failed: %s", lang, result.error)
+                sentry_sdk.capture_message(
+                    f"Meteo agent LLM failed ({lang}): {result.error}", level="error"
+                )
+                overall_ok = False
+                break  # fr-first: don't attempt en if fr failed
+
+            errors = validate_output(result.parsed)
+            if errors:
+                logger.error("[%s] Validation failed: %s", lang, errors)
+                sentry_sdk.capture_message(
+                    f"Meteo agent validation failed ({lang}): {errors}",
+                    level="error",
+                )
+                overall_ok = False
+                break
+
+            logger.info("Step 5 [%s]: Writing observation to PostgreSQL...", lang)
+            with get_session() as session:
+                # P2b: observation_date = data_date (= last completed session).
+                # Dashboard queries pl_weather_observation.date == session_date
+                # (= previous_trading_day(display_date)); writing at target_date
+                # would leave session_date empty on the morning after.
+                write_observation(
+                    session,
+                    result.parsed,
+                    observation_date=data_date,
+                    language=str(lang),
+                    dry_run=args.dry_run,
+                    force=args.force,
+                )
+                write_llm_call(
+                    session, result.usage, result.latency_ms, dry_run=args.dry_run
+                )
+            any_written = True
+            last_result = result
+
+            if args.dry_run:
+                logger.info("[DRY RUN] [%s] Output preview:", lang)
+                for field in ("texte", "resume", "mots_cle", "impact_synthetiques"):
+                    val = result.parsed.get(field, "")
+                    logger.info("  %s: %d chars — %s...", field, len(val), val[:120])
+
+        # Step 6: Daily Harmattan check — language-independent, runs ONCE (it
+        # increments per-location counters, so it must never fire per language).
+        # Only after at least one bulletin was written (mirrors the original
+        # "no write on early failure" behavior).
+        if any_written:
+            logger.info("Step 6: Checking Harmattan conditions...")
+            from scripts.meteo_agent.seasonal_memory import check_daily_harmattan
+
+            with get_session() as session:
+                harmattan_results = check_daily_harmattan(
+                    weather_data,
+                    session,
+                    campaign,
+                    dry_run=args.dry_run,
+                )
+                if any(harmattan_results.values()):
+                    detected = [n for n, h in harmattan_results.items() if h]
+                    logger.info("Harmattan detected at: %s", ", ".join(detected))
+
+        # Sentry context (from the last written language)
+        if last_result is not None:
+            sentry_sdk.set_context(
+                "meteo_agent",
+                {
+                    "target_date": target_date.isoformat(),
+                    "data_date": data_date.isoformat(),
+                    "language": args.language,
+                    "weather_data_chars": len(weather_data),
+                    "usage": last_result.usage,
+                    "latency_ms": last_result.latency_ms,
+                    "texte_chars": len(last_result.parsed.get("texte", "")),
+                    "resume_chars": len(last_result.parsed.get("resume", "")),
+                    "dry_run": args.dry_run,
+                },
             )
 
-        # Step 6: Daily Harmattan check (increment per-location counter)
-        logger.info("Step 6: Checking Harmattan conditions...")
-        from scripts.meteo_agent.seasonal_memory import check_daily_harmattan
-
-        with get_session() as session:
-            harmattan_results = check_daily_harmattan(
-                weather_data,
-                session,
-                campaign,
-                dry_run=args.dry_run,
-            )
-            if any(harmattan_results.values()):
-                detected = [n for n, h in harmattan_results.items() if h]
-                logger.info("Harmattan detected at: %s", ", ".join(detected))
-
-        if args.dry_run:
-            logger.info("[DRY RUN] Output preview:")
-            for field in ("texte", "resume", "mots_cle", "impact_synthetiques"):
-                val = result.parsed.get(field, "")
-                logger.info("  %s: %d chars — %s...", field, len(val), val[:120])
-
-        # Sentry context
-        sentry_sdk.set_context(
-            "meteo_agent",
-            {
-                "target_date": target_date.isoformat(),
-                "data_date": data_date.isoformat(),
-                "weather_data_chars": len(weather_data),
-                "usage": result.usage,
-                "latency_ms": result.latency_ms,
-                "texte_chars": len(result.parsed.get("texte", "")),
-                "resume_chars": len(result.parsed.get("resume", "")),
-                "dry_run": args.dry_run,
-            },
-        )
+        if not overall_ok:
+            return 1
 
         logger.info("=" * 60)
         logger.info("SUCCESS: Meteo agent completed")

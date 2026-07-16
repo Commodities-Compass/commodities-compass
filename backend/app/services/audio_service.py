@@ -30,6 +30,13 @@ _VERSION_FILENAME_SUFFIX = {
     "ensemble": "-Ensemble",
 }
 
+# Content language → filename suffix. FR (default) has no suffix; the English
+# (Ghana) edition appends `-EN`, e.g. `YYYYMMDD-CompassAudio-Ensemble-EN.{ext}`.
+_LANGUAGE_FILENAME_SUFFIX = {
+    "fr": "",
+    "en": "-EN",
+}
+
 
 def _normalize_version(version: Optional[str]) -> str:
     if version is None or version == "":
@@ -39,6 +46,35 @@ def _normalize_version(version: Optional[str]) -> str:
             f"Unknown brief version {version!r}; expected one of {list(_VERSION_FILENAME_SUFFIX)}"
         )
     return version
+
+
+def _normalize_language(language: Optional[str]) -> str:
+    if language is None or language == "":
+        return "fr"
+    if language not in _LANGUAGE_FILENAME_SUFFIX:
+        raise ValueError(
+            f"Unknown language {language!r}; expected one of {list(_LANGUAGE_FILENAME_SUFFIX)}"
+        )
+    return language
+
+
+def _candidate_suffixes(version: str, language: str) -> list[str]:
+    """Ordered filename-suffix candidates for a (version, language) request.
+
+    The list is **language-consistent by construction** — an EN request only
+    ever resolves to EN files, an FR request only to FR files. This is the
+    load-bearing guarantee: we degrade to no-audio rather than serve one
+    language's audio under another language's label (i18n decisions D3/D4).
+
+      * EN — ensemble-only per US-4 scope. Prefer the ensemble-EN track, keep a
+        bare `-EN` as a forward-compatible second choice if a legacy-EN audio is
+        ever produced. Never falls back to an FR ('-Ensemble' / '') file.
+      * FR — exact per-version resolution, unchanged: one candidate, no
+        cross-version fallback (the two tracks stay independent).
+    """
+    if language == "en":
+        return ["-Ensemble-EN", "-EN"]
+    return [_VERSION_FILENAME_SUFFIX[version]]
 
 
 class AudioService:
@@ -105,6 +141,7 @@ class AudioService:
         self,
         target_date: Optional[date] = None,
         version: Optional[str] = None,
+        language: Optional[str] = None,
     ) -> Optional[dict]:
         """Get metadata for audio file including URL and title.
 
@@ -112,16 +149,25 @@ class AudioService:
           - ``"legacy"`` (default from settings): ``YYYYMMDD-CompassAudio.{ext}``
           - ``"ensemble"``: ``YYYYMMDD-CompassAudio-Ensemble.{ext}``
         If ``version`` is None, falls back to ``settings.BRIEF_DEFAULT_VERSION``.
+
+        ``language`` selects the edition (``"fr"`` default | ``"en"``). The EN
+        edition is ensemble-only and resolves to ``-Ensemble-EN`` files; it
+        never falls back to an FR audio (see ``_candidate_suffixes``).
         """
         resolved_version = _normalize_version(version)
-        result = await self.get_audio_file_info(target_date, version=resolved_version)
+        resolved_language = _normalize_language(language)
+        result = await self.get_audio_file_info(
+            target_date, version=resolved_version, language=resolved_language
+        )
 
         if not result:
             return None
 
         display_date = target_date if target_date else datetime.now(timezone.utc).date()
 
-        version_label = "Ensemble" if resolved_version == "ensemble" else ""
+        # Label from the resolved filename (accurate even when the EN edition
+        # served an ensemble file under a legacy default version).
+        version_label = "Ensemble" if "-Ensemble" in result["filename"] else ""
         title_suffix = f" ({version_label})" if version_label else ""
         return {
             "url": result["url"],
@@ -131,18 +177,25 @@ class AudioService:
             "date": display_date.isoformat(),
             "filename": result["filename"],
             "version": resolved_version,
+            "language": resolved_language,
         }
 
     async def get_audio_file_info(
         self,
         target_date: Optional[date] = None,
         version: Optional[str] = None,
+        language: Optional[str] = None,
     ) -> Optional[dict]:
         """Get audio file info including URL and filename.
 
-        ``version`` is the brief track to fetch (``legacy`` or ``ensemble``).
-        Defaults to ``settings.BRIEF_DEFAULT_VERSION`` when None. The cache is
-        keyed on ``(date, version)`` so both tracks coexist without conflict.
+        ``version`` is the brief track to fetch (``legacy`` or ``ensemble``),
+        defaulting to ``settings.BRIEF_DEFAULT_VERSION``. ``language`` is the
+        edition (``fr`` default | ``en``). The cache is keyed on
+        ``(date, version, language)`` so every track/edition coexists.
+
+        Resolution walks the language-consistent candidate list (see
+        ``_candidate_suffixes``) in preference order and returns the first file
+        present on Drive — never an out-of-language file.
 
         Returns dict with url and filename, or None if not found.
         """
@@ -154,9 +207,11 @@ class AudioService:
             target_date = datetime.now(timezone.utc).date()
 
         resolved_version = _normalize_version(version)
-        suffix = _VERSION_FILENAME_SUFFIX[resolved_version]
+        resolved_language = _normalize_language(language)
 
-        cache_key = f"{target_date.isoformat()}::{resolved_version}"
+        cache_key = (
+            f"{target_date.isoformat()}::{resolved_version}::{resolved_language}"
+        )
         cached = self._file_cache.get(cache_key)
         if cached is not None:
             result, cached_at = cached
@@ -165,11 +220,21 @@ class AudioService:
                 return result
             del self._file_cache[cache_key]
 
-        filename_base = f"{target_date.strftime('%Y%m%d')}-CompassAudio{suffix}"
+        stem = target_date.strftime("%Y%m%d")
+        # Ordered, language-consistent candidate bases (preference first).
+        candidate_bases = [
+            f"{stem}-CompassAudio{suffix}"
+            for suffix in _candidate_suffixes(resolved_version, resolved_language)
+        ]
 
         try:
+            name_clauses = " or ".join(
+                f"name='{base}.{ext}'"
+                for base in candidate_bases
+                for ext in ("wav", "m4a", "mp4")
+            )
             query = (
-                f"(name='{filename_base}.wav' or name='{filename_base}.m4a' or name='{filename_base}.mp4') and "
+                f"({name_clauses}) and "
                 f"(mimeType='audio/wav' or mimeType='audio/x-wav' or mimeType='audio/x-m4a' or mimeType='audio/mp4' or mimeType='audio/mpeg' or mimeType='video/mp4') and "
                 f"trashed=false and "
                 f"'{settings.GOOGLE_DRIVE_AUDIO_FOLDER_ID}' in parents"
@@ -193,15 +258,24 @@ class AudioService:
 
             if not files:
                 logger.warning(
-                    "Audio file not found: %s.wav, %s.m4a, or %s.mp4",
-                    filename_base,
-                    filename_base,
-                    filename_base,
+                    "Audio file not found for any candidate: %s",
+                    ", ".join(candidate_bases),
                 )
                 self._file_cache[cache_key] = (None, time.monotonic())
                 return None
 
-            file = files[0]
+            # Pick by preference order — the first candidate base with a file on
+            # Drive wins (ensemble-EN before a bare -EN, etc.).
+            by_stem: dict[str, dict] = {}
+            for f in files:
+                name = f.get("name", "")
+                stem_only = name.rsplit(".", 1)[0]
+                by_stem.setdefault(stem_only, f)
+
+            file = next(
+                (by_stem[base] for base in candidate_bases if base in by_stem),
+                files[0],
+            )
             file_id = file.get("id")
             actual_filename = file.get("name")
 

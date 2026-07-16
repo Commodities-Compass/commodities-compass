@@ -21,6 +21,7 @@ Structure rendered :
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import date as date_type, datetime
 from typing import TYPE_CHECKING
 
@@ -51,20 +52,163 @@ MOIS_FR = {
     12: "décembre",
 }
 
+MONTHS_EN = {
+    1: "January",
+    2: "February",
+    3: "March",
+    4: "April",
+    5: "May",
+    6: "June",
+    7: "July",
+    8: "August",
+    9: "September",
+    10: "October",
+    11: "November",
+    12: "December",
+}
+
 SEP_THICK = "═" * 70
 SEP_THIN = "─" * 70
 
 _ENGAGED_VOTES = {"OPEN", "HEDGE"}
 
-_THEME_LABEL = {
+# Business theme → editorial phrase, per output language. Used to build the
+# "other reads converge on this verdict — an FX read and a macro read" sentence
+# without ever naming a specialist or counting votes.
+_THEME_LABEL_FR = {
     "technique": "une lecture technique",
     "fx": "une lecture FX",
     "macro": "une lecture macro",
     "climat": "une lecture climatique",
     "volatilité": "une lecture volatilité",
 }
+_THEME_LABEL_EN = {
+    "technique": "a technical read",
+    "fx": "an FX read",
+    "macro": "a macro read",
+    "climat": "a weather read",
+    "volatilité": "a volatility read",
+}
+_THEME_LABEL_BY_LANG = {"fr": _THEME_LABEL_FR, "en": _THEME_LABEL_EN}
+
+# Back-compat alias — external callers/tests importing the original symbol.
+_THEME_LABEL = _THEME_LABEL_FR
 
 _DECISION_TO_BIAS = {"OPEN": "bullish", "HEDGE": "bearish"}
+
+
+@dataclass(frozen=True)
+class _BriefLabels:
+    """All fixed (non-data) strings the renderer emits, per output language.
+
+    The brief is a re-write per language, not a translation of the rendered FR
+    text — but the *structure* is identical, so the fixed scaffolding lives
+    here as two parallel instances (``_LABELS_FR`` / ``_LABELS_EN``). Dynamic,
+    grammar-bearing sentences (theme convergence) stay in functions that take
+    ``language``.
+    """
+
+    months: dict[int, str]
+    date_prefix: str
+    horizon: str
+    intro: str
+    section_editorial: str
+    section_eco: str
+    section_technicals: str
+    section_reco: str
+    field_position: str
+    field_confidence: str
+    field_direction: str
+    field_ytd: str
+    headline_prefix: str
+    no_engaged: str
+    conv_single: str  # "{body}" slot for the single-theme case
+    conv_multi: str  # "{body}" slot for the 2+-theme case
+    conv_conj: str  # "et" / "and"
+    press_review_prefix: str
+    press_impact_prefix: str
+    press_sentiment_prefix: str
+    weather_impact_prefix: str
+    weather_none: str
+    reco_none: str
+
+
+_LABELS_FR = _BriefLabels(
+    months=MOIS_FR,
+    date_prefix="Date :",
+    horizon="Horizon décisionnel : 4 à 5 sessions boursières",
+    intro=(
+        "Lecture Compass du jour sur le front-month cocoa Londres, "
+        "horizon 4 à 5 sessions."
+    ),
+    section_editorial="II — LECTURE ÉDITORIALE",
+    section_eco="III — ÉCO & PRESS REVIEW",
+    section_technicals="V — CHIFFRES TECHNIQUES DERNIÈRE SESSION",
+    section_reco="VI — RECOMMANDATIONS OPÉRATIONNELLES",
+    field_position="Position",
+    field_confidence="Confiance",
+    field_direction="Direction",
+    field_ytd="Performance YTD",
+    headline_prefix="Lecture phare du jour :",
+    no_engaged=(
+        "Pas de lecture marquée engagée sur cette session — "
+        "le marché est observé sans prise de position."
+    ),
+    conv_single="D'autres lectures convergent sur ce verdict, dont {body}.",
+    conv_multi="D'autres lectures convergent sur ce verdict — {body}.",
+    conv_conj="et",
+    press_review_prefix="Press review :",
+    press_impact_prefix="Impact synthèse :",
+    press_sentiment_prefix="Sentiment dominant :",
+    weather_impact_prefix="Impact :",
+    weather_none="(aucune météo disponible pour la session)",
+    reco_none=(
+        "(pas de conclusion narrative — la lecture humaine n'a pas "
+        "encore été enrichie pour cette session)"
+    ),
+)
+
+_LABELS_EN = _BriefLabels(
+    months=MONTHS_EN,
+    date_prefix="Date:",
+    horizon="Decision horizon: 4 to 5 trading sessions",
+    intro=(
+        "Today's Compass read on London front-month cocoa, horizon 4 to 5 sessions."
+    ),
+    section_editorial="II — EDITORIAL READ",
+    section_eco="III — ECO & PRESS REVIEW",
+    section_technicals="V — TECHNICAL SNAPSHOT — LAST SESSION",
+    section_reco="VI — OPERATIONAL RECOMMENDATIONS",
+    field_position="Position",
+    field_confidence="Confidence",
+    field_direction="Direction",
+    field_ytd="YTD performance",
+    headline_prefix="Headline read of the day:",
+    no_engaged=(
+        "No firmly engaged read this session — "
+        "the market is watched without taking a position."
+    ),
+    conv_single="Other reads converge on this verdict, including {body}.",
+    conv_multi="Other reads converge on this verdict — {body}.",
+    conv_conj="and",
+    press_review_prefix="Press review:",
+    press_impact_prefix="Impact summary:",
+    press_sentiment_prefix="Dominant sentiment:",
+    weather_impact_prefix="Impact:",
+    weather_none="(no weather available for this session)",
+    reco_none=(
+        "(no narrative conclusion — the human read has not yet been "
+        "enriched for this session)"
+    ),
+)
+
+_LABELS_BY_LANG = {"fr": _LABELS_FR, "en": _LABELS_EN}
+
+
+def _labels_for(language: str) -> _BriefLabels:
+    """Return the fixed-string set for the output language (fr default)."""
+    return _LABELS_BY_LANG.get(language, _LABELS_FR)
+
 
 # Engine-revealing substrings that must NEVER reach NotebookLM, split into two
 # tiers because the guard runs on fields with different provenance:
@@ -174,7 +318,10 @@ def _assert_safe(
     )
 
 
-def _format_date(value) -> str:
+def _format_date(value, language: str = "fr") -> str:
+    """Format a date as ``15 July 2026`` — day-month-year in both editions
+    (en-GB order matches the FR order), only the month name differs."""
+    months = MONTHS_EN if language == "en" else MOIS_FR
     if isinstance(value, date_type):
         dt = value
     elif isinstance(value, str):
@@ -184,7 +331,7 @@ def _format_date(value) -> str:
             return value
     else:
         return str(value)
-    return f"{dt.day} {MOIS_FR[dt.month]} {dt.year}"
+    return f"{dt.day} {months[dt.month]} {dt.year}"
 
 
 def _fmt_signed_pct(value) -> str | None:
@@ -198,46 +345,59 @@ def _fmt_signed_pct(value) -> str | None:
     return f"{f:+.2f}%"
 
 
-def render_brief(data: "EnsembleBriefData") -> str:
-    """Render the full daily brief as a single text block."""
+def _field(label: str, value: str) -> str:
+    """Render one aligned Section-I field line, language-independent padding."""
+    return f"  {label:<19}: {value}"
+
+
+def render_brief(data: "EnsembleBriefData", language: str = "fr") -> str:
+    """Render the full daily brief as a single text block.
+
+    ``language`` picks the fixed-string scaffolding (``fr`` default) and the
+    per-language specialist labels/descriptions. The data fields
+    (``eco`` / ``conclusion`` / ``press_summary`` / ``meteo_*`` / technicals)
+    are already in the requested language — they come from the language-filtered
+    DB rows the ``db_reader`` selected — so the renderer never translates
+    content, only its own scaffolding.
+    """
+    labels = _labels_for(language)
     lines: list[str] = []
 
     # ── Header ────────────────────────────────────────────────────────────
     lines.append(SEP_THICK)
     lines.append("COMPASS DAILY BRIEF — Cocoa Outlook")
-    lines.append(f"Date : {_format_date(data.target_date)}")
-    lines.append("Horizon décisionnel : 4 à 5 sessions boursières")
+    lines.append(f"{labels.date_prefix} {_format_date(data.target_date, language)}")
+    lines.append(labels.horizon)
     lines.append(SEP_THICK)
     lines.append("")
 
     # ── Intro — neutral framing, no panel ─────────────────────────────────
-    lines.append(
-        "Lecture Compass du jour sur le front-month cocoa Londres, "
-        "horizon 4 à 5 sessions."
-    )
+    lines.append(labels.intro)
     lines.append("")
 
     # ── I — Signal ────────────────────────────────────────────────────────
     lines.append("I — SIGNAL")
     lines.append(SEP_THIN)
-    lines.append(f"  Position           : {data.decision}")
+    lines.append(_field(labels.field_position, data.decision))
     if data.confidence is not None:
         rationale = (data.confidence_rationale or "").strip()
         if rationale:
-            lines.append(f"  Confiance          : {data.confidence}/5 — {rationale}")
+            lines.append(
+                _field(labels.field_confidence, f"{data.confidence}/5 — {rationale}")
+            )
         else:
-            lines.append(f"  Confiance          : {data.confidence}/5")
+            lines.append(_field(labels.field_confidence, f"{data.confidence}/5"))
     if data.direction:
-        lines.append(f"  Direction          : {data.direction}")
+        lines.append(_field(labels.field_direction, data.direction))
     ytd = _fmt_signed_pct(data.ytd_score)
     if ytd is not None:
-        lines.append(f"  Performance YTD    : {ytd}")
+        lines.append(_field(labels.field_ytd, ytd))
     lines.append("")
 
-    # ── II — Lecture éditoriale ───────────────────────────────────────────
-    lines.append("II — LECTURE ÉDITORIALE")
+    # ── II — Editorial read ───────────────────────────────────────────────
+    lines.append(labels.section_editorial)
     lines.append(SEP_THIN)
-    lines.extend(_render_editorial_section(data))
+    lines.extend(_render_editorial_section(data, language))
     lines.append("")
 
     # Fail-loud guard on every LLM-written field BEFORE rendering anything
@@ -253,20 +413,20 @@ def render_brief(data: "EnsembleBriefData") -> str:
         tokens=_FORBIDDEN_ALL,
     )
 
-    # ── III — Éco & press review ──────────────────────────────────────────
-    lines.append("III — ÉCO & PRESS REVIEW")
+    # ── III — Eco & press review ──────────────────────────────────────────
+    lines.append(labels.section_eco)
     lines.append(SEP_THIN)
     if data.eco:
         lines.append(data.eco)
         lines.append("")
     if data.press_summary:
-        lines.append("Press review :")
+        lines.append(labels.press_review_prefix)
         lines.append(data.press_summary)
         lines.append("")
     if data.press_impact:
-        lines.append(f"Impact synthèse : {data.press_impact}")
+        lines.append(f"{labels.press_impact_prefix} {data.press_impact}")
     if data.press_sentiment:
-        lines.append(f"Sentiment dominant : {data.press_sentiment}")
+        lines.append(f"{labels.press_sentiment_prefix} {data.press_sentiment}")
     lines.append("")
 
     # ── IV — Weather watch ────────────────────────────────────────────────
@@ -277,34 +437,33 @@ def render_brief(data: "EnsembleBriefData") -> str:
     if data.meteo_trajectory:
         lines.append(data.meteo_trajectory)
     if data.meteo_impact:
-        lines.append(f"Impact : {data.meteo_impact}")
+        lines.append(f"{labels.weather_impact_prefix} {data.meteo_impact}")
     if not (data.meteo_summary or data.meteo_impact):
-        lines.append("(aucune météo disponible pour la session)")
+        lines.append(labels.weather_none)
     lines.append("")
 
-    # ── V — Chiffres techniques ───────────────────────────────────────────
-    lines.append("V — CHIFFRES TECHNIQUES DERNIÈRE SESSION")
+    # ── V — Technical snapshot ────────────────────────────────────────────
+    lines.append(labels.section_technicals)
     lines.append(SEP_THIN)
     lines.append(data.technicals_snapshot)
     lines.append("")
 
-    # ── VI — Recommandations ──────────────────────────────────────────────
-    lines.append("VI — RECOMMANDATIONS OPÉRATIONNELLES")
+    # ── VI — Operational recommendations ──────────────────────────────────
+    lines.append(labels.section_reco)
     lines.append(SEP_THIN)
     if data.conclusion:
         lines.append(data.conclusion)
     else:
-        lines.append(
-            "(pas de conclusion narrative — la lecture humaine n'a pas "
-            "encore été enrichie pour cette session)"
-        )
+        lines.append(labels.reco_none)
     lines.append("")
     lines.append(SEP_THICK)
 
     return "\n".join(lines)
 
 
-def _render_editorial_section(data: "EnsembleBriefData") -> list[str]:
+def _render_editorial_section(
+    data: "EnsembleBriefData", language: str = "fr"
+) -> list[str]:
     """Section II — headline lecture + thematic convergence.
 
     Picks one specialist as the editorial headline (priority: vote aligned
@@ -312,14 +471,12 @@ def _render_editorial_section(data: "EnsembleBriefData") -> list[str]:
     groups the remaining engaged specialists by business theme. No counts,
     no codes, no clusters, no horizons — pure editorial framing.
     """
+    labels = _labels_for(language)
     engaged: list[SpecialistVote] = [
         s for s in data.specialists if s.pred in _ENGAGED_VOTES
     ]
     if not engaged:
-        return [
-            "  Pas de lecture marquée engagée sur cette session — "
-            "le marché est observé sans prise de position."
-        ]
+        return [f"  {labels.no_engaged}"]
 
     headline = _pick_headline(engaged, data.decision)
     lines: list[str] = []
@@ -327,15 +484,17 @@ def _render_editorial_section(data: "EnsembleBriefData") -> list[str]:
     if headline is not None:
         headline_profile = lookup(headline.name)
         if headline_profile is not None:
-            lines.append(f"  Lecture phare du jour : {headline_profile.label}.")
+            lines.append(
+                f"  {labels.headline_prefix} {headline_profile.label_for(language)}."
+            )
             for chunk in _wrap_indented(
-                headline_profile.description, indent="  ", width=80
+                headline_profile.description_for(language), indent="  ", width=80
             ):
                 lines.append(chunk)
             lines.append("")
 
     others = [s for s in engaged if s is not headline]
-    theme_sentence = _render_theme_convergence(others)
+    theme_sentence = _render_theme_convergence(others, language)
     if theme_sentence:
         lines.append(f"  {theme_sentence}")
 
@@ -374,18 +533,23 @@ def _pick_headline(
     return engaged[0]
 
 
-def _render_theme_convergence(others: list["SpecialistVote"]) -> str:
+def _render_theme_convergence(
+    others: list["SpecialistVote"], language: str = "fr"
+) -> str:
     """Build a single editorial sentence describing what else is converging.
 
     Returns an empty string when no other engaged specialists exist or
     when none of them map to a known theme.
     """
+    labels = _labels_for(language)
+    theme_labels = _THEME_LABEL_BY_LANG.get(language, _THEME_LABEL_FR)
+
     themes_seen: list[str] = []
     for vote in others:
         profile = lookup(vote.name)
         if profile is None:
             continue
-        label = _THEME_LABEL.get(profile.theme)
+        label = theme_labels.get(profile.theme)
         if label is None:
             continue
         if label not in themes_seen:
@@ -394,14 +558,13 @@ def _render_theme_convergence(others: list["SpecialistVote"]) -> str:
     if not themes_seen:
         return ""
     if len(themes_seen) == 1:
-        return f"D'autres lectures convergent sur ce verdict, dont {themes_seen[0]}."
+        return labels.conv_single.format(body=themes_seen[0])
     if len(themes_seen) == 2:
-        return (
-            f"D'autres lectures convergent sur ce verdict — {themes_seen[0]} "
-            f"et {themes_seen[1]}."
-        )
+        body = f"{themes_seen[0]} {labels.conv_conj} {themes_seen[1]}"
+        return labels.conv_multi.format(body=body)
     head = ", ".join(themes_seen[:-1])
-    return f"D'autres lectures convergent sur ce verdict — {head} et {themes_seen[-1]}."
+    body = f"{head} {labels.conv_conj} {themes_seen[-1]}"
+    return labels.conv_multi.format(body=body)
 
 
 def _wrap_indented(text: str, indent: str, width: int = 80) -> list[str]:

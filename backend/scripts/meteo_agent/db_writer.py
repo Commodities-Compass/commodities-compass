@@ -28,12 +28,18 @@ def write_observation(
     session: Session,
     parsed: dict[str, str],
     observation_date: date | None = None,
+    language: str = "fr",
     dry_run: bool = False,
     force: bool = False,
 ) -> uuid.UUID | None:
     """Insert (or overwrite when ``force=True``) a weather observation.
 
-    Behavior on duplicate (row exists for ``date`` per the UNIQUE constraint):
+    The row is keyed on ``(date, language)`` (US-0 widened the unique
+    constraint), so the FR and EN bulletins for a session coexist as two
+    independent rows. Each ``language`` is written natively — the EN run is a
+    fresh English analysis, not a translation of the FR row.
+
+    Behavior on duplicate (a row already exists for ``(date, language)``):
       * ``force=False`` (default) — raise ``DuplicateObservationError``
         (fail-loud). Detects a runaway double-fire of the cron, which is
         the original intent of the guard.
@@ -49,8 +55,9 @@ def write_observation(
 
     if dry_run:
         log.info(
-            "[DRY RUN] Would insert weather observation: date=%s, texte=%d chars",
+            "[DRY RUN] Would insert weather observation: date=%s language=%s, texte=%d chars",
             row_date,
+            language,
             len(parsed.get("texte", "")),
         )
         return None
@@ -58,6 +65,7 @@ def write_observation(
     existing = session.execute(
         select(PlWeatherObservation.id).where(
             PlWeatherObservation.date == row_date,
+            PlWeatherObservation.language == language,
         )
     ).scalar_one_or_none()
 
@@ -65,18 +73,21 @@ def write_observation(
         if not force:
             raise DuplicateObservationError(
                 f"Weather observation already exists for date={row_date} "
-                f"(id={existing}). Pipeline may have run twice today. "
-                f"Re-run with --force to overwrite explicitly."
+                f"language={language} (id={existing}). Pipeline may have run "
+                f"twice today. Re-run with --force to overwrite explicitly."
             )
         log.warning(
-            "Weather observation exists for date=%s — overwriting via --force (id=%s)",
+            "Weather observation exists for date=%s language=%s — overwriting "
+            "via --force (id=%s)",
             row_date,
+            language,
             existing,
         )
         session.execute(
             update(PlWeatherObservation)
             .where(PlWeatherObservation.id == existing)
             .values(
+                language=language,
                 observation=parsed["texte"],
                 summary=parsed["resume"],
                 keywords=parsed.get("mots_cle"),
@@ -89,6 +100,7 @@ def write_observation(
 
     obs = PlWeatherObservation(
         date=row_date,
+        language=language,
         observation=parsed["texte"],
         summary=parsed["resume"],
         keywords=parsed.get("mots_cle"),
@@ -97,7 +109,12 @@ def write_observation(
     )
     session.add(obs)
     session.flush()
-    log.info("Inserted weather observation id=%s for date=%s", obs.id, row_date)
+    log.info(
+        "Inserted weather observation id=%s for date=%s language=%s",
+        obs.id,
+        row_date,
+        language,
+    )
     return obs.id
 
 

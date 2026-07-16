@@ -146,6 +146,11 @@ async def _compute_running_accuracy(
     Returns None if fewer than ``window`` evaluable decisions exist in the
     last ~30 sessions (caller falls back to the upstream R&D value).
     """
+    # Roll-safe series + the language='fr' pin both live in the shared
+    # ``_decision_aware_front_month_series`` (dashboard_service): the EN row
+    # copies the language-agnostic decision, so pinning fr there keeps the
+    # horizon-indexed running-accuracy (which gates the Compass wrapper) from
+    # doubling once EN content exists.
     # ~45 calendar days ≈ ~30 trading sessions, plenty to cover horizon + window
     start_date = date_cls.fromordinal(target_date.toordinal() - 45)
     rows = await _decision_aware_front_month_series(db, start_date, target_date)

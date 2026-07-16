@@ -1,6 +1,7 @@
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis, Tooltip as ReTooltip, ResponsiveContainer } from 'recharts';
 import { Loader2, ChevronDown } from 'lucide-react';
 import { useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Popover,
   PopoverContent,
@@ -18,10 +19,11 @@ interface PillGroupProps {
 }
 
 function DaysPillGroup({ value, onChange }: PillGroupProps) {
+  const { t } = useTranslation();
   return (
     <div
       role="radiogroup"
-      aria-label="Période du graphique"
+      aria-label={t('market.chart_period_aria')}
       style={{
         display: 'inline-flex',
         border: '1px solid var(--ink)',
@@ -198,6 +200,7 @@ export default function PriceChart({
   targetDate,
   className,
 }: PriceChartProps) {
+  const { t } = useTranslation();
   const [days, setDays] = useState(90);
   const { data: chartResponse, isLoading, error } = useChartData(days, targetDate);
 
@@ -278,13 +281,13 @@ export default function PriceChart({
         {isLoading ? (
           <div className="flex items-center justify-center h-[360px]" style={{ color: 'var(--ink-light)' }}>
             <Loader2 className="h-5 w-5 animate-spin mr-2" />
-            <span className="text-sm">Chargement du graphique...</span>
+            <span className="text-sm">{t('loading.price_chart')}</span>
           </div>
         ) : error || visibleData.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-[360px] gap-1" style={{ color: 'var(--ink-light)' }}>
-            <p className="text-sm">Aucune donnée de prix disponible</p>
+            <p className="text-sm">{t('common.error_no_price_data')}</p>
             <p className="text-xs" style={{ color: 'var(--ink-light)' }}>
-              Les données de marché n'ont peut-être pas encore été importées
+              {t('common.error_no_price_data_hint')}
             </p>
           </div>
         ) : (

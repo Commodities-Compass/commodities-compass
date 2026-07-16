@@ -16,6 +16,7 @@ import sentry_sdk
 from dotenv import load_dotenv
 from sentry_sdk.crons import monitor
 
+from app.core.i18n import LANGUAGE_CLI_CHOICES, expand_languages
 from app.core.sentry import init_sentry
 
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s — %(message)s"
@@ -72,6 +73,20 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
 
+    # Content language for the 3 native prose fields (eco / conclusion /
+    # confidence_rationale). Default 'fr' (source-of-truth run, owns the
+    # numbers). 'en' copies numbers from the fr row and writes only EN prose
+    # (D3-EN-rows) — the fr run must have written first.
+    parser.add_argument(
+        "--language",
+        choices=LANGUAGE_CLI_CHOICES,
+        default="fr",
+        help=(
+            "Content language of the prose fields (default: fr). 'both' runs "
+            "fr then en in one execution (fr first — en copies the fr row)."
+        ),
+    )
+
     return parser.parse_args()
 
 
@@ -123,15 +138,29 @@ def main() -> int:
             )
             return 0
 
-    return _run_db_pipeline(
-        target_date=target_date,
-        data_date=data_date,
-        contract_code=contract_code,
-        llm_provider=args.llm_provider,
-        llm_model=args.llm_model,
-        algorithm_version_name=args.algorithm_version,
-        dry_run=args.dry_run,
-    )
+    # 'both' → fr first, then en (en copies the fr row). A failure aborts the
+    # remaining languages but leaves any already-committed language intact.
+    overall = 0
+    for lang in expand_languages(args.language):
+        code = _run_db_pipeline(
+            target_date=target_date,
+            data_date=data_date,
+            contract_code=contract_code,
+            llm_provider=args.llm_provider,
+            llm_model=args.llm_model,
+            algorithm_version_name=args.algorithm_version,
+            dry_run=args.dry_run,
+            language=str(lang),
+        )
+        if code != 0:
+            overall = code
+            logger.error(
+                "Language '%s' run failed (exit %d) — skipping remaining languages.",
+                lang,
+                code,
+            )
+            break
+    return overall
 
 
 def _run_db_pipeline(
@@ -142,6 +171,7 @@ def _run_db_pipeline(
     llm_model: str | None,
     algorithm_version_name: str | None,
     dry_run: bool,
+    language: str = "fr",
 ) -> int:
     """Run the DB-first pipeline (no Sheets dependency)."""
     import os
@@ -160,6 +190,7 @@ def _run_db_pipeline(
     logger.info("Daily Analysis Pipeline")
     logger.info("Session (row date): %s | prepares: %s", data_date, target_date)
     logger.info("Contract: %s", contract_code)
+    logger.info("Language: %s", language)
     logger.info("Mode: %s", "DRY RUN" if dry_run else "FULL PIPELINE")
     logger.info("=" * 60)
 
@@ -179,6 +210,7 @@ def _run_db_pipeline(
                 data_date=data_date,
                 contract_code=contract_code,
                 dry_run=dry_run,
+                language=language,
             )
 
         sentry_sdk.set_context(
@@ -187,6 +219,7 @@ def _run_db_pipeline(
                 "date": data_date.isoformat(),
                 "target_date": target_date.isoformat(),
                 "contract": contract_code,
+                "language": language,
                 "macroeco_bonus": result.macro.macroeco_bonus,
                 "final_indicator": result.final_indicator,
                 "conclusion": result.final_conclusion,

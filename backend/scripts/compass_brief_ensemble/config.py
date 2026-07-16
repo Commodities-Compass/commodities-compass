@@ -18,8 +18,24 @@ from scripts.compass_brief.config import (  # noqa: F401 -- re-export
 )
 
 # Filename pattern. Legacy is `YYYYMMDD-CompassBrief.txt`. Ensemble adds the
-# `-Ensemble` suffix so the audio fetch path can distinguish them.
+# `-Ensemble` suffix so the audio fetch path can distinguish them. The EN
+# (Ghana) edition adds a further `-EN` suffix; the dashboard audio resolver
+# matches on `(version, language)` → these exact stems (see
+# audio_service._VERSION_FILENAME_SUFFIX and
+# docs/runbooks/brief-multilingual-management.md).
 FILENAME_PATTERN = "{date}-CompassBrief-Ensemble.txt"
+FILENAME_PATTERN_EN = "{date}-CompassBrief-Ensemble-EN.txt"
+
+
+def filename_for(date_str: str, language: str) -> str:
+    """Return the brief filename for a session date stem and output language.
+
+    ``en`` → ``YYYYMMDD-CompassBrief-Ensemble-EN.txt``; anything else (incl.
+    ``fr``) → ``YYYYMMDD-CompassBrief-Ensemble.txt`` (fail-safe default).
+    """
+    pattern = FILENAME_PATTERN_EN if language == "en" else FILENAME_PATTERN
+    return pattern.format(date=date_str)
+
 
 # Algorithm version that this brief reads from (must match the ensemble row).
 ALGORITHM_NAME = "ensemble_v1_softgate_wrapper"

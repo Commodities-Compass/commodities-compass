@@ -9,6 +9,8 @@ import { useAuth0 } from '@auth0/auth0-react';
 import { useAuth } from '@/hooks/useAuth';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { DashboardDateProvider } from '@/contexts/DashboardDateContext';
+import { LanguageProvider } from '@/contexts/LanguageContext';
+import { I18nSync } from '@/i18n/I18nSync';
 
 const DashboardLayout = React.lazy(() => import('@/components/dashboard-layout'));
 const LoginPage = React.lazy(() => import('@/pages/login-page-auth0'));
@@ -93,42 +95,45 @@ export default function App() {
   }, [isAuthenticated]);
 
   return (
-    <Router>
-      <Suspense fallback={<LoadingSpinner />}>
-        <Routes>
-          <Route path="/" element={<RootRedirect />} />
+    <LanguageProvider>
+      <I18nSync />
+      <Router>
+        <Suspense fallback={<LoadingSpinner />}>
+          <Routes>
+            <Route path="/" element={<RootRedirect />} />
 
-          <Route path="/login" element={<LoginPage />} />
+            <Route path="/login" element={<LoginPage />} />
 
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute isLoggingOut={isLoggingOut}>
-                <DashboardDateProvider>
-                  <DashboardLayout>
-                    <DashboardPage />
-                  </DashboardLayout>
-                </DashboardDateProvider>
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute isLoggingOut={isLoggingOut}>
+                  <DashboardDateProvider>
+                    <DashboardLayout>
+                      <DashboardPage />
+                    </DashboardLayout>
+                  </DashboardDateProvider>
+                </ProtectedRoute>
+              }
+            />
 
-          <Route
-            path="/dashboard/historical"
-            element={
-              <ProtectedRoute isLoggingOut={isLoggingOut}>
-                <DashboardDateProvider>
-                  <DashboardLayout>
-                    <HistoricalPage />
-                  </DashboardLayout>
-                </DashboardDateProvider>
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/dashboard/historical"
+              element={
+                <ProtectedRoute isLoggingOut={isLoggingOut}>
+                  <DashboardDateProvider>
+                    <DashboardLayout>
+                      <HistoricalPage />
+                    </DashboardLayout>
+                  </DashboardDateProvider>
+                </ProtectedRoute>
+              }
+            />
 
-          <Route path="*" element={<NotFoundPage />} />
-        </Routes>
-      </Suspense>
-    </Router>
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+        </Suspense>
+      </Router>
+    </LanguageProvider>
   );
 }

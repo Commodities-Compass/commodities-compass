@@ -236,7 +236,9 @@ def _trading_response(decision: str = "OPEN", confiance: int = 4) -> LLMResponse
         "decision": decision,
         "confiance": confiance,
         "direction": "HAUSSIERE" if decision == "OPEN" else "NEUTRE",
-        "conclusion": f"> {decision} narrative.\n        • CLOSE en hausse.\n> A SURVEILLER AUJOURD'HUI:\n        • Baissier si CLOSE clôture sous SUPPORT 1 à 3250 — objectif S2.",
+        # US-1 facts/voice: the LLM now emits only a qualitative headline; the
+        # numbers/bullets/à-surveiller are rendered from the DB facts by the engine.
+        "headline": f"Lecture Compass alignée sur la position {decision}, conviction forte.",
     }
     return _mock_llm_response(json.dumps(payload))
 
@@ -376,7 +378,13 @@ class TestEngineEnsembleAlignment:
         assert ensemble_after is not None
         assert ensemble_after.decision == "OPEN"
         assert ensemble_after.conclusion is not None
-        assert ensemble_after.conclusion.startswith("> OPEN narrative")
+        # US-1 facts/voice: conclusion = LLM headline + deterministically rendered
+        # fact-bullets + à-surveiller (numbers come from the DB, not the model).
+        assert ensemble_after.conclusion.startswith(
+            "> Lecture Compass alignée sur la position OPEN"
+        )
+        assert "Le CLOSE s'établit à" in ensemble_after.conclusion
+        assert "> A SURVEILLER AUJOURD'HUI:" in ensemble_after.conclusion
 
         legacy_after = sync_db_session.execute(
             sql_text("""

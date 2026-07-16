@@ -1,4 +1,6 @@
 import type { CSSProperties } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import type { LocationStressHistory } from '@/types/dashboard';
 import { Eyebrow } from '@/components/editorial';
 import { STATUS_HEX, statusLabel } from './shared';
@@ -9,7 +11,12 @@ function trendArrow(trend: LocationStressHistory['trend']): { glyph: string; col
   return { glyph: '→', color: 'var(--ink-light)' };
 }
 
+function countryLabel(country: LocationStressHistory['country'], t: TFunction): string {
+  return country === 'CIV' ? t('weather.country_civ') : t('weather.country_ghana');
+}
+
 function StressBars({ history, scale = 1 }: { history: string[]; scale?: number }) {
+  const { t } = useTranslation();
   return (
     <span className="inline-flex items-end gap-0.75" style={{ height: 18 * scale }}>
       {history.map((s, i) => {
@@ -19,7 +26,7 @@ function StressBars({ history, scale = 1 }: { history: string[]; scale?: number 
         return (
           <span
             key={i}
-            title={statusLabel(s)}
+            title={statusLabel(s, t)}
             style={{
               display: 'inline-block',
               width: 4 * scale,
@@ -59,19 +66,20 @@ function toneFor(status: LocationStressHistory['current_status']): Tone {
 }
 
 function StatusPill({ status }: { status: LocationStressHistory['current_status'] }) {
-  const t = toneFor(status);
+  const { t } = useTranslation();
+  const tone = toneFor(status);
   return (
     <Eyebrow
       size={9}
       tracking="0.18em"
       style={{
         display: 'inline-block',
-        color: t.color,
-        background: t.bg,
+        color: tone.color,
+        background: tone.bg,
         padding: '3px 9px',
       }}
     >
-      {statusLabel(status)}
+      {statusLabel(status, t)}
     </Eyebrow>
   );
 }
@@ -79,9 +87,11 @@ function StatusPill({ status }: { status: LocationStressHistory['current_status'
 function StressCard({
   zone,
   harmattanDays,
+  t,
 }: {
   zone: LocationStressHistory;
   harmattanDays?: number | null;
+  t: TFunction;
 }) {
   const isStress = zone.current_status === 'stress';
   const trend = trendArrow(zone.trend);
@@ -116,7 +126,7 @@ function StressCard({
               marginTop: 2,
             }}
           >
-            {zone.country === 'CIV' ? "Côte d'Ivoire" : 'Ghana'}
+            {countryLabel(zone.country, t)}
           </div>
         </div>
         <StatusPill status={zone.current_status} />
@@ -133,10 +143,14 @@ function StressCard({
         }}
       >
         <span>
-          {zone.streak_days > 1 ? `Streak ${zone.streak_days}j` : 'Streak —'}
+          {zone.streak_days > 1
+            ? t('weather.streak_days', { days: zone.streak_days })
+            : t('weather.streak_none')}
         </span>
         <span style={{ color: trend.color, fontSize: 14, fontWeight: 600 }}>{trend.glyph}</span>
-        <span style={{ color: harmattan.color }}>Harmattan {harmattan.label}</span>
+        <span style={{ color: harmattan.color }}>
+          {t('weather.harmattan_label', { value: harmattan.label })}
+        </span>
       </div>
     </li>
   );
@@ -160,6 +174,7 @@ export default function StressHistoryBlock({
   history,
   harmattanByLocation = {},
 }: StressHistoryBlockProps) {
+  const { t } = useTranslation();
   const ordered = [...history].sort((a, b) => {
     if (a.country !== b.country) return a.country.localeCompare(b.country);
     return a.location_name.localeCompare(b.location_name);
@@ -172,10 +187,10 @@ export default function StressHistoryBlock({
         style={{ borderBottom: '1px solid var(--ink)' }}
       >
         <Eyebrow as="h3" tone="primary" size={11} tracking="0.22em" style={{ fontWeight: 700 }}>
-          Stress hydrique — 7 jours
+          {t('weather.stress_title')}
         </Eyebrow>
         <Eyebrow tone="subtle" size={9} tracking="0.18em">
-          Évolution récente
+          {t('weather.recent_evolution')}
         </Eyebrow>
       </div>
 
@@ -184,13 +199,13 @@ export default function StressHistoryBlock({
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ borderBottom: '2px solid var(--ink)' }}>
-              <th style={thStyle('left')}>Origin</th>
-              <th style={thStyle('left')}>Pays</th>
-              <th style={thStyle('left')}>Tendance 7j</th>
-              <th style={thStyle('left')}>Streak</th>
-              <th style={thStyle('left')}>Trend</th>
-              <th style={thStyle('left')}>Harmattan</th>
-              <th style={thStyle('right')}>Statut</th>
+              <th style={thStyle('left')}>{t('weather.col_origin')}</th>
+              <th style={thStyle('left')}>{t('weather.col_country')}</th>
+              <th style={thStyle('left')}>{t('weather.col_trend_7d')}</th>
+              <th style={thStyle('left')}>{t('weather.col_streak')}</th>
+              <th style={thStyle('left')}>{t('weather.col_trend')}</th>
+              <th style={thStyle('left')}>{t('weather.col_harmattan')}</th>
+              <th style={thStyle('right')}>{t('weather.col_status')}</th>
             </tr>
           </thead>
           <tbody>
@@ -219,7 +234,7 @@ export default function StressHistoryBlock({
                       color: 'var(--ink-mid)',
                     }}
                   >
-                    {z.country === 'CIV' ? "Côte d'Ivoire" : 'Ghana'}
+                    {countryLabel(z.country, t)}
                   </td>
                   <td style={{ padding: '12px' }}>
                     <StressBars history={z.history} />
@@ -275,6 +290,7 @@ export default function StressHistoryBlock({
             key={z.location_name}
             zone={z}
             harmattanDays={harmattanByLocation[z.location_name]}
+            t={t}
           />
         ))}
       </ul>

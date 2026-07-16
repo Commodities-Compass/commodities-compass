@@ -16,6 +16,7 @@ from app.core.rate_limit import limiter
 
 from app.core.database import get_db
 from app.core.auth import get_current_user
+from app.core.i18n import resolve_language
 from app.schemas.auth import NonTradingDaysResponse
 from app.schemas.dashboard import (
     PositionStatusResponse,
@@ -306,6 +307,10 @@ async def get_recommendations(
         default=None,
         description="Specific date for recommendations (YYYY-MM-DD format)",
     ),
+    language: Optional[str] = Query(
+        default=None,
+        description="Content language ('fr' | 'en'). Falls back to Accept-Language, else 'fr'.",
+    ),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> RecommendationsResponse:
@@ -342,8 +347,9 @@ async def get_recommendations(
             db, business_date, contract_id
         )
 
+        lang = resolve_language(language, request.headers.get("accept-language"))
         recommendations, raw_score, rec_date = await get_latest_recommendations(
-            db, business_date, contract_id=contract_id, algo_id=algo_id
+            db, business_date, contract_id=contract_id, algo_id=algo_id, language=lang
         )
 
         if not recommendations and not raw_score:
@@ -425,6 +431,10 @@ async def get_news(
     target_date: Optional[str] = Query(
         default=None, description="Specific date for news (YYYY-MM-DD format)"
     ),
+    language: Optional[str] = Query(
+        default=None,
+        description="Content language ('fr' | 'en'). Falls back to Accept-Language, else 'fr'.",
+    ),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> NewsResponse:
@@ -452,7 +462,10 @@ async def get_news(
             business_date = await _parse_and_validate_date(target_date, db)
 
         # Get market research from service layer
-        market_research = await get_latest_market_research(db, business_date)
+        lang = resolve_language(language, request.headers.get("accept-language"))
+        market_research = await get_latest_market_research(
+            db, business_date, language=lang
+        )
 
         if not market_research:
             raise HTTPException(status_code=404, detail="No news data found")
@@ -519,6 +532,10 @@ async def get_weather(
     target_date: Optional[str] = Query(
         default=None, description="Specific date for weather data (YYYY-MM-DD format)"
     ),
+    language: Optional[str] = Query(
+        default=None,
+        description="Content language ('fr' | 'en'). Falls back to Accept-Language, else 'fr'.",
+    ),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> WeatherEnrichedResponse:
@@ -528,7 +545,8 @@ async def get_weather(
         if target_date:
             business_date = await _parse_and_validate_date(target_date, db)
 
-        weather_data = await get_latest_weather_data(db, business_date)
+        lang = resolve_language(language, request.headers.get("accept-language"))
+        weather_data = await get_latest_weather_data(db, business_date, language=lang)
         if not weather_data:
             raise HTTPException(status_code=404, detail="No weather data found")
 
@@ -570,7 +588,9 @@ async def get_weather(
         # Stress history (7-day lookback)
         from app.services.dashboard_service import get_stress_history
 
-        stress_hist = await get_stress_history(db, days=7, target_date=business_date)
+        stress_hist = await get_stress_history(
+            db, days=7, target_date=business_date, language=lang
+        )
 
         raw_impact = (
             weather_data.get("impact_synthesis", "")
@@ -614,6 +634,13 @@ async def get_audio(
             "Allows the frontend to preview the ensemble brief without flipping the global default."
         ),
     ),
+    language: Optional[str] = Query(
+        default=None,
+        description=(
+            "Audio edition ('fr' | 'en'). Falls back to Accept-Language, else "
+            "'fr'. The EN edition is ensemble-only and never serves an FR audio."
+        ),
+    ),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> AudioResponse:
@@ -622,11 +649,13 @@ async def get_audio(
 
     Retrieves the audio file for the specified date and returns a backend
     streaming URL. The `version` query param selects the brief track
-    (legacy/ensemble) for the dual-track rollout.
+    (legacy/ensemble) for the dual-track rollout; `language` selects the
+    edition (fr/en) for the Ghana rollout.
 
     Args:
         target_date: Optional specific date. If not provided, returns today's audio.
         version: Optional brief track override.
+        language: Optional edition override; else Accept-Language, else 'fr'.
         current_user: Authenticated user
 
     Returns:
@@ -641,9 +670,11 @@ async def get_audio(
         if target_date:
             trading_day = await _parse_and_validate_date(target_date, db)
 
-        # Get audio metadata from service (version-aware)
+        lang = resolve_language(language, request.headers.get("accept-language"))
+
+        # Get audio metadata from service (version + language aware)
         audio_metadata = await get_audio_service().get_audio_metadata(
-            trading_day, version=version
+            trading_day, version=version, language=str(lang)
         )
 
         if not audio_metadata:
@@ -653,27 +684,24 @@ async def get_audio(
                 if trading_day
                 else datetime.now(timezone.utc).strftime("%Y-%m-%d")
             )
-            suffix = "-Ensemble" if version == "ensemble" else ""
-            filename_base = (
-                f"{(trading_day or datetime.now(timezone.utc).date()).strftime('%Y%m%d')}"
-                f"-CompassAudio{suffix}"
-            )
             raise HTTPException(
                 status_code=404,
                 detail=(
-                    f"Audio file not found for date {date_str} (version="
-                    f"{version or 'default'}). Looking for: {filename_base}.wav "
-                    f"or {filename_base}.m4a"
+                    f"Audio file not found for date {date_str} "
+                    f"(version={version or 'default'}, language={lang})."
                 ),
             )
 
-        # Return backend streaming URL with resolved trading day + version
+        # Return backend streaming URL with resolved trading day + version +
+        # language so the unauthenticated stream endpoint resolves the same file.
         stream_url = "/audio/stream"
         params = []
         if trading_day:
             params.append(f"target_date={trading_day.isoformat()}")
         if version:
             params.append(f"version={version}")
+        if str(lang) != "fr":
+            params.append(f"language={lang}")
         if params:
             stream_url += "?" + "&".join(params)
 

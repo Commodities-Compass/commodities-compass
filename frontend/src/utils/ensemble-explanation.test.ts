@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import type { EnsembleDiagnosticsResponse } from '@/types/dashboard';
+import i18n from '@/i18n';
 import { buildEnsembleExplanation } from './ensemble-explanation';
+
+// The util now renders through i18next; drive it with a French-bound t so these
+// assertions keep checking the (catalog-sourced) French output.
+const t = i18n.getFixedT('fr');
+const build = (d: EnsembleDiagnosticsResponse) => buildEnsembleExplanation(d, t);
 
 // Minimal diagnostics scaffold — every test overrides the fields it cares
 // about. Using Partial avoids hard-coding fields we don't read.
@@ -15,8 +21,7 @@ function makeDiag(
     n_committed_specialists: 10,
     wrapper_active: false,
     confidence: 4,
-    confidence_rationale:
-      'Tech + macro alignés, stocks neutres, climat NUANCE.',
+    confidence_rationale: 'Tech + macro alignés, stocks neutres, climat NUANCE.',
     macro_direction: 0,
     macro_surprise: null,
     macro_half_life_days: null,
@@ -28,7 +33,7 @@ function makeDiag(
 
 describe('buildEnsembleExplanation', () => {
   it('produces 2 non-empty sentences for a clean OPEN signal', () => {
-    const result = buildEnsembleExplanation(
+    const result = build(
       makeDiag({ decision_wrapped: 'OPEN', n_committed_specialists: 9 }),
     );
     expect(result).toHaveLength(2);
@@ -37,10 +42,7 @@ describe('buildEnsembleExplanation', () => {
   });
 
   it('leads sentence 1 with the consensus framing (no raw net_score)', () => {
-    const r = buildEnsembleExplanation(
-      makeDiag({ n_committed_specialists: 12 }),
-    );
-    // Consensus label + number of engaged readings — never the raw net score.
+    const r = build(makeDiag({ n_committed_specialists: 12 }));
     expect(r[0]).toMatch(/consensus/i);
     expect(r[0]).toMatch(/12 lectures engagées/);
     expect(r[0]).not.toMatch(/score net/);
@@ -48,70 +50,60 @@ describe('buildEnsembleExplanation', () => {
   });
 
   it('mentions the LLM confidence score when available', () => {
-    const r = buildEnsembleExplanation(makeDiag({ confidence: 4 }));
+    const r = build(makeDiag({ confidence: 4 }));
     expect(r[0]).toContain('4/5');
     expect(r[0].toLowerCase()).toContain('confiance');
   });
 
   it("uses 'large consensus' label at n_committed >= 10", () => {
-    const r = buildEnsembleExplanation(makeDiag({ n_committed_specialists: 12 }));
+    const r = build(makeDiag({ n_committed_specialists: 12 }));
     expect(r[0].toLowerCase()).toContain('large consensus');
   });
 
   it("uses 'consensus solide' at 7 <= n_committed < 10", () => {
-    const r = buildEnsembleExplanation(makeDiag({ n_committed_specialists: 8 }));
+    const r = build(makeDiag({ n_committed_specialists: 8 }));
     expect(r[0].toLowerCase()).toContain('consensus solide');
   });
 
   it("uses 'consensus fragile' at n_committed < 4", () => {
-    const r = buildEnsembleExplanation(makeDiag({ n_committed_specialists: 3 }));
+    const r = build(makeDiag({ n_committed_specialists: 3 }));
     expect(r[0].toLowerCase()).toContain('consensus fragile');
   });
 
   it('uses the OPEN/HEDGE/MONITOR FR labels', () => {
-    expect(
-      buildEnsembleExplanation(makeDiag({ decision_wrapped: 'OPEN' }))[0],
-    ).toMatch(/acheteuse/);
-    expect(
-      buildEnsembleExplanation(makeDiag({ decision_wrapped: 'HEDGE' }))[0],
-    ).toMatch(/défensive/);
-    expect(
-      buildEnsembleExplanation(makeDiag({ decision_wrapped: 'MONITOR' }))[0],
-    ).toMatch(/attentiste/);
+    expect(build(makeDiag({ decision_wrapped: 'OPEN' }))[0]).toMatch(/acheteuse/);
+    expect(build(makeDiag({ decision_wrapped: 'HEDGE' }))[0]).toMatch(/défensive/);
+    expect(build(makeDiag({ decision_wrapped: 'MONITOR' }))[0]).toMatch(/attentiste/);
   });
 
   it('mentions macro porteur when direction > 0', () => {
-    const r = buildEnsembleExplanation(makeDiag({ macro_direction: 1 }));
+    const r = build(makeDiag({ macro_direction: 1 }));
     expect(r[0]).toContain('porteur');
   });
 
   it('mentions macro défavorable when direction < 0', () => {
-    const r = buildEnsembleExplanation(makeDiag({ macro_direction: -1 }));
+    const r = build(makeDiag({ macro_direction: -1 }));
     expect(r[0]).toContain('défavorable');
   });
 
   it('omits macro mention when direction is null', () => {
-    const r = buildEnsembleExplanation(makeDiag({ macro_direction: null }));
+    const r = build(makeDiag({ macro_direction: null }));
     expect(r[0]).not.toMatch(/porteur|défavorable|neutre/);
   });
 
   it('returns the rationale verbatim as sentence 2 when present', () => {
     const rationale = 'Macro soutient, technique mixte, sentiment NUANCE.';
-    const r = buildEnsembleExplanation(
-      makeDiag({ confidence_rationale: rationale }),
-    );
+    const r = build(makeDiag({ confidence_rationale: rationale }));
     expect(r[1]).toBe(rationale);
   });
 
   it('falls back to a generic sentence 2 when rationale is empty', () => {
-    const r = buildEnsembleExplanation(
-      makeDiag({ confidence_rationale: null }),
-    );
+    const r = build(makeDiag({ confidence_rationale: null }));
     expect(r[1]).toMatch(/[Cc]onvergence/);
   });
 
   it('never quotes engine internals (no soft-gate, wrapper, orchestrateur, net_score)', () => {
-    const r = buildEnsembleExplanation(
+    const r = build(
       makeDiag({
         decision_wrapped: 'HEDGE',
         soft_gate_decision: 'OPEN',

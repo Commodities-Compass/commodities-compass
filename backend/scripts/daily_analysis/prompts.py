@@ -1,7 +1,12 @@
 """LLM prompt templates extracted from the COMPASS - DAILY BOT AI Make.com blueprint.
 
 Module 19 → CALL_1_PROMPT (Macro/Weather analysis → MACROECO BONUS + ECO)
-Module 6  → CALL_2_PROMPT (Trading decision → DECISION/CONFIANCE/DIRECTION/CONCLUSION)
+
+Call #2 (the trading decision) no longer lives here: post the US-1c facts/voice
+refactor the LLM emits only a voice-only headline (built in ``voice_prompts.py``)
+and the engine renders the numbered conclusion from the ``FactsPayload``. What
+remains is Call #1 and the shared ensemble-diagnostics helpers that
+``voice_prompts.py`` still imports.
 
 Prompts are kept verbatim in French to preserve parity with Make.com output.
 Variable placeholders use Python str.format() syntax: {MACRONEWS}, {METEOTODAY}, etc.
@@ -101,156 +106,146 @@ Exemples :
 {{"date": "19/12/2024", "macroeco_bonus": 0.00, "eco": "Aucune nouvelle macro significative, marchés en attente des données de production trimestrielles."}}
 """
 
-# ---------------------------------------------------------------------------
-# Call #2 — Trading Decision & Recommendation
-# Model: gpt-4-turbo | Temperature: 0.7 | Max tokens: 2048
-# Input: all 42 TOD/YES variables + {FINAL_INDICATOR} + {FINAL_CONCLUSION}
-# Output: DECISION, CONFIANCE, DIRECTION, CONCLUSION
-# ---------------------------------------------------------------------------
+# English edition (US-3, EN/Ghana). Native English generation — NOT a literal
+# translation of the FR output: the model writes a fresh English ``eco`` here,
+# it never re-types the French sentence. The JSON shape (date / macroeco_bonus /
+# eco) and the -0.10..+0.10 score scale are identical to the FR prompt so the
+# parser + downstream numeric pipeline are language-agnostic.
+CALL_1_PROMPT_EN = """\
+🎯 Optimised version for continuous values
+You are an expert cocoa-market analyst. Your daily task is to analyse today's macro-economic news that could move cocoa prices.
+Two information sources to process:
 
-CALL_2_PROMPT = """\
-Tu es un trader expert du marché cacao à Londres. Tu rédiges une synthèse de marché destinée à des exportateurs d'Afrique de l'Ouest, avec des recommandations claires, chiffrées et actionnables pour la journée.
-
-Tu disposes d'un indicateur agrégé nommé {FINAL_INDICATOR}, calculé à partir du RSI, MACD, Stochastique, ATR, Close/Pivot, Volume et Open Interest.
-La décision du jour fondée sur cet indicateur est obligatoire et prioritaire. Elle est déjà interprétée sous la forme suivante : {FINAL_CONCLUSION} (OPEN, MONITOR ou HEDGE).
-
-Tu dois impérativement respecter cette décision et la traduire dans la conclusion, sans contradiction. Aucune alternative ne doit être proposée.
-
-Tu disposes également des données suivantes (comparées entre aujourd'hui et hier) :
-
-\t•\tCLOSE aujourd'hui : {CLOSETOD} ; hier : {CLOSEYES}
-\t•\tHIGH aujourd'hui : {HIGHTOD} ; hier : {HIGHYES}
-\t•\tLOW aujourd'hui : {LOWTOD} ; hier : {LOWYES}
-\t•\tVOLUME aujourd'hui : {VOLTOD} ; hier : {VOLYES}
-\t•\tOPEN INTEREST aujourd'hui : {OITOD} ; hier : {OIYES}
-\t•\tIMPLIED VOLATILITY aujourd'hui : {VOLIMPTOD} ; hier : {VOLIMPYES}
-\t•\tSTOCK US (tonnes) aujourd'hui : {STOCKUSTOD} ; hier : {STOCKUSYES}
-\t•\tSTOCK EU (tonnes) aujourd'hui : {STOCKEUTOD} ; hier : {STOCKEUYES}
-\t•\tCOM NET aujourd'hui : {COMNETTOD} ; hier : {COMNETYES}
-\t•\tPIVOT aujourd'hui : {PIVOTTOD} ; hier : {PIVOTYES}
-\t•\tSUPPORT 1 aujourd'hui : {S1TOD} ; hier : {S1YES}
-\t•\tRESISTANCE 1 aujourd'hui : {R1TOD} ; hier : {R1YES}
-\t•\tEMA9 aujourd'hui : {EMA9TOD} ; hier : {EMA9YES}
-\t•\tEMA21 aujourd'hui : {EMA21TOD} ; hier : {EMA21YES}
-\t•\tMACD aujourd'hui : {MACDTOD} ; hier : {MACDYES}
-\t•\tSIGNAL aujourd'hui : {SIGNTOD} ; hier : {SIGNYES}
-\t•\tRSI aujourd'hui : {RSI14TOD} ; hier : {RSI14YES}
-\t•\tStochastic %K aujourd'hui : {pctKTOD} ; hier : {pctKYES}
-\t•\tStochastic %D aujourd'hui : {pctDTOD} ; hier : {pctDYES}
-\t•\tATR aujourd'hui : {ATRTOD} ; hier : {ATRYES}
-\t•\tBOLLINGER SUP aujourd'hui : {BSUPTOD} ; hier : {BSUPYES}
-\t•\tBOLLINGER INF aujourd'hui : {BBINFTOD} ; hier : {BBINFYES}
-
-Procède en 4 étapes :
-
----
-
-**A. Analyse directe des mouvements clés**
-Structure la réponse en phrases brèves, orientées "alerte" avec chiffres :
-- CLOSE : indique la direction et son ampleur
-- VOLUME / OPEN INTEREST : évalue l'engagement du marché
-- RSI / MACD / %K / %D : signaux haussiers ou baissiers ?
-- COM NET : interprète selon la variation
-- VOLATILITÉ / ATR : signale les hausses de tension
-- STOCK US / STOCK EU (en tonnes) : hausse = pression baissière ; baisse = signal haussier potentiel — précise toujours l'unité « tonnes »
-
----
-
-B. Vérifie la logique de l'indicateur agrégé
-
-\t•\tRappelle la décision {FINAL_CONCLUSION} (OPEN / MONITOR / HEDGE)
-\t•\tAnalyse si les indicateurs la soutiennent
-\t•\tDonne un score de CONFIANCE de 1 (faible) à 5 (forte)
-
----
-
-C. CONCLUSION ACTIONNABLE (obligatoire et unique)
-
-Rédige une recommandation claire et utile pour la journée, en identifiant les signaux dominants (haussiers ou baissiers) alignée sur {FINAL_CONCLUSION}. Ne fais pas de simple comparaison d'un jour à l'autre : évalue la force des mouvements et leur cohérence globale.
-\t•\tSi OPEN → cite les signaux forts et cohérents justifiant un achat immédiat (ex. : hausse marquée du CLOSE, volume en forte hausse, MACD positif, RSI > 60, etc.)
-\t•\tSi MONITOR → liste les seuils techniques précis à surveiller (ex. : RSI proche de 50, cassure haussière au-dessus de R1 à 6520, volume à surveiller au-dessus de 5000, etc.)
-\t•\tSi HEDGE → expose les signaux de repli dominants (ex. : MACD négatif, baisse forte du OI, RSI sous 40, volatilité élevée, etc.)
-
----
-
-D. À SURVEILLER AUJOURD'HUI
-
-Exactement 3 alertes techniques à suivre demain. Chaque alerte DOIT contenir :
-1. Un indicateur précis (CLOSE, RSI, SUPPORT 1, RESISTANCE 1, MACD, ATR, %K, OI, BOLLINGER)
-2. Un seuil numérique chiffré
-3. Une direction explicite (haussier/baissière)
-4. Une conséquence si le seuil est franchi
-
-RÈGLES STRICTES :
-- Au moins 1 alerte DOIT porter sur SUPPORT 1 ou RESISTANCE 1 (les plus fiables historiquement)
-- N'utilise PAS VOLUME ni SIGNAL seuls comme indicateurs d'alerte (mauvais pouvoir prédictif directionnel)
-- Ne commence JAMAIS par "Monitorer" ou "Surveiller" sans direction — chaque alerte est directionnelle
-- Pour RSI : utilise des seuils proches de la valeur actuelle ({RSI14TOD}), pas des seuils extrêmes (30, 40, 70, 80) qui se déclenchent rarement
-
-FORMAT : "[Direction] si [INDICATEUR] [franchit/passe sous/dépasse] [SEUIL] — [conséquence]"
-
-Exemples :
-\t•\tBaissier si CLOSE clôture sous SUPPORT 1 à 2484 — objectif S2 à 2380
-\t•\tHaussier si CLOSE dépasse RESISTANCE 1 à 6520 — confirmation de tendance haussière
-\t•\tBaissier si RSI passe sous 45 (actuellement à 52) — accélération de la pression vendeuse
+Today's or yesterday's macro-economic news:
+{MACRONEWS}
+Weather context:
+– {METEOTODAY}: today's weather summary
+– {METEONEWS}: condensed history of the last 3 years for the main cocoa-growing regions
 
 
-E **IMPORTANT** Format final OBLIGATOIRE ET STRICT :
+📊 STEP-BY-STEP ANALYSIS
 
-Tu DOIS répondre UNIQUEMENT avec un objet JSON valide, sans texte autour.
+READ CAREFULLY each item in the macro-economic news.
+Treat every source as potentially critical. Any information on production, weather, stocks, consumption, currencies or agricultural policy must be examined seriously.
+Then analyse today's weather summary in the light of the weather history.
+Assess whether current conditions confirm, break or reinforce a recent weather trend.
 
-Le champ "conclusion" doit OBLIGATOIREMENT suivre ce format exact :
-- Ligne 1 : commence par "> " suivi d'une phrase résumé de la direction du marché
-- Lignes suivantes : chaque indicateur analysé sur sa propre ligne, commençant par "        • " (8 espaces + bullet •)
-- Section "A SURVEILLER" : une ligne commençant par "> A SURVEILLER AUJOURD'HUI:" suivie des seuils critiques en "        • " bullets
-- Pas de Markdown. Pas de phrases vagues. Chaque phrase concise avec des chiffres.
+Identify durable anomalies such as:
+- Drought, water deficit
+- Excessive rain, saturated soils
+- Harmattan or dry winds
+- Vegetative stress or disease
+➡️ If these conditions threaten flowering, pod-set or pod growth, treat them as BULLISH for prices (expected drop in supply or quality).
+➡️ Conversely, if conditions favour healthy growth, good pod-set or an abundant harvest, that reinforces a BEARISH read (ample supply, quality improvement, easing on the markets).
 
-{{"decision": "OPEN ou MONITOR ou HEDGE", "confiance": 3, "direction": "HAUSSIERE ou BAISSIERE ou NEUTRE", "conclusion": "> Le CLOSE a diminué passant de X à Y, indiquant une tendance baissière.\\n        • Le VOLUME a baissé de X à Y, montrant une réduction de l'activité.\\n        • OPEN INTEREST a réduit de X à Y, suggérant un repli des positions.\\n        • Le RSI est à X, signifiant une situation de survente.\\n        • MACD est négatif à X, confirmant la tendance baissière.\\n        • La volatilité implicite est à X%, indiquant les anticipations du marché.\\n        • Le STOCK US a augmenté, passant de X tonnes à Y tonnes.\\n        • Le STOCK EU a reculé, passant de X tonnes à Y tonnes.\\n> A SURVEILLER AUJOURD'HUI:\\n        • Baissier si CLOSE clôture sous SUPPORT 1 à X — objectif S2 à Y.\\n        • Haussier si CLOSE dépasse RESISTANCE 1 à X — poursuite de la tendance haussière.\\n        • Baissier si RSI passe sous X (actuellement à Y) — pression vendeuse accrue."}}
+🎯 QUANTITATIVE IMPACT ASSESSMENT
+
+Summarise the day's event (or the absence of one) in a single synthetic sentence of 30 words maximum under the ECO variable.
+Cite only one main fact, even if several signals exist.
+Assess the market impact on a continuous scale:
+
+Market impact | MACROECO BONUS score
+Very bearish (major crisis, expected collapse) | -0.10
+Strongly bearish (confirmed bad news) | -0.08
+Moderately bearish (clear negative trend) | -0.06
+Slightly bearish (minor negative signals) | -0.04
+Weakly bearish (negative nuances) | -0.02
+Neutral (no significant impact) | 0.00
+Weakly bullish (positive nuances) | +0.02
+Slightly bullish (minor positive signals) | +0.04
+Moderately bullish (clear positive trend) | +0.06
+Strongly bullish (confirmed good news) | +0.08
+Very bullish (supply crisis, expected spike) | +0.10
+
+📋 PRECISE ASSESSMENT CRITERIA
+BULLISH factors (+0.02 to +0.10):
+
+Rainfall deficit in producing regions
+Conflict / political instability in Côte d'Ivoire / Ghana
+Cocoa-tree disease (black pod, swollen shoot)
+Rising input costs (fertiliser, fuel)
+EUR/USD depreciation (makes cocoa dearer for Europeans)
+Low stocks reported by ICCO
+Rising chocolate demand (holidays, new markets)
+
+BEARISH factors (-0.02 to -0.10):
+
+Favourable rains, optimal weather conditions
+Political stability, government agreements
+New plantings, expanded acreage
+Lower production costs, farm subsidies
+EUR/USD appreciation (cocoa cheaper for Europeans)
+High stocks, production surplus
+Slowing consumption, economic recession
+
+
+⚠️ STRICT RULES
+
+Never invent a trend if no concrete news is given.
+Do not say "not enough information", you must conclude clearly.
+Be categorical or factual, even when there is no significant news.
+Use the FULL -0.10 to +0.10 range according to the real intensity of the impact.
+
+
+📤 STRICT OUTPUT FORM (do not change at all)
+
+You MUST reply ONLY with a valid JSON object, no surrounding text:
+{{"date": "DD/MM/YYYY", "macroeco_bonus": 0.00, "eco": "synthetic sentence of 30 words maximum"}}
+
+Examples:
+{{"date": "19/12/2024", "macroeco_bonus": -0.06, "eco": "Heavy rains in Côte d'Ivoire support pod development, 2025 output seen up 8%."}}
+{{"date": "19/12/2024", "macroeco_bonus": 0.04, "eco": "Mild USD/EUR tension unfavourable to European importers, chocolate demand steady despite inflation."}}
+{{"date": "19/12/2024", "macroeco_bonus": 0.00, "eco": "No significant macro news, markets awaiting quarterly production data."}}
 """
 
+# Per-language Call #1 template + empty-context placeholders.
+_CALL_1_PROMPT: dict[str, str] = {"fr": CALL_1_PROMPT, "en": CALL_1_PROMPT_EN}
 
-def build_call1_prompt(macronews: str, meteotoday: str, meteonews: str) -> str:
-    """Build the Call #1 prompt with context variables injected."""
-    return CALL_1_PROMPT.format(
-        MACRONEWS=macronews or "(aucune actualité disponible)",
-        METEOTODAY=meteotoday or "(aucune donnée météo du jour)",
-        METEONEWS=meteonews or "(aucun historique météo disponible)",
+_CALL_1_PLACEHOLDERS: dict[str, dict[str, str]] = {
+    "fr": {
+        "macronews": "(aucune actualité disponible)",
+        "meteotoday": "(aucune donnée météo du jour)",
+        "meteonews": "(aucun historique météo disponible)",
+    },
+    "en": {
+        "macronews": "(no news available)",
+        "meteotoday": "(no weather data for today)",
+        "meteonews": "(no weather history available)",
+    },
+}
+
+
+# ---------------------------------------------------------------------------
+# Call #1 — prompt builder (macro/weather → eco). Call #2 now emits a
+# voice-only headline via voice_prompts.py, and the engine renders the
+# numbered conclusion deterministically from the FactsPayload. The old
+# CALL_2_PROMPT / CALL_2_PROMPT_ENSEMBLE blobs + their builders were removed
+# after the US-1c facts/voice refactor (dead since).
+# ---------------------------------------------------------------------------
+def build_call1_prompt(
+    macronews: str, meteotoday: str, meteonews: str, language: str = "fr"
+) -> str:
+    """Build the Call #1 prompt in ``language`` (fr | en), context injected.
+
+    The ``eco`` field is one of the 3 native-language prose fields (D3): the EN
+    prompt asks for a fresh English summary, never a translation of the FR one.
+    Unknown languages fall back to French.
+    """
+    template = _CALL_1_PROMPT.get(language, _CALL_1_PROMPT["fr"])
+    placeholders = _CALL_1_PLACEHOLDERS.get(language, _CALL_1_PLACEHOLDERS["fr"])
+    return template.format(
+        MACRONEWS=macronews or placeholders["macronews"],
+        METEOTODAY=meteotoday or placeholders["meteotoday"],
+        METEONEWS=meteonews or placeholders["meteonews"],
     )
 
 
-def build_call2_prompt(
-    technicals_today: dict[str, str],
-    technicals_yesterday: dict[str, str],
-    final_indicator: float,
-    final_conclusion: str,
-) -> str:
-    """Build the Call #2 prompt with all 42 TOD/YES variables + indicator."""
-    # Merge TOD and YES dicts, rename %K/%D to avoid format() issues
-    variables: dict[str, str] = {}
-    for key, val in technicals_today.items():
-        safe_key = key.replace("%K", "pctK").replace("%D", "pctD")
-        variables[safe_key] = val
-    for key, val in technicals_yesterday.items():
-        safe_key = key.replace("%K", "pctK").replace("%D", "pctD")
-        variables[safe_key] = val
-
-    variables["FINAL_INDICATOR"] = str(final_indicator)
-    variables["FINAL_CONCLUSION"] = final_conclusion
-
-    return CALL_2_PROMPT.format(**variables)
-
-
 # ---------------------------------------------------------------------------
-# Call #2 — Ensemble-aligned variant
-# Used when an ensemble_v1_softgate_wrapper row exists for (date, contract).
-# The decision is no longer derived from FINAL_INDICATOR threshold — it comes
-# straight from the ensemble's ``decision_wrapped``. The diagnostics block
-# is injected so the LLM justifies the ensemble decision with the right
-# vocabulary (consensus / conviction / safety net / cluster divergence)
-# instead of treating it as an opaque composite score.
+# Shared ensemble diagnostics — the confidence rubric + allowed vocabulary
+# injected into the Call #2 voice prompt. Consumed by voice_prompts.py (FR
+# directly, EN via its own mirror _ENSEMBLE_DIAGNOSTICS_BLOCK_EN). This is
+# the single FR canon; keep it and the EN mirror in sync.
 # ---------------------------------------------------------------------------
-
-
 ENSEMBLE_DIAGNOSTICS_BLOCK = """\
 CONTEXTE DÉCISIONNEL — LECTURE COMPASS DU JOUR
 
@@ -312,116 +307,6 @@ du panel.
 """
 
 
-CALL_2_PROMPT_ENSEMBLE = (
-    """\
-Tu es un trader expert du marché cacao à Londres. Tu rédiges une synthèse de marché destinée à des exportateurs d'Afrique de l'Ouest, avec des recommandations claires, chiffrées et actionnables pour la journée.
-
-"""
-    + ENSEMBLE_DIAGNOSTICS_BLOCK
-    + """\
-
-Tu disposes également des données techniques (comparées entre aujourd'hui et hier) :
-
-\t•\tCLOSE aujourd'hui : {CLOSETOD} ; hier : {CLOSEYES}
-\t•\tHIGH aujourd'hui : {HIGHTOD} ; hier : {HIGHYES}
-\t•\tLOW aujourd'hui : {LOWTOD} ; hier : {LOWYES}
-\t•\tVOLUME aujourd'hui : {VOLTOD} ; hier : {VOLYES}
-\t•\tOPEN INTEREST aujourd'hui : {OITOD} ; hier : {OIYES}
-\t•\tIMPLIED VOLATILITY aujourd'hui : {VOLIMPTOD} ; hier : {VOLIMPYES}
-\t•\tSTOCK US (tonnes) aujourd'hui : {STOCKUSTOD} ; hier : {STOCKUSYES}
-\t•\tSTOCK EU (tonnes) aujourd'hui : {STOCKEUTOD} ; hier : {STOCKEUYES}
-\t•\tCOM NET aujourd'hui : {COMNETTOD} ; hier : {COMNETYES}
-\t•\tPIVOT aujourd'hui : {PIVOTTOD} ; hier : {PIVOTYES}
-\t•\tSUPPORT 1 aujourd'hui : {S1TOD} ; hier : {S1YES}
-\t•\tRESISTANCE 1 aujourd'hui : {R1TOD} ; hier : {R1YES}
-\t•\tEMA9 aujourd'hui : {EMA9TOD} ; hier : {EMA9YES}
-\t•\tEMA21 aujourd'hui : {EMA21TOD} ; hier : {EMA21YES}
-\t•\tMACD aujourd'hui : {MACDTOD} ; hier : {MACDYES}
-\t•\tSIGNAL aujourd'hui : {SIGNTOD} ; hier : {SIGNYES}
-\t•\tRSI aujourd'hui : {RSI14TOD} ; hier : {RSI14YES}
-\t•\tStochastic %K aujourd'hui : {pctKTOD} ; hier : {pctKYES}
-\t•\tStochastic %D aujourd'hui : {pctDTOD} ; hier : {pctDYES}
-\t•\tATR aujourd'hui : {ATRTOD} ; hier : {ATRYES}
-\t•\tBOLLINGER SUP aujourd'hui : {BSUPTOD} ; hier : {BSUPYES}
-\t•\tBOLLINGER INF aujourd'hui : {BBINFTOD} ; hier : {BBINFYES}
-
-Procède en 4 étapes :
-
----
-
-**A. Justifie la décision Compass**
-
-La décision {DECISION_WRAPPED} est le verdict Compass du jour. Rédige 1 ou 2 phrases brèves en utilisant le vocabulaire autorisé (conviction qualitative, convergence des lectures, direction du biais) — JAMAIS de chiffres internes ni de noms d'architecture (voir VOCABULAIRE STRICTEMENT INTERDIT ci-dessus).
-
----
-
-**B. Analyse des mouvements clés** (chiffrés, en alerte)
-
-Structure la réponse en phrases brèves :
-- CLOSE : indique la direction et son ampleur
-- VOLUME / OPEN INTEREST : engagement du marché
-- RSI / MACD / %K / %D : signaux haussiers ou baissiers
-- COM NET : interprétation de la variation
-- VOLATILITÉ / ATR : tension du marché
-- STOCK US / STOCK EU (en tonnes) : hausse = pression baissière ; baisse = signal haussier — précise toujours l'unité « tonnes »
-
----
-
-**C. CONCLUSION ACTIONNABLE**
-
-Rédige une recommandation claire alignée sur {DECISION_WRAPPED} en identifiant les signaux dominants. Ne contredis jamais la décision Compass.
-\t•\tSi OPEN → cite les signaux forts cohérents avec un achat immédiat
-\t•\tSi MONITOR → liste les seuils techniques précis à surveiller
-\t•\tSi HEDGE → expose les signaux de repli dominants
-
----
-
-**D. À SURVEILLER AUJOURD'HUI**
-
-Exactement 3 alertes techniques pour demain. Chaque alerte DOIT contenir :
-1. Un indicateur précis (CLOSE, RSI, SUPPORT 1, RESISTANCE 1, MACD, ATR, %K, OI, BOLLINGER)
-2. Un seuil numérique chiffré
-3. Une direction explicite (haussier/baissière)
-4. Une conséquence si le seuil est franchi
-
-RÈGLES STRICTES :
-- Au moins 1 alerte DOIT porter sur SUPPORT 1 ou RESISTANCE 1
-- N'utilise PAS VOLUME ni SIGNAL seuls comme indicateurs d'alerte
-- Ne commence JAMAIS par "Monitorer" ou "Surveiller" sans direction
-- Pour RSI : seuils proches de la valeur actuelle ({RSI14TOD}), pas 30/40/70/80
-
-FORMAT : "[Direction] si [INDICATEUR] [franchit/passe sous/dépasse] [SEUIL] — [conséquence]"
-
-Exemples :
-\t•\tBaissier si CLOSE clôture sous SUPPORT 1 à 2484 — objectif S2 à 2380
-\t•\tHaussier si CLOSE dépasse RESISTANCE 1 à 6520 — confirmation de tendance haussière
-\t•\tBaissier si RSI passe sous 45 (actuellement à 52) — accélération de la pression vendeuse
-
----
-
-E **IMPORTANT** Format final OBLIGATOIRE ET STRICT :
-
-Tu DOIS répondre UNIQUEMENT avec un objet JSON valide, sans texte autour.
-
-Tu DOIS retourner EXACTEMENT les 5 champs suivants (aucun ne peut manquer) :
-\t1.\t"decision" : doit être EXACTEMENT {DECISION_WRAPPED} (aucune autre valeur acceptée)
-\t2.\t"confiance" : entier de 1 à 5, dérivé STRICTEMENT de la rubric ÉVALUATION DE LA CONFIANCE ci-dessus (base 2/3/4 selon conviction qualitative + ajustement max ±1 selon piliers externes)
-\t3.\t"confiance_rationale" : string de 60 à 140 caractères listant 2-3 piliers dominants avec leur rôle SOUTIEN ou NUANCE. Exemples :
-\t\t•\t"Tech + macro baissiers, stocks neutres, climat NUANCE."
-\t\t•\t"Tous les piliers alignés avec la décision."
-\t\t•\t"Macro soutient, technique mixte, sentiment NUANCE."
-\t4.\t"direction" : "HAUSSIERE" ou "BAISSIERE" ou "NEUTRE" — cohérente avec la décision (HEDGE → BAISSIERE, OPEN → HAUSSIERE, MONITOR → NEUTRE)
-\t5.\t"conclusion" : suit OBLIGATOIREMENT ce format :
-\t\t•\tLigne 1 : commence par "> " suivi d'une phrase résumé qui décrit la conviction Compass du jour (forte / modérée / faible) sans citer de chiffre interne
-\t\t•\tLignes suivantes : chaque indicateur analysé sur sa propre ligne, commençant par "        • "
-\t\t•\tSection "A SURVEILLER" : "> A SURVEILLER AUJOURD'HUI:" suivie de 3 lignes "        • " avec seuils chiffrés
-\t\t•\tPas de Markdown. Pas de phrases vagues. Chaque phrase concise avec des chiffres.
-
-{{"decision": "{DECISION_WRAPPED}", "confiance": 3, "confiance_rationale": "Tech + macro alignés, stocks neutres, climat NUANCE.", "direction": "HAUSSIERE ou BAISSIERE ou NEUTRE", "conclusion": "> Lecture Compass alignée sur la position {DECISION_WRAPPED}, conviction nette (forte / modérée / faible).\\n        • Le CLOSE est passé de X à Y, indiquant Z.\\n        • Le VOLUME a baissé de X à Y.\\n        • OPEN INTEREST a réduit de X à Y.\\n        • Le RSI est à X, signifiant Z.\\n        • MACD à X, signal Z.\\n        • La volatilité implicite est à X%.\\n        • Le STOCK US a augmenté de X tonnes à Y tonnes.\\n        • Le STOCK EU a reculé de X tonnes à Y tonnes.\\n> A SURVEILLER AUJOURD'HUI:\\n        • Baissier si CLOSE clôture sous SUPPORT 1 à X — objectif S2 à Y.\\n        • Haussier si CLOSE dépasse RESISTANCE 1 à X — poursuite de la tendance.\\n        • Baissier si RSI passe sous X (actuellement à Y) — pression vendeuse accrue."}}
-"""
-)
-
-
 def _format_optional(value: object, digits: int | None = None) -> str:
     """Format an optional float/int for prompt injection. None → 'n/a'."""
     if value is None:
@@ -466,82 +351,3 @@ def _qualitative_conviction(
     if adhesion >= 0.40:
         return "modérée"
     return "faible"
-
-
-def build_call2_prompt_ensemble(
-    technicals_today: dict[str, str],
-    technicals_yesterday: dict[str, str],
-    ensemble: object,  # EnsembleDiagnostics from db_reader (avoid circular import)
-) -> str:
-    """Build the ensemble-aware Call #2 prompt.
-
-    Pulls the diagnostics block in front of the technical analysis steps and
-    pins the decision to ``ensemble.decision_wrapped``. The LLM still emits
-    the same JSON shape, so the downstream parser is unchanged.
-    """
-    variables: dict[str, str] = {}
-    for key, val in technicals_today.items():
-        safe_key = key.replace("%K", "pctK").replace("%D", "pctD")
-        variables[safe_key] = val
-    for key, val in technicals_yesterday.items():
-        safe_key = key.replace("%K", "pctK").replace("%D", "pctD")
-        variables[safe_key] = val
-
-    # Diagnostics block — attribute access via getattr to avoid the circular import.
-    fired_disp = bool(getattr(ensemble, "fired_dispersion", False))
-    wrapper_active = bool(getattr(ensemble, "wrapper_active", False))
-    dispersion_hint = ""
-    if fired_disp and not wrapper_active:
-        dispersion_hint = "→ relâché grâce à la précision récente"
-    elif wrapper_active:
-        dispersion_hint = "→ a forcé MONITOR par prudence"
-
-    variables.update(
-        {
-            "DECISION_WRAPPED": str(getattr(ensemble, "decision_wrapped", "MONITOR")),
-            "SOFT_GATE_DECISION": str(
-                getattr(ensemble, "soft_gate_decision", "MONITOR")
-            ),
-            "NET_SCORE": _format_optional(getattr(ensemble, "net_score", None), 3),
-            "N_COMMITTED": str(getattr(ensemble, "n_committed_specialists", 0)),
-            "CONVICTION_QUALITATIVE": _qualitative_conviction(
-                getattr(ensemble, "net_score", None),
-                getattr(ensemble, "n_committed_specialists", None),
-            ),
-            "WEIGHTS_SUM": _format_optional(getattr(ensemble, "weights_sum", None), 2),
-            "WINTER_SIGNED": _format_optional(
-                getattr(ensemble, "winter_vote_signed", None)
-            ),
-            "SPRING_SIGNED": _format_optional(
-                getattr(ensemble, "spring_vote_signed", None)
-            ),
-            "WRAPPER_ACTIVE": _format_optional(wrapper_active),
-            "FIRED_RUNNING_ACC": _format_optional(
-                bool(getattr(ensemble, "fired_running_acc", False))
-            ),
-            "RUNNING_ACC_5D": _format_optional(
-                getattr(ensemble, "running_acc_5d", None), 3
-            ),
-            "FIRED_DISPERSION": _format_optional(fired_disp),
-            "DISPERSION_HINT": dispersion_hint,
-            "MACRO_DIRECTION": _format_optional(
-                getattr(ensemble, "macro_direction", None)
-            ),
-            "MACRO_SURPRISE": _format_optional(
-                getattr(ensemble, "macro_surprise", None), 3
-            ),
-            "MACRO_HALF_LIFE_DAYS": _format_optional(
-                getattr(ensemble, "macro_half_life_days", None)
-            ),
-            "ANOMALY_SCORE_Z": _format_optional(
-                getattr(ensemble, "anomaly_score_z", None), 2
-            ),
-            "PRIOR_OPEN": _format_optional(getattr(ensemble, "prior_open", None), 2),
-            "PRIOR_HEDGE": _format_optional(getattr(ensemble, "prior_hedge", None), 2),
-            "PRIOR_MONITOR": _format_optional(
-                getattr(ensemble, "prior_monitor", None), 2
-            ),
-        }
-    )
-
-    return CALL_2_PROMPT_ENSEMBLE.format(**variables)

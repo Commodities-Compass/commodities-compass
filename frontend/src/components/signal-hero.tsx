@@ -1,50 +1,53 @@
 import { Loader2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { usePositionStatus, useRecommendations, useEnsembleDiagnostics, useNonTradingDays } from '@/hooks/useDashboard';
 import Eyebrow from '@/components/editorial/Eyebrow';
 import { buildEnsembleExplanation } from '@/utils/ensemble-explanation';
 import { addTradingDays } from '@/utils/date-utils';
+import { formatDate } from '@/utils/format-locale';
+import { useLanguage } from '@/hooks/useLanguage';
+import type { Language } from '@/contexts/LanguageContext';
+import type { TFunction } from 'i18next';
 import type { EnsembleDiagnosticsResponse } from '@/types/dashboard';
 
-function algoBadgeLabel(name?: string | null): string | null {
+function algoBadgeLabel(t: TFunction, name?: string | null): string | null {
   if (!name) return null;
-  if (name === 'ensemble_v1_softgate_wrapper') return 'Powered by Ensemble v1';
-  if (name === 'legacy') return 'Powered by Legacy v1.0.1';
+  if (name === 'ensemble_v1_softgate_wrapper') return t('dashboard.algo_ensemble');
+  if (name === 'legacy') return t('dashboard.algo_legacy');
   return `Powered by ${name}`;
 }
 
-function horizonShortLabel(name?: string | null): string {
-  if (name === 'ensemble_v1_softgate_wrapper') return '~4 J';
-  return 'J+1';
+function horizonShortLabel(t: TFunction, name?: string | null): string {
+  if (name === 'ensemble_v1_softgate_wrapper') return t('dashboard.horizon_short_ensemble');
+  return t('dashboard.horizon_short_legacy');
 }
 
-const FR_MONTHS_LONG = [
-  'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
-  'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre',
-];
-
-function formatLongFR(iso: string | null): string {
+function formatLongDate(iso: string | null, language: Language): string {
   if (!iso) return '—';
   const d = new Date(iso + 'T00:00:00');
   if (Number.isNaN(d.getTime())) return iso;
-  return `${d.getDate()} ${FR_MONTHS_LONG[d.getMonth()]} ${d.getFullYear()}`;
+  return formatDate(d, language, 'd MMMM yyyy');
 }
 
-function macroWord(direction: number | null | undefined): {
+function macroWord(
+  t: TFunction,
+  direction: number | null | undefined,
+): {
   label: string;
   arrow: string;
   color: string;
 } {
   if (direction == null)
-    return { label: 'Indéfini', arrow: '·', color: 'var(--ink-light)' };
+    return { label: t('signal.macro.undefined'), arrow: '·', color: 'var(--ink-light)' };
   if (direction > 0)
-    return { label: 'Porteur', arrow: '↑', color: 'var(--color-signal-open)' };
+    return { label: t('signal.macro.positive'), arrow: '↑', color: 'var(--color-signal-open)' };
   if (direction < 0)
     return {
-      label: 'Défavorable',
+      label: t('signal.macro.negative'),
       arrow: '↓',
       color: 'var(--color-signal-hedge)',
     };
-  return { label: 'Neutre', arrow: '→', color: 'var(--ink-mid)' };
+  return { label: t('signal.macro.neutral'), arrow: '→', color: 'var(--ink-mid)' };
 }
 
 interface SignalHeroProps {
@@ -73,13 +76,12 @@ const SIGNAL_META = {
   },
 } as const;
 
-function formatSessionDate(iso?: string | null): string {
+function formatSessionDate(iso: string | null | undefined, language: Language): string {
   if (!iso) return '';
   const date = iso.slice(0, 10);
   const d = new Date(date + 'T00:00:00');
   if (Number.isNaN(d.getTime())) return '';
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+  return formatDate(d, language, 'd MMM yyyy');
 }
 
 function weekOfYear(iso?: string | null): number | null {
@@ -117,32 +119,39 @@ function ConvictionBreakdown({
   diag: EnsembleDiagnosticsResponse;
   signalColor: string;
 }) {
-  const macro = macroWord(diag.macro_direction);
+  const { t } = useTranslation();
+  const macro = macroWord(t, diag.macro_direction);
 
   const tiles = [
     {
-      eyebrow: 'Consensus',
+      key: 'consensus',
+      eyebrow: t('dashboard.conviction_consensus_label'),
       big: `${diag.n_committed_specialists} / 14`,
       italic: false,
       color: 'var(--ink)',
-      caption: 'spécialistes engagés',
+      caption: t('dashboard.specialists_engaged'),
+      wraps: false,
     },
     {
-      eyebrow: 'Confiance',
+      key: 'confidence',
+      eyebrow: t('dashboard.conviction_confidence_label'),
       big: diag.confidence != null ? `${diag.confidence} / 5` : '—',
       italic: false,
       color: signalColor,
       caption:
         diag.confidence_rationale && diag.confidence_rationale.trim().length > 0
           ? diag.confidence_rationale
-          : 'rationale non disponible',
+          : t('dashboard.rationale_unavailable'),
+      wraps: true,
     },
     {
-      eyebrow: 'Contexte',
+      key: 'context',
+      eyebrow: t('dashboard.conviction_context_label'),
       big: macro.label,
       italic: true,
       color: macro.color,
-      caption: `${macro.arrow} macro`,
+      caption: `${macro.arrow} ${t('dashboard.macro_suffix')}`,
+      wraps: false,
     },
   ];
 
@@ -155,7 +164,7 @@ function ConvictionBreakdown({
         tracking="0.24em"
         style={{ marginBottom: 12 }}
       >
-        Conviction breakdown
+        {t('dashboard.conviction_breakdown_title')}
       </Eyebrow>
 
       <div
@@ -168,12 +177,12 @@ function ConvictionBreakdown({
         }}
       >
         {tiles.map((tile, i) => {
-          // Allow the Confiance tile caption (rationale) to wrap onto 2 lines
+          // Allow the confidence tile caption (rationale) to wrap onto 2 lines
           // — it's a sentence, not a kicker. Others stay single-line.
-          const captionWraps = tile.eyebrow === 'Confiance';
+          const captionWraps = tile.wraps;
           return (
             <div
-              key={tile.eyebrow}
+              key={tile.key}
               style={{
                 padding: '14px 16px 12px',
                 borderLeft: i === 0 ? 'none' : '1px solid var(--rule)',
@@ -266,16 +275,18 @@ function ScorePanelHorizon({
   sessionDate: string | null;
   nonTradingDays: Set<string>;
 }) {
-  const horizon = horizonShortLabel(sourceAlgorithm);
+  const { t } = useTranslation();
+  const { language } = useLanguage();
+  const horizon = horizonShortLabel(t, sourceAlgorithm);
   const horizonDays =
     sourceAlgorithm === 'ensemble_v1_softgate_wrapper' ? 4 : 1;
   const targetDate = addTradingDays(sessionDate, horizonDays, nonTradingDays);
   const subtitle =
     targetDate != null
-      ? `Évaluée au close du ${formatLongFR(targetDate)}`
+      ? t('signal.horizon_evaluated_at', { date: formatLongDate(targetDate, language) })
       : sourceAlgorithm === 'ensemble_v1_softgate_wrapper'
-        ? '4 jours boursiers'
-        : 'Session suivante · J+1';
+        ? t('signal.horizon_ensemble_label')
+        : t('signal.horizon_legacy_label');
 
   return (
     <div
@@ -289,7 +300,7 @@ function ScorePanelHorizon({
       }}
     >
       <Eyebrow as="div" tone="muted" size={10} tracking="0.22em">
-        Horizon de projection
+        {t('dashboard.horizon_label')}
       </Eyebrow>
       <div
         className="tabular-nums"
@@ -320,6 +331,8 @@ function ScorePanelHorizon({
 }
 
 export default function SignalHero({ targetDate, className }: SignalHeroProps) {
+  const { t } = useTranslation();
+  const { language } = useLanguage();
   const { data: pos, isLoading: posLoading, error: posErr } = usePositionStatus(targetDate);
   const { data: recs, isLoading: recsLoading } = useRecommendations(targetDate);
   const { data: diag } = useEnsembleDiagnostics(targetDate);
@@ -336,14 +349,14 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
   const ensembleAligned =
     pos?.source_algorithm === 'ensemble_v1_softgate_wrapper' && Boolean(diag);
   const explanationSentences =
-    ensembleAligned && diag ? buildEnsembleExplanation(diag) : null;
+    ensembleAligned && diag ? buildEnsembleExplanation(diag, t) : null;
 
   if (posLoading || recsLoading) {
     return (
       <section className={className} style={{ padding: '48px 0' }}>
         <div className="flex items-center justify-center min-h-[280px]" style={{ color: 'var(--ink-light)' }}>
           <Loader2 className="h-5 w-5 animate-spin mr-2" />
-          <span className="text-sm">Chargement de l'analyse...</span>
+          <span className="text-sm">{t('loading.signal_analysis')}</span>
         </div>
       </section>
     );
@@ -353,7 +366,7 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
     return (
       <section className={className} style={{ padding: '48px 0' }}>
         <p className="text-center text-sm" style={{ color: 'var(--ink-mid)' }}>
-          Aucune donnée de position pour cette date — l'analyse quotidienne n'a peut-être pas encore été exécutée.
+          {t('common.error_no_data')}
         </p>
       </section>
     );
@@ -389,7 +402,7 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
       >
         {/* ============================= LEFT ============================= */}
         <div>
-          {algoBadgeLabel(pos.source_algorithm) && (
+          {algoBadgeLabel(t, pos.source_algorithm) && (
             <Eyebrow
               as="div"
               size={9}
@@ -397,7 +410,7 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
               tracking="0.22em"
               style={{ marginBottom: 6 }}
             >
-              {algoBadgeLabel(pos.source_algorithm)}
+              {algoBadgeLabel(t, pos.source_algorithm)}
             </Eyebrow>
           )}
           <div
@@ -411,7 +424,7 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
             }}
           >
             {[
-              'Lead Analysis',
+              t('dashboard.lead_analysis'),
               week != null ? `Week ${week}` : null,
               yearOf(sessionDate) != null ? `${yearOf(sessionDate)}` : null,
             ]
@@ -474,7 +487,7 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
               color: 'var(--ink-light)',
             }}
           >
-            Compass Intelligence Desk · {formatSessionDate(sessionDate)}
+            {t('dashboard.desk_name')} · {formatSessionDate(sessionDate, language)}
           </p>
         </div>
 
@@ -556,7 +569,7 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
                       tracking="0.18em"
                       style={{ marginBottom: 8, textAlign: 'center' }}
                     >
-                      Pourquoi cette décision
+                      {t('dashboard.why_this_decision')}
                     </Eyebrow>
                     {explanationSentences.map((s, i) => (
                       <p
@@ -588,7 +601,7 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
                 }}
               >
                 <Eyebrow as="div" tone="muted" size={9} tracking="0.22em">
-                  Horizon de projection
+                  {t('dashboard.horizon_label')}
                 </Eyebrow>
                 <div
                   style={{
@@ -600,8 +613,8 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
                   }}
                 >
                   {pos.source_algorithm === 'ensemble_v1_softgate_wrapper'
-                    ? '~4 jours boursiers'
-                    : 'Session suivante · J+1'}
+                    ? t('signal.horizon_ensemble_label_approx')
+                    : t('signal.horizon_legacy_label')}
                 </div>
               </div>
             )}

@@ -1,4 +1,5 @@
 import { Loader2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useNews } from '@/hooks/useDashboard';
 import { formatFinancialText } from '@/utils/format-financial-text';
 import SentimentGauges from '@/components/sentiment-gauges';
@@ -22,15 +23,19 @@ function parseSections(content: string): ParsedSections {
   const PRE = String.raw`^#{0,3}\s*\**`;
   const POST = String.raw`\**\s*[.:;]?\s*$`;
 
+  // Section headers are language-agnostic: FR (OFFRE / FONDAMENTAUX / MARCHÉ /
+  // SENTIMENT MARCHÉ) and EN (SUPPLY / FUNDAMENTALS / MARKET / MARKET SENTIMENT).
+  // The two-word "… SENTIMENT" variants MUST precede the bare MARKET/MARCHÉ so
+  // the more specific header wins.
   const sectionMap: { pattern: RegExp; target: keyof ParsedSections }[] = [
-    { pattern: new RegExp(`${PRE}SENTIMENT\\s+MARCH[EÉ]${POST}`, 'im'), target: 'overall' },
-    { pattern: new RegExp(`${PRE}MARCH[EÉ]${POST}`, 'im'), target: 'technicals' },
-    { pattern: new RegExp(`${PRE}FONDAMENTAUX${POST}`, 'im'), target: 'fundamentals' },
-    { pattern: new RegExp(`${PRE}OFFRE${POST}`, 'im'), target: 'fundamentals' },
+    { pattern: new RegExp(`${PRE}(?:SENTIMENT\\s+MARCH[EÉ]|MARKET\\s+SENTIMENT)${POST}`, 'im'), target: 'overall' },
+    { pattern: new RegExp(`${PRE}(?:MARCH[EÉ]|MARKET)${POST}`, 'im'), target: 'technicals' },
+    { pattern: new RegExp(`${PRE}(?:FONDAMENTAUX|FUNDAMENTALS)${POST}`, 'im'), target: 'fundamentals' },
+    { pattern: new RegExp(`${PRE}(?:OFFRE|SUPPLY)${POST}`, 'im'), target: 'fundamentals' },
   ];
 
   const headerLine = new RegExp(
-    `${PRE}(?:SENTIMENT\\s+MARCH[EÉ]|MARCH[EÉ]|FONDAMENTAUX|OFFRE)${POST}`,
+    `${PRE}(?:SENTIMENT\\s+MARCH[EÉ]|MARKET\\s+SENTIMENT|MARCH[EÉ]|MARKET|FONDAMENTAUX|FUNDAMENTALS|OFFRE|SUPPLY)${POST}`,
     'gim',
   );
 
@@ -64,10 +69,11 @@ function parseKeywords(raw: string | null): string[] {
 }
 
 function ArticleBody({ body, attribution }: { body: string; attribution?: string }) {
+  const { t } = useTranslation();
   if (!body) {
     return (
       <p style={{ color: 'var(--ink-light)', fontStyle: 'italic', fontSize: 14 }}>
-        Aucune information pour cette section.
+        {t('common.empty_section')}
       </p>
     );
   }
@@ -132,6 +138,7 @@ function ArticleBody({ body, attribution }: { body: string; attribution?: string
 }
 
 export default function NewsCard({ targetDate, className }: NewsCardProps) {
+  const { t } = useTranslation();
   const { data: news, isLoading, error } = useNews(targetDate);
 
   if (isLoading) {
@@ -140,7 +147,7 @@ export default function NewsCard({ targetDate, className }: NewsCardProps) {
         <SectionHeader numeral="IV" title="Press Review" />
         <div className="flex items-center justify-center py-16" style={{ color: 'var(--ink-light)' }}>
           <Loader2 className="h-5 w-5 animate-spin mr-2" />
-          <span className="text-sm">Chargement de la revue de presse...</span>
+          <span className="text-sm">{t('loading.news_review')}</span>
         </div>
       </section>
     );
@@ -151,7 +158,7 @@ export default function NewsCard({ targetDate, className }: NewsCardProps) {
       <section className={className} style={{ padding: '24px 0' }}>
         <SectionHeader numeral="IV" title="Press Review" />
         <p style={{ color: 'var(--ink-light)', textAlign: 'center', fontSize: 14 }}>
-          Aucune revue de presse pour cette date.
+          {t('news.empty_state')}
         </p>
       </section>
     );
@@ -174,7 +181,7 @@ export default function NewsCard({ targetDate, className }: NewsCardProps) {
         tracking="0.18em"
         style={{ marginTop: -10, marginBottom: 22 }}
       >
-        Horizon — prospectif · risque et sentiment de marché (mois à venir)
+        {t('news.horizon_subtitle')}
       </Eyebrow>
 
       {/* Sentiment thematic gauges */}
@@ -189,16 +196,16 @@ export default function NewsCard({ targetDate, className }: NewsCardProps) {
             color: 'var(--ink-mid)',
           }}
         >
-          Sentiment thématique de la presse
+          {t('news.thematic_sentiment_title')}
         </div>
         <SentimentGauges targetDate={targetDate} />
       </div>
 
       <EditorialTabs
         tabs={[
-          { id: 'technicals', label: 'Marché — Technique' },
-          { id: 'fundamentals', label: 'Fondamentaux' },
-          { id: 'overall', label: 'Sentiment de marché' },
+          { id: 'technicals', label: t('news.tab_technicals') },
+          { id: 'fundamentals', label: t('news.tab_fundamentals') },
+          { id: 'overall', label: t('news.tab_overall') },
         ]}
         panels={{
           technicals: <ArticleBody body={sections.technicals} attribution={attribution} />,
@@ -227,7 +234,7 @@ export default function NewsCard({ targetDate, className }: NewsCardProps) {
               color: 'var(--ink-mid)',
             }}
           >
-            Impact marché
+            {t('news.impact_label')}
           </div>
           <p
             style={{

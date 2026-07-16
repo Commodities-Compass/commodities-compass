@@ -21,13 +21,19 @@ class MacroAnalysisOutput(BaseModel):
 
 
 class TradingDecisionOutput(BaseModel):
-    """Output of LLM Call #2 — Trading decision and recommendation."""
+    """Output of LLM Call #2 — Trading decision and recommendation.
+
+    The LLM now emits a qualitative ``headline`` only (no numbers, no bullets);
+    the full ``conclusion`` is assembled deterministically from the FactsPayload
+    by the engine (US-1 facts/voice refactor) and set post-parse.
+    """
 
     decision: Literal["OPEN", "MONITOR", "HEDGE"]
     confiance: int = Field(ge=1, le=5)
     confiance_rationale: str = Field(default="", max_length=200)
     direction: Literal["HAUSSIERE", "BAISSIERE", "NEUTRE"]
-    conclusion: str
+    headline: str = Field(default="", max_length=400)
+    conclusion: str = Field(default="")
 
 
 def parse_macro_output(raw: str) -> MacroAnalysisOutput:

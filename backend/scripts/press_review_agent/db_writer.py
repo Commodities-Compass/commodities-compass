@@ -45,6 +45,7 @@ def write_article(
     provider: Provider,
     parsed: dict[str, str],
     article_date: date | None = None,
+    language: str = "fr",
     dry_run: bool = False,
     source_count: int | None = None,
     total_sources: int | None = None,
@@ -52,15 +53,19 @@ def write_article(
 ) -> uuid.UUID | None:
     """Insert (or overwrite when ``force=True``) a press review article.
 
-    Behavior on duplicate (= a row already exists for the
-    ``(date, llm_provider)`` unique constraint):
+    The row is keyed on ``(date, llm_provider, language)`` (US-0 widened the
+    unique constraint), so the FR and EN reviews for a session + provider
+    coexist as two independent rows. The EN row is a native English summary of
+    the same sources, not a translation of the FR row.
+
+    Behavior on duplicate (= a row already exists for that key):
       * ``force=False`` (default) — raise ``DuplicateArticleError`` (fail-loud).
         Detects a runaway double-fire of the cron, which is the original
         intent of the guard.
       * ``force=True`` — UPDATE the existing row in place and return its id.
         Preserves the row's primary key, which keeps the FK from
         ``pl_article_segment.article_id`` valid (segments will be DELETE+INSERT
-        by ``write_theme_sentiments`` in the same run).
+        by ``write_theme_sentiments`` in the same run — FR only).
 
     The ``--force`` flag plumbing exists for legitimate operator reruns
     (cleanup, prompt tuning experiments, manual recovery after a cron
@@ -73,8 +78,9 @@ def write_article(
 
     if dry_run:
         log.info(
-            "[DRY RUN] [%s] Would insert article: date=%s, summary=%d chars",
+            "[DRY RUN] [%s/%s] Would insert article: date=%s, summary=%d chars",
             provider.value,
+            language,
             row_date,
             len(parsed.get("resume", "")),
         )
@@ -84,6 +90,7 @@ def write_article(
         select(PlFundamentalArticle.id).where(
             PlFundamentalArticle.date == row_date,
             PlFundamentalArticle.llm_provider == provider.value,
+            PlFundamentalArticle.language == language,
         )
     ).scalar_one_or_none()
 
@@ -91,17 +98,18 @@ def write_article(
         if not force:
             raise DuplicateArticleError(
                 f"Article already exists for date={row_date}, "
-                f"provider={provider.value} (id={existing}). "
+                f"provider={provider.value}, language={language} (id={existing}). "
                 f"Pipeline may have run twice today. "
                 f"Re-run with --force to overwrite explicitly."
             )
         # --force: overwrite the existing row in place. We preserve the id
         # (and therefore the FK from pl_article_segment.article_id) — the
         # caller's write_theme_sentiments(force=True) will DELETE+INSERT the
-        # cascading 4 segment rows immediately after.
+        # cascading 4 segment rows immediately after (FR run only).
         log.warning(
-            "[%s] Article exists for date=%s — overwriting via --force (id=%s)",
+            "[%s/%s] Article exists for date=%s — overwriting via --force (id=%s)",
             provider.value,
+            language,
             row_date,
             existing,
         )
@@ -114,6 +122,7 @@ def write_article(
                 summary=parsed["resume"],
                 keywords=parsed.get("mots_cle"),
                 impact_synthesis=parsed.get("impact_synthetiques"),
+                language=language,
                 is_active=(provider == PRODUCTION_PROVIDER),
                 source_count=source_count,
                 total_sources=total_sources,
@@ -130,6 +139,7 @@ def write_article(
         keywords=parsed.get("mots_cle"),
         impact_synthesis=parsed.get("impact_synthetiques"),
         llm_provider=provider.value,
+        language=language,
         is_active=(provider == PRODUCTION_PROVIDER),
         source_count=source_count,
         total_sources=total_sources,
@@ -137,8 +147,9 @@ def write_article(
     session.add(article)
     session.flush()
     log.info(
-        "[%s] Inserted article id=%s for date=%s",
+        "[%s/%s] Inserted article id=%s for date=%s",
         provider.value,
+        language,
         article.id,
         row_date,
     )

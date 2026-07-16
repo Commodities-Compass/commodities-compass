@@ -1,6 +1,7 @@
 import EditorialTabs from '@/components/editorial-tabs';
 import { Eyebrow } from '@/components/editorial';
 import { Loader2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { formatRecoText } from '@/utils/recommendation-parser';
 
 interface EditorialAnalysisProps {
@@ -33,10 +34,11 @@ function EditorialParagraph({ children, dropcap = false }: { children: React.Rea
 }
 
 function ParagraphsList({ items }: { items: string[] }) {
+  const { t } = useTranslation();
   if (items.length === 0) {
     return (
       <p style={{ color: 'var(--ink-light)', fontStyle: 'italic', fontSize: 14 }}>
-        Aucune information pour cette section.
+        {t('common.empty_section')}
       </p>
     );
   }
@@ -64,6 +66,7 @@ function ParagraphsList({ items }: { items: string[] }) {
 }
 
 function Watchlist({ items }: { items: string[] }) {
+  const { t } = useTranslation();
   if (items.length === 0) return null;
   return (
     <aside
@@ -86,7 +89,7 @@ function Watchlist({ items }: { items: string[] }) {
           borderBottom: '1px dotted var(--rule)',
         }}
       >
-        À surveiller
+        {t('market.watchlist_title')}
       </div>
       <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
         {items.map((item, i) => (
@@ -129,19 +132,20 @@ export default function EditorialAnalysis({
   bucketTechnical,
   watchlist,
 }: EditorialAnalysisProps) {
+  const { t } = useTranslation();
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-16" style={{ color: 'var(--ink-light)' }}>
         <Loader2 className="h-5 w-5 animate-spin mr-2" />
-        <span className="text-sm">Chargement de l'analyse...</span>
+        <span className="text-sm">{t('loading.editorial_analysis')}</span>
       </div>
     );
   }
 
   const tabs = [
-    { id: 'reco', label: 'Recommandation', badge: bucketReco.length > 0 ? String(bucketReco.length) : undefined },
-    { id: 'supply', label: 'Supply & Momentum', badge: bucketSupply.length > 0 ? String(bucketSupply.length) : undefined },
-    { id: 'technical', label: 'Technical Outlook', badge: bucketTechnical.length > 0 ? String(bucketTechnical.length) : undefined },
+    { id: 'reco', label: t('market.tab_recommendation'), badge: bucketReco.length > 0 ? String(bucketReco.length) : undefined },
+    { id: 'supply', label: t('market.tab_supply'), badge: bucketSupply.length > 0 ? String(bucketSupply.length) : undefined },
+    { id: 'technical', label: t('market.tab_technical'), badge: bucketTechnical.length > 0 ? String(bucketTechnical.length) : undefined },
   ];
 
   return (
@@ -166,7 +170,7 @@ export default function EditorialAnalysis({
                 background: 'rgba(245, 158, 11, 0.05)',
               }}
             >
-              Décision algo ensemble · Narrative legacy
+              {t('market.narrative_mismatch_warning')}
             </Eyebrow>
           </div>
         )}

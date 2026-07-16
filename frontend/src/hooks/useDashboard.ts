@@ -14,6 +14,7 @@ import type {
   EnsembleDiagnosticsResponse,
 } from '@/types/dashboard';
 import axios from 'axios';
+import { useLanguage } from '@/hooks/useLanguage';
 
 const DAILY_QUERY_OPTIONS = {
   staleTime: 24 * 60 * 60 * 1000,
@@ -39,8 +40,9 @@ export const useIndicatorsGrid = (targetDate?: string) => {
 };
 
 export const useRecommendations = (targetDate?: string) => {
+  const { language } = useLanguage();
   return useQuery<RecommendationsResponse>({
-    queryKey: ['recommendations', targetDate],
+    queryKey: ['recommendations', targetDate, language],
     queryFn: () => dashboardApi.getRecommendations(targetDate),
     ...DAILY_QUERY_OPTIONS,
   });
@@ -55,8 +57,9 @@ export const useChartData = (days: number = 30, targetDate?: string) => {
 };
 
 export const useNews = (targetDate?: string) => {
+  const { language } = useLanguage();
   return useQuery<NewsResponse>({
-    queryKey: ['news', targetDate],
+    queryKey: ['news', targetDate, language],
     queryFn: () => dashboardApi.getNews(targetDate),
     ...DAILY_QUERY_OPTIONS,
   });
@@ -71,16 +74,22 @@ export const useNewsSentiment = (targetDate?: string) => {
 };
 
 export const useWeather = (targetDate?: string) => {
+  const { language } = useLanguage();
   return useQuery<WeatherResponse>({
-    queryKey: ['weather', targetDate],
+    queryKey: ['weather', targetDate, language],
     queryFn: () => dashboardApi.getWeather(targetDate),
     ...DAILY_QUERY_OPTIONS,
   });
 };
 
 export const useAudio = (targetDate?: string) => {
+  const { language } = useLanguage();
   return useQuery<AudioResponse>({
-    queryKey: ['audio', targetDate],
+    // `language` in the key cache-busts on a switch; the actual edition is
+    // carried to the backend by the Accept-Language header (client.ts), and the
+    // returned stream URL embeds `?language=` so the <audio> element streams the
+    // matching edition. The EN edition is ensemble-only and never serves FR.
+    queryKey: ['audio', targetDate, language],
     queryFn: () => dashboardApi.getAudio(targetDate),
     staleTime: 5 * 60 * 1000, // 5 min — audio availability can change (pipeline timing)
     refetchOnMount: true,

@@ -16,7 +16,9 @@ from app.core.sentry import init_sentry
 from scripts.press_review_agent.config import (
     LOG_FORMAT,
     SYSTEM_PROMPT,
+    SYSTEM_PROMPT_EN,
     USER_PROMPT_TEMPLATE,
+    USER_PROMPT_TEMPLATE_EN,
     Provider,
 )
 from scripts.press_review_agent.llm_client import LLMResult, call_providers
@@ -82,6 +84,16 @@ def main() -> int:
             "gate (backfills, manual reruns)."
         ),
     )
+    parser.add_argument(
+        "--language",
+        choices=["fr", "en"],
+        default="fr",
+        help=(
+            "Review language (default: fr). 'en' writes a native English "
+            "(Ghana) article row alongside the fr row; the ensemble-facing "
+            "article segments are written by the fr run only."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -107,6 +119,7 @@ def main() -> int:
     logger.info("=" * 60)
     logger.info("Press Review Agent - Cocoa Market Analysis")
     logger.info(f"Mode: {'DRY RUN' if args.dry_run else 'LIVE'}")
+    logger.info(f"Language: {args.language}")
     logger.info(f"Target session: {target_date} | Data session (row date): {data_date}")
     logger.info(f"Providers: {', '.join(p.value for p in providers)}")
     logger.info("=" * 60)
@@ -137,7 +150,12 @@ def main() -> int:
         # Step 3: Build prompts (identical for all providers)
         # P2b: prompt frames the review as "for trading session {target_date}",
         # distinct from the prior close date used to anchor the technical context.
-        user_prompt = USER_PROMPT_TEMPLATE.format(
+        # Native-language prompt set (EN reads the same sources, writes English).
+        system_prompt = SYSTEM_PROMPT_EN if args.language == "en" else SYSTEM_PROMPT
+        user_prompt_template = (
+            USER_PROMPT_TEMPLATE_EN if args.language == "en" else USER_PROMPT_TEMPLATE
+        )
+        user_prompt = user_prompt_template.format(
             target_date=target_date.isoformat(),
             close_date=close_date_str,
             close=close_price,
@@ -153,7 +171,7 @@ def main() -> int:
         # Step 4: Call LLM providers in parallel
         logger.info(f"Step 3: Calling {len(providers)} LLM provider(s)...")
         llm_results: list[LLMResult] = asyncio.run(
-            call_providers(providers, SYSTEM_PROMPT, user_prompt)
+            call_providers(providers, system_prompt, user_prompt)
         )
 
         # Step 5: Validate + write for each successful provider
@@ -200,6 +218,7 @@ def main() -> int:
                     result.provider,
                     result.parsed,
                     article_date=data_date,
+                    language=args.language,
                     dry_run=args.dry_run,
                     source_count=successful_sources,
                     total_sources=len(news_results),
@@ -213,11 +232,14 @@ def main() -> int:
                     dry_run=args.dry_run,
                 )
 
-                # Theme sentiments — additive, non-blocking.
-                # The writer guarantees all 4 themes via soft-fill + Sentry
-                # warning, so we always invoke it (with {} if the LLM omitted
-                # the whole field, which will produce 4 neutral rows).
-                if result.parsed is not None:
+                # Theme sentiments — additive, non-blocking. FR RUN ONLY.
+                # pl_article_segment has NO language dimension and feeds the
+                # (language-agnostic) ensemble macro signal. An EN set would be a
+                # second summary of the SAME news → the ensemble would double-
+                # count it. So the segments stay owned by the fr run; the EN run
+                # still emits theme_sentiments (kept in the prompt so the shared
+                # validator passes) but discards them here.
+                if result.parsed is not None and args.language == "fr":
                     try:
                         # P2b: theme sentiments share the same date as the
                         # article row → data_date (= last completed session),
@@ -250,6 +272,7 @@ def main() -> int:
             {
                 "target_date": target_date.isoformat(),
                 "data_date": data_date.isoformat(),
+                "language": args.language,
                 "close_date": close_date_str,
                 "close": close_price,
                 "sources_fetched": successful_sources,

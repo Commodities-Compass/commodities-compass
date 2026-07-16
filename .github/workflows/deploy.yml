@@ -249,7 +249,9 @@ jobs:
           # ref_publication_calendar so the daily cron is cheap when no
           # publication is pending.
           deploy_job cc-eca-grindings-scraper        512Mi "eca-grindings-scraper"
-          deploy_job cc-nca-grindings-scraper        512Mi "nca-grindings-scraper"
+          # 1Gi: NCA fetches through headless Chromium (SiteGround sgcaptcha WAF
+          # bypass — see nca_grindings_scraper/config.py). Matches press-review.
+          deploy_job cc-nca-grindings-scraper        1Gi   "nca-grindings-scraper"
           # Daily watchdog: alert on fundamentals publications overdue ≥21 days.
           # 512Mi minimum required by Cloud Run gen2 + always-allocated CPU.
           deploy_job cc-publication-calendar-watchdog 512Mi "publication-calendar-watchdog"

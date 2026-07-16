@@ -14,17 +14,9 @@ This is **read-only on GCP** (never writes prod) but **destructive on local** (t
 
 - `gcloud` CLI authenticated as a user with IAP tunnel permission on `cc-bastion`
 - Local Postgres running on port 5433: `pnpm db:up`
-- Bastion tunnel password retrieved from Secret Manager:
-
-```bash
-gcloud secrets versions access latest --secret=cc-cloudsql-app-password --project=cacaooo
-```
-
-- Local `backend/.env` includes:
-
-```bash
-GCP_DATABASE_URL=postgresql+psycopg2://cc_app:<password>@localhost:5434/commodities_compass
-```
+- **Tunnel + credentials** live in the gitignored `.local/` helper — use `./.local/db-prod.sh up` to open the bastion tunnel on `:5434` (and `down` to tear it down). See `.local/db-prod-access.md` for the full runbook: it is the **single source of truth** for the bastion coordinates, the `cc_app` password, and the canonical Secret Manager entry.
+- 🔒 **DB credentials never leave this machine.** They stay under `.local/` (gitignored, verified by `git check-ignore`) — never commit them, never paste them into any file that is tracked, uploaded, or cloud-synced.
+- For the bulk sync, `sync_from_gcp.py` reads the GCP source DSN from the `GCP_DATABASE_URL` env var (`postgresql+psycopg2://cc_app:<password>@127.0.0.1:5434/commodities_compass`, pointing at the open tunnel).
 
 ## Procedure
 

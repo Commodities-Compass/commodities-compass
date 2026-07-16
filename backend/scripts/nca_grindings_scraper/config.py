@@ -6,13 +6,22 @@ cocoa grindings. Currently ~13 reporting plants. Supplied to ICE Futures US.
 The listing of all historical PDFs is served by candyusa.com:
     https://candyusa.com/cocoa-grinds-report/
 
-We target candyusa.com DIRECTLY (final canonical URL, skips 2 redirect hops).
-The former host chocolatecouncil.org now only 302-redirects here and sits behind
-a SiteGround anti-bot WAF that INTERMITTENTLY serves an HTTP 202 ``sgcaptcha``
-challenge to datacenter / Cloud Run egress IPs (Sentry NcaScraperError,
-2026-07-02: challenged one day, passed the next on the same NAT IP). candyusa.com
-(Cloudflare) is permissive to datacenter IPs, so hitting it directly removes that
-WAF from the path. Do NOT revert to chocolatecouncil.org.
+WAF history — why we fetch through a headless browser
+-----------------------------------------------------
+candyusa.com sits behind a SiteGround anti-bot WAF that serves an HTTP 202
+``sgcaptcha`` JS-challenge to datacenter / Cloud Run egress IPs. Residential IPs
+pass with plain httpx; Cloud Run does not (Sentry ``NcaScraperError`` HTTP 202,
+2026-07-09/10). The challenge is IP-reputation based, not User-Agent based (the
+identifying bot UA passes fine from a residential IP), so swapping the host or
+the UA does not help — chocolatecouncil.org (the former listing host, now a 302
+to here) has the same posture.
+
+The durable fix is to execute the challenge JS in a real headless browser
+(Playwright/Chromium), which receives the clearance cookie and can then load the
+listing HTML and download the PDFs through the same browser context. Plain httpx
+has no JS engine and cannot pass. See ``browser.py``. History: chocolatecouncil.org
+WAF → candyusa.com direct (PR #57, assumed Cloudflare-permissive — wrong, it is
+SiteGround/nginx) → Playwright.
 
 PDFs live on candyusa.com WordPress uploads with INCONSISTENT filenames
 (``Q1-2026-Cocoa-Grinds.pdf``, ``Q1_2025_Cocoa_Grinds_REV0421.pdf``,
@@ -24,8 +33,13 @@ from __future__ import annotations
 
 LISTING_URL = "https://candyusa.com/cocoa-grinds-report/"
 
-FETCH_TIMEOUT_SECONDS = 60
+# Per-navigation / per-request budget for the headless browser (ms).
+BROWSER_TIMEOUT_MS = 60_000
 
+# Identity string, kept for reference / logging. NOT forced onto the browser:
+# the sgcaptcha WAF is IP-reputation based, and a real (default) Chromium UA
+# maximises the odds the JS-challenge clears — a "bot" UA on a real browser can
+# only hurt.
 USER_AGENT = "commodities-compass/nca-grindings-scraper (https://com-compass.com)"
 
 # Source / category / region tags written to pl_supply_demand_observation.

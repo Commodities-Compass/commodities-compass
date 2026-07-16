@@ -29,6 +29,7 @@ from scripts._shared.publication_calendar import (
     find_pending_publications,
 )
 from scripts._shared.sentry import bootstrap_scraper
+from scripts.nca_grindings_scraper.browser import NcaBrowser
 from scripts.nca_grindings_scraper.config import SOURCE
 from scripts.nca_grindings_scraper.db_writer import upsert_nca_records
 from scripts.nca_grindings_scraper.scraper import (
@@ -54,6 +55,7 @@ def _process_pending(
     session,
     pending: list[PendingPublication],
     pdf_urls: dict[str, str],
+    browser: NcaBrowser,
     *,
     dry_run: bool,
 ) -> tuple[int, int]:
@@ -70,7 +72,7 @@ def _process_pending(
             )
             continue
 
-        records = fetch_and_parse(pub.period_label, pdf_url)
+        records = fetch_and_parse(browser, pub.period_label, pdf_url)
         n_records += len(records)
         n_processed += 1
 
@@ -108,10 +110,13 @@ def main() -> int:
                 logger.info("No pending NCA publications today — exiting clean.")
                 return 0
 
-            pdf_urls = discover_pdf_urls()
-            n_processed, n_records = _process_pending(
-                session, pending, pdf_urls, dry_run=args.dry_run
-            )
+            # Only spin up the headless browser once the calendar gate is open
+            # (skips launching Chromium on the ~250 no-op weekdays/year).
+            with NcaBrowser() as browser:
+                pdf_urls = discover_pdf_urls(browser)
+                n_processed, n_records = _process_pending(
+                    session, pending, pdf_urls, browser, dry_run=args.dry_run
+                )
 
             if not args.dry_run:
                 session.commit()

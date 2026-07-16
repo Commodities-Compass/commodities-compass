@@ -67,7 +67,11 @@
     "ensemble_macro_positive": "Contexte macro porteur.",
     "ensemble_macro_negative": "Contexte macro défavorable.",
     "ensemble_macro_neutral": "Contexte macro neutre.",
-    "convergence_fallback": "Convergence des signaux techniques et fondamentaux sur la lecture du jour."
+    "convergence_fallback": "Convergence des signaux techniques et fondamentaux sur la lecture du jour.",
+    "explanation": {
+      "with_confidence": "{{consensus}} sur la position {{decision}} — {{n}} lectures engagées, confiance {{confidence}} ({{score}}/5).{{macroClause}}",
+      "without_confidence": "{{consensus}} sur la position {{decision}} — {{n}} lectures engagées.{{macroClause}}"
+    }
   },
   "news": {
     "empty_state": "Aucune revue de presse pour cette date.",

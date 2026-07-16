@@ -67,7 +67,11 @@
     "ensemble_macro_positive": "Supportive macro context.",
     "ensemble_macro_negative": "Unfavourable macro context.",
     "ensemble_macro_neutral": "Neutral macro context.",
-    "convergence_fallback": "Technical and fundamental signals line up on today's read."
+    "convergence_fallback": "Technical and fundamental signals line up on today's read.",
+    "explanation": {
+      "with_confidence": "{{consensus}} on the {{decision}} call — {{n}} readings engaged, {{confidence}} confidence ({{score}}/5).{{macroClause}}",
+      "without_confidence": "{{consensus}} on the {{decision}} call — {{n}} readings engaged.{{macroClause}}"
+    }
   },
   "news": {
     "empty_state": "No press review for this date.",

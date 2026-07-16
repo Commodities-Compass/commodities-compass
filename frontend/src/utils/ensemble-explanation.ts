@@ -1,90 +1,88 @@
+import type { TFunction } from 'i18next';
+
 import type { EnsembleDiagnosticsResponse } from '@/types/dashboard';
 
 /**
  * Why-this-decision explanation, derived templated from the ensemble row.
- * Mirrors the new conviction breakdown order : Consensus → Confiance → Direction.
+ * Mirrors the conviction breakdown order: Consensus → Confidence → Direction.
  *
- * Editorial rules (aligned with the brief redaction policy) :
- *   - never quote engine internals : no `net_score`, no `soft-gate`, no
+ * Editorial rules (aligned with the brief redaction policy):
+ *   - never quote engine internals: no `net_score`, no `soft-gate`, no
  *     `wrapper`, no `orchestrateur`, no `running_acc_5d`. Those live in the
  *     audit DB, not in the user-facing summary.
  *   - never name the panel size explicitly ("14 specialists") — speak in
- *     terms of lectures engagées vs en retrait.
- *   - lead with consensus (how many lectures engaged), then confidence (the
- *     LLM rubric verdict + per-pillar rationale), then macro direction.
+ *     terms of engaged vs sidelined readings.
  *
- * Returns 2 short sentences. Caller (SignalHero) places them in the
- * "Pourquoi cette décision" sidebar.
+ * i18n: pure util (no React context), so the caller (SignalHero) threads its
+ * `t` in. Every label + sentence template lives under the `signal.*` catalog.
+ * Returns 2 short sentences for the "why this decision" sidebar.
  */
-function decisionFR(d: 'OPEN' | 'HEDGE' | 'MONITOR'): string {
-  if (d === 'OPEN') return 'acheteuse';
-  if (d === 'HEDGE') return 'défensive';
-  return 'attentiste';
+function decisionKey(d: 'OPEN' | 'HEDGE' | 'MONITOR'): string {
+  if (d === 'OPEN') return 'open';
+  if (d === 'HEDGE') return 'hedge';
+  return 'monitor';
 }
 
-function consensusLabel(n: number): string {
-  if (n >= 10) return 'large consensus';
-  if (n >= 7) return 'consensus solide';
-  if (n >= 4) return 'consensus partiel';
-  return 'consensus fragile';
+function consensusKey(n: number): string {
+  if (n >= 10) return 'large';
+  if (n >= 7) return 'solid';
+  if (n >= 4) return 'partial';
+  return 'weak';
 }
 
-function confidenceLabel(score: number): string {
-  if (score >= 5) return 'très forte';
-  if (score >= 4) return 'forte';
-  if (score >= 3) return 'modérée';
-  if (score >= 2) return 'mesurée';
-  return 'faible';
+function confidenceKey(score: number): string {
+  if (score >= 5) return 'very_high';
+  if (score >= 4) return 'high';
+  if (score >= 3) return 'moderate';
+  if (score >= 2) return 'measured';
+  return 'low';
 }
 
-function macroFR(direction: number | null | undefined): string | null {
+function macroKey(direction: number | null | undefined): string | null {
   if (direction == null) return null;
-  if (direction > 0) return 'porteur';
-  if (direction < 0) return 'défavorable';
-  return 'neutre';
+  if (direction > 0) return 'positive';
+  if (direction < 0) return 'negative';
+  return 'neutral';
 }
 
 export function buildEnsembleExplanation(
   diag: EnsembleDiagnosticsResponse,
+  t: TFunction,
 ): string[] {
   const sentences: string[] = [];
-  const decision = decisionFR(diag.decision_wrapped);
-
-  // S1 — Consensus + Confidence : lead with how many lectures engaged and
-  // how strong the verdict is. No raw score, no panel size as a number
-  // mentioned explicitly beyond "X engagées".
-  const consensus = consensusLabel(diag.n_committed_specialists);
-  const macro = macroFR(diag.macro_direction);
-  const macroClause =
-    macro != null
-      ? macro === 'porteur'
-        ? ' Contexte macro porteur.'
-        : macro === 'défavorable'
-          ? ' Contexte macro défavorable.'
-          : ' Contexte macro neutre.'
-      : '';
+  const decision = t(`signal.decision.${decisionKey(diag.decision_wrapped)}`);
+  const consensus = capitalize(
+    t(`signal.consensus.${consensusKey(diag.n_committed_specialists)}`),
+  );
+  const mk = macroKey(diag.macro_direction);
+  const macroClause = mk ? ` ${t(`signal.ensemble_macro_${mk}`)}` : '';
 
   if (diag.confidence != null) {
-    const conf = confidenceLabel(diag.confidence);
     sentences.push(
-      `${capitalize(consensus)} sur la position ${decision} — ${diag.n_committed_specialists} lectures engagées, confiance ${conf} (${diag.confidence}/5).${macroClause}`,
+      t('signal.explanation.with_confidence', {
+        consensus,
+        decision,
+        n: diag.n_committed_specialists,
+        confidence: t(`signal.confidence.${confidenceKey(diag.confidence)}`),
+        score: diag.confidence,
+        macroClause,
+      }),
     );
   } else {
     sentences.push(
-      `${capitalize(consensus)} sur la position ${decision} — ${diag.n_committed_specialists} lectures engagées.${macroClause}`,
+      t('signal.explanation.without_confidence', {
+        consensus,
+        decision,
+        n: diag.n_committed_specialists,
+        macroClause,
+      }),
     );
   }
 
-  // S2 — Per-pillar rationale when available, else a generic convergence
-  // statement. Never mentions wrapper / orchestrateur / detectors.
   const rationale = (diag.confidence_rationale ?? '').trim();
-  if (rationale.length > 0) {
-    sentences.push(rationale);
-  } else {
-    sentences.push(
-      `Convergence des signaux techniques et fondamentaux sur la lecture du jour.`,
-    );
-  }
+  sentences.push(
+    rationale.length > 0 ? rationale : t('signal.convergence_fallback'),
+  );
 
   return sentences;
 }

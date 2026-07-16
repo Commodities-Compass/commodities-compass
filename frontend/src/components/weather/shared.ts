@@ -1,13 +1,15 @@
+import type { TFunction } from 'i18next';
+
 export const STATUS_HEX: Record<string, string> = {
   normal: '#10B981',
   degraded: '#F59E0B',
   stress: '#EF4444',
 };
 
-export function statusLabel(status?: string): string {
-  if (status === 'normal') return 'Normal';
-  if (status === 'degraded') return 'Dégradé';
-  if (status === 'stress') return 'Stress';
+export function statusLabel(status: string | undefined, t: TFunction): string {
+  if (status === 'normal') return t('weather.status_normal');
+  if (status === 'degraded') return t('weather.status_degraded');
+  if (status === 'stress') return t('weather.status_stress');
   return '—';
 }
 

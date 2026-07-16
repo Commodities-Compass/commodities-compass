@@ -349,7 +349,7 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
   const ensembleAligned =
     pos?.source_algorithm === 'ensemble_v1_softgate_wrapper' && Boolean(diag);
   const explanationSentences =
-    ensembleAligned && diag ? buildEnsembleExplanation(diag) : null;
+    ensembleAligned && diag ? buildEnsembleExplanation(diag, t) : null;
 
   if (posLoading || recsLoading) {
     return (

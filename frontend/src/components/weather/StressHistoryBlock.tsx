@@ -16,6 +16,7 @@ function countryLabel(country: LocationStressHistory['country'], t: TFunction): 
 }
 
 function StressBars({ history, scale = 1 }: { history: string[]; scale?: number }) {
+  const { t } = useTranslation();
   return (
     <span className="inline-flex items-end gap-0.75" style={{ height: 18 * scale }}>
       {history.map((s, i) => {
@@ -25,7 +26,7 @@ function StressBars({ history, scale = 1 }: { history: string[]; scale?: number 
         return (
           <span
             key={i}
-            title={statusLabel(s)}
+            title={statusLabel(s, t)}
             style={{
               display: 'inline-block',
               width: 4 * scale,
@@ -65,19 +66,20 @@ function toneFor(status: LocationStressHistory['current_status']): Tone {
 }
 
 function StatusPill({ status }: { status: LocationStressHistory['current_status'] }) {
-  const t = toneFor(status);
+  const { t } = useTranslation();
+  const tone = toneFor(status);
   return (
     <Eyebrow
       size={9}
       tracking="0.18em"
       style={{
         display: 'inline-block',
-        color: t.color,
-        background: t.bg,
+        color: tone.color,
+        background: tone.bg,
         padding: '3px 9px',
       }}
     >
-      {statusLabel(status)}
+      {statusLabel(status, t)}
     </Eyebrow>
   );
 }

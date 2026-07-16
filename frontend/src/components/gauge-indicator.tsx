@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils';
 import {
   Tooltip,
@@ -7,7 +8,7 @@ import {
 } from '@/components/ui/tooltip';
 import { useIsTouch } from '@/hooks/useIsTouch';
 import type { IndicatorRange } from '@/types/dashboard';
-import { INDICATOR_META } from '@/data/indicator-metadata';
+import { INDICATOR_META_KEY } from '@/data/indicator-metadata';
 
 
 interface RulerGaugeProps {
@@ -106,7 +107,8 @@ export default function GaugeIndicator({
   const zone = hasValue ? zoneOf(value!, ranges) : 'ORANGE';
   const [t1, t2] = zoneBounds(ranges, min, max);
   const [leftLabel, rightLabel] = zoneLabels(ranges);
-  const meta = INDICATOR_META[label];
+  const { t } = useTranslation();
+  const metaKey = INDICATOR_META_KEY[label];
   const isTouch = useIsTouch();
 
   const gauge = (
@@ -202,7 +204,7 @@ export default function GaugeIndicator({
     </div>
   );
 
-  if (!meta || isTouch) return gauge;
+  if (!metaKey || isTouch) return gauge;
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -231,7 +233,7 @@ export default function GaugeIndicator({
                 marginBottom: 8,
               }}
             >
-              {meta.fullName}
+              {t(`indicators.${metaKey}_name`)}
             </div>
             <div
               style={{
@@ -242,7 +244,7 @@ export default function GaugeIndicator({
                 marginBottom: 10,
               }}
             >
-              {meta.description}
+              {t(`indicators.${metaKey}_desc`)}
             </div>
             <div
               aria-hidden
@@ -272,7 +274,7 @@ export default function GaugeIndicator({
                   color: 'var(--paper)',
                 }}
               >
-                {meta.zones[zone]}
+                {t(`indicators.${metaKey}_zones_${zone.toLowerCase()}`)}
               </span>
             </div>
           </div>

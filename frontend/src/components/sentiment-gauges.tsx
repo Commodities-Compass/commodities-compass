@@ -22,6 +22,17 @@ const THEME_LABEL_KEYS: Record<string, string> = {
   economie: 'theme.economy',
 };
 
+// Language-independent keys into INDICATOR_META_KEY for the tooltip lookup. The
+// display `label` is localized (t()), so it can't double as the metadata key —
+// in EN it would be "CHOCOLATE"/"GRINDINGS"/"ECONOMY", none of which exist in
+// INDICATOR_META_KEY, silently suppressing the tooltip. These stable codes do.
+const THEME_METADATA_KEYS: Record<string, string> = {
+  production: 'PRODUCTION',
+  chocolat: 'CHOCOLAT',
+  transformation: 'TRANSF.',
+  economie: 'ÉCONOMIE',
+};
+
 const THEME_ORDER = ['production', 'chocolat', 'transformation', 'economie'];
 
 const SENTIMENT_RANGES: IndicatorRange[] = [
@@ -166,6 +177,7 @@ export default function SentimentGauges({ targetDate }: SentimentGaugesProps) {
             min={-1}
             max={1}
             label={label}
+            metadataKey={THEME_METADATA_KEYS[theme]}
             ranges={SENTIMENT_RANGES}
           />
         );

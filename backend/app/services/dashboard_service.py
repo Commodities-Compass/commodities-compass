@@ -230,12 +230,18 @@ async def calculate_ytd_performance(
                ON ens.date = fm.date
               AND ens.contract_id = fm.contract_id
               AND ens.algorithm_version_id = :ensemble_id
+              AND ens.language = 'fr'
         LEFT JOIN pl_indicator_daily leg
                ON leg.date = fm.date
               AND leg.contract_id = fm.contract_id
               AND leg.algorithm_version_id = :legacy_id
+              AND leg.language = 'fr'
         ORDER BY fm.date ASC
     """)
+    # language='fr' pins the source-of-truth (DEFAULT_LANGUAGE) row: `decision`
+    # is language-agnostic (the EN row copies it), so without this filter each
+    # date fans out to 2 rows once EN content exists → the horizon-indexed
+    # scoring loop below pairs mismatched sessions and the YTD figure drifts.
 
     result = await db.execute(
         query,
@@ -914,17 +920,24 @@ async def get_stress_history(
     db: AsyncSession,
     days: int = 7,
     target_date: Optional[date] = None,
+    language: str = "fr",
 ) -> List[Dict[str, Any]]:
     """Build per-location stress history from the last N weather observations.
 
     Returns a list of dicts with: location_name, country, current_status,
     streak_days, trend, history (list of statuses oldest→newest).
+
+    The ``language`` filter is load-bearing: pl_weather_observation is keyed on
+    ``(date, language)``, so without it the ``LIMIT days`` window spans half as
+    many distinct dates once EN content exists, corrupting the per-location
+    timeline. Mirrors ``get_latest_weather_data``.
     """
     ref = target_date or date.today()
     query = (
         select(PlWeatherObservation.date, PlWeatherObservation.diagnostics)
         .where(
             PlWeatherObservation.date <= ref,
+            PlWeatherObservation.language == language,
             PlWeatherObservation.diagnostics.is_not(None),
         )
         .order_by(desc(PlWeatherObservation.date))

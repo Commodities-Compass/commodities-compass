@@ -227,6 +227,7 @@ def _compute_running_accuracy(
             LEFT JOIN pl_indicator_daily ens
                    ON ens.date = fm.date
                   AND ens.contract_id = fm.contract_id
+                  AND ens.language = 'fr'
                   AND ens.algorithm_version_id = (
                       SELECT id FROM pl_algorithm_version
                       WHERE name = 'ensemble_v1_softgate_wrapper'
@@ -234,6 +235,7 @@ def _compute_running_accuracy(
             LEFT JOIN pl_indicator_daily leg
                    ON leg.date = fm.date
                   AND leg.contract_id = fm.contract_id
+                  AND leg.language = 'fr'
                   AND leg.algorithm_version_id = (
                       SELECT id FROM pl_algorithm_version
                       WHERE name = 'legacy'
@@ -308,6 +310,7 @@ def _compute_ytd_score(
             LEFT JOIN pl_indicator_daily ens
                    ON ens.date = fm.date
                   AND ens.contract_id = fm.contract_id
+                  AND ens.language = 'fr'
                   AND ens.algorithm_version_id = (
                       SELECT id FROM pl_algorithm_version
                       WHERE name = 'ensemble_v1_softgate_wrapper'
@@ -315,6 +318,7 @@ def _compute_ytd_score(
             LEFT JOIN pl_indicator_daily leg
                    ON leg.date = fm.date
                   AND leg.contract_id = fm.contract_id
+                  AND leg.language = 'fr'
                   AND leg.algorithm_version_id = (
                       SELECT id FROM pl_algorithm_version
                       WHERE name = 'legacy'

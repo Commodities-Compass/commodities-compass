@@ -77,9 +77,20 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """Revert to the language-agnostic constraints + drop the column."""
+    """Revert to the language-agnostic constraints + drop the column.
+
+    DESTRUCTIVE: any non-'fr' content row (e.g. the EN edition) is DELETEd
+    first, otherwise recreating the narrower unique constraint (which no longer
+    includes ``language``) fails with a duplicate-key violation once EN rows
+    coexist with their FR twins. EN rows are derived content — regenerable by
+    re-running the agents — so purging them on downgrade is acceptable (the
+    North Star's immutable-raw-data principle covers raw ingested data, not
+    derived translations).
+    """
     for table, uq_name, base_cols in reversed(_CONTENT_TABLES):
         if "language" in _unique_columns(table, uq_name):
+            # Purge non-default-language rows so the FR-only constraint holds.
+            op.execute(sa.text(f"DELETE FROM {table} WHERE language <> 'fr'"))  # noqa: S608
             op.drop_constraint(uq_name, table, type_="unique")
             op.create_unique_constraint(uq_name, table, base_cols)
         if _has_column(table, "language"):

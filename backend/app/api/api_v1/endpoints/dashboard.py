@@ -588,7 +588,9 @@ async def get_weather(
         # Stress history (7-day lookback)
         from app.services.dashboard_service import get_stress_history
 
-        stress_hist = await get_stress_history(db, days=7, target_date=business_date)
+        stress_hist = await get_stress_history(
+            db, days=7, target_date=business_date, language=lang
+        )
 
         raw_impact = (
             weather_data.get("impact_synthesis", "")

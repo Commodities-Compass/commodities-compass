@@ -53,8 +53,11 @@ interface FormatRule {
 
 const FORMAT_RULES: FormatRule[] = [
   {
+    // `STOCK (?:EU|US)` is the FR label; `(?:US|EU) stocks` is the native-EN
+    // form the EN renderer emits (render/en.py) — both must bold so the two
+    // editions style stock lines identically.
     pattern:
-      /\b(?:CLOSE|VOLUME|OPEN INTEREST|RSI|MACD|ATR|STOCK (?:EU|US)|COM NET|BOLLINGER (?:SUP|INF)|SUPPORT|RESISTANCE|VOL\/OI)\b/g,
+      /\b(?:CLOSE|VOLUME|OPEN INTEREST|RSI|MACD|ATR|STOCK (?:EU|US)|(?:US|EU) stocks|COM NET|BOLLINGER (?:SUP|INF)|SUPPORT|RESISTANCE|VOL\/OI)\b/g,
     render: (m) => <span className="font-semibold">{m}</span>,
   },
   {

@@ -154,6 +154,7 @@ async def _compute_running_accuracy(
         LEFT JOIN pl_indicator_daily ens
                ON ens.date = fm.date
               AND ens.contract_id = fm.contract_id
+              AND ens.language = 'fr'
               AND ens.algorithm_version_id = (
                   SELECT id FROM pl_algorithm_version
                   WHERE name = 'ensemble_v1_softgate_wrapper'
@@ -161,12 +162,17 @@ async def _compute_running_accuracy(
         LEFT JOIN pl_indicator_daily leg
                ON leg.date = fm.date
               AND leg.contract_id = fm.contract_id
+              AND leg.language = 'fr'
               AND leg.algorithm_version_id = (
                   SELECT id FROM pl_algorithm_version
                   WHERE name = 'legacy'
                   ORDER BY created_at DESC LIMIT 1)
         ORDER BY fm.date ASC
     """)
+    # language='fr' pins the source-of-truth (DEFAULT_LANGUAGE) decision row.
+    # `decision` is language-agnostic (the EN row copies it); without this
+    # filter each date doubles once EN content exists, corrupting the
+    # horizon-indexed running-accuracy that gates the Compass wrapper.
     # ~45 calendar days ≈ ~30 trading sessions, plenty to cover horizon + window
     start_date = date_cls.fromordinal(target_date.toordinal() - 45)
     rows = (

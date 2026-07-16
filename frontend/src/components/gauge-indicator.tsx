@@ -17,6 +17,12 @@ interface RulerGaugeProps {
   min: number;
   max: number;
   label: string;
+  /**
+   * Optional language-independent key for the tooltip metadata lookup. Use when
+   * `label` is a translated/display string that is NOT a stable INDICATOR_META_KEY
+   * key (e.g. sentiment gauges, whose label is localized). Falls back to `label`.
+   */
+  metadataKey?: string;
   ranges?: IndicatorRange[];
   className?: string;
   /** Optional formatter for the value label. Defaults to `v.toFixed(2)`. */
@@ -95,6 +101,7 @@ export default function GaugeIndicator({
   min,
   max,
   label,
+  metadataKey,
   ranges,
   className,
   formatValue,
@@ -108,7 +115,7 @@ export default function GaugeIndicator({
   const [t1, t2] = zoneBounds(ranges, min, max);
   const [leftLabel, rightLabel] = zoneLabels(ranges);
   const { t } = useTranslation();
-  const metaKey = INDICATOR_META_KEY[label];
+  const metaKey = INDICATOR_META_KEY[metadataKey ?? label];
   const isTouch = useIsTouch();
 
   const gauge = (

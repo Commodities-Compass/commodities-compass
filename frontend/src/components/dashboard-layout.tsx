@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { LogOutIcon, MenuIcon, UserIcon } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth } from '@/hooks/useAuth';
@@ -25,6 +26,7 @@ interface DashboardLayoutProps {
 }
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
+  const { t } = useTranslation();
   const { user, logout } = useAuth();
   const { currentDate, calendarDate, setCurrentDate, sessionDate } = useDashboardDate();
   const { language, setLanguage } = useLanguage();
@@ -129,7 +131,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={logout}>
                     <LogOutIcon className="mr-2 h-4 w-4" />
-                    Déconnexion
+                    {t('common.logout')}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

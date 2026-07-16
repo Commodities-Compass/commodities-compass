@@ -1,5 +1,6 @@
 import GaugeIndicator from '@/components/gauge-indicator';
 import { Loader2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import {
   Tooltip,
   TooltipContent,
@@ -14,11 +15,11 @@ interface SentimentGaugesProps {
   targetDate?: string;
 }
 
-const THEME_LABELS: Record<string, string> = {
-  production: 'PRODUCTION',
-  chocolat: 'CHOCOLAT',
-  transformation: 'TRANSF.',
-  economie: 'ÉCONOMIE',
+const THEME_LABEL_KEYS: Record<string, string> = {
+  production: 'theme.production',
+  chocolat: 'theme.chocolat',
+  transformation: 'theme.transformation',
+  economie: 'theme.economy',
 };
 
 const THEME_ORDER = ['production', 'chocolat', 'transformation', 'economie'];
@@ -36,6 +37,7 @@ const SENTIMENT_RANGES: IndicatorRange[] = [
 // (now defensive) case where the score is truly null/undefined.
 
 function NoCoveragePlaceholder({ label }: { label: string }) {
+  const { t } = useTranslation();
   const isTouch = useIsTouch();
   const inner = (
     <div
@@ -99,7 +101,7 @@ function NoCoveragePlaceholder({ label }: { label: string }) {
                 color: 'var(--ink-light)',
               }}
             >
-              Pas de couverture
+              {t('common.no_coverage')}
             </div>
           </div>
   );
@@ -112,7 +114,7 @@ function NoCoveragePlaceholder({ label }: { label: string }) {
         <TooltipTrigger asChild>{inner}</TooltipTrigger>
         <TooltipContent side="top" className="max-w-60 px-3 py-2">
           <p className="text-[11px] leading-snug">
-            Aucune couverture significative dans les sources du jour.
+            {t('common.no_coverage_tooltip')}
           </p>
         </TooltipContent>
       </Tooltip>
@@ -121,6 +123,7 @@ function NoCoveragePlaceholder({ label }: { label: string }) {
 }
 
 export default function SentimentGauges({ targetDate }: SentimentGaugesProps) {
+  const { t } = useTranslation();
   const { data, isLoading, isError } = useNewsSentiment(targetDate);
 
   if (isLoading) {
@@ -133,7 +136,7 @@ export default function SentimentGauges({ targetDate }: SentimentGaugesProps) {
 
   if (isError || !data || data.themes.length === 0) return null;
 
-  const themeMap = new Map(data.themes.map((t) => [t.theme, t]));
+  const themeMap = new Map(data.themes.map((item) => [item.theme, item]));
 
   return (
     <div
@@ -146,11 +149,11 @@ export default function SentimentGauges({ targetDate }: SentimentGaugesProps) {
       }}
     >
       {THEME_ORDER.map((theme) => {
-        const t = themeMap.get(theme);
-        const label = THEME_LABELS[theme];
+        const themeData = themeMap.get(theme);
+        const label = t(THEME_LABEL_KEYS[theme]);
 
         const hasNoScore =
-          !t || t.score === null || t.score === undefined;
+          !themeData || themeData.score === null || themeData.score === undefined;
 
         if (hasNoScore) {
           return <NoCoveragePlaceholder key={theme} label={label} />;
@@ -159,7 +162,7 @@ export default function SentimentGauges({ targetDate }: SentimentGaugesProps) {
         return (
           <GaugeIndicator
             key={theme}
-            value={t!.score as number}
+            value={themeData!.score as number}
             min={-1}
             max={1}
             label={label}

@@ -1,4 +1,5 @@
 import { Loader2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useWeather } from '@/hooks/useDashboard';
 import SectionHeader from '@/components/section-header';
 import { Eyebrow } from '@/components/editorial';
@@ -11,6 +12,7 @@ interface WeatherUpdateCardProps {
 }
 
 export default function WeatherUpdateCard({ targetDate, className }: WeatherUpdateCardProps) {
+  const { t } = useTranslation();
   const { data, isLoading, error } = useWeather(targetDate);
 
   if (isLoading) {
@@ -19,7 +21,7 @@ export default function WeatherUpdateCard({ targetDate, className }: WeatherUpda
         <SectionHeader numeral="V" title="Weather Intelligence" />
         <div className="flex items-center justify-center py-12" style={{ color: 'var(--ink-light)' }}>
           <Loader2 className="h-5 w-5 animate-spin mr-2" />
-          <span className="text-sm">Chargement du rapport météo...</span>
+          <span className="text-sm">{t('loading.weather_report')}</span>
         </div>
       </section>
     );
@@ -30,7 +32,7 @@ export default function WeatherUpdateCard({ targetDate, className }: WeatherUpda
       <section className={className} style={{ padding: '24px 0' }}>
         <SectionHeader numeral="V" title="Weather Intelligence" />
         <p style={{ color: 'var(--ink-light)', textAlign: 'center', fontSize: 14 }}>
-          Aucun rapport météo pour cette date.
+          {t('weather.empty_state')}
         </p>
       </section>
     );
@@ -68,10 +70,10 @@ export default function WeatherUpdateCard({ targetDate, className }: WeatherUpda
           }}
         >
           <Eyebrow as="div" tracking="0.2em" style={{ marginBottom: 2 }}>
-            Bulletin du jour
+            {t('weather.daily_bulletin_title')}
           </Eyebrow>
           <Eyebrow as="div" tone="subtle" size={9} tracking="0.18em" style={{ marginBottom: 12 }}>
-            Horizon — conditions mesurées (Open-Meteo, ~48 h)
+            {t('weather.horizon_subtitle')}
           </Eyebrow>
           {data.description
             .split(/\n{2,}/)

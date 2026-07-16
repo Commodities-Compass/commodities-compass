@@ -1,11 +1,20 @@
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import type { SeasonStatus } from '@/types/dashboard';
 import { Eyebrow } from '@/components/editorial';
 import { healthColor } from './shared';
 
-function statusBadge(status: SeasonStatus['status']): { label: string; color: string } {
-  if (status === 'completed') return { label: 'Clôturée', color: 'var(--ink-light)' };
-  if (status === 'in_progress') return { label: 'En cours', color: 'var(--ink)' };
-  return { label: 'À venir', color: 'var(--ink-light)' };
+function statusBadge(
+  status: SeasonStatus['status'],
+  t: TFunction,
+): { label: string; color: string } {
+  if (status === 'completed') {
+    return { label: t('weather.season_status_completed'), color: 'var(--ink-light)' };
+  }
+  if (status === 'in_progress') {
+    return { label: t('weather.season_status_in_progress'), color: 'var(--ink)' };
+  }
+  return { label: t('weather.season_status_upcoming'), color: 'var(--ink-light)' };
 }
 
 interface CampaignBlockProps {
@@ -15,6 +24,7 @@ interface CampaignBlockProps {
 }
 
 export default function CampaignBlock({ campaign, campaignHealth, seasons }: CampaignBlockProps) {
+  const { t } = useTranslation();
   return (
     <div style={{ marginBottom: 40 }}>
       {/* Header: campaign title (left) + santé globale (right) */}
@@ -24,7 +34,7 @@ export default function CampaignBlock({ campaign, campaignHealth, seasons }: Cam
       >
         <div>
           <Eyebrow as="div" tracking="0.2em" style={{ marginBottom: 4 }}>
-            Campagne {campaign}
+            {t('weather.campaign_label', { campaign })}
           </Eyebrow>
           <div
             style={{
@@ -36,15 +46,15 @@ export default function CampaignBlock({ campaign, campaignHealth, seasons }: Cam
               lineHeight: 1.1,
             }}
           >
-            Bilan saisonnier cumulé
+            {t('weather.seasonal_cumulative_title')}
           </div>
           <Eyebrow as="div" tone="subtle" size={9} tracking="0.18em" style={{ marginTop: 4 }}>
-            Horizon — saisonnier · cumul de campagne
+            {t('weather.campaign_horizon_subtitle')}
           </Eyebrow>
         </div>
         <div className="text-right">
           <Eyebrow as="div" tone="subtle" size={9} tracking="0.22em" style={{ marginBottom: 2 }}>
-            Santé globale
+            {t('weather.global_health_label')}
           </Eyebrow>
           <div
             className="tabular-nums"
@@ -83,7 +93,7 @@ export default function CampaignBlock({ campaign, campaignHealth, seasons }: Cam
           }}
         >
           {seasons.map((s, i) => {
-            const badge = statusBadge(s.status);
+            const badge = statusBadge(s.status, t);
             const isLast = i === seasons.length - 1;
             const isActive = s.status === 'in_progress';
             return (

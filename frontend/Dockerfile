@@ -26,6 +26,10 @@ ARG SENTRY_DSN
 ARG GIT_COMMIT_SHA
 ARG SENTRY_AUTH_TOKEN
 ARG ENVIRONMENT=production
+# Feature flag — exposes the FR/EN language switcher in the masthead. Defaults
+# OFF so an unset build arg can never accidentally ship the EN edition; flip via
+# the GitHub repo variable of the same name (no code change needed).
+ARG VITE_FEATURE_LANG_SWITCHER=false
 
 # Set environment variables for the build
 ENV AUTH0_DOMAIN=$AUTH0_DOMAIN
@@ -38,6 +42,7 @@ ENV SENTRY_DSN=$SENTRY_DSN
 ENV GIT_COMMIT_SHA=$GIT_COMMIT_SHA
 ENV SENTRY_AUTH_TOKEN=$SENTRY_AUTH_TOKEN
 ENV ENVIRONMENT=$ENVIRONMENT
+ENV VITE_FEATURE_LANG_SWITCHER=$VITE_FEATURE_LANG_SWITCHER
 
 # Build the application (sentry-vite-plugin uploads source maps then deletes the .map files
 # from dist, so the final image never ships them. SENTRY_AUTH_TOKEN is also never carried

@@ -119,6 +119,7 @@ jobs:
             --build-arg GIT_COMMIT_SHA=${{ github.sha }} \
             --build-arg SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }} \
             --build-arg ENVIRONMENT=production \
+            --build-arg VITE_FEATURE_LANG_SWITCHER=${{ vars.VITE_FEATURE_LANG_SWITCHER || 'false' }} \
             -t ${{ env.REGISTRY }}/frontend:${{ github.sha }} \
             -t ${{ env.REGISTRY }}/frontend:latest \
             frontend/

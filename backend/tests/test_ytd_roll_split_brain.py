@@ -8,9 +8,10 @@ alone (CAZ26), whose ``pl_indicator_daily`` decision was NULL, so every
 post-crossover session was silently skipped — the YTD froze at 93.60% for
 ~3 weeks and ``running_acc_5d`` degraded to the R&D bootstrap value.
 
-The fix: both consumers share ``_decision_aware_front_month_series``, which
-picks the highest-OI contract *that carries a scorable decision*, so a
-decision-less higher-OI contract can never drag the walk off the decision
+The durable fix: both consumers share the canonical roll calendar
+(``ref_contract.active_from``) via ``_decision_aware_front_month_series`` — the
+front-month per date is the operator's pinned contract, so a higher-OI contract
+the operator never rolled to (CAZ26) can never drag the walk off the decision
 series.
 """
 
@@ -56,7 +57,13 @@ def _clear_cache() -> None:
     _cache.clear()
 
 
-async def _contract(db: AsyncSession, code: str, *, active: bool) -> uuid.UUID:
+async def _contract(
+    db: AsyncSession,
+    code: str,
+    *,
+    active: bool,
+    active_from: date_cls | None = None,
+) -> uuid.UUID:
     ex = RefExchange(code=f"ICE-{code}", name="ICE", timezone="UTC")
     db.add(ex)
     await db.flush()
@@ -64,7 +71,11 @@ async def _contract(db: AsyncSession, code: str, *, active: bool) -> uuid.UUID:
     db.add(com)
     await db.flush()
     c = RefContract(
-        commodity_id=com.id, code=code, contract_month=code[-3:], is_active=active
+        commodity_id=com.id,
+        code=code,
+        contract_month=code[-3:],
+        is_active=active,
+        active_from=active_from,
     )
     db.add(c)
     await db.flush()
@@ -86,8 +97,10 @@ async def _seed_roll_split_brain(db: AsyncSession) -> None:
     From ``_CROSSOVER_IDX`` on, CAZ26 has the higher OI — an OI-only
     front-month pick would select it and drop the CAU26 decisions.
     """
-    cau = await _contract(db, "CAU26", active=True)  # carries decisions
-    caz = await _contract(db, "CAZ26", active=False)  # higher OI, no decision
+    # CAU26 is the operator's front-month from the first session (roll calendar);
+    # CAZ26 is never rolled to (no active_from) despite leading OI later.
+    cau = await _contract(db, "CAU26", active=True, active_from=_SESSIONS[0])
+    caz = await _contract(db, "CAZ26", active=False)  # higher OI, no calendar entry
     legacy = await _version(db, LEGACY_VERSION_NAME, active=True)
     await _version(db, ENSEMBLE_VERSION_NAME, active=False)  # no rows
 

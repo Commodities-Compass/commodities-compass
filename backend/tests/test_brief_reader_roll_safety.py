@@ -39,6 +39,9 @@ def _seed_chain(session: Session):
     session.flush()
     old = make_ref_contract(com.id, code="CAOLD67", is_active=False)
     new = make_ref_contract(com.id, code="CANEW67", is_active=True)
+    # Roll calendar: OLD is the operator's front-month; NEW was never rolled to
+    # (no active_from) despite leading OI on the roll day.
+    old.active_from = date(2026, 5, 1)
     ens = make_pl_algorithm_version(
         name="ensemble_v1_softgate_wrapper", version="1.0.0"
     )

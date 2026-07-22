@@ -48,7 +48,8 @@ from sqlalchemy import text
 from scripts._shared.cli import build_base_argparser
 from scripts._shared.logging import configure_logging
 from scripts._shared.sentry import bootstrap_scraper
-from scripts.contract_resolver import resolve_active, resolve_active_at_date
+from scripts.contract_resolver import resolve_active
+from scripts.front_month import front_month_for_date
 from scripts.ensemble_compute.cluster_mapping_loader import (
     REGIME_MONITOR_ATR_PCTL_KEY,
     SOFTGATE_ALPHA_MACRO_CAP_KEY,
@@ -196,9 +197,9 @@ def main() -> int:
     try:
         with get_session() as session:
             if args.historical:
-                contract_id = resolve_active_at_date(session, data_date)
+                contract_id = front_month_for_date(session, data_date)
                 logger.info(
-                    "Historical mode: resolved front-month-by-OI for %s",
+                    "Historical mode: resolved front-month from roll calendar for %s",
                     data_date,
                 )
             else:

@@ -180,21 +180,22 @@ async def get_position_from_technicals(
 async def _decision_aware_front_month_series(
     db: AsyncSession, start_date: date, end_date: date
 ) -> Sequence[Any]:
-    """Return ``(date, close, decision)`` rows for the front-month contract
-    that CARRIES a scorable decision, per date, ordered by date ASC.
+    """Return ``(date, close, decision)`` rows for the canonical front-month
+    contract per date, ordered by date ASC.
 
-    Roll-safe cross-contract series shared by the YTD walk
-    (``calculate_ytd_performance``) and the ensemble diagnostics
-    ``running_acc_5d`` (``ensemble_diagnostics_service``). ``scored`` first
-    collects every ``(date, contract)`` that carries a decision — ensemble
-    preferred over legacy. Restricting to those two version ids keeps
-    shadow-mode algos (power10years, future shadow versions) from ever dragging
-    the front-month onto a contract they alone wrote. ``front_month`` then
-    picks, per date, the highest-OI contract *among those that carry a
-    decision*, so an OI crossover to a not-yet-rolled contract (e.g. CAZ26
-    leading OI in July 2026 while decisions still land on the active CAU26) can
-    no longer silently drop days — the pre-fix bug that froze the YTD once
-    OHLCV rolled ahead of the decision contract.
+    Roll-safe series shared by the YTD walk (``calculate_ytd_performance``) and
+    the ensemble diagnostics ``running_acc_5d`` (``ensemble_diagnostics_service``).
+    The front-month per date comes from the canonical roll calendar
+    (``ref_contract.active_from``) — the single source of truth — so it can never
+    disagree with compute / the chained VIEW. The decision on that contract is
+    ensemble-preferred over legacy (``:ensemble_id`` / ``:legacy_id`` pinned to
+    ``language='fr'`` since the decision is language-agnostic).
+
+    This replaces the former "highest-OI among decision-carrying contracts"
+    selection, which still repicked the wrong contract on a roll (e.g. CAZ26 in
+    July 2026 carried a legacy decision AND led OI, so it was scored instead of
+    the operator's CAU26) — a residual of the YTD split-brain. Calendar selection
+    makes that structurally impossible.
     """
     from sqlalchemy import text as sa_text
 
@@ -211,39 +212,31 @@ async def _decision_aware_front_month_series(
         legacy_id = await get_active_algorithm_version_id(db)
 
     query = sa_text("""
-        WITH scored AS (
-            SELECT
-                d.date,
-                d.contract_id,
-                COALESCE(ens.decision, leg.decision) AS decision
-            FROM (
-                SELECT DISTINCT date, contract_id
-                FROM pl_indicator_daily
-                WHERE date >= :start AND date <= :end_date
-            ) d
-            LEFT JOIN pl_indicator_daily ens
-                   ON ens.date = d.date
-                  AND ens.contract_id = d.contract_id
-                  AND ens.algorithm_version_id = :ensemble_id
-                  AND ens.language = 'fr'
-            LEFT JOIN pl_indicator_daily leg
-                   ON leg.date = d.date
-                  AND leg.contract_id = d.contract_id
-                  AND leg.algorithm_version_id = :legacy_id
-                  AND leg.language = 'fr'
-            WHERE COALESCE(ens.decision, leg.decision) IS NOT NULL
-        ),
-        front_month AS (
-            SELECT DISTINCT ON (cd.date) cd.date, cd.close, cd.contract_id
-            FROM pl_contract_data_daily cd
-            JOIN scored s ON s.date = cd.date AND s.contract_id = cd.contract_id
-            WHERE cd.date >= :start AND cd.date <= :end_date
-            ORDER BY cd.date, cd.oi DESC NULLS LAST
+        WITH front AS (
+            -- calendar front-month per date (greatest active_from <= date)
+            SELECT dd.date,
+                   (SELECT c.id FROM ref_contract c
+                     WHERE c.active_from IS NOT NULL
+                       AND c.active_from <= dd.date
+                     ORDER BY c.active_from DESC LIMIT 1) AS contract_id
+            FROM (SELECT DISTINCT date FROM pl_contract_data_daily
+                   WHERE date >= :start AND date <= :end_date
+                     AND close IS NOT NULL) dd
         )
-        SELECT fm.date, fm.close, s.decision
-        FROM front_month fm
-        JOIN scored s ON s.date = fm.date AND s.contract_id = fm.contract_id
-        ORDER BY fm.date ASC
+        SELECT f.date, cd.close,
+               COALESCE(ens.decision, leg.decision) AS decision
+        FROM front f
+        JOIN pl_contract_data_daily cd
+              ON cd.date = f.date AND cd.contract_id = f.contract_id
+        LEFT JOIN pl_indicator_daily ens
+               ON ens.date = f.date AND ens.contract_id = f.contract_id
+              AND ens.algorithm_version_id = :ensemble_id
+              AND ens.language = 'fr'
+        LEFT JOIN pl_indicator_daily leg
+               ON leg.date = f.date AND leg.contract_id = f.contract_id
+              AND leg.algorithm_version_id = :legacy_id
+              AND leg.language = 'fr'
+        ORDER BY f.date ASC
     """)
     # The `scored` CTE pins ens/leg to language='fr' (DEFAULT_LANGUAGE): the
     # `decision` is language-agnostic (the EN row copies it), so without the
@@ -649,8 +642,9 @@ async def get_chart_data(
     window_start = window_end - timedelta(days=days)
 
     # Chained front-month series so the chart spans contract rolls seamlessly.
-    # ``v_contract_data_chained`` is DISTINCT ON (date) ORDER BY oi DESC — one
-    # row per date = whatever contract was front-month that day. This replaces
+    # ``v_contract_data_chained`` now resolves the front-month per date from the
+    # canonical roll calendar (ref_contract.active_from) — one row per date =
+    # the contract the operator had active that day. This replaces
     # the old active-contract filter (which dropped ALL pre-roll history the
     # moment the new contract went active) and its fragile row-count fallback
     # (which never fired for short windows — e.g. the 5-day ticker series — and,

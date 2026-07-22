@@ -38,7 +38,13 @@ def _clear_cache() -> None:
     _cache.clear()
 
 
-async def _contract(db: AsyncSession, code: str, *, active: bool) -> uuid.UUID:
+async def _contract(
+    db: AsyncSession,
+    code: str,
+    *,
+    active: bool,
+    active_from: date_cls | None = None,
+) -> uuid.UUID:
     ex = RefExchange(code=f"ICE-{code}", name="ICE", timezone="UTC")
     db.add(ex)
     await db.flush()
@@ -46,7 +52,11 @@ async def _contract(db: AsyncSession, code: str, *, active: bool) -> uuid.UUID:
     db.add(com)
     await db.flush()
     c = RefContract(
-        commodity_id=com.id, code=code, contract_month=code[-3:], is_active=active
+        commodity_id=com.id,
+        code=code,
+        contract_month=code[-3:],
+        is_active=active,
+        active_from=active_from,
     )
     db.add(c)
     await db.flush()
@@ -80,8 +90,13 @@ async def _indicator(db, on_date, contract_id, algo_id) -> None:
 async def test_request_contract_resolves_per_date_across_roll(
     db_session: AsyncSession,
 ) -> None:
-    can = await _contract(db_session, "CAN26", active=False)  # pre-roll
-    cau = await _contract(db_session, "CAU26", active=True)  # post-roll (active)
+    # Roll calendar: CAN26 front from Apr, CAU26 from mid-Jun (post-target).
+    can = await _contract(
+        db_session, "CAN26", active=False, active_from=date_cls(2026, 4, 10)
+    )
+    cau = await _contract(
+        db_session, "CAU26", active=True, active_from=date_cls(2026, 6, 17)
+    )
     legacy = await _version(db_session, LEGACY_VERSION_NAME, active=True)
     ensemble = await _version(db_session, ENSEMBLE_VERSION_NAME, active=False)
 

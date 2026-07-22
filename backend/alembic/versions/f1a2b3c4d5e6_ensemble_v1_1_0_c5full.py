@@ -42,13 +42,13 @@ _DESC = (
 
 
 def upgrade() -> None:
-    # 1) New version row — clone v1.0.0's flags/kind/horizon, bump version, new description.
+    # 1) New version row — clone v1.0.0's flags/horizon, bump version, new description.
     op.execute(
         f"""
         INSERT INTO pl_algorithm_version
-            (id, name, version, horizon, is_active, description, compute_enabled, algorithm_kind)
+            (id, name, version, horizon, is_active, description, compute_enabled)
         SELECT gen_random_uuid(), name, '{_V_NEW}', horizon, is_active,
-               '{_DESC}', compute_enabled, algorithm_kind
+               '{_DESC}', compute_enabled
         FROM pl_algorithm_version
         WHERE name = '{_ENSEMBLE}' AND version = '{_V_OLD}'
           AND NOT EXISTS (

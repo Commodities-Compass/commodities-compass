@@ -4,6 +4,13 @@
 >
 > Scope: read-path (dashboard API) + producer-path (pipeline jobs). Code lives in `backend/app/utils/contract_resolver.py` (async, dashboard), `backend/scripts/contract_resolver.py` (sync, jobs), `backend/app/api/api_v1/endpoints/dashboard.py` (orchestration), `backend/app/services/dashboard_service.py` (queries).
 
+> **🔄 2026-07 UPDATE — the mechanisms below were CONSOLIDATED (principles unchanged):**
+>
+> 1. **Contract dimension (PR #73)**: the front-month is now resolved from the **canonical roll calendar** — `ref_contract.active_from`, single resolver `front_month_for_date` (`app/utils/front_month.py` async / `scripts/front_month.py` sync). This replaced the 5 divergent resolvers AND the liquidity(OI/volume)-based selection in `v_contract_data_chained` (the VIEW now JOINs the calendar). A 7th split-brain incident (2026-07-17: compute rolled to CAZ26 on liquidity while decisions stayed CAU26) motivated it. Roll = `poetry run roll-contract <NEW> --effective-date` which stamps `active_from`; `cc-roll-watchdog` (19:45 UTC) nudges via Sentry when a roll looks due.
+> 2. **Algorithm-version dimension (PRs #75/#77)**: still resolved by **row existence per date**, and now explicitly: the resolver picks the newest ensemble version *that has a `pl_indicator_daily` row for the date* (`get_algorithm_version_for_date`). In practice there is **ONE continuous ensemble version (v1.0.0)** — shipping a config change as a new `pl_algorithm_version` splits the history and breaks YTD / trailing windows / explainer / brief (the collapsed v1.1.0 attempt). Config changes are versioned via **temporal config** (`pl_algorithm_config.effective_from` + `v_algorithm_config_current`) instead — see [PIPELINE_ENSEMBLE.md §4.1](../PIPELINE_ENSEMBLE.md).
+>
+> Sections below describing OI-based front-month selection or multi-resolver paths are historical context for the bug class; the calendar + row-existence rules above are the current truth.
+
 ---
 
 ## 0. The two keys every `pl_*` read needs

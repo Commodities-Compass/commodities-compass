@@ -162,7 +162,7 @@ Le soft-gate produit une décision, mais elle peut être trompée par des **rég
 | Détecteur | Fire condition | Sémantique |
 |---|---|---|
 | `fired_running_acc` | running_acc_5d récente < seuil (≈ 0.45) | Le gate a sous-performé les 5 derniers jours — méfiance |
-| `fired_trend` | **ON depuis 2026-06** : sign(realized_return_7d) opposé à net_score ET \|r7d\| > `wrapper_tau_trend` (0.03) | Le prix a déjà bougé contre le commit (réactif) — FIX2, +1.69 backtest 6 mois |
+| `fired_trend` | **ON depuis 2026-06** : sign(realized_return_7d) opposé à net_score ET \|r7d\| > `wrapper_tau_trend` (0.05 depuis le retune C5-full 2026-07-22, avant 0.03) | Le prix a déjà bougé contre le commit (réactif) — FIX2, +1.69 backtest 6 mois |
 | `fired_dispersion` | n_committed_specialists trop bas + variance des votes élevée | Pas de consensus — soft-gate prend une décision sur peu de signal |
 | `fired_three_way` | (off en v1.0.0) | Détecte un three-way disagreement (Winter≠Spring≠global) |
 
@@ -184,17 +184,22 @@ Le soft-gate produit une décision, mais elle peut être trompée par des **rég
 - `wrapper_active` : TRUE si wrapped ≠ soft_gate (le wrapper a effectivement changé la décision)
 - 4 booléens `fired_*` : pour audit, on garde la trace des détecteurs qui ont fired (même si le Compass override a relâché le veto)
 
-### 4.1 Leviers Compass config-as-data (2026-06)
+### 4.1 Leviers Compass config-as-data (2026-06) — retunés **C5-full** (2026-07-22)
 
-La `WrapperConfig` vient de l'artifact figé `tpw_v1`, mais les rows `wrapper_*` de `pl_algorithm_config` sont désormais **autoritaires** (loader `load_wrapper_config` → `dataclasses.replace`) : on flippe un détecteur / seuil **sans re-freezer l'artifact ni redéployer**. Trois leviers actifs, tous tunables/désactivables par config (cf. [runbook wrapper-levers-tuning.md](../runbooks/wrapper-levers-tuning.md)) :
+La `WrapperConfig` vient de l'artifact figé `tpw_v1`, mais les rows `wrapper_*` de `pl_algorithm_config` sont **autoritaires** (loader `load_wrapper_config` → `dataclasses.replace`) : on flippe un détecteur / seuil **sans re-freezer l'artifact ni redéployer** (cf. [runbook wrapper-levers-tuning.md](../runbooks/wrapper-levers-tuning.md)).
 
-| Levier | Clé config | Valeur | Effet |
+**Config TEMPORELLE (2026-07-22, migration `g2b3c4d5e6f7`)** : `pl_algorithm_config` est **append-only** — colonnes `effective_from DATE` + `active BOOLEAN`, clé unique `(version, param, effective_from)`. Un changement = **INSERT** d'une nouvelle row (l'ancienne valeur est préservée → provenance : « alpha_macro était 0.9 jusqu'au 22/07, puis 0.3 ») ; un retrait = row **tombstone** `active=false`. Le runtime lit la vue **`v_algorithm_config_current`** (dernière row active par param ≤ aujourd'hui) — tous les loaders (`cluster_mapping_loader.py`, `app/engine/runner.py`) passent par elle. **⚠️ NE JAMAIS shipper un changement de config ensemble comme une nouvelle `pl_algorithm_version`** : la pipeline suppose UNE version continue (YTD, fenêtres trailing du wrapper, explainer/brief pinnent la version) — le split v1.1.0 tenté le 2026-07-22 a cassé tout ça en cascade avant d'être collapsé (PR #75→#77).
+
+Le **retune C5-full** (2026-07-22, sur indicateurs corrigés post-fix macroeco #74) a re-calibré les leviers — backtest 143 sessions : dir-acc publiée **75→88 %** (full) / **57→87.5 %** (50 dernières sessions), jours actionnables **14→35 %** :
+
+| Levier | Clé config | Valeur (effective 2026-07-22) | Effet |
 |---|---|---|---|
-| Trend-conflict (FIX2) | `wrapper_use_trend_conflict` | `1` | Réactive le détecteur trend (réactif : le prix a déjà bougé contre le commit). +1.69 backtest 6 mois. |
-| regime-MONITOR | `compass_regime_monitor_atr_pctl` | `0.80` | Override commit→MONITOR quand `atr_14d/close` percentile(252j) > seuil. EV : en vol extrême dir-acc ~76% < break-even ~81%. ⚠️ in-sample / abstention. |
-| alpha_macro cap | `compass_softgate_alpha_macro_cap` | `0.9` | Cap le `alpha_macro` soft-gate (1.477) → un spécialiste anti-macro est sous-pondéré `(1−0.9)`, jamais zéroté. Tue l'unanimité `net_score=−1.000`. |
+| alpha_macro cap | `compass_softgate_alpha_macro_cap` | 0.9 → **0.3** | **Le levier dominant du retune.** Le signal macro presse-LLM est bruité : sur-pondéré il dégrade la dir-acc. À 0.3 il devient un tilt léger. |
+| commit_threshold | `commit_threshold` | 0.2493 → **0.15** | Bande de commit du soft-gate, désormais **wirée depuis la config** (`ensemble_compute/main.py`, avant : artifact seul). Plus de jours actionnables à accuracy quasi égale. |
+| Trend-conflict (FIX2) | `wrapper_use_trend_conflict` / `wrapper_tau_trend` | `1` / 0.03 → **0.05** | Détecteur conservé, seuil relâché — à 0.03 il sur-vetotait des commits corrects sur données corrigées. |
+| regime-MONITOR | `compass_regime_monitor_atr_pctl` | **OFF (tombstone `active=false`)** | Sur données corrigées : veto-precision **0.14** (25 winners tués / 4 losers). Sa prémisse « haute vol ⇒ dir-acc < break-even » était un **artefact de la corruption macroeco**. Le code reste (config-gated) : ré-activable par une nouvelle row active. |
 
-**Composition de la décision publiée** : `soft-gate(alpha_macro cappé) → wrapper (trend/run_acc/dispersion) → regime-MONITOR override`. `decision_wrapped` garde la sortie **wrapper** (audit) ; `pl_orchestrator_decision.regime_monitor_fired` (nouvelle colonne) trace l'override ; **`pl_indicator_daily.decision` (servi par le dashboard) = la décision finale régime-ajustée**. `fired_trend` / `fired_three_way` sont désormais lus du wrapper (plus hardcodés `False`), et `macro_half_life_days` est calculé (plus `None`).
+**Composition de la décision publiée** : `soft-gate(alpha_macro cappé 0.3) → wrapper (trend/run_acc/dispersion) → [regime-MONITOR si configuré — OFF depuis 2026-07-22]`. `decision_wrapped` garde la sortie **wrapper** (audit) ; `pl_orchestrator_decision.regime_monitor_fired` trace l'override ; **`pl_indicator_daily.decision` (servi par le dashboard) = la décision finale**. `fired_trend` / `fired_three_way` sont lus du wrapper (plus hardcodés `False`), et `macro_half_life_days` est calculé (plus `None`).
 
 ### Result on backfill 2026
 
@@ -204,6 +209,8 @@ La `WrapperConfig` vient de l'artifact figé `tpw_v1`, mais les rows `wrapper_*`
 | WR accuracy | 100% (mais cold-start NaN) | 76% |
 
 → Compass override booste la coverage tout en gardant une accuracy correcte.
+
+> ⚠️ Ce backfill datait d'AVANT la correction de la corruption macroeco (#74) — chiffres calculés sur indicateurs corrompus. Référence à jour (indicateurs corrigés + config C5-full, 143 sessions, 2026-07-22) : **dir-acc 88 % full / 87.5 % récent-50, 35 % de jours actionnables**. Harnais reproductible : `backend/scripts/research/wrapper_retune_*.py`.
 
 ---
 

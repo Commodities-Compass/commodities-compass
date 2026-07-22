@@ -1,75 +1,103 @@
 # Compass Wrapper Levers — Tuning & Rollback Runbook
 
-> Three Compass-side levers on the ensemble decision, all **config-as-data** in
-> `pl_algorithm_config` (scoped to `ensemble_v1_softgate_wrapper`). Tunable / disable-able
-> **without a redeploy** — flip the row, the next `cc-ensemble-compute` run picks it up.
-> Added 2026-06 (migration `e7f8a9b0c1d2`). See [PIPELINE_ENSEMBLE.md §4](../architecture/PIPELINE_ENSEMBLE.md).
+> Compass-side levers on the ensemble decision, all **config-as-data** in
+> `pl_algorithm_config` (scoped to `ensemble_v1_softgate_wrapper` v1.0.0). Tunable /
+> disable-able **without a redeploy** — append the row, the next `cc-ensemble-compute`
+> run picks it up. Levers added 2026-06 (migration `e7f8a9b0c1d2`); **temporal config +
+> C5-full retune 2026-07-22** (migration `g2b3c4d5e6f7`).
+> See [PIPELINE_ENSEMBLE.md §4.1](../architecture/PIPELINE_ENSEMBLE.md).
 
-## The levers
+## ⚠️ Config is TEMPORAL (append-only) since 2026-07-22
 
-| Lever | Config key | Active value | Effect | Validation |
+`pl_algorithm_config` carries `effective_from DATE` + `active BOOLEAN`, unique on
+`(algorithm_version_id, parameter_name, effective_from)`. **Never UPDATE or DELETE a
+config row** — that destroys provenance. Instead:
+
+- **Change a value** → INSERT a new row with `effective_from = today` (the old row stays
+  as history).
+- **Turn a lever off** → INSERT a **tombstone** row (`active = false`, `effective_from = today`).
+  Absent-from-current-view ⇒ lever OFF by design.
+- The runtime reads the VIEW **`v_algorithm_config_current`** = latest row per param with
+  `effective_from <= CURRENT_DATE`, kept only if `active`. All config loaders
+  (`scripts/ensemble_compute/cluster_mapping_loader.py`, `app/engine/runner.py`) go
+  through it.
+- Audit "what changed when": `SELECT parameter_name, value, effective_from, active FROM
+  pl_algorithm_config WHERE algorithm_version_id = … ORDER BY parameter_name, effective_from;`
+
+**Never ship a config change as a new `pl_algorithm_version`** — the pipeline assumes ONE
+continuous ensemble version (YTD, wrapper trailing windows, explainer/brief pin the
+version). The v1.1.0 attempt of 2026-07-22 broke all of those in cascade before being
+collapsed (PRs #75→#77). Temporal config IS the versioning.
+
+## The levers (current = C5-full, effective 2026-07-22)
+
+| Lever | Config key | Current | History | Effect |
 |---|---|---|---|---|
-| **Trend-conflict detector (FIX2)** | `wrapper_use_trend_conflict` | `1` | Wrapper dampens a commit → MONITOR when the realized 7d return is opposite `net_score` by > `wrapper_tau_trend` (0.03). Reactive (price already moved against the bet). | +1.69 Σ on the 6-month ensemble backfill; catches the 05-01 HEDGE-on-+15.85%. |
-| **regime-MONITOR** | `compass_regime_monitor_atr_pctl` | `0.80` | Overrides a committed decision → MONITOR when today's `atr_14d/close` percentile (trailing 252 sessions) exceeds the threshold. EV: in top-vol regimes dir-accuracy (~76%) < the score-grid break-even (~81%). | ⚠️ **In-sample** (threshold fitted on the 6-month data). It is *abstention*, not prediction — it mutes winners too (e.g. June correct HEDGEs). Watch it forward. |
-| **alpha_macro cap** | `compass_softgate_alpha_macro_cap` | `0.9` | Caps the soft-gate `alpha_macro` (tuned 1.477) so a specialist voting against `macro_direction` is down-weighted `(1−0.9)`, never zeroed `(1−1.477)→0`. Dissolves the unanimous `net_score=−1.000` collapse. | Robustness; ≈neutral on May decisions (the May consensus was genuinely bearish), prevents the future macro-disagree pathology. |
+| **alpha_macro cap** | `compass_softgate_alpha_macro_cap` | **0.3** | 0.9 (2026-06) → 0.3 | Caps the soft-gate `alpha_macro` (tuned 1.477). **Dominant lever of the C5-full retune**: the LLM press-review macro signal is noisy — over-weighted it degrades dir-acc. At 0.3 it is a mild tilt. |
+| **commit_threshold** | `commit_threshold` | **0.15** | 0.2493 (artifact) → 0.15 | Soft-gate commit band on \|net_score\|. Wired from config since 2026-07-22 (`ensemble_compute/main.py` override, mirrors the alpha-cap pattern). Lower ⇒ more actionable days. |
+| **Trend-conflict (FIX2)** | `wrapper_use_trend_conflict` / `wrapper_tau_trend` | `1` / **0.05** | tau 0.03 → 0.05 | Detector kept; at 0.03 it over-vetoed correct commits on corrected indicators. |
+| **regime-MONITOR** | `compass_regime_monitor_atr_pctl` | **OFF (tombstone)** | 0.80 active → 0.80 `active=false` | On corrected data its veto-precision was **0.14** (killed 25 winners / 4 losers) — its "top-vol ⇒ dir-acc < break-even" premise was an artifact of the macroeco corruption. Code path remains, config-gated. |
+
+Validation (143 corrected sessions, harness `backend/scripts/research/wrapper_retune_*.py`):
+published dir-acc **75→88 %** full / **57→87.5 %** last-50, actionable days **14→35 %**,
+robust J+3..J+6, spread across months, not downtrend-beta (OPEN 7/7 incl. the June rally).
 
 ## How the published decision is composed
 
 ```
-soft-gate(alpha_macro capped)  →  Compass wrapper (trend/run_acc/dispersion)  →  regime-MONITOR override
+soft-gate(alpha_macro capped 0.3)  →  Compass wrapper (trend/run_acc/dispersion)  →  [regime-MONITOR if configured — OFF]
         ↓                                   ↓                                            ↓
    soft_gate_decision                 decision_wrapped                         pl_indicator_daily.decision (PUBLISHED)
                                       (audit, in pl_orchestrator_decision)      regime_monitor_fired = the override flag
 ```
 
-- `pl_orchestrator_decision.decision_wrapped` = the **wrapper's** output (unchanged audit semantics).
-- `pl_orchestrator_decision.regime_monitor_fired` = `True` when regime-MONITOR forced MONITOR on top.
-- `pl_indicator_daily.decision` (what the dashboard serves) = the **regime-adjusted final**.
+## Tune a lever (no redeploy) — APPEND, never UPDATE
 
-## Tune a lever (no redeploy)
-
-Connect to prod via the IAP bastion (read-only by default — this is a deliberate **value UPDATE**, allowed on
-explicit intent per `migrations-prod-via-main-only` §2, NOT a DDL change):
+Prod via the IAP bastion (`.local/db-prod.sh`) — a deliberate config append, allowed on
+explicit intent per `migrations-prod-via-main-only` §2 (DML, not DDL). Prefer landing it
+as an idempotent migration when not urgent.
 
 ```sql
--- e.g. raise the regime-MONITOR threshold to be less trigger-happy (fewer abstentions)
-UPDATE pl_algorithm_config SET value = '0.90'
-WHERE parameter_name = 'compass_regime_monitor_atr_pctl'
-  AND algorithm_version_id = (SELECT id FROM pl_algorithm_version WHERE name = 'ensemble_v1_softgate_wrapper');
+-- e.g. re-enable regime-MONITOR at a higher threshold, effective today
+INSERT INTO pl_algorithm_config (id, algorithm_version_id, parameter_name, value, description, effective_from, active)
+SELECT gen_random_uuid(), v.id, 'compass_regime_monitor_atr_pctl', '0.90',
+       're-enabled at 0.90 after forward validation', CURRENT_DATE, true
+FROM pl_algorithm_version v WHERE v.name = 'ensemble_v1_softgate_wrapper' AND v.version = '1.0.0';
 ```
 
-## Disable a lever (instant rollback, no redeploy)
+## Disable a lever (instant rollback) — tombstone
 
 ```sql
--- regime-MONITOR OFF: delete the row (absent row → lever OFF by design)
-DELETE FROM pl_algorithm_config
-WHERE parameter_name = 'compass_regime_monitor_atr_pctl'
-  AND algorithm_version_id = (SELECT id FROM pl_algorithm_version WHERE name = 'ensemble_v1_softgate_wrapper');
-
--- alpha_macro cap OFF: same (delete compass_softgate_alpha_macro_cap)
-
--- trend-conflict detector OFF: flip the switch back
-UPDATE pl_algorithm_config SET value = '0'
-WHERE parameter_name = 'wrapper_use_trend_conflict'
-  AND algorithm_version_id = (SELECT id FROM pl_algorithm_version WHERE name = 'ensemble_v1_softgate_wrapper');
+-- e.g. alpha_macro cap OFF (soft-gate falls back to the artifact value 1.477 — NOT recommended)
+INSERT INTO pl_algorithm_config (id, algorithm_version_id, parameter_name, value, description, effective_from, active)
+SELECT gen_random_uuid(), v.id, 'compass_softgate_alpha_macro_cap', '0.3',
+       'tombstone — cap disabled', CURRENT_DATE, false
+FROM pl_algorithm_version v WHERE v.name = 'ensemble_v1_softgate_wrapper' AND v.version = '1.0.0';
 ```
 
-The next `cc-ensemble-compute` run (19:18 UTC) reflects the change. A full rollback of all three is the migration
-`downgrade()` (drops the two compass keys, resets `wrapper_use_trend_conflict=0`, drops the audit column) — but
-prefer the config flips above for live ops; reserve the downgrade for removing the column.
+To revert a change made TODAY (same `effective_from`, unique conflict): that single case
+is a value `UPDATE` of today's row — the only in-place edit that doesn't lose history.
 
-## Watch-list (regime-MONITOR is the one to watch)
+The next `cc-ensemble-compute` run (19:18 UTC) reflects the change. **Gotcha for manual
+re-runs**: `gcloud run jobs execute --args=…` REPLACES the job's full arg list — replicate
+the defaults (e.g. `--language both`) or you silently drop them.
 
-regime-MONITOR is the only **un-validated-out-of-sample** lever. Monitor forward:
-- Count of `regime_monitor_fired = True` rows per month (it will spike in volatile months).
-- Whether it mutes **correct** directional calls (compare `decision_wrapped` vs realized J+4 on fired rows).
-- If it bleeds in a sustained high-vol *trend* (e.g. a 2024-style melt-up where committing is right), raise the
-  threshold or disable. The score-grid EV break-even is ~81% dir-accuracy; if a regime sustains accuracy above that,
-  the lever is net-negative there.
+## Watch-list
+
+- `alpha_macro_cap=0.3` and `commit_threshold=0.15` were tuned on 143 corrected sessions
+  (Dec-2025→Jul-2026, HEDGE-heavy downtrend). Re-evaluate quarterly with
+  `wrapper_retune_softgate.py` as data accrues.
+- regime-MONITOR stays off unless a forward analysis shows a regime where committing is
+  reliably EV-negative (score-grid break-even ≈ 81 % dir-acc).
 
 ## Research provenance
 
-`backend/scripts/research/` (non-production): `wrapper_levers_decade_backtest.py` (the recency-weighted selectivity
-judge that rejected COT/OI/IV predictive levers), `resimulate_may_to_now.py` (the May→now stacked re-simulation),
-`p0_macro_gate_retune.py` (the alpha_macro in-project retune proof), `robustness_fixes_backtest.py` (FIX2 vs the
-dropped NaN-inversion). See [SOFTGATE_MACRO_GATE_RETUNE_SPEC.md](../research/SOFTGATE_MACRO_GATE_RETUNE_SPEC.md).
+`backend/scripts/research/` (non-production):
+- **`wrapper_retune_{verify,recompute,lib,sweep,robustness,explore,softgate,softgate_robust,joint_check}.py`**
+  — the 2026-07-22 C5-full harness: pinned recompute, in-memory evaluator that reproduces
+  prod exactly (wrapper = pure post-process of soft-gate output), veto-precision
+  diagnostic, Pareto sweep, recency/horizon/beta robustness, soft-gate alpha sweep.
+- `wrapper_levers_decade_backtest.py` (recency-weighted selectivity judge that rejected
+  COT/OI/IV levers), `resimulate_may_to_now.py`, `p0_macro_gate_retune.py`,
+  `robustness_fixes_backtest.py`. See
+  [SOFTGATE_MACRO_GATE_RETUNE_SPEC.md](../research/SOFTGATE_MACRO_GATE_RETUNE_SPEC.md).

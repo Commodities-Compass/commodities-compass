@@ -203,48 +203,28 @@ def load_market_data(session: Session, contract_code: str) -> pd.DataFrame:
 def load_all_market_data(session: Session) -> pd.DataFrame:
     """Load full price history across all contracts as one continuous series.
 
-    Picks one contract per date (the front-month) via DISTINCT ON, so
-    overlapping data from contract transitions does not interleave prices from
-    different contracts on the same date.
-
-    **Front-month rule (OI AND volume):** the chain rolls onto the next
-    delivery month only when that contract leads on BOTH open interest AND
-    volume on a given date. On a *split* (one contract leads OI, another leads
-    volume — the ambiguous window of a roll) it stays on the **incumbent**
-    (earliest ``contract_month``). A marginal/premature OI-only crossover
-    therefore does NOT roll the chain — which is what crashed the pipeline on
-    2026-06-23/24 when CAZ26 OI nudged past CAU26 while CAU26 still held the
-    volume. This rule is mirrored **verbatim** in the ``v_contract_data_chained``
-    VIEW so compute-indicators and the ensemble market_history loader always
-    agree on the front-month for a date (their disagreement is the split-brain
-    bug class this guards).
+    Reads the front-month per date from ``v_contract_data_chained``, the single
+    canonical resolver — the front-month is the contract with the greatest
+    ``ref_contract.active_from`` <= that date (the operator's roll calendar, seeded
+    from the real decision history, maintained by ``roll-contract``). There is no
+    oi/volume heuristic here anymore: the calendar is the only source of truth, so
+    compute-indicators, the ensemble market_history loader, daily-analysis and the
+    dashboard can never disagree on the front-month (that disagreement was the
+    recurring split-brain — see docs/user-stories/P1-contract-roll-canonical-frontmonth.md).
 
     Each row retains its original contract_id for per-contract DB writes.
     """
     result = session.execute(
         text("""
-            WITH per_date AS (
-                SELECT date,
-                       MAX(COALESCE(oi, 0))     AS max_oi,
-                       MAX(COALESCE(volume, 0)) AS max_vol
-                FROM pl_contract_data_daily
-                WHERE close IS NOT NULL
-                GROUP BY date
-            ),
-            market AS (
-                SELECT DISTINCT ON (d.date)
-                    d.date, d.close, d.high, d.low, d.volume, d.oi,
-                    d.implied_volatility,
-                    d.contract_id,
-                    c.code AS contract_code
-                FROM pl_contract_data_daily d
-                JOIN ref_contract c ON d.contract_id = c.id
-                JOIN per_date pd ON pd.date = d.date
-                WHERE d.close IS NOT NULL
-                ORDER BY d.date,
-                    (COALESCE(d.oi, 0) >= pd.max_oi
-                     AND COALESCE(d.volume, 0) >= pd.max_vol) DESC,
-                    c.contract_month ASC
+            WITH market AS (
+                -- front-month per date from the canonical roll calendar;
+                -- v_contract_data_chained now resolves via ref_contract.active_from
+                SELECT v.date, v.close, v.high, v.low, v.volume, v.oi,
+                       v.implied_volatility,
+                       v.contract_id,
+                       c.code AS contract_code
+                FROM v_contract_data_chained v
+                JOIN ref_contract c ON c.id = v.contract_id
             )
             SELECT
                 m.date, m.close, m.high, m.low, m.volume, m.oi,

@@ -8,6 +8,7 @@ Usage:
 import argparse
 import logging
 import sys
+from datetime import date
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -15,7 +16,7 @@ from sqlalchemy import select
 
 from app.models.reference import RefContract
 from scripts.contract_resolver import ContractResolverError, resolve_active_code
-from scripts.db import get_session
+from scripts.db import get_next_session_date, get_session
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
@@ -40,8 +41,26 @@ def main() -> int:
         action="store_true",
         help="Show what would happen without making changes",
     )
+    parser.add_argument(
+        "--effective-date",
+        default=None,
+        help=(
+            "Session date the new contract becomes the front-month "
+            "(YYYY-MM-DD; default: the NEXT trading session). Stamped as "
+            "ref_contract.active_from — the canonical roll calendar the "
+            "front_month resolver reads. Pass explicitly to re-stamp a rollback."
+        ),
+    )
     args = parser.parse_args()
     new_code = args.new_code.upper()
+    # Default to the NEXT trading session: an evening roll takes effect on the
+    # next session, which matches the seed's "first session the contract carries
+    # a decision". --effective-date overrides for same-day / backfill / rollback.
+    effective_date = (
+        date.fromisoformat(args.effective_date)
+        if args.effective_date
+        else get_next_session_date(date.today())
+    )
 
     try:
         with get_session() as session:
@@ -73,9 +92,10 @@ def main() -> int:
 
             if args.dry_run:
                 logger.info(
-                    "[DRY RUN] Would deactivate %s and activate %s",
+                    "[DRY RUN] Would deactivate %s and activate %s (active_from=%s)",
                     current_code,
                     new_code,
+                    effective_date,
                 )
                 # Rollback so get_session doesn't commit
                 session.rollback()
@@ -93,9 +113,41 @@ def main() -> int:
                 contract.is_active = False
                 logger.info("Deactivated: %s", contract.code)
 
-            # Activate new contract
+            # Activate new contract + stamp the canonical roll calendar.
+            # is_active stays as a derived cache of the leading edge; active_from
+            # is the source of truth the front_month resolver reads.
             new_contract.is_active = True
+            if args.effective_date is not None:
+                # Explicit date → always (re)stamp; this is how an intentional
+                # rollback re-stamps the calendar to a chosen session.
+                new_contract.active_from = effective_date
+                logger.info(
+                    "Set active_from=%s on %s (explicit)", effective_date, new_code
+                )
+            elif new_contract.active_from is None:
+                new_contract.active_from = effective_date
+                logger.info("Set active_from=%s on %s", effective_date, new_code)
+            else:
+                logger.info(
+                    "Kept existing active_from=%s on %s (idempotent re-roll)",
+                    new_contract.active_from,
+                    new_code,
+                )
             session.flush()
+
+            # Post-condition: is_active must equal the calendar leading edge
+            # (greatest active_from). A silent rollback to an earlier contract
+            # keeps a stale, smaller active_from → is_active and the calendar
+            # desync. Fail loud; the operator must pass --effective-date to
+            # re-stamp an intentional rollback.
+            from scripts.front_month import active_front_month
+
+            if active_front_month(session) != new_contract.id:
+                raise RuntimeError(
+                    f"Roll to {new_code} would desync the calendar: a later "
+                    f"contract still has a greater active_from. This looks like a "
+                    f"rollback — pass --effective-date to re-stamp intentionally."
+                )
 
             logger.info("Activated: %s", new_code)
             logger.info(

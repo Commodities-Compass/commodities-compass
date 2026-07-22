@@ -256,6 +256,9 @@ jobs:
           # Daily watchdog: alert on fundamentals publications overdue ≥21 days.
           # 512Mi minimum required by Cloud Run gen2 + always-allocated CPU.
           deploy_job cc-publication-calendar-watchdog 512Mi "publication-calendar-watchdog"
+          # Roll watchdog: nudge the operator when the liquidity front-month
+          # leads the calendar for ≥3 consecutive sessions (time to roll-contract).
+          deploy_job cc-roll-watchdog                 512Mi "roll-watchdog"
           # Dual-track brief — ensemble side. cc-ensemble-explainer enriches the
           # ensemble row of pl_indicator_daily with LLM narrative (eco/confidence/
           # direction/conclusion). cc-compass-brief-ensemble assembles the new

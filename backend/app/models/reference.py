@@ -73,6 +73,10 @@ class RefContract(Base):
     contract_month: Mapped[str] = mapped_column(VARCHAR(10), nullable=False)
     expiry_date: Mapped[Optional[date]] = mapped_column(DATE)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Canonical front-month roll calendar: the session date this contract became
+    # the operator-pinned front-month. NULL = never front-month. Resolver:
+    # front_month_for_date(d) = contract with greatest active_from <= d.
+    active_from: Mapped[Optional[date]] = mapped_column(DATE)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
 
 

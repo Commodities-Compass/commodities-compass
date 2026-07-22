@@ -120,6 +120,12 @@ locals {
       # silence.
       schedule = "0 16 * * 1-5"
     }
+    roll-watchdog = {
+      description = "Nudge when liquidity front-month leads the calendar ≥ 3 sessions"
+      # 19:45 UTC weekdays — after compute-indicators (19:15) so the day's
+      # OI/volume is in before comparing liquidity vs the roll calendar.
+      schedule = "45 19 * * 1-5"
+    }
     # Dual-track brief — ensemble side (Phase B daily cron + in-agent eve gate).
     # cc-ensemble-explainer enriches the ensemble row with LLM narrative right
     # after cc-ensemble-compute (19:18) and before cc-daily-analysis (19:20).

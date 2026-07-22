@@ -17,15 +17,14 @@ import uuid
 from datetime import date as date_cls
 
 from cachetools import TTLCache
-from sqlalchemy import desc, select, text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.pipeline import (
     PlAlgorithmVersion,
-    PlContractDataDaily,
-    PlIndicatorDaily,
 )
 from app.models.reference import RefContract
+from app.utils.front_month import front_month_for_date_or_none
 
 logger = logging.getLogger(__name__)
 
@@ -209,79 +208,17 @@ async def get_algorithm_version_for_date(
 async def resolve_contract_for_date(
     db: AsyncSession, target_date: date_cls
 ) -> uuid.UUID | None:
-    """Resolve the best contract_id for a historical date.
+    """Resolve the front-month contract for a date from the canonical roll calendar.
 
-    Priority order:
-    1. Active contract — if it has a complete pl_indicator_daily row
-       (conclusion IS NOT NULL = daily analysis ran for this contract+date)
-    2. Any contract with a complete row for that date
-    3. Active contract with any row (even without conclusion)
-    4. Any contract with data (highest OI = front-month heuristic)
+    Thin wrapper over ``front_month_for_date_or_none`` — the front-month is the
+    contract with the greatest ``ref_contract.active_from`` <= ``target_date``.
 
-    Returns None if no contract has data for that date at all.
+    Replaces the former 4-tier completeness cascade (active-complete → any-complete
+    → active-any → highest-OI), which used liquidity and decision-presence as
+    proxies for the front-month and was a split-brain source: on a roll boundary it
+    could disagree with compute / the chained VIEW. The calendar is the single
+    source of truth, so all consumers now agree by construction.
+
+    Returns None for a date before the calendar starts (pre-seed history).
     """
-    active_id = await get_active_contract_id(db)
-    algo_id = await get_active_algorithm_version_id(db)
-
-    # 1. Active contract with complete data (conclusion exists)
-    active_complete = await db.execute(
-        select(PlIndicatorDaily.id)
-        .where(
-            PlIndicatorDaily.contract_id == active_id,
-            PlIndicatorDaily.algorithm_version_id == algo_id,
-            PlIndicatorDaily.date == target_date,
-            PlIndicatorDaily.conclusion.isnot(None),
-        )
-        .limit(1)
-    )
-    if active_complete.scalar_one_or_none() is not None:
-        return active_id
-
-    # 2. Any contract with complete data for this date
-    any_complete = await db.execute(
-        select(PlIndicatorDaily.contract_id)
-        .where(
-            PlIndicatorDaily.date == target_date,
-            PlIndicatorDaily.algorithm_version_id == algo_id,
-            PlIndicatorDaily.conclusion.isnot(None),
-        )
-        .limit(1)
-    )
-    fallback_id = any_complete.scalar_one_or_none()
-    if fallback_id is not None:
-        logger.debug(
-            "Cross-contract fallback (complete) for %s: %s -> %s",
-            target_date,
-            active_id,
-            fallback_id,
-        )
-        return fallback_id
-
-    # 3. Active contract with any row
-    active_any = await db.execute(
-        select(PlIndicatorDaily.id)
-        .where(
-            PlIndicatorDaily.contract_id == active_id,
-            PlIndicatorDaily.date == target_date,
-        )
-        .limit(1)
-    )
-    if active_any.scalar_one_or_none() is not None:
-        return active_id
-
-    # 4. Any contract with market data (highest OI = front-month)
-    fallback_market = await db.execute(
-        select(PlContractDataDaily.contract_id)
-        .where(PlContractDataDaily.date == target_date)
-        .order_by(desc(PlContractDataDaily.oi))
-        .limit(1)
-    )
-    fallback_id = fallback_market.scalar_one_or_none()
-    if fallback_id is not None:
-        logger.debug(
-            "Cross-contract fallback (market) for %s: %s -> %s",
-            target_date,
-            active_id,
-            fallback_id,
-        )
-    return fallback_id
+    return await front_month_for_date_or_none(db, target_date)

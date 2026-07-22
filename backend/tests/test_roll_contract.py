@@ -89,3 +89,43 @@ class TestRollContract:
             select(RefContract).where(RefContract.code == "NONEXISTENT")
         ).scalar_one_or_none()
         assert result is None
+
+    def test_forward_roll_keeps_calendar_and_is_active_consistent(
+        self, sync_db_session, contract_chain
+    ):
+        """A forward roll stamps a later active_from; the calendar leading edge
+        (active_front_month) then equals is_active — the post-condition
+        roll-contract asserts."""
+        from scripts.front_month import active_front_month
+
+        old = contract_chain["active"]  # CAK26
+        new = contract_chain["inactive"]  # CAN26
+        old.active_from = date(2026, 3, 2)
+        old.is_active = False
+        new.is_active = True
+        new.active_from = date(2026, 4, 10)  # later → new leading edge
+        sync_db_session.flush()
+
+        assert active_front_month(sync_db_session) == new.id
+        assert resolve_active_code(sync_db_session) == "CAN26"
+
+    def test_backward_roll_without_restamp_desyncs_calendar(
+        self, sync_db_session, contract_chain
+    ):
+        """Reactivating an EARLIER contract without re-stamping active_from leaves
+        the calendar leading edge on the later contract — exactly the desync
+        roll-contract's post-condition assert is designed to catch (the operator
+        must pass --effective-date to re-stamp an intentional rollback)."""
+        from scripts.front_month import active_front_month
+
+        old = contract_chain["active"]  # CAK26 (earlier)
+        new = contract_chain["inactive"]  # CAN26 (later)
+        old.active_from = date(2026, 3, 2)
+        new.active_from = date(2026, 4, 10)
+        # Rollback: reactivate the earlier contract, keep its stale date.
+        new.is_active = False
+        old.is_active = True
+        sync_db_session.flush()
+
+        assert resolve_active_code(sync_db_session) == "CAK26"  # is_active
+        assert active_front_month(sync_db_session) != old.id  # calendar disagrees

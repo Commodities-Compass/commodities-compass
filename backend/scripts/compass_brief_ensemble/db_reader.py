@@ -218,61 +218,50 @@ def _read_specialists(
 def _decision_aware_front_month_rows(
     session: Session, start_date: date, end_date: date
 ) -> list[Any]:
-    """Roll-safe decision-aware front-month series — ``(date, close, decision)``
-    ordered by date ASC.
+    """Roll-safe front-month series — ``(date, close, decision)`` ordered by date ASC.
 
-    Sync mirror of ``dashboard_service._decision_aware_front_month_series``
-    (added by #65). Per date it picks the highest-OI contract *that carries a
-    decision* (ensemble preferred over legacy, pinned to ``language='fr'`` since
-    the EN row copies the language-agnostic decision), so the YTD /
-    running-accuracy the brief reads aloud stays identical to the dashboard
-    across a contract roll. #65 fixed this in the two async services but left
-    this sync copy on the old OI-only front-month, which silently dropped days
-    once OHLCV OI rolled ahead of the contract the decisions were written on
-    (the CAU26/CAZ26 freeze) — see issue #67.
+    Sync mirror of ``dashboard_service._decision_aware_front_month_series``. The
+    front-month per date comes from the canonical roll calendar
+    (``ref_contract.active_from``) — the single source of truth — and the decision
+    on it is ensemble-preferred over legacy (pinned to ``language='fr'`` since the
+    EN row copies the language-agnostic decision). Calendar selection replaces the
+    former "highest-OI among decision-carrying contracts", which repicked the wrong
+    contract on a roll (CAZ26 carried a legacy decision AND led OI in July 2026),
+    keeping the brief's YTD / running-accuracy in lock step with the dashboard.
     """
     return session.execute(
         text(
             """
-            WITH scored AS (
-                SELECT
-                    d.date,
-                    d.contract_id,
-                    COALESCE(ens.decision, leg.decision) AS decision
-                FROM (
-                    SELECT DISTINCT date, contract_id
-                    FROM pl_indicator_daily
-                    WHERE date >= :start AND date <= :end_date
-                ) d
-                LEFT JOIN pl_indicator_daily ens
-                       ON ens.date = d.date
-                      AND ens.contract_id = d.contract_id
-                      AND ens.language = 'fr'
-                      AND ens.algorithm_version_id = (
-                          SELECT id FROM pl_algorithm_version
-                          WHERE name = 'ensemble_v1_softgate_wrapper'
-                          ORDER BY created_at DESC LIMIT 1)
-                LEFT JOIN pl_indicator_daily leg
-                       ON leg.date = d.date
-                      AND leg.contract_id = d.contract_id
-                      AND leg.language = 'fr'
-                      AND leg.algorithm_version_id = (
-                          SELECT id FROM pl_algorithm_version
-                          WHERE name = 'legacy'
-                          ORDER BY created_at DESC LIMIT 1)
-                WHERE COALESCE(ens.decision, leg.decision) IS NOT NULL
-            ),
-            front_month AS (
-                SELECT DISTINCT ON (cd.date) cd.date, cd.close, cd.contract_id
-                FROM pl_contract_data_daily cd
-                JOIN scored s ON s.date = cd.date AND s.contract_id = cd.contract_id
-                WHERE cd.date >= :start AND cd.date <= :end_date
-                ORDER BY cd.date, cd.oi DESC NULLS LAST
+            WITH front AS (
+                SELECT dd.date,
+                       (SELECT c.id FROM ref_contract c
+                         WHERE c.active_from IS NOT NULL
+                           AND c.active_from <= dd.date
+                         ORDER BY c.active_from DESC LIMIT 1) AS contract_id
+                FROM (SELECT DISTINCT date FROM pl_contract_data_daily
+                       WHERE date >= :start AND date <= :end_date
+                         AND close IS NOT NULL) dd
             )
-            SELECT fm.date, fm.close, s.decision
-            FROM front_month fm
-            JOIN scored s ON s.date = fm.date AND s.contract_id = fm.contract_id
-            ORDER BY fm.date ASC
+            SELECT f.date, cd.close,
+                   COALESCE(ens.decision, leg.decision) AS decision
+            FROM front f
+            JOIN pl_contract_data_daily cd
+                  ON cd.date = f.date AND cd.contract_id = f.contract_id
+            LEFT JOIN pl_indicator_daily ens
+                   ON ens.date = f.date AND ens.contract_id = f.contract_id
+                  AND ens.language = 'fr'
+                  AND ens.algorithm_version_id = (
+                      SELECT id FROM pl_algorithm_version
+                      WHERE name = 'ensemble_v1_softgate_wrapper'
+                      ORDER BY created_at DESC LIMIT 1)
+            LEFT JOIN pl_indicator_daily leg
+                   ON leg.date = f.date AND leg.contract_id = f.contract_id
+                  AND leg.language = 'fr'
+                  AND leg.algorithm_version_id = (
+                      SELECT id FROM pl_algorithm_version
+                      WHERE name = 'legacy'
+                      ORDER BY created_at DESC LIMIT 1)
+            ORDER BY f.date ASC
             """
         ),
         {"start": start_date, "end_date": end_date},

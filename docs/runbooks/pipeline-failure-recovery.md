@@ -43,7 +43,7 @@ Phase B — eve of T+next, agent-gated; ALL writes keyed to data_date = T:
 To force-rerun Phase B for a specific session date:
 ```bash
 gcloud run jobs execute cc-press-review-agent --region=europe-west9 --project=cacaooo \
-  --args="press-review,--session-date,2026-05-26,--force"
+  --args="press-review,--language,both,--session-date,2026-05-26,--force"
 ```
 
 ### Dependency graph
@@ -150,15 +150,22 @@ Use the dependency graph to determine the cascade. Examples:
 > untouched). ensemble-compute: add `--historical` **only** if a contract roll
 > happened between T and now (otherwise it resolves the wrong front-month).
 >
+> **⚠️ `--args` REPLACES the job's ENTIRE default arg list.** Replicate the defaults
+> from `deploy.yml` and only ADD your date/force flags — in particular
+> **`--language,both`** on press-review, meteo, daily-analysis, ensemble-explainer and
+> compass-brief-ensemble. Omitting it silently regenerates the **fr row only** and the
+> EN row/brief for that session never exists (bitten 2026-07-22; repaired with a
+> `--language,en` re-run).
+>
 > Worked example — backfilling Friday `2026-06-19` (every job takes the SAME session date now):
 > ```bash
 > R="--region=europe-west9 --project=cacaooo --wait"
-> gcloud run jobs execute cc-press-review-agent      $R --args="press-review,--session-date,2026-06-19,--force"
+> gcloud run jobs execute cc-press-review-agent      $R --args="press-review,--language,both,--session-date,2026-06-19,--force"
 > gcloud run jobs execute cc-ensemble-compute        $R --args="ensemble-compute,--session-date,2026-06-19,--force"
-> gcloud run jobs execute cc-ensemble-explainer      $R --args="ensemble-explainer,--session-date,2026-06-19,--force"
-> gcloud run jobs execute cc-daily-analysis          $R --args="daily-analysis,--session-date,2026-06-19,--force,--algorithm-version,legacy"
+> gcloud run jobs execute cc-ensemble-explainer      $R --args="ensemble-explainer,--language,both,--session-date,2026-06-19,--force"
+> gcloud run jobs execute cc-daily-analysis          $R --args="daily-analysis,--algorithm-version,legacy,--language,both,--session-date,2026-06-19,--force"
 > gcloud run jobs execute cc-compass-brief           $R --args="compass-brief,--session-date,2026-06-19,--force"
-> gcloud run jobs execute cc-compass-brief-ensemble  $R --args="compass-brief-ensemble,--session-date,2026-06-19,--force"
+> gcloud run jobs execute cc-compass-brief-ensemble  $R --args="compass-brief-ensemble,--language,both,--session-date,2026-06-19,--force"
 > ```
 > Verify each job SUCCEEDED before launching the next — never cascade onto a re-failed producer.
 
@@ -185,7 +192,7 @@ meteo feeds the narrative jobs (daily_analysis legacy **and** ensemble_explainer
 R="--region=europe-west9 --project=cacaooo --wait"
 gcloud run jobs execute cc-meteo-agent             $R
 gcloud run jobs execute cc-ensemble-explainer      $R
-gcloud run jobs execute cc-daily-analysis          $R --args="daily-analysis,--force,--algorithm-version,legacy"
+gcloud run jobs execute cc-daily-analysis          $R --args="daily-analysis,--algorithm-version,legacy,--language,both,--force"
 gcloud run jobs execute cc-compass-brief           $R
 gcloud run jobs execute cc-compass-brief-ensemble  $R
 ```
@@ -200,7 +207,7 @@ R="--region=europe-west9 --project=cacaooo --wait"
 gcloud run jobs execute cc-press-review-agent      $R   # writes article + segment
 gcloud run jobs execute cc-ensemble-compute        $R   # re-reads segment into MacroEventLayer
 gcloud run jobs execute cc-ensemble-explainer      $R
-gcloud run jobs execute cc-daily-analysis          $R --args="daily-analysis,--force,--algorithm-version,legacy"
+gcloud run jobs execute cc-daily-analysis          $R --args="daily-analysis,--algorithm-version,legacy,--language,both,--force"
 gcloud run jobs execute cc-compass-brief           $R
 gcloud run jobs execute cc-compass-brief-ensemble  $R
 ```
@@ -214,7 +221,7 @@ R="--region=europe-west9 --project=cacaooo --wait"
 gcloud run jobs execute cc-compute-indicators      $R
 gcloud run jobs execute cc-ensemble-compute        $R
 gcloud run jobs execute cc-ensemble-explainer      $R
-gcloud run jobs execute cc-daily-analysis          $R --args="daily-analysis,--force,--algorithm-version,legacy"
+gcloud run jobs execute cc-daily-analysis          $R --args="daily-analysis,--algorithm-version,legacy,--language,both,--force"
 gcloud run jobs execute cc-compass-brief           $R
 gcloud run jobs execute cc-compass-brief-ensemble  $R
 ```
@@ -225,7 +232,7 @@ Legacy track only — the ensemble row is written by ensemble_explainer, untouch
 
 ```bash
 R="--region=europe-west9 --project=cacaooo --wait"
-gcloud run jobs execute cc-daily-analysis  $R --args="daily-analysis,--force,--algorithm-version,legacy"
+gcloud run jobs execute cc-daily-analysis  $R --args="daily-analysis,--algorithm-version,legacy,--language,both,--force"
 gcloud run jobs execute cc-compass-brief   $R
 ```
 

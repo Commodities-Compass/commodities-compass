@@ -119,14 +119,19 @@ gcloud scheduler jobs pause cc-compass-brief --location europe-west1 --project c
 
 ### Brief ensemble pour une date passée (backfill ou debug)
 
+> **⚠️ `--args` remplace TOUTE la liste d'args du job** — répliquer les defaults de
+> `deploy.yml`, en particulier **`--language,both`** (explainer, brief-ensemble,
+> daily-analysis, press-review, meteo). L'omettre régénère la row **fr seulement** →
+> pas de row/brief EN pour la session (vécu le 2026-07-22).
+
 ```bash
 gcloud run jobs execute cc-ensemble-explainer \
   --region europe-west9 --project cacaooo \
-  --args="ensemble-explainer,--session-date,2026-05-26,--force"
+  --args="ensemble-explainer,--language,both,--session-date,2026-05-26,--force"
 
 gcloud run jobs execute cc-compass-brief-ensemble \
   --region europe-west9 --project cacaooo \
-  --args="compass-brief-ensemble,--session-date,2026-05-26,--force"
+  --args="compass-brief-ensemble,--language,both,--session-date,2026-05-26,--force"
 ```
 
 L'explainer doit tourner AVANT le brief (l'explainer écrit les champs LLM, le brief les lit).
@@ -136,7 +141,7 @@ L'explainer doit tourner AVANT le brief (l'explainer écrit les champs LLM, le b
 ```bash
 gcloud run jobs execute cc-daily-analysis \
   --region europe-west9 --project cacaooo \
-  --args="daily-analysis,--session-date,2026-05-26,--algorithm-version,legacy,--force"
+  --args="daily-analysis,--algorithm-version,legacy,--language,both,--session-date,2026-05-26,--force"
 
 gcloud run jobs execute cc-compass-brief \
   --region europe-west9 --project cacaooo \

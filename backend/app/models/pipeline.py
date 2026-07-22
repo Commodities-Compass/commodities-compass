@@ -471,6 +471,59 @@ class PlExternalIndicator(Base):
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
 
 
+class PlOfficialFarmgatePrice(Base):
+    """Official guaranteed farmgate price announced by CCC (CIV) / COCOBOD (Ghana).
+
+    Append-only: each price revision is a NEW row (immutable history, North Star
+    aligned). Manual ops entry via ``poetry run set-farmgate-price`` — a handful
+    of rows per year (seasonal announcements + occasional mid-season revisions).
+
+    This is the *official / guaranteed* price (per-kg in CIV, per-64kg-bag in
+    Ghana) — deliberately distinct from the real terrain/differential price,
+    which is a separate Programme Fondateur workstream.
+
+    Read pattern (endpoint /v1/dashboard/farmgate-price): most recent effective
+    value on or before the requested date, per region —
+    ``WHERE region=? AND effective_date <= d ORDER BY effective_date DESC,
+    announced_date DESC LIMIT 1``.
+    """
+
+    __tablename__ = "pl_official_farmgate_price"
+    __table_args__ = (
+        UniqueConstraint(
+            "region",
+            "effective_date",
+            "announced_date",
+            name="uq_farmgate_region_effective_announced",
+        ),
+        Index("ix_farmgate_region_effective", "region", "effective_date"),
+        CheckConstraint("region IN ('civ', 'ghana')", name="ck_farmgate_region"),
+        CheckConstraint(
+            "unit IN ('per_kg', 'per_bag_64kg', 'per_tonne')",
+            name="ck_farmgate_unit",
+        ),
+        CheckConstraint("source IN ('ccc', 'cocobod')", name="ck_farmgate_source"),
+        CheckConstraint("price_native > 0", name="ck_farmgate_price_positive"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    region: Mapped[str] = mapped_column(VARCHAR(10), nullable=False)
+    season_label: Mapped[str] = mapped_column(VARCHAR(20), nullable=False)
+    effective_date: Mapped[date] = mapped_column(DATE, nullable=False)
+    announced_date: Mapped[Optional[date]] = mapped_column(DATE)
+    price_native: Mapped[Decimal] = mapped_column(DECIMAL(14, 4), nullable=False)
+    currency: Mapped[str] = mapped_column(VARCHAR(3), nullable=False)
+    unit: Mapped[str] = mapped_column(VARCHAR(16), nullable=False)
+    source: Mapped[str] = mapped_column(VARCHAR(16), nullable=False)
+    source_url: Mapped[Optional[str]] = mapped_column(TEXT)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+
+
 class PlCotEuWeekly(Base):
     """ICE COT Europe weekly positioning (cocoa London #7 + multi-market ready).
 

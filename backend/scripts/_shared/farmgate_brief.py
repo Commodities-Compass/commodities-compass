@@ -8,7 +8,9 @@ sync across the dual track.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import date
+from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -64,7 +66,7 @@ def read_farmgate(session: Session, on_date: date) -> dict[str, dict | None]:
 
 
 def format_farmgate_lines(
-    farmgate: dict[str, dict | None] | None, language: str = "fr"
+    farmgate: Mapping[str, Any] | None, language: str = "fr"
 ) -> list[str]:
     """Format the farmgate section as brief lines. Empty list when no data."""
     lang = "en" if language == "en" else "fr"

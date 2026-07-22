@@ -84,6 +84,8 @@ def test_read_farmgate_picks_latest_effective(sync_db_session: Session) -> None:
     sync_db_session.flush()
 
     out = read_farmgate(sync_db_session, date_cls(2026, 7, 1))
-    assert out["civ"]["price_native"] == 2200.0
-    assert out["civ"]["season_label"] == "2025/26"
+    civ = out["civ"]
+    assert civ is not None
+    assert civ["price_native"] == 2200.0
+    assert civ["season_label"] == "2025/26"
     assert out["ghana"] is None

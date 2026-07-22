@@ -44,12 +44,34 @@ test_sync_engine = create_engine(TEST_SYNC_DATABASE_URL, echo=False)
 TestSyncSessionLocal = sessionmaker(test_sync_engine, expire_on_commit=False)
 
 
+# The current-config view is created by an Alembic migration in prod; the config
+# loaders read it. Tests use create_all (no migrations) so we (re)create it here.
+_CONFIG_VIEW_DDL = """
+CREATE OR REPLACE VIEW v_algorithm_config_current AS
+SELECT latest.* FROM (
+    SELECT DISTINCT ON (algorithm_version_id, parameter_name) *
+    FROM pl_algorithm_config
+    WHERE effective_from <= CURRENT_DATE
+    ORDER BY algorithm_version_id, parameter_name, effective_from DESC
+) latest
+WHERE latest.active
+"""
+
+
 @pytest.fixture(scope="session", autouse=True)
 def setup_database():
     """Create all tables before tests, drop after."""
+    from sqlalchemy import text
+
+    with test_sync_engine.begin() as conn:
+        conn.execute(text("DROP VIEW IF EXISTS v_algorithm_config_current CASCADE"))
     Base.metadata.drop_all(test_sync_engine)
     Base.metadata.create_all(test_sync_engine)
+    with test_sync_engine.begin() as conn:
+        conn.execute(text(_CONFIG_VIEW_DDL))
     yield
+    with test_sync_engine.begin() as conn:
+        conn.execute(text("DROP VIEW IF EXISTS v_algorithm_config_current CASCADE"))
     Base.metadata.drop_all(test_sync_engine)
 
 

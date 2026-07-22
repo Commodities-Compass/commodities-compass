@@ -65,7 +65,7 @@ def load_algorithm_config(
         result = session.execute(
             text("""
                 SELECT ac.parameter_name, ac.value
-                FROM pl_algorithm_config ac
+                FROM v_algorithm_config_current ac
                 JOIN pl_algorithm_version av ON ac.algorithm_version_id = av.id
                 WHERE av.name = :name AND av.version = :version
                 ORDER BY ac.parameter_name
@@ -76,7 +76,7 @@ def load_algorithm_config(
         result = session.execute(
             text("""
                 SELECT ac.parameter_name, ac.value
-                FROM pl_algorithm_config ac
+                FROM v_algorithm_config_current ac
                 JOIN pl_algorithm_version av ON ac.algorithm_version_id = av.id
                 WHERE av.name = :name AND av.is_active = true
                 ORDER BY ac.parameter_name

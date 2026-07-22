@@ -57,7 +57,7 @@ def load_optional_config_float(
     """
     row = session.execute(
         text(
-            "SELECT value FROM pl_algorithm_config "
+            "SELECT value FROM v_algorithm_config_current "
             "WHERE algorithm_version_id = :aid AND parameter_name = :key"
         ),
         {"aid": algorithm_version_id, "key": key},
@@ -76,7 +76,7 @@ def load_cluster_mapping(
     """
     rows = session.execute(
         text(
-            "SELECT parameter_name, value FROM pl_algorithm_config "
+            "SELECT parameter_name, value FROM v_algorithm_config_current "
             "WHERE algorithm_version_id = :aid "
             "AND parameter_name LIKE 'cluster\\_%' ESCAPE '\\'"
         ),
@@ -108,7 +108,7 @@ def load_compass_wrapper_threshold(
     """
     row = session.execute(
         text(
-            "SELECT value FROM pl_algorithm_config "
+            "SELECT value FROM v_algorithm_config_current "
             "WHERE algorithm_version_id = :aid AND parameter_name = :key"
         ),
         {"aid": algorithm_version_id, "key": COMPASS_WRAPPER_THRESHOLD_KEY},
@@ -162,7 +162,7 @@ def load_wrapper_config(
     """
     rows = session.execute(
         text(
-            "SELECT parameter_name, value FROM pl_algorithm_config "
+            "SELECT parameter_name, value FROM v_algorithm_config_current "
             "WHERE algorithm_version_id = :aid "
             "AND parameter_name LIKE 'wrapper\\_%' ESCAPE '\\'"
         ),

@@ -21,10 +21,15 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
+from app.core.config import settings
 from app.main import app
 from app.models.pipeline import PlContractDataDaily, PlExternalIndicator
 from app.models.reference import RefCommodity, RefContract, RefExchange
 from app.services.export_service import available_series, stream_series_csv
+
+# Derive the route prefix from settings — it differs per environment
+# (default "/v1", overridden to "/api/v1" locally via .env).
+_EXPORT_URL = f"{settings.API_V1_STR}/data/export"
 
 # The chained view is created by an Alembic migration, not by metadata.create_all,
 # so tests that read through it must materialize it in the test schema first.
@@ -186,7 +191,7 @@ async def test_export_rejects_unknown_series(
     client: AsyncClient, _auth_override
 ) -> None:
     r = await client.get(
-        "/api/v1/data/export",
+        _EXPORT_URL,
         params={"series": "nope", "from": "2026-01-01", "to": "2026-02-01"},
     )
     assert r.status_code == 400
@@ -197,7 +202,7 @@ async def test_export_rejects_unknown_series(
 @pytest.mark.asyncio
 async def test_export_rejects_bad_date(client: AsyncClient, _auth_override) -> None:
     r = await client.get(
-        "/api/v1/data/export",
+        _EXPORT_URL,
         params={"series": "fx", "from": "2026-13-99", "to": "2026-02-01"},
     )
     assert r.status_code == 400
@@ -209,7 +214,7 @@ async def test_export_rejects_from_after_to(
     client: AsyncClient, _auth_override
 ) -> None:
     r = await client.get(
-        "/api/v1/data/export",
+        _EXPORT_URL,
         params={"series": "fx", "from": "2026-03-01", "to": "2026-02-01"},
     )
     assert r.status_code == 400
@@ -221,7 +226,7 @@ async def test_export_rejects_non_csv_format(
     client: AsyncClient, _auth_override
 ) -> None:
     r = await client.get(
-        "/api/v1/data/export",
+        _EXPORT_URL,
         params={
             "series": "fx",
             "from": "2026-01-01",
@@ -249,7 +254,7 @@ async def test_export_happy_path_returns_csv_attachment(
     await db_session.flush()
 
     r = await client.get(
-        "/api/v1/data/export",
+        _EXPORT_URL,
         params={"series": "fx", "from": "2026-05-01", "to": "2026-05-31"},
     )
 

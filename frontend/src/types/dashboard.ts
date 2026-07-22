@@ -81,14 +81,14 @@ export interface SeasonStatus {
   label: string;
   months_covered: string;
   score: number | null;
-  status: "completed" | "in_progress" | "upcoming";
+  status: 'completed' | 'in_progress' | 'upcoming';
 }
 
 export interface LocationDiagnostic {
   location_name: string;
-  country: "CIV" | "GHA";
+  country: 'CIV' | 'GHA';
   score: number | null;
-  status: "normal" | "degraded" | "stress";
+  status: 'normal' | 'degraded' | 'stress';
   harmattan_days?: number | null;
 }
 
@@ -101,11 +101,11 @@ export interface HarmattanStatus {
 
 export interface LocationStressHistory {
   location_name: string;
-  country: "CIV" | "GHA";
-  current_status: "normal" | "degraded" | "stress";
+  country: 'CIV' | 'GHA';
+  current_status: 'normal' | 'degraded' | 'stress';
   streak_days: number;
-  trend: "stable" | "improving" | "worsening";
-  history: ("normal" | "degraded" | "stress")[];
+  trend: 'stable' | 'improving' | 'worsening';
+  history: ('normal' | 'degraded' | 'stress')[];
 }
 
 export interface WeatherResponse {
@@ -132,6 +132,7 @@ export interface MacroPanelResponse {
   fx_gbpusd: number | null;
   fx_eurusd: number | null;
   fx_gbpeur: number | null;
+  fx_xofgbp: number | null;
   enso_oni_month: number | null;
   enso_nino34_anomaly: number | null;
   enso_reference_date: string | null;

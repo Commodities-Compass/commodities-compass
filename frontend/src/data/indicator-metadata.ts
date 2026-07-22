@@ -14,6 +14,7 @@ export const INDICATOR_META_KEY: Record<string, string> = {
   'VOL/OI': 'voloi',
   'FX DXY': 'fx_dxy',
   GBPUSD: 'gbpusd',
+  'XOF/GBP': 'xofgbp',
   'ENSO ONI': 'enso_oni',
   'NIÑO 3.4': 'nino34',
   'COT MM NET EU': 'cot_mm_net_eu',

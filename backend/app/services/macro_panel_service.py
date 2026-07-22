@@ -32,6 +32,12 @@ logger = logging.getLogger(__name__)
 # ENSO publication lag — applied at query time to avoid look-ahead bias.
 ENSO_LAG_DAYS = 14
 
+# BCEAO/BEAC franc CFA hard peg to the euro (fixed since 1999). This is NOT a
+# floating market rate — 1 EUR is administratively fixed at 655.957 XOF/XAF.
+# The only thing that floats is XOF vs non-euro currencies (GBP, USD), which we
+# derive by chaining the fixed EUR/XOF peg through the ingested EUR cross-rate.
+EUR_XOF_PARITY = 655.957
+
 
 async def get_macro_panel(
     db: AsyncSession,
@@ -93,6 +99,10 @@ async def get_macro_panel(
         "fx_gbpusd": _to_float(fx_row.fx_gbpusd) if fx_row else None,
         "fx_eurusd": _to_float(fx_row.fx_eurusd) if fx_row else None,
         "fx_gbpeur": _to_float(fx_row.fx_gbpeur) if fx_row else None,
+        # XOF per 1 GBP — derived: fixed EUR/XOF peg through the floating
+        # GBP/EUR cross. London cocoa trades in GBP, so this is the FCFA value
+        # of the quoted contract price. Floats only via the GBP/EUR leg.
+        "fx_xofgbp": _xof_per_gbp(fx_row.fx_gbpeur) if fx_row else None,
         "enso_oni_month": _to_float(enso_row.enso_oni_month) if enso_row else None,
         "enso_nino34_anomaly": (
             _to_float(enso_row.enso_nino34_anomaly) if enso_row else None
@@ -113,3 +123,15 @@ async def get_macro_panel(
 def _to_float(v: Any) -> Optional[float]:
     """Decimal/None passthrough to float. Keeps the service responsible for casts."""
     return float(v) if v is not None else None
+
+
+def _xof_per_gbp(gbp_per_eur: Any) -> Optional[float]:
+    """XOF per 1 GBP = (XOF per EUR, fixed peg) / (GBP per EUR, market).
+
+    Returns None when the GBP/EUR leg is missing or non-positive (guards the
+    division). ``gbp_per_eur`` is ``fx_gbpeur`` = GBP per 1 EUR.
+    """
+    rate = _to_float(gbp_per_eur)
+    if rate is None or rate <= 0:
+        return None
+    return EUR_XOF_PARITY / rate

@@ -291,6 +291,10 @@ class MacroPanelResponse(BaseModel):
     fx_gbpusd: Optional[float] = Field(None, description="USD per 1 GBP")
     fx_eurusd: Optional[float] = Field(None, description="USD per 1 EUR")
     fx_gbpeur: Optional[float] = Field(None, description="GBP per 1 EUR (audit)")
+    fx_xofgbp: Optional[float] = Field(
+        None,
+        description="XOF (FCFA) per 1 GBP — fixed EUR/XOF peg (655.957) via GBP/EUR",
+    )
     # ENSO (monthly NOAA, look-back to most recent rowto reflect lag)
     enso_oni_month: Optional[float] = Field(
         None, description="ENSO Oceanic Niño Index (monthly average, lagged 14d)"

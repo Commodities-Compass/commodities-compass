@@ -477,6 +477,8 @@ All API endpoints are prefixed with `/v1` and include:
 - `/audio/*` - Audio streaming:
   - `GET /audio/stream` - Stream audio from Google Drive (no auth, for HTML audio element)
   - `GET /audio/info` - Audio metadata (requires auth)
+- `/data/*` - Data series export (requires auth, CSV only):
+  - `GET /data/export?series=…&from=YYYY-MM-DD&to=YYYY-MM-DD&format=csv` - Streams a `pl_*` series as a CSV attachment over an inclusive date range. Series: `ohlcv`, `indicators`, `fx`, `cot_eu`, `cot_us`, `stocks`, `weather`. `ohlcv`/`indicators` read the roll-safe `v_contract_data_chained` view (front-month by OI/volume). Any valid Auth0 user (single shared-view model — no keys/quotas/metering; that's the co-construct Enterprise API). Rate-limited 30/min. Service: `app/services/export_service.py`.
 - `/dashboard/non-trading-days` - Exchange holidays + latest display_date for calendar:
   - `GET /dashboard/non-trading-days?year=2026` - Returns non-trading weekday dates and `latest_trading_day` (= `MAX(display_date)` from actual data)
 

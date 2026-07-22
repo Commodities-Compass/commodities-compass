@@ -269,6 +269,7 @@ def write_pipeline_results(
     config: Any,
     *,
     commit: bool = True,
+    derived_only: bool = False,
 ) -> dict[str, int]:
     """Write all pipeline results to the database.
 
@@ -276,27 +277,41 @@ def write_pipeline_results(
     commit=False is passed so the caller controls the transaction boundary
     with savepoints. Single-contract callers get commit=True (default).
 
+    ``derived_only=True`` writes ONLY pl_derived_indicators and leaves
+    pl_indicator_daily + pl_signal_component untouched. Used to correct the raw
+    technical indicators (an internal computation input the dashboard never reads)
+    without rewriting the stored decisions/scores/gauges — i.e. fix the lookback
+    inputs while keeping historical user-facing rows frozen.
+
     Returns dict with row counts per table.
     """
     derived_count = write_derived_indicators(session, signals_df, contract_id)
     logger.info("Wrote %d rows to pl_derived_indicators", derived_count)
 
-    indicator_count = write_indicator_daily(
-        session,
-        signals_df,
-        contract_id,
-        algorithm_version_id,
-    )
-    logger.info("Wrote %d rows to pl_indicator_daily", indicator_count)
+    indicator_count = 0
+    signal_count = 0
+    if not derived_only:
+        indicator_count = write_indicator_daily(
+            session,
+            signals_df,
+            contract_id,
+            algorithm_version_id,
+        )
+        logger.info("Wrote %d rows to pl_indicator_daily", indicator_count)
 
-    signal_count = write_signal_components(
-        session,
-        signals_df,
-        contract_id,
-        algorithm_version_id,
-        config,
-    )
-    logger.info("Wrote %d rows to pl_signal_component", signal_count)
+        signal_count = write_signal_components(
+            session,
+            signals_df,
+            contract_id,
+            algorithm_version_id,
+            config,
+        )
+        logger.info("Wrote %d rows to pl_signal_component", signal_count)
+    else:
+        logger.info(
+            "derived_only: skipped pl_indicator_daily + pl_signal_component "
+            "(historical decisions/scores left frozen)"
+        )
 
     if commit:
         session.commit()

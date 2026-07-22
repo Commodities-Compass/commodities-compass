@@ -168,32 +168,34 @@ async def get_algorithm_version_for_date(
         if isinstance(cached, tuple):
             return cached  # type: ignore[return-value]
 
-    preferred_id = await _get_version_id_by_name(db, preferred_name)
+    # Resolve, FOR THIS DATE, the newest ensemble-family version that actually HAS a
+    # pl_indicator_daily row. With ensemble v1.1.0 shipped go-forward-only (v1.0.0's
+    # historical rows left frozen), this serves v1.1.0 for recent dates and v1.0.0 for
+    # historical dates transparently — no history recompute. Picking a single "preferred"
+    # version id and testing its row would wrongly drop historical ensemble dates (which
+    # only have v1.0.0 rows) to legacy the moment v1.1.0 becomes the newest.
+    sql = (
+        "SELECT id.algorithm_version_id "
+        "FROM pl_indicator_daily id "
+        "JOIN pl_algorithm_version av ON av.id = id.algorithm_version_id "
+        "WHERE id.date = :d AND av.name = :name "
+        + ("AND id.contract_id = :c " if contract_id else "")
+        + "ORDER BY av.created_at DESC LIMIT 1"
+    )
+    params: dict[str, object] = {"d": target_date, "name": preferred_name}
+    if contract_id is not None:
+        params["c"] = str(contract_id)
+    ens_id = (await db.execute(text(sql), params)).scalar_one_or_none()
+    if ens_id is not None:
+        version_id = (
+            uuid.UUID(str(ens_id)) if not isinstance(ens_id, uuid.UUID) else ens_id
+        )
+        result = (version_id, preferred_name)
+        _cache[cache_key] = result
+        return result
+
+    # No ensemble row for this date — fall back to legacy.
     fallback_id = await _get_version_id_by_name(db, fallback_name)
-
-    if preferred_id is None and fallback_id is None:
-        raise ValueError(
-            f"Neither '{preferred_name}' nor '{fallback_name}' exist in pl_algorithm_version"
-        )
-
-    # Test preferred first.
-    if preferred_id is not None:
-        sql = (
-            "SELECT 1 FROM pl_indicator_daily "
-            "WHERE date = :d AND algorithm_version_id = :v "
-            + ("AND contract_id = :c " if contract_id else "")
-            + "LIMIT 1"
-        )
-        params: dict[str, object] = {"d": target_date, "v": str(preferred_id)}
-        if contract_id is not None:
-            params["c"] = str(contract_id)
-        hit = (await db.execute(text(sql), params)).scalar_one_or_none()
-        if hit is not None:
-            result = (preferred_id, preferred_name)
-            _cache[cache_key] = result
-            return result
-
-    # Fall back to legacy.
     if fallback_id is not None:
         result = (fallback_id, fallback_name)
         _cache[cache_key] = result

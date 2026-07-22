@@ -53,6 +53,7 @@ from scripts.front_month import front_month_for_date
 from scripts.ensemble_compute.cluster_mapping_loader import (
     REGIME_MONITOR_ATR_PCTL_KEY,
     SOFTGATE_ALPHA_MACRO_CAP_KEY,
+    SOFTGATE_COMMIT_THRESHOLD_KEY,
     load_cluster_mapping,
     load_compass_wrapper_threshold,
     load_optional_config_float,
@@ -131,8 +132,15 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _resolve_algorithm_version_id(session, name: str) -> uuid.UUID:
+    # Newest version wins (created_at DESC), so once v1.1.0 (C5-full) is seeded it becomes
+    # the compute target while v1.0.0's historical rows stay frozen. Deterministic —
+    # replaces the former non-deterministic ``LIMIT 1`` (no ORDER BY) which was ambiguous
+    # as soon as a second same-named version row existed.
     row = session.execute(
-        text("SELECT id FROM pl_algorithm_version WHERE name = :name LIMIT 1"),
+        text(
+            "SELECT id FROM pl_algorithm_version WHERE name = :name "
+            "ORDER BY created_at DESC LIMIT 1"
+        ),
         {"name": name},
     ).fetchone()
     if row is None:
@@ -248,28 +256,41 @@ def main() -> int:
                 compass_threshold,
             )
 
-            # Compass lever — alpha_macro cap (config-as-data; absent row → OFF).
-            # The tuned alpha_macro=1.477 makes the macro signal a HARD gate: with α>1
-            # a specialist voting against macro_direction gets weight (1−α)→clamped 0
-            # = excluded, which forced unanimous HEDGE (net_score=−1.000) through the
-            # May-2026 rebound. Capping α<1.0 keeps (1+α·align)>0 so contrarians are
-            # down-weighted, never zeroed. Tunable / disable-able via pl_algorithm_config.
+            # Compass soft-gate overrides (config-as-data; absent row → no change). Both
+            # rebuild the soft-gate once.
+            #  - alpha_macro CAP: the tuned alpha_macro=1.477 makes the macro signal a HARD
+            #    gate (a specialist voting against macro_direction gets weight (1−α)→clamped 0
+            #    = excluded, which forced unanimous HEDGE through the May-2026 rebound).
+            #    Capping keeps (1+α·align)>0 so contrarians are down-weighted, never zeroed.
+            #    v1.1.0 tightens the cap to 0.3 (the noisy LLM macro signal was net-harmful
+            #    at 0.9 — de-weighting it lifts dir-acc; see the 2026-07-22 retune).
+            #  - commit_threshold OVERRIDE: absolute soft-gate commit band. v1.1.0 sets 0.15
+            #    (more actionable). Absent → keep the frozen artifact value.
+            sg_cfg = pipeline.soft_gate.config
+            sg_overrides: dict[str, float] = {}
             alpha_cap = load_optional_config_float(
                 session, algo_version_id, SOFTGATE_ALPHA_MACRO_CAP_KEY
             )
-            if (
-                alpha_cap is not None
-                and pipeline.soft_gate.config.alpha_macro > alpha_cap
-            ):
+            if alpha_cap is not None and sg_cfg.alpha_macro > alpha_cap:
                 logger.info(
                     "Applying alpha_macro cap: %.4f -> %.4f",
-                    pipeline.soft_gate.config.alpha_macro,
+                    sg_cfg.alpha_macro,
                     alpha_cap,
                 )
+                sg_overrides["alpha_macro"] = alpha_cap
+            commit_thr = load_optional_config_float(
+                session, algo_version_id, SOFTGATE_COMMIT_THRESHOLD_KEY
+            )
+            if commit_thr is not None and commit_thr != sg_cfg.commit_threshold:
+                logger.info(
+                    "Applying commit_threshold override: %.4f -> %.4f",
+                    sg_cfg.commit_threshold,
+                    commit_thr,
+                )
+                sg_overrides["commit_threshold"] = commit_thr
+            if sg_overrides:
                 pipeline.soft_gate = SoftGateOrchestrator(
-                    config=dataclasses.replace(
-                        pipeline.soft_gate.config, alpha_macro=alpha_cap
-                    ),
+                    config=dataclasses.replace(sg_cfg, **sg_overrides),
                     base_accuracy=pipeline.soft_gate.base_accuracy,
                 )
 

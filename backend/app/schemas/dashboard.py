@@ -320,6 +320,32 @@ class MacroPanelResponse(BaseModel):
     )
 
 
+class FarmgatePriceEntry(BaseModel):
+    """One region's official / guaranteed farmgate price (latest effective)."""
+
+    region: str = Field(..., description="civ | ghana")
+    season_label: str = Field(..., description="Campaign label, e.g. 2025/26")
+    price_native: float = Field(..., description="Guaranteed price in native currency")
+    currency: str = Field(..., description="XOF (CIV) | GHS (Ghana)")
+    unit: str = Field(..., description="per_kg | per_bag_64kg | per_tonne")
+    source: str = Field(..., description="ccc | cocobod")
+    source_url: Optional[str] = Field(None, description="Announcement source URL")
+    effective_date: str = Field(..., description="Date the price takes effect")
+    announced_date: Optional[str] = Field(None, description="Date announced")
+
+
+class FarmgatePriceResponse(BaseModel):
+    """Official guaranteed farmgate price — CIV (CCC) + Ghana (COCOBOD).
+
+    The *official / guaranteed* price, distinct from the real terrain price. A
+    region is null when no price has been announced on or before the date.
+    """
+
+    date: str = Field(..., description="Requested date (YYYY-MM-DD)")
+    civ: Optional[FarmgatePriceEntry] = None
+    ghana: Optional[FarmgatePriceEntry] = None
+
+
 class PositioningResponse(BaseModel):
     """COT EU + COT US + Stock EU/US fundamentals.
 

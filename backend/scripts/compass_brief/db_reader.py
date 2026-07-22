@@ -14,6 +14,8 @@ from datetime import date
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from scripts._shared.farmgate_brief import read_farmgate
+
 logger = logging.getLogger(__name__)
 
 
@@ -39,6 +41,7 @@ class BriefData:
 
     today: DayData
     yesterday: DayData
+    farmgate: dict | None = None
 
 
 # DB column → (brief label, format type)
@@ -149,8 +152,9 @@ class DBBriefReader:
 
         today = self._read_day(today_date)
         yesterday = self._read_day(yesterday_date)
+        farmgate = read_farmgate(self._session, today_date)
 
-        return BriefData(today=today, yesterday=yesterday)
+        return BriefData(today=today, yesterday=yesterday, farmgate=farmgate)
 
     def _get_last_two_dates(self) -> list[date]:
         """Last 2 sessions from the front-month chain (roll-robust).

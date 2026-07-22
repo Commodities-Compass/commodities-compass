@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from datetime import date as date_type, datetime
 from typing import TYPE_CHECKING
 
+from scripts._shared.farmgate_brief import format_farmgate_lines
 from scripts.compass_brief_ensemble.specialist_catalog import (
     SPECIALIST_CATALOG,
     SpecialistProfile,
@@ -393,6 +394,12 @@ def render_brief(data: "EnsembleBriefData", language: str = "fr") -> str:
     if ytd is not None:
         lines.append(_field(labels.field_ytd, ytd))
     lines.append("")
+
+    # ── Official guaranteed farmgate price (standing reference, not daily) ──
+    farmgate_lines = format_farmgate_lines(getattr(data, "farmgate", None), language)
+    if farmgate_lines:
+        lines.extend(farmgate_lines)
+        lines.append("")
 
     # ── II — Editorial read ───────────────────────────────────────────────
     lines.append(labels.section_editorial)

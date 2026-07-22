@@ -9,6 +9,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from scripts._shared.farmgate_brief import format_farmgate_lines
+
 MOIS_FR = {
     1: "janvier",
     2: "février",
@@ -37,6 +39,12 @@ def generate_brief(data: Any) -> str:
     lines.append(f"Date : {_format_date(data.today.date)}")
     lines.append(SEP)
     lines.append("")
+
+    # Official guaranteed farmgate price (standing reference, not daily)
+    farmgate_lines = format_farmgate_lines(getattr(data, "farmgate", None), "fr")
+    if farmgate_lines:
+        lines.extend(farmgate_lines)
+        lines.append("")
 
     # Yesterday
     lines.append(_day_section(data.yesterday, "VEILLE"))

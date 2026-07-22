@@ -9,6 +9,7 @@ import type {
   WeatherResponse,
   AudioResponse,
   NonTradingDaysResponse,
+  FarmgatePriceResponse,
   MacroPanelResponse,
   PositioningResponse,
   EnsembleDiagnosticsResponse,
@@ -17,82 +18,140 @@ import type {
 export type { PositionStatusResponse };
 
 export const dashboardApi = {
-  getPositionStatus: async (targetDate?: string): Promise<PositionStatusResponse> => {
+  getPositionStatus: async (
+    targetDate?: string
+  ): Promise<PositionStatusResponse> => {
     const params = targetDate ? { target_date: targetDate } : {};
-    const response = await apiClient.get<PositionStatusResponse>('/dashboard/position-status', { params });
+    const response = await apiClient.get<PositionStatusResponse>(
+      '/dashboard/position-status',
+      { params }
+    );
     return response.data;
   },
 
-  getIndicatorsGrid: async (targetDate?: string): Promise<IndicatorsGridResponse> => {
+  getIndicatorsGrid: async (
+    targetDate?: string
+  ): Promise<IndicatorsGridResponse> => {
     const params = targetDate ? { target_date: targetDate } : {};
-    const response = await apiClient.get<IndicatorsGridResponse>('/dashboard/indicators-grid', { params });
+    const response = await apiClient.get<IndicatorsGridResponse>(
+      '/dashboard/indicators-grid',
+      { params }
+    );
     return response.data;
   },
 
-  getRecommendations: async (targetDate?: string): Promise<RecommendationsResponse> => {
+  getRecommendations: async (
+    targetDate?: string
+  ): Promise<RecommendationsResponse> => {
     const params = targetDate ? { target_date: targetDate } : {};
-    const response = await apiClient.get<RecommendationsResponse>('/dashboard/recommendations', { params });
+    const response = await apiClient.get<RecommendationsResponse>(
+      '/dashboard/recommendations',
+      { params }
+    );
     return response.data;
   },
 
-  getChartData: async (days: number = 30, targetDate?: string): Promise<ChartDataResponse> => {
+  getChartData: async (
+    days: number = 30,
+    targetDate?: string
+  ): Promise<ChartDataResponse> => {
     const params: Record<string, string | number> = { days };
     if (targetDate) params.target_date = targetDate;
-    const response = await apiClient.get<ChartDataResponse>('/dashboard/chart-data', { params });
+    const response = await apiClient.get<ChartDataResponse>(
+      '/dashboard/chart-data',
+      { params }
+    );
     return response.data;
   },
 
   getNews: async (targetDate?: string): Promise<NewsResponse> => {
     const params = targetDate ? { target_date: targetDate } : {};
-    const response = await apiClient.get<NewsResponse>('/dashboard/news', { params });
+    const response = await apiClient.get<NewsResponse>('/dashboard/news', {
+      params,
+    });
     return response.data;
   },
 
-  getNewsSentiment: async (targetDate?: string): Promise<NewsSentimentResponse> => {
+  getNewsSentiment: async (
+    targetDate?: string
+  ): Promise<NewsSentimentResponse> => {
     const params = targetDate ? { target_date: targetDate } : {};
-    const response = await apiClient.get<NewsSentimentResponse>('/dashboard/news/sentiment', { params });
+    const response = await apiClient.get<NewsSentimentResponse>(
+      '/dashboard/news/sentiment',
+      { params }
+    );
     return response.data;
   },
 
   getWeather: async (targetDate?: string): Promise<WeatherResponse> => {
     const params = targetDate ? { target_date: targetDate } : {};
-    const response = await apiClient.get<WeatherResponse>('/dashboard/weather', { params });
+    const response = await apiClient.get<WeatherResponse>(
+      '/dashboard/weather',
+      { params }
+    );
     return response.data;
   },
 
   getAudio: async (targetDate?: string): Promise<AudioResponse> => {
     const params = targetDate ? { target_date: targetDate } : {};
-    const response = await apiClient.get<AudioResponse>('/dashboard/audio', { params });
+    const response = await apiClient.get<AudioResponse>('/dashboard/audio', {
+      params,
+    });
     return response.data;
   },
 
-  getNonTradingDays: async (year: number, month?: number): Promise<NonTradingDaysResponse> => {
+  getNonTradingDays: async (
+    year: number,
+    month?: number
+  ): Promise<NonTradingDaysResponse> => {
     const params: Record<string, number> = { year };
     if (month !== undefined) params.month = month;
-    const response = await apiClient.get<NonTradingDaysResponse>('/dashboard/non-trading-days', { params });
+    const response = await apiClient.get<NonTradingDaysResponse>(
+      '/dashboard/non-trading-days',
+      { params }
+    );
     return response.data;
   },
 
   // ---- Section VI — Macro & Positioning -------------------------------
   getMacroPanel: async (targetDate?: string): Promise<MacroPanelResponse> => {
     const params = targetDate ? { target_date: targetDate } : {};
-    const response = await apiClient.get<MacroPanelResponse>('/dashboard/macro-panel', { params });
+    const response = await apiClient.get<MacroPanelResponse>(
+      '/dashboard/macro-panel',
+      { params }
+    );
     return response.data;
   },
 
   getPositioning: async (targetDate?: string): Promise<PositioningResponse> => {
     const params = targetDate ? { target_date: targetDate } : {};
-    const response = await apiClient.get<PositioningResponse>('/dashboard/positioning', { params });
+    const response = await apiClient.get<PositioningResponse>(
+      '/dashboard/positioning',
+      { params }
+    );
+    return response.data;
+  },
+
+  getFarmgatePrice: async (
+    targetDate?: string
+  ): Promise<FarmgatePriceResponse> => {
+    const params = targetDate ? { target_date: targetDate } : {};
+    const response = await apiClient.get<FarmgatePriceResponse>(
+      '/dashboard/farmgate-price',
+      {
+        params,
+      }
+    );
     return response.data;
   },
 
   getEnsembleDiagnostics: async (
-    targetDate?: string,
+    targetDate?: string
   ): Promise<EnsembleDiagnosticsResponse> => {
     const params = targetDate ? { target_date: targetDate } : {};
     const response = await apiClient.get<EnsembleDiagnosticsResponse>(
       '/dashboard/ensemble-diagnostics',
-      { params },
+      { params }
     );
     return response.data;
   },

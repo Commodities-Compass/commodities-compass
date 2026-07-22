@@ -178,12 +178,23 @@ class PlAlgorithmConfig(Base):
     value: Mapped[str] = mapped_column(TEXT, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(TEXT)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+    # Temporal config (append-only): a config change INSERTs a new row with a later
+    # effective_from instead of UPDATEing, so the old value is preserved (provenance).
+    # ``active=False`` is a tombstone (param turned off as of effective_from). The
+    # v_algorithm_config_current view exposes the latest active row per param.
+    effective_from: Mapped[date] = mapped_column(
+        DATE, nullable=False, server_default=text("DATE '2000-01-01'")
+    )
+    active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
 
     __table_args__ = (
         UniqueConstraint(
             "algorithm_version_id",
             "parameter_name",
-            name="uq_algorithm_config_param",
+            "effective_from",
+            name="uq_algorithm_config_param_eff",
         ),
     )
 

@@ -1,18 +1,32 @@
+import { useTranslation } from 'react-i18next';
 import GaugeIndicator from '@/components/gauge-indicator';
 import { Eyebrow, DataValue } from '@/components/editorial';
+import GroupHeader from './group-header';
 import type { PositioningResponse } from '@/types/dashboard';
-import { MACRO_RANGES, gridStyle4, fmtCompactInt, fmtTonnes, fmtNum, fmtDate, inlineCell } from './helpers';
+import {
+  MACRO_RANGES,
+  gridStyle4,
+  fmtCompactInt,
+  fmtTonnes,
+  fmtNum,
+  fmtDate,
+  inlineCell,
+} from './helpers';
 
 interface PositioningGaugesProps {
   positioning?: PositioningResponse;
 }
 
-export default function PositioningGauges({ positioning }: PositioningGaugesProps) {
+export default function PositioningGauges({
+  positioning,
+}: PositioningGaugesProps) {
+  const { t } = useTranslation();
   return (
     <div style={{ marginBottom: 28 }}>
-      <Eyebrow as="div" tone="muted" size={10} style={{ marginBottom: 14, letterSpacing: '0.22em' }}>
-        Positioning & Supply
-      </Eyebrow>
+      <GroupHeader
+        name={t('market.grp_positioning')}
+        cadence={t('market.cad_weekly')}
+      />
       <div className="gauges-row" style={gridStyle4}>
         <GaugeIndicator
           value={positioning?.cot_managed_money_net ?? 0}
@@ -61,55 +75,99 @@ export default function PositioningGauges({ positioning }: PositioningGaugesProp
         }}
       >
         <span style={inlineCell}>
-          <Eyebrow tone="subtle" size={9}>COT MM EU long</Eyebrow>
-          <DataValue size={11}>{fmtCompactInt(positioning?.cot_managed_money_long)}</DataValue>
+          <Eyebrow tone="subtle" size={9}>
+            COT MM EU long
+          </Eyebrow>
+          <DataValue size={11}>
+            {fmtCompactInt(positioning?.cot_managed_money_long)}
+          </DataValue>
         </span>
         <span style={inlineCell}>
-          <Eyebrow tone="subtle" size={9}>COT MM EU short</Eyebrow>
-          <DataValue size={11}>{fmtCompactInt(positioning?.cot_managed_money_short)}</DataValue>
+          <Eyebrow tone="subtle" size={9}>
+            COT MM EU short
+          </Eyebrow>
+          <DataValue size={11}>
+            {fmtCompactInt(positioning?.cot_managed_money_short)}
+          </DataValue>
         </span>
         <span style={inlineCell}>
-          <Eyebrow tone="subtle" size={9}>COT MM US long</Eyebrow>
-          <DataValue size={11}>{fmtCompactInt(positioning?.cot_us_managed_money_long)}</DataValue>
+          <Eyebrow tone="subtle" size={9}>
+            COT MM US long
+          </Eyebrow>
+          <DataValue size={11}>
+            {fmtCompactInt(positioning?.cot_us_managed_money_long)}
+          </DataValue>
         </span>
         <span style={inlineCell}>
-          <Eyebrow tone="subtle" size={9}>COT MM US short</Eyebrow>
-          <DataValue size={11}>{fmtCompactInt(positioning?.cot_us_managed_money_short)}</DataValue>
+          <Eyebrow tone="subtle" size={9}>
+            COT MM US short
+          </Eyebrow>
+          <DataValue size={11}>
+            {fmtCompactInt(positioning?.cot_us_managed_money_short)}
+          </DataValue>
         </span>
         <span style={inlineCell}>
-          <Eyebrow tone="subtle" size={9}>COT P/M net EU</Eyebrow>
-          <DataValue size={11}>{fmtCompactInt(positioning?.cot_producer_merchant_net)}</DataValue>
+          <Eyebrow tone="subtle" size={9}>
+            COT P/M net EU
+          </Eyebrow>
+          <DataValue size={11}>
+            {fmtCompactInt(positioning?.cot_producer_merchant_net)}
+          </DataValue>
         </span>
         <span style={inlineCell}>
-          <Eyebrow tone="subtle" size={9}>COT P/M net US</Eyebrow>
-          <DataValue size={11}>{fmtCompactInt(positioning?.cot_us_producer_merchant_net)}</DataValue>
+          <Eyebrow tone="subtle" size={9}>
+            COT P/M net US
+          </Eyebrow>
+          <DataValue size={11}>
+            {fmtCompactInt(positioning?.cot_us_producer_merchant_net)}
+          </DataValue>
         </span>
         <span style={inlineCell}>
-          <Eyebrow tone="subtle" size={9}>Ratio EU/US (tonnes)</Eyebrow>
-          <DataValue size={11}>{fmtNum(positioning?.stock_eu_us_ratio, 2)}</DataValue>
+          <Eyebrow tone="subtle" size={9}>
+            Ratio EU/US (tonnes)
+          </Eyebrow>
+          <DataValue size={11}>
+            {fmtNum(positioning?.stock_eu_us_ratio, 2)}
+          </DataValue>
         </span>
         {positioning?.stock_eu_report_date && (
           <span style={inlineCell}>
-            <Eyebrow tone="subtle" size={9}>Stock EU release</Eyebrow>
-            <DataValue size={11} color="var(--ink-mid)">{fmtDate(positioning.stock_eu_report_date)}</DataValue>
+            <Eyebrow tone="subtle" size={9}>
+              Stock EU release
+            </Eyebrow>
+            <DataValue size={11} color="var(--ink-mid)">
+              {fmtDate(positioning.stock_eu_report_date)}
+            </DataValue>
           </span>
         )}
         {positioning?.stock_us_report_date && (
           <span style={inlineCell}>
-            <Eyebrow tone="subtle" size={9}>Stock US release</Eyebrow>
-            <DataValue size={11} color="var(--ink-mid)">{fmtDate(positioning.stock_us_report_date)}</DataValue>
+            <Eyebrow tone="subtle" size={9}>
+              Stock US release
+            </Eyebrow>
+            <DataValue size={11} color="var(--ink-mid)">
+              {fmtDate(positioning.stock_us_report_date)}
+            </DataValue>
           </span>
         )}
         {positioning?.cot_release_date && (
           <span style={inlineCell}>
-            <Eyebrow tone="subtle" size={9}>COT EU release</Eyebrow>
-            <DataValue size={11} color="var(--ink-mid)">{fmtDate(positioning.cot_release_date)}</DataValue>
+            <Eyebrow tone="subtle" size={9}>
+              COT EU release
+            </Eyebrow>
+            <DataValue size={11} color="var(--ink-mid)">
+              {fmtDate(positioning.cot_release_date)}
+            </DataValue>
           </span>
         )}
         {positioning?.cot_us_release_date && (
           <span style={inlineCell}>
-            <Eyebrow tone="subtle" size={9}>COT US release</Eyebrow>
-            <DataValue size={11} color="var(--ink-mid)">{fmtDate(positioning.cot_us_release_date)}</DataValue>
+            <Eyebrow tone="subtle" size={9}>
+              COT US release
+            </Eyebrow>
+            <DataValue size={11} color="var(--ink-mid)">
+              {fmtDate(positioning.cot_us_release_date)}
+            </DataValue>
           </span>
         )}
       </div>

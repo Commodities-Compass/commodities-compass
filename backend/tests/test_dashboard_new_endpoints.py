@@ -157,6 +157,8 @@ async def test_macro_panel_picks_latest_fx_and_lagged_enso(
     # FX picks 2026-05-15 (latest <= target)
     assert out["fx_dxy_proxy"] == 0.96
     assert out["fx_gbpusd"] == 1.28
+    # XOF/GBP derived from fixed EUR/XOF peg through the picked row's fx_gbpeur=0.86
+    assert out["fx_xofgbp"] == pytest.approx(655.957 / 0.86)
     # ENSO must respect the 14-day lag — only 2026-04-01 is old enough
     assert out["enso_oni_month"] == 0.30
     assert out["enso_reference_date"] == "2026-04-01"

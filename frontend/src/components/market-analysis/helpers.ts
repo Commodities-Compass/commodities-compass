@@ -1,6 +1,12 @@
 import type { IndicatorRange } from '@/types/dashboard';
 
-export const INDICATOR_KEYS = ['macd', 'volOi', 'rsi', 'percentK', 'atr'] as const;
+export const INDICATOR_KEYS = [
+  'macd',
+  'volOi',
+  'rsi',
+  'percentK',
+  'atr',
+] as const;
 
 // Editorial ranges for the macro + positioning gauges. Editorial defaults
 // (not from pl_test_range which only covers the 5 technical indicators).
@@ -24,6 +30,20 @@ export const MACRO_RANGES: Record<
       { range_low: 1.1, range_high: 1.22, area: 'RED' },
       { range_low: 1.22, range_high: 1.32, area: 'ORANGE' },
       { range_low: 1.32, range_high: 1.45, area: 'GREEN' },
+    ],
+  },
+  // XOF (FCFA) per 1 GBP — FCFA value of the London cocoa price. Derived from
+  // the FIXED EUR/XOF peg (655.957) through the floating GBP/EUR leg, so it
+  // only moves with GBP/EUR. Zones are INDICATIVE (producer-revenue lens: a
+  // weaker XOF = more FCFA per GBP of crop = greener), not a trading signal —
+  // same editorial-default convention as the other FX gauges above.
+  FX_XOFGBP: {
+    min: 700,
+    max: 850,
+    ranges: [
+      { range_low: 700, range_high: 740, area: 'RED' },
+      { range_low: 740, range_high: 800, area: 'ORANGE' },
+      { range_low: 800, range_high: 850, area: 'GREEN' },
     ],
   },
   ENSO_ONI: {
@@ -118,7 +138,20 @@ export function fmtDate(iso?: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso + 'T00:00:00');
   if (Number.isNaN(d.getTime())) return iso;
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
   return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
 }
 

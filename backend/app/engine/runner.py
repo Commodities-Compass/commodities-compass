@@ -163,6 +163,65 @@ def _convert_numeric_columns(df: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
+def _assert_unique_dates(df: pd.DataFrame, source: str) -> None:
+    """Fail loud if the market series has duplicate dates.
+
+    Rolling/recursive indicators (EMA, RSI/ATR Wilder, 252d z-scores) are
+    positional — a duplicated date silently corrupts every downstream value.
+    A fan-out here (e.g. a LEFT JOIN over the pl_indicator_daily
+    version/language dimensions) is exactly how pl_derived_indicators got
+    corrupted historically; this turns any recurrence into an immediate crash
+    instead of silent bad data. See .claude/rules/timeseries-uniqueness.md.
+    """
+    if df.empty:
+        return
+    if not df["date"].is_unique:
+        dups = list(df.loc[df["date"].duplicated(keep=False), "date"].unique()[:5])
+        raise RuntimeError(
+            f"{source} returned duplicate dates ({dups}...) — the market series "
+            "must have exactly one row per date. A fan-out has re-appeared; "
+            "computing indicators over a duplicated series corrupts them."
+        )
+
+
+def _attach_version_macroeco(
+    session: Session, df: pd.DataFrame, algo_version_id: uuid.UUID
+) -> pd.DataFrame:
+    """Merge THIS version's macroeco_bonus (fr) onto the market series.
+
+    Kept OUT of the market loaders on purpose: the loaders must return a
+    fan-out-proof one-row-per-date OHLCV series, but macroeco_bonus lives in
+    pl_indicator_daily keyed on (date, contract_id, algo_version, language) —
+    joining it in the loader fans the series out (the historical corruption).
+    Here we join exactly one row per (date, contract) for the version being
+    computed, so each version's composite uses its own macroeco and the series
+    stays unique. macroeco only feeds the final composite, never the
+    derived/z-score layers.
+    """
+    rows = session.execute(
+        text(
+            """
+            SELECT date, contract_id, macroeco_bonus
+            FROM pl_indicator_daily
+            WHERE algorithm_version_id = :vid
+              AND language = 'fr'
+              AND macroeco_bonus IS NOT NULL
+            """
+        ),
+        {"vid": algo_version_id},
+    ).fetchall()
+    if not rows:
+        out = df.copy()
+        out["macroeco_bonus"] = pd.NA
+        return _convert_numeric_columns(out)
+    macro = pd.DataFrame(
+        rows, columns=pd.Index(["date", "contract_id", "macroeco_bonus"])
+    )
+    out = df.merge(macro, on=["date", "contract_id"], how="left")
+    _assert_unique_dates(out, "_attach_version_macroeco")
+    return _convert_numeric_columns(out)
+
+
 def load_market_data(session: Session, contract_code: str) -> pd.DataFrame:
     """Load raw market data for a single contract."""
     result = session.execute(
@@ -170,12 +229,9 @@ def load_market_data(session: Session, contract_code: str) -> pd.DataFrame:
             SELECT
                 d.date, d.close, d.high, d.low, d.volume, d.oi,
                 d.implied_volatility,
-                d.contract_id,
-                i.macroeco_bonus
+                d.contract_id
             FROM pl_contract_data_daily d
             JOIN ref_contract c ON d.contract_id = c.id
-            LEFT JOIN pl_indicator_daily i
-                ON d.date = i.date AND d.contract_id = i.contract_id
             WHERE c.code = :code
             ORDER BY d.date ASC
         """),
@@ -195,9 +251,10 @@ def load_market_data(session: Session, contract_code: str) -> pd.DataFrame:
         "oi",
         "implied_volatility",
         "contract_id",
-        "macroeco_bonus",
     ]
-    return _convert_numeric_columns(pd.DataFrame(rows, columns=pd.Index(columns)))
+    df = _convert_numeric_columns(pd.DataFrame(rows, columns=pd.Index(columns)))
+    _assert_unique_dates(df, "load_market_data")
+    return df
 
 
 def load_all_market_data(session: Session) -> pd.DataFrame:
@@ -229,11 +286,8 @@ def load_all_market_data(session: Session) -> pd.DataFrame:
             SELECT
                 m.date, m.close, m.high, m.low, m.volume, m.oi,
                 m.implied_volatility,
-                m.contract_id, m.contract_code,
-                i.macroeco_bonus
+                m.contract_id, m.contract_code
             FROM market m
-            LEFT JOIN pl_indicator_daily i
-                ON m.date = i.date AND m.contract_id = i.contract_id
             ORDER BY m.date ASC
         """),
     )
@@ -252,9 +306,10 @@ def load_all_market_data(session: Session) -> pd.DataFrame:
         "implied_volatility",
         "contract_id",
         "contract_code",
-        "macroeco_bonus",
     ]
-    return _convert_numeric_columns(pd.DataFrame(rows, columns=pd.Index(columns)))
+    df = _convert_numeric_columns(pd.DataFrame(rows, columns=pd.Index(columns)))
+    _assert_unique_dates(df, "load_all_market_data")
+    return df
 
 
 def _get_last_computed_date(
@@ -380,7 +435,11 @@ def _run_for_version(
     config = load_algorithm_config(session, algo_name, algo_version)
 
     pipeline = IndicatorPipeline(config=config, normalization_window=args.window)
-    result = pipeline.run(df)
+    # Attach THIS version's macroeco_bonus here (not in the loader) so the market
+    # series stays fan-out-proof — one row per date. macroeco only feeds the final
+    # composite, never the derived/z-score layers.
+    df_v = _attach_version_macroeco(session, df, algo_version_id)
+    result = pipeline.run(df_v)
     signals = result.signals
 
     _print_summary(signals)

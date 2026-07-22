@@ -1,5 +1,6 @@
+import { useTranslation } from 'react-i18next';
 import GaugeIndicator from '@/components/gauge-indicator';
-import { Eyebrow } from '@/components/editorial';
+import GroupHeader from './group-header';
 import type { IndicatorsGridResponse } from '@/types/dashboard';
 import { INDICATOR_KEYS, gridStyle5 } from './helpers';
 
@@ -7,12 +8,16 @@ interface TechnicalsGaugesProps {
   indicators?: IndicatorsGridResponse['indicators'];
 }
 
-export default function TechnicalsGauges({ indicators }: TechnicalsGaugesProps) {
+export default function TechnicalsGauges({
+  indicators,
+}: TechnicalsGaugesProps) {
+  const { t } = useTranslation();
   return (
     <div style={{ marginBottom: 28 }}>
-      <Eyebrow as="div" tone="muted" size={10} style={{ marginBottom: 14, letterSpacing: '0.22em' }}>
-        Technicals
-      </Eyebrow>
+      <GroupHeader
+        name={t('market.grp_technicals')}
+        cadence={t('market.cad_daily')}
+      />
       {indicators ? (
         <div className="gauges-row" style={gridStyle5}>
           {INDICATOR_KEYS.map((key) =>
@@ -25,12 +30,18 @@ export default function TechnicalsGauges({ indicators }: TechnicalsGaugesProps) 
                 label={indicators[key].label}
                 ranges={indicators[key].ranges}
               />
-            ) : null,
+            ) : null
           )}
         </div>
       ) : (
-        <p style={{ color: 'var(--ink-light)', fontSize: 14, textAlign: 'center' }}>
-          Aucun indicateur disponible.
+        <p
+          style={{
+            color: 'var(--ink-light)',
+            fontSize: 14,
+            textAlign: 'center',
+          }}
+        >
+          {t('market.no_indicators')}
         </p>
       )}
     </div>

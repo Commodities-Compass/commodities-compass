@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import SectionHeader from '@/components/section-header';
 import {
   useIndicatorsGrid,
@@ -9,9 +10,9 @@ import {
 } from '@/hooks/useDashboard';
 import { parseConclusion } from '@/utils/recommendation-parser';
 import TechnicalsGauges from '@/components/market-analysis/technicals-gauges';
-import MacroGauges from '@/components/market-analysis/macro-gauges';
-import FarmgateBlock from '@/components/market-analysis/farmgate-block';
+import FxGauges from '@/components/market-analysis/fx-gauges';
 import PositioningGauges from '@/components/market-analysis/positioning-gauges';
+import ReferenceStrata from '@/components/market-analysis/reference-strata';
 import EditorialAnalysis from '@/components/market-analysis/editorial-analysis';
 
 interface MarketAnalysisProps {
@@ -25,6 +26,13 @@ function split3(arr: string[]): [string[], string[], string[]] {
   const per = Math.ceil(arr.length / 3);
   return [arr.slice(0, per), arr.slice(per, per * 2), arr.slice(per * 2)];
 }
+
+// Dotted rule marking a cadence boundary between gauge strata.
+const dividerStyle: CSSProperties = {
+  height: 1,
+  borderTop: '1px dotted var(--rule)',
+  marginBottom: 28,
+};
 
 export default function MarketAnalysis({
   targetDate,
@@ -62,24 +70,22 @@ export default function MarketAnalysis({
       <section style={{ padding: '32px 0 24px' }}>
         <SectionHeader numeral="II" title="Market Analysis" />
 
-        {/* Unified 5-column grid: all sub-blocks align vertically.
-            Each gauge claims the same column width regardless of how many
-            gauges a row contains — leaves empty slots at the right when a
-            row has fewer than 5. */}
+        {/* Section II is ordered by data cadence, fastest → slowest:
+            daily gauges (Technicals, FX) → weekly (Positioning & Supply) →
+            seasonal/monthly references (guaranteed price, ENSO). Dotted rules
+            mark the cadence boundaries. All rows share the 5-column grid. */}
         <TechnicalsGauges indicators={gridData?.indicators} />
-        <MacroGauges macro={macro} />
-        <FarmgateBlock farmgate={farmgate} />
+        <FxGauges macro={macro} />
+
+        <div aria-hidden style={dividerStyle} />
+
         <PositioningGauges positioning={positioning} />
 
-        {/* Dotted separator between gauges and editorial body */}
-        <div
-          aria-hidden
-          style={{
-            height: 1,
-            borderTop: '1px dotted var(--rule)',
-            marginBottom: 28,
-          }}
-        />
+        <div aria-hidden style={dividerStyle} />
+
+        <ReferenceStrata farmgate={farmgate} macro={macro} />
+
+        <div aria-hidden style={dividerStyle} />
 
         <EditorialAnalysis
           isLoading={isLoading}

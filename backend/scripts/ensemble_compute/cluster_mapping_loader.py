@@ -41,6 +41,9 @@ _WRAPPER_PREFIX = "wrapper_"
 # Optional Compass-side levers (config-as-data; absent row → lever OFF, no behavior change).
 REGIME_MONITOR_ATR_PCTL_KEY = "compass_regime_monitor_atr_pctl"
 SOFTGATE_ALPHA_MACRO_CAP_KEY = "compass_softgate_alpha_macro_cap"
+# Absolute override of the soft-gate commit_threshold (config-as-data; absent row → keep
+# the frozen artifact value). Lower = more OPEN/HEDGE commits, fewer soft-gate MONITORs.
+SOFTGATE_COMMIT_THRESHOLD_KEY = "commit_threshold"
 
 
 def load_optional_config_float(

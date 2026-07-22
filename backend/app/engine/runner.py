@@ -383,12 +383,16 @@ def _write_results_per_contract(
     signals: pd.DataFrame,
     algo_version_id: uuid.UUID,
     config: AlgorithmConfig,
+    *,
+    derived_only: bool = False,
 ) -> dict[str, int]:
     """Write results grouped by contract_id, using savepoints.
 
     Each contract's writes are wrapped in a SAVEPOINT so that a failure
     in contract N+1 doesn't leave contract N permanently committed while
     contract N+1 has partial deletes. All contracts commit atomically.
+
+    ``derived_only`` writes only pl_derived_indicators (leaves decisions/scores frozen).
     """
     totals: dict[str, int] = {
         "pl_derived_indicators": 0,
@@ -413,6 +417,7 @@ def _write_results_per_contract(
                 algorithm_version_id=algo_version_id,
                 config=config,
                 commit=False,
+                derived_only=derived_only,
             )
         for key in totals:
             totals[key] += counts[key]
@@ -475,10 +480,11 @@ def _run_for_version(
         _print_tail(write_signals, n=10)
         return
 
+    derived_only = getattr(args, "derived_only", False)
     if args.all_contracts:
         logger.info("Writing results to database (per contract)...")
         totals = _write_results_per_contract(
-            session, write_signals, algo_version_id, config
+            session, write_signals, algo_version_id, config, derived_only=derived_only
         )
     else:
         contract_id = load_contract_id(session, args.contract)
@@ -493,6 +499,7 @@ def _run_for_version(
             contract_id=contract_id,
             algorithm_version_id=algo_version_id,
             config=config,
+            derived_only=derived_only,
         )
 
     logger.info(
@@ -544,6 +551,16 @@ def main() -> None:
         "--force",
         action="store_true",
         help="Run even on non-trading days (for backfills/debugging)",
+    )
+    parser.add_argument(
+        "--derived-only",
+        action="store_true",
+        help=(
+            "Write ONLY pl_derived_indicators (correct the raw technical indicators the "
+            "dashboard never reads), leaving pl_indicator_daily + pl_signal_component "
+            "frozen. Use to fix corrupted lookback inputs without restating historical "
+            "decisions/scores/gauges. Pair with --full."
+        ),
     )
     args = parser.parse_args()
 

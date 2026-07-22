@@ -24,6 +24,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.services.dashboard_service import YTD_EVAL_HORIZON_DAYS, _score_day
+from scripts._shared.farmgate_brief import read_farmgate
 from scripts.compass_brief_ensemble.config import ALGORITHM_NAME, ALGORITHM_VERSION
 
 logger = logging.getLogger(__name__)
@@ -116,6 +117,10 @@ class EnsembleBriefData:
     # dashboard's "Performance YTD" badge. Sourced from
     # ``calculate_ytd_performance`` (Compass scoring J+4 horizon).
     ytd_score: Decimal | None = None
+
+    # Official guaranteed farmgate price (CCC/COCOBOD) — standing reference,
+    # not daily. {"civ": {...}|None, "ghana": {...}|None}.
+    farmgate: dict | None = None
 
 
 def _resolve_algorithm_id(session: Session) -> Any:
@@ -672,4 +677,5 @@ def read_brief_data(
         technicals_snapshot=technicals,
         persistence_days=persistence,
         ytd_score=ytd_score,
+        farmgate=read_farmgate(session, effective_data_date),
     )

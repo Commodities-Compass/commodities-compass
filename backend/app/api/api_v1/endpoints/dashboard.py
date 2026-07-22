@@ -28,6 +28,7 @@ from app.schemas.dashboard import (
     WeatherEnrichedResponse,
     ChartDataResponse,
     AudioResponse,
+    FarmgatePriceResponse,
     MacroPanelResponse,
     PositioningResponse,
     EnsembleDiagnosticsResponse,
@@ -59,6 +60,7 @@ from app.services.dashboard_transformers import (
     transform_to_weather_enriched_response,
 )
 from app.services.macro_panel_service import get_macro_panel
+from app.services.farmgate_service import get_farmgate_prices
 from app.services.positioning_service import get_positioning
 from app.services.ensemble_diagnostics_service import (
     get_ensemble_diagnostics,
@@ -851,6 +853,39 @@ async def get_macro_panel_endpoint(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error getting macro panel: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/farmgate-price", response_model=FarmgatePriceResponse)
+@limiter.limit("60/minute")
+async def get_farmgate_price_endpoint(
+    request: Request,
+    target_date: Optional[str] = Query(
+        default=None, description="Date for farmgate price (YYYY-MM-DD format)"
+    ),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> FarmgatePriceResponse:
+    """Official / guaranteed farmgate price — CIV (CCC) + Ghana (COCOBOD).
+
+    Returns, per region, the most recent price effective on or before the date.
+    This is the official guaranteed price (distinct from the real terrain price);
+    a region is NULL when nothing has been announced on or before the date.
+    """
+    try:
+        business_date = None
+        if target_date:
+            business_date = await _parse_and_validate_date(target_date, db)
+        resolution_date = business_date or datetime.now(timezone.utc).date()
+
+        data = await get_farmgate_prices(db, resolution_date)
+        return FarmgatePriceResponse(**data)
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error getting farmgate price: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

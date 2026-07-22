@@ -9,6 +9,7 @@ import type {
   WeatherResponse,
   AudioResponse,
   NonTradingDaysResponse,
+  FarmgatePriceResponse,
   MacroPanelResponse,
   PositioningResponse,
   EnsembleDiagnosticsResponse,
@@ -126,6 +127,14 @@ export const usePositioning = (targetDate?: string) => {
   return useQuery<PositioningResponse>({
     queryKey: ['positioning', targetDate],
     queryFn: () => dashboardApi.getPositioning(targetDate),
+    ...DAILY_QUERY_OPTIONS,
+  });
+};
+
+export const useFarmgatePrice = (targetDate?: string) => {
+  return useQuery<FarmgatePriceResponse>({
+    queryKey: ['farmgate-price', targetDate],
+    queryFn: () => dashboardApi.getFarmgatePrice(targetDate),
     ...DAILY_QUERY_OPTIONS,
   });
 };

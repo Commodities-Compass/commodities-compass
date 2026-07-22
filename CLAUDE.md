@@ -470,6 +470,7 @@ All API endpoints are prefixed with `/v1` and include:
   - `GET /dashboard/chart-data` - Historical data for charting (1-365 days)
   - `GET /dashboard/news` - Latest market research article
   - `GET /dashboard/weather` - Latest weather update and market impact
+  - `GET /dashboard/farmgate-price` - Official/guaranteed farmgate price (CIV/CCC + Ghana/COCOBOD), latest effective ≤ date per region. Append-only `pl_official_farmgate_price`; ops entry via `poetry run set-farmgate-price`. Distinct from the real terrain price (Programme Fondateur).
   - `GET /dashboard/audio` - Audio file metadata with backend streaming URL
   - `GET /dashboard/latest-indicator` - Legacy stub (use `/indicators-grid` instead)
   - `GET /dashboard/dashboard-data` - Legacy stub (use specific endpoints instead)
@@ -603,7 +604,7 @@ For terminal-first error triage (Claude or human): see [docs/runbooks/sentry-tri
 
 ## Development Notes
 
-- Backend uses Poetry scripts: `poetry run dev`, `poetry run lint`, `poetry run daily-analysis`, `poetry run meteo-agent`, `poetry run compass-brief`, `poetry run press-review`, `poetry run barchart-scraper`, `poetry run ice-stocks-scraper`, `poetry run cftc-scraper`, `poetry run compute-indicators`, `poetry run seed-gcp`, `poetry run seed-trading-calendar`
+- Backend uses Poetry scripts: `poetry run dev`, `poetry run lint`, `poetry run daily-analysis`, `poetry run meteo-agent`, `poetry run compass-brief`, `poetry run press-review`, `poetry run barchart-scraper`, `poetry run ice-stocks-scraper`, `poetry run cftc-scraper`, `poetry run compute-indicators`, `poetry run set-farmgate-price`, `poetry run seed-gcp`, `poetry run seed-trading-calendar`
 - Frontend environment variables exposed via custom Vite `define` config (no VITE_ prefix needed)
 - Database migrations managed via Alembic (migrations are idempotent for safe GCP re-application)
 - Pre-commit hooks run via Husky (backend: ruff + pyright, frontend: eslint fix)

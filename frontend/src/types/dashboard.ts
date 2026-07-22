@@ -142,6 +142,24 @@ export interface MacroPanelResponse {
   source_algorithm?: AlgorithmName | null;
 }
 
+export interface FarmgatePriceEntry {
+  region: string;
+  season_label: string;
+  price_native: number;
+  currency: string;
+  unit: string;
+  source: string;
+  source_url: string | null;
+  effective_date: string;
+  announced_date: string | null;
+}
+
+export interface FarmgatePriceResponse {
+  date: string;
+  civ: FarmgatePriceEntry | null;
+  ghana: FarmgatePriceEntry | null;
+}
+
 export interface PositioningResponse {
   date: string;
   // ICE EU COT

@@ -142,7 +142,8 @@
     "pause": "Pause",
     "audio_progress": "Progression de l'audio",
     "loading_short": "CHARGEMENT…",
-    "no_bulletin": "AUCUN BULLETIN DISPONIBLE"
+    "no_bulletin": "AUCUN BULLETIN DISPONIBLE",
+    "today_title": "Podcast du jour"
   },
   "indicators": {
     "macroeco_name": "Macro-Économique",

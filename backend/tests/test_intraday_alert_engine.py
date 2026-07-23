@@ -343,6 +343,7 @@ class TestDedup:
             signal_decision=None,
             channel="telegram",
         )
+        assert event_id is not None
         update_delivery(
             sync_db_session,
             event_id=event_id,

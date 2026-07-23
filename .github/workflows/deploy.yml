@@ -181,9 +181,12 @@ jobs:
 
           COMMON_FLAGS="--region=${REGION} --service-account=${SA} --vpc-connector=${VPC} --vpc-egress=private-ranges-only --max-retries=0 --task-timeout=900s"
 
-          SECRETS="--set-secrets=DATABASE_URL=DATABASE_URL:latest,DATABASE_SYNC_URL=DATABASE_SYNC_URL:latest,GOOGLE_SHEETS_CREDENTIALS_JSON=GOOGLE_SHEETS_CREDENTIALS_JSON:latest,GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON=GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON:latest,GOOGLE_DRIVE_CREDENTIALS_JSON=GOOGLE_DRIVE_CREDENTIALS_JSON:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,SENTRY_DSN=SENTRY_DSN:latest"
+          SECRETS="--set-secrets=DATABASE_URL=DATABASE_URL:latest,DATABASE_SYNC_URL=DATABASE_SYNC_URL:latest,GOOGLE_SHEETS_CREDENTIALS_JSON=GOOGLE_SHEETS_CREDENTIALS_JSON:latest,GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON=GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON:latest,GOOGLE_DRIVE_CREDENTIALS_JSON=GOOGLE_DRIVE_CREDENTIALS_JSON:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,SENTRY_DSN=SENTRY_DSN:latest,TELEGRAM_BOT_TOKEN=TELEGRAM_BOT_TOKEN:latest"
 
-          ENV_VARS="--set-env-vars=GOOGLE_DRIVE_AUDIO_FOLDER_ID=${{ vars.GOOGLE_DRIVE_AUDIO_FOLDER_ID }},GOOGLE_DRIVE_BRIEFS_FOLDER_ID=${{ vars.GOOGLE_DRIVE_BRIEFS_FOLDER_ID }},GIT_COMMIT_SHA=${{ github.sha }}"
+          # ALERT_CHANNEL: 'console' (shadow, default) or 'telegram' (live).
+          # TELEGRAM_CHANNEL_ID: private-channel numeric id (-100…), set as a
+          # GitHub var once the channel exists — only read when channel=telegram.
+          ENV_VARS="--set-env-vars=GOOGLE_DRIVE_AUDIO_FOLDER_ID=${{ vars.GOOGLE_DRIVE_AUDIO_FOLDER_ID }},GOOGLE_DRIVE_BRIEFS_FOLDER_ID=${{ vars.GOOGLE_DRIVE_BRIEFS_FOLDER_ID }},ALERT_CHANNEL=${{ vars.ALERT_CHANNEL || 'console' }},TELEGRAM_CHANNEL_ID=${{ vars.TELEGRAM_CHANNEL_ID }},GIT_COMMIT_SHA=${{ github.sha }}"
 
           deploy_job() {
             local name=$1
@@ -278,6 +281,13 @@ jobs:
           # late audio never freezes the dashboard). Drives the atomic same-
           # evening flip. See docs/runbooks/session-publish-gate.md.
           deploy_job cc-publish-session          512Mi "publish-session"
+          # Intraday threshold monitor: 15-min delayed-price polling during the
+          # London session; fires level-invalidation alerts (S1/R1) to the
+          # Telegram channel — first-cross-only per (rule, session), dedup at
+          # the data level (aud_alert_event). Pure httpx (no Playwright).
+          # ALERT_CHANNEL=console until the Telegram channel is provisioned,
+          # then flip the GitHub var to telegram (+ set TELEGRAM_CHANNEL_ID).
+          deploy_job cc-intraday-monitor         512Mi "intraday-monitor"
 
   sentry-release:
     name: Create Sentry Release

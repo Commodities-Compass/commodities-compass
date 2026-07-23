@@ -12,11 +12,18 @@ from .base import Base
 from .test_range import TestRange
 
 # MVP schema — Reference tables
-from .reference import RefExchange, RefCommodity, RefContract, RefTradingCalendar
+from .reference import (
+    RefExchange,
+    RefCommodity,
+    RefContract,
+    RefTradingCalendar,
+    RefAlertRule,
+)
 
 # MVP schema — Pipeline tables
 from .pipeline import (
     PlContractDataDaily,
+    PlContractDataIntraday,
     PlDerivedIndicators,
     PlAlgorithmVersion,
     PlAlgorithmConfig,
@@ -27,7 +34,7 @@ from .pipeline import (
 )
 
 # MVP schema — Audit tables
-from .audit import AudPipelineRun, AudLlmCall, AudDataQualityCheck
+from .audit import AudPipelineRun, AudLlmCall, AudDataQualityCheck, AudAlertEvent
 
 # MVP schema — Signal tables
 from .signal import PlSignalComponent
@@ -40,8 +47,10 @@ __all__ = [
     "RefCommodity",
     "RefContract",
     "RefTradingCalendar",
+    "RefAlertRule",
     # Pipeline
     "PlContractDataDaily",
+    "PlContractDataIntraday",
     "PlDerivedIndicators",
     "PlAlgorithmVersion",
     "PlAlgorithmConfig",
@@ -53,6 +62,7 @@ __all__ = [
     "AudPipelineRun",
     "AudLlmCall",
     "AudDataQualityCheck",
+    "AudAlertEvent",
     # Signal
     "PlSignalComponent",
 ]

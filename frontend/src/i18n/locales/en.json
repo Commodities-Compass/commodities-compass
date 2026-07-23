@@ -142,7 +142,8 @@
     "pause": "Pause",
     "audio_progress": "Audio progress",
     "loading_short": "LOADING…",
-    "no_bulletin": "NO BULLETIN AVAILABLE"
+    "no_bulletin": "NO BULLETIN AVAILABLE",
+    "today_title": "Today's podcast"
   },
   "indicators": {
     "macroeco_name": "Macro-Economic",

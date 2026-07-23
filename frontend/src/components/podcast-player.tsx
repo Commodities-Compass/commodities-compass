@@ -30,7 +30,10 @@ function formatTime(time: number): string {
   return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
 }
 
-export default function PodcastPlayer({ audioDate, className }: PodcastPlayerProps) {
+export default function PodcastPlayer({
+  audioDate,
+  className,
+}: PodcastPlayerProps) {
   const { t } = useTranslation();
   const [isPlaying, setIsPlaying] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
@@ -43,8 +46,11 @@ export default function PodcastPlayer({ audioDate, className }: PodcastPlayerPro
   const { data: audioData, isLoading, error } = useAudio(audioDate);
 
   const barHeights = useMemo(
-    () => generateBarHeights(audioDate ? parseInt(audioDate.slice(-5).replace(/-/g, ''), 10) : 7),
-    [audioDate],
+    () =>
+      generateBarHeights(
+        audioDate ? parseInt(audioDate.slice(-5).replace(/-/g, ''), 10) : 7
+      ),
+    [audioDate]
   );
 
   const progress = duration > 0 ? currentTime / duration : 0;
@@ -52,7 +58,9 @@ export default function PodcastPlayer({ audioDate, className }: PodcastPlayerPro
   useEffect(() => {
     if (!audioRef.current || !audioData?.url) return;
     const apiBaseUrl = import.meta.env.API_BASE_URL || '';
-    const absoluteUrl = audioData.url.startsWith('/') ? `${apiBaseUrl}${audioData.url}` : audioData.url;
+    const absoluteUrl = audioData.url.startsWith('/')
+      ? `${apiBaseUrl}${audioData.url}`
+      : audioData.url;
     audioRef.current.src = absoluteUrl;
     audioRef.current.load();
     setIsPlaying(false); // eslint-disable-line react-hooks/set-state-in-effect -- reset on source change
@@ -68,7 +76,10 @@ export default function PodcastPlayer({ audioDate, className }: PodcastPlayerPro
       audioRef.current.pause();
       setIsPlaying(false);
     } else {
-      audioRef.current.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+      audioRef.current
+        .play()
+        .then(() => setIsPlaying(true))
+        .catch(() => setIsPlaying(false));
     }
   }, [isPlaying]);
 
@@ -97,12 +108,15 @@ export default function PodcastPlayer({ audioDate, className }: PodcastPlayerPro
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (!audioRef.current || !duration || !waveformRef.current) return;
       const rect = waveformRef.current.getBoundingClientRect();
-      const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      const ratio = Math.max(
+        0,
+        Math.min(1, (e.clientX - rect.left) / rect.width)
+      );
       const newTime = ratio * duration;
       audioRef.current.currentTime = newTime;
       setCurrentTime(newTime);
     },
-    [duration],
+    [duration]
   );
 
   const hasAudio = !error && !isLoading && audioData?.url;
@@ -142,7 +156,7 @@ export default function PodcastPlayer({ audioDate, className }: PodcastPlayerPro
                 color: 'var(--ink)',
               }}
             >
-              {audioData?.title || t('weather.podcast_bulletin_default')}
+              {t('podcast.today_title')}
             </div>
             <div
               className="uppercase mt-1"
@@ -153,7 +167,7 @@ export default function PodcastPlayer({ audioDate, className }: PodcastPlayerPro
                 color: 'var(--ink-mid)',
               }}
             >
-              NotebookLM Audio · {audioData?.date ?? audioDate ?? ''}
+              NotebookLM Audio
             </div>
           </div>
 
@@ -179,11 +193,17 @@ export default function PodcastPlayer({ audioDate, className }: PodcastPlayerPro
             }}
           >
             {isLoading || isBuffering || (hasAudio && !isAudioReady) ? (
-              <Loader2 className="h-5 w-5 animate-spin" style={{ color: 'var(--ink)' }} />
+              <Loader2
+                className="h-5 w-5 animate-spin"
+                style={{ color: 'var(--ink)' }}
+              />
             ) : isPlaying ? (
               <PauseIcon className="h-6 w-6" style={{ color: 'var(--ink)' }} />
             ) : (
-              <PlayIcon className="h-6 w-6 ml-0.5" style={{ color: 'var(--ink)' }} />
+              <PlayIcon
+                className="h-6 w-6 ml-0.5"
+                style={{ color: 'var(--ink)' }}
+              />
             )}
           </button>
         </div>

@@ -1,5 +1,12 @@
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { useIsTouch } from '@/hooks/useIsTouch';
 import GroupHeader from './group-header';
 import { Eyebrow } from '@/components/editorial';
 import { gridStyle5 } from './helpers';
@@ -51,9 +58,68 @@ const valBig: CSSProperties = {
 const valMid: CSSProperties = {
   fontFamily: 'var(--font-mono)',
   fontSize: 15,
+  fontWeight: 600,
   fontVariantNumeric: 'tabular-nums',
   color: 'var(--ink)',
 };
+const cellHelp: CSSProperties = { ...cell, cursor: 'help' };
+
+/** Hover tooltip explaining a reference metric — mirrors the gauge tooltip. */
+function InfoTooltip({
+  name,
+  desc,
+  children,
+}: {
+  name: string;
+  desc: string;
+  children: ReactNode;
+}) {
+  const isTouch = useIsTouch();
+  if (isTouch) return <>{children}</>;
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>{children}</TooltipTrigger>
+        <TooltipContent
+          side="top"
+          sideOffset={10}
+          className="max-w-70 p-0 border-0 rounded-none shadow-[0_8px_20px_rgba(0,0,0,0.25)] data-[state=open]:zoom-in-100 data-[state=closed]:zoom-out-100"
+          style={{
+            background: 'var(--ink)',
+            color: 'var(--paper)',
+            borderRadius: 0,
+            borderLeft: '2px solid var(--ink-light)',
+          }}
+        >
+          <div style={{ padding: '12px 14px' }}>
+            <div
+              className="uppercase"
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 10,
+                fontWeight: 600,
+                letterSpacing: '0.22em',
+                marginBottom: 8,
+              }}
+            >
+              {name}
+            </div>
+            <div
+              style={{
+                fontFamily: 'var(--font-sans)',
+                fontSize: 12,
+                lineHeight: 1.55,
+                color: '#CFCFCF',
+              }}
+            >
+              {desc}
+            </div>
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
 const unit: CSSProperties = {
   fontSize: 10,
   fontWeight: 400,
@@ -130,26 +196,38 @@ export default function ReferenceStrata({
         {farmgate && fgCell('CIV', farmgate.civ)}
         {farmgate && fgCell('Ghana', farmgate.ghana)}
         {macro?.enso_oni_month != null && (
-          <div style={cell}>
-            <span style={tagBase}>{t('market.tag_monthly')}</span>
-            <span style={country}>ENSO ONI</span>
-            <span style={valMid}>{nf2.format(macro.enso_oni_month)}</span>
-            {macro.enso_reference_date && (
-              <span style={meta}>
-                {t('market.enso_ref', {
-                  date: fmtDate(macro.enso_reference_date),
-                })}
-              </span>
-            )}
-          </div>
+          <InfoTooltip
+            name={t('indicators.enso_oni_name')}
+            desc={t('indicators.enso_oni_desc')}
+          >
+            <div style={cellHelp}>
+              <span style={tagBase}>{t('market.tag_monthly')}</span>
+              <span style={country}>ENSO ONI</span>
+              <span style={valMid}>{nf2.format(macro.enso_oni_month)}</span>
+              {macro.enso_reference_date && (
+                <span style={meta}>
+                  {t('market.enso_ref', {
+                    date: fmtDate(macro.enso_reference_date),
+                  })}
+                </span>
+              )}
+            </div>
+          </InfoTooltip>
         )}
         {macro?.enso_nino34_anomaly != null && (
-          <div style={cell}>
-            <span style={tagBase}>{t('market.tag_monthly')}</span>
-            <span style={country}>Niño 3.4</span>
-            <span style={valMid}>{nf2.format(macro.enso_nino34_anomaly)}</span>
-            <span style={meta}>{t('market.nino_meta')}</span>
-          </div>
+          <InfoTooltip
+            name={t('indicators.nino34_name')}
+            desc={t('indicators.nino34_desc')}
+          >
+            <div style={cellHelp}>
+              <span style={tagBase}>{t('market.tag_monthly')}</span>
+              <span style={country}>Niño 3.4</span>
+              <span style={valMid}>
+                {nf2.format(macro.enso_nino34_anomaly)}
+              </span>
+              <span style={meta}>{t('market.nino_meta')}</span>
+            </div>
+          </InfoTooltip>
         )}
       </div>
       {farmgate && (farmgate.civ || farmgate.ghana) && (

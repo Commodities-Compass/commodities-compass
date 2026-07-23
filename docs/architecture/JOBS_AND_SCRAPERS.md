@@ -70,6 +70,7 @@ On-demand| cc-ensemble-bootstrap-artifacts       | ENSEMBLE     | Manual (no sch
 | **cc-compass-brief** | `30 19 * * *` | LEGACY | `pl_indicator_daily` (active row), `pl_contract_data_daily` last 2 dates, `pl_fundamental_article`, `pl_weather_observation` | Drive: `YYYYMMDD-CompassBrief.txt` | ✅ Actif (P2b daily-gated) |
 | **cc-compass-brief-ensemble** | `35 19 * * *` | ENSEMBLE | Ensemble row + orchestrator + 14 specialists + press + meteo + technicals | Drive: `YYYYMMDD-CompassBrief-Ensemble.txt` | 🆕 P4 (2026-05) |
 | **cc-ensemble-bootstrap-artifacts** | (manual) | ENSEMBLE | R&D frozen artifact pack | `pl_model_artifact` BYTEA rows | ✅ Actif (no scheduler) |
+| **cc-intraday-monitor** | `*/15 8-16 * * 1-5` | shared | Barchart core-api (httpx, delayed ~15 min) + `pl_derived_indicators` (S1/R1) + `ref_alert_rule` | `pl_contract_data_intraday` (append) + `aud_alert_event` + Telegram sendMessage | 🆕 2026-07 (shadow ALERT_CHANNEL=console) |
 
 ---
 
@@ -391,6 +392,24 @@ Voir détail dans [PIPELINE_ENSEMBLE.md](./PIPELINE_ENSEMBLE.md) §7.
 **Trigger manuel** : `gcloud run jobs execute cc-ensemble-bootstrap-artifacts --region europe-west9 --project cacaooo`.
 
 **Output** : 38 rows dans `pl_model_artifact`.
+
+### 3.20 `cc-intraday-monitor` 🆕 (2026-07)
+
+> Code : [backend/scripts/intraday_monitor/](../../backend/scripts/intraday_monitor/) · US : [P1-intraday-threshold-alerts-telegram.md](../user-stories/P1-intraday-threshold-alerts-telegram.md)
+
+**Track** : shared (aval des deux tracks — lit la décision affichée, ensemble-préférée)
+
+**Description** : toutes les 15 min en séance de Londres, fetch le prix différé (~10-15 min) du front-month via httpx pur (two-step cookie `XSRF-TOKEN` → core-api `raw=1`, pas de Playwright), append `pl_contract_data_intraday`, et compare aux niveaux « À surveiller » (S1/R1 de `pl_derived_indicators` à la **dernière session complétée** — les niveaux affichés sur le dashboard le jour même). Franchissement edge-triggered `(prev, curr)` → alerte **first-cross-only par (règle, session)**, dédup data-level `UNIQUE(rule_id, session_date, crossing_seq)` + `ON CONFLICT DO NOTHING` (un re-run ne re-spamme jamais). Delivery via interface `AlertSender` : `TelegramSender` (canal privé broadcast-only, un `sendMessage` = fan-out) ou `ConsoleSender` (`ALERT_CHANNEL=console`, shadow/dev).
+
+**Règles (config-as-data, `ref_alert_rule`)** : `close_below_s1` (bearish) + `close_above_r1` (bullish). Pas de RSI intraday (valeur daily non figée en séance).
+
+**Gates** : `should_skip_non_trading_day()` + `in_london_session()` (09:30-16:55 Europe/London, heures officielles ICE, DST via zoneinfo) — tick hors séance = exit 0 (Sentry cron = succès).
+
+**Cron** : `*/15 8-16 * * 1-5` UTC (large pour couvrir GMT/BST, ~29 ticks utiles/séance).
+
+**Env** : `ALERT_CHANNEL` (`console` default / `telegram`), `TELEGRAM_BOT_TOKEN` (Secret Manager), `TELEGRAM_CHANNEL_ID` (chat_id numérique du canal privé).
+
+**CLI** : `poetry run intraday-monitor [--dry-run] [--verbose] [--force]`.
 
 ---
 

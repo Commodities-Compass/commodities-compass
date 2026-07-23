@@ -17,6 +17,7 @@ from sqlalchemy import (
     TIMESTAMP,
     VARCHAR,
     Boolean,
+    CheckConstraint,
     ForeignKey,
     Index,
     String,
@@ -78,6 +79,52 @@ class RefContract(Base):
     # front_month_for_date(d) = contract with greatest active_from <= d.
     active_from: Mapped[Optional[date]] = mapped_column(DATE)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+
+
+class RefAlertRule(Base):
+    """Intraday alert rule definitions (config-as-data, cc-intraday-monitor).
+
+    Each row = one threshold rule: compare ``metric_column`` (live price) to
+    ``level_column`` (pl_derived_indicators pivot, e.g. s1/r1) with
+    ``comparator``. Generic enough for future indicator rules, but MVP seeds
+    price levels only (no RSI — daily value is not frozen intraday).
+    """
+
+    __tablename__ = "ref_alert_rule"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    rule_key: Mapped[str] = mapped_column(VARCHAR(50), unique=True, nullable=False)
+    commodity_code: Mapped[str] = mapped_column(
+        VARCHAR(20), nullable=False, server_default="COCOA_LDN"
+    )
+    metric_column: Mapped[str] = mapped_column(VARCHAR(30), nullable=False)
+    level_column: Mapped[str] = mapped_column(VARCHAR(30), nullable=False)
+    level_label: Mapped[str] = mapped_column(VARCHAR(40), nullable=False)
+    comparator: Mapped[str] = mapped_column(VARCHAR(10), nullable=False)
+    direction: Mapped[str] = mapped_column(VARCHAR(10), nullable=False)
+    severity: Mapped[str] = mapped_column(
+        VARCHAR(10), nullable=False, server_default="warning"
+    )
+    message_template_key: Mapped[str] = mapped_column(
+        VARCHAR(40), nullable=False, server_default="invalidation_v1"
+    )
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "comparator IN ('below', 'above')", name="ck_alert_rule_comparator"
+        ),
+    )
 
 
 class RefTradingCalendar(Base):

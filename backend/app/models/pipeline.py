@@ -79,6 +79,51 @@ class PlContractDataDaily(Base):
     )
 
 
+class PlContractDataIntraday(Base):
+    """Intraday delayed price observations (cc-intraday-monitor, ~15 min cadence).
+
+    Append-only — never written by the daily pipeline, never mutated.
+    The EOD truth stays in pl_contract_data_daily (1 row/day).
+    """
+
+    __tablename__ = "pl_contract_data_intraday"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    contract_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("ref_contract.id"), nullable=False
+    )
+    session_date: Mapped[date] = mapped_column(DATE, nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False
+    )
+    last_price: Mapped[Decimal] = mapped_column(DECIMAL(15, 6), nullable=False)
+    # Barchart raw.tradeTime — last trade timestamp, for staleness checks.
+    trade_time: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True))
+    source: Mapped[str] = mapped_column(
+        VARCHAR(30), nullable=False, server_default="barchart-delayed"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "contract_id", "observed_at", name="uq_contract_data_intraday"
+        ),
+        Index(
+            "ix_contract_data_intraday_session",
+            "contract_id",
+            "session_date",
+            text("observed_at DESC"),
+        ),
+    )
+
+
 class PlDerivedIndicators(Base):
     """Wide columns for 27+ technical indicators per contract per day.
 

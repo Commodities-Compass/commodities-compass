@@ -152,6 +152,15 @@ locals {
       # runs/day are cheap. See docs/runbooks/session-publish-gate.md.
       schedule = "*/30 20-23,0-9 * * *"
     }
+    intraday-monitor = {
+      description = "Intraday delayed-price polling — S1/R1 invalidation alerts (Telegram)"
+      # Every 15 min, 8-16 UTC weekdays — deliberately wide to cover both GMT
+      # and BST regimes; the in-code London gate (09:30-16:55 Europe/London,
+      # official ICE hours) trims out-of-session ticks as clean exit-0 skips.
+      # ~29 in-session ticks/day, first-cross-only per (rule, session) — see
+      # docs/user-stories/P1-intraday-threshold-alerts-telegram.md.
+      schedule = "*/15 8-16 * * 1-5"
+    }
   }
 }
 

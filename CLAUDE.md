@@ -10,13 +10,13 @@ These describe the **business logic + data flows** without code details:
 
 - **[docs/architecture/PIPELINE_LEGACY.md](docs/architecture/PIPELINE_LEGACY.md)** — pipeline `cc-daily-analysis` + `cc-compass-brief` (LLM-as-decision-maker, T+1 horizon, operational since 18 months)
 - **[docs/architecture/PIPELINE_ENSEMBLE.md](docs/architecture/PIPELINE_ENSEMBLE.md)** — pipeline ensemble v1.0.0 : 14 ML specialists + soft-gate Bayésien + Compass wrapper + ensemble-explainer + compass-brief-ensemble (J+4-J+5 horizon, dashboard already serves this)
-- **[docs/architecture/JOBS_AND_SCRAPERS.md](docs/architecture/JOBS_AND_SCRAPERS.md)** — exhaustive catalog of all 19 Cloud Run Jobs + 16 schedulers + dependency graph + shared vs specific data tables
+- **[docs/architecture/JOBS_AND_SCRAPERS.md](docs/architecture/JOBS_AND_SCRAPERS.md)** — exhaustive catalog of all 20 Cloud Run Jobs + 17 schedulers + dependency graph + shared vs specific data tables
 
 **Flow deep-dives** ([docs/architecture/flows/](docs/architecture/flows/)) — failure-prone cross-cutting paths, esp. anything roll-related: [contract-roll](docs/architecture/flows/contract-roll.md) · [date-semantics](docs/architecture/flows/date-semantics.md) · [algo-contract-resolution](docs/architecture/flows/algo-contract-resolution.md) (the recurring roll-bug path — active-contract vs front-month-by-date) · [daily-pipeline](docs/architecture/flows/daily-pipeline.md) · [dual-track-brief](docs/architecture/flows/dual-track-brief.md). Known doc/comment drift is tracked in [docs/architecture/REMEDIATION_BACKLOG.md](docs/architecture/REMEDIATION_BACKLOG.md).
 
 ## Project Overview
 
-Commodities Compass is a Business Intelligence application for commodities trading, providing real-time market insights, technical analysis, and trading signals for cocoa (ICE contracts). This is a monorepo with a FastAPI backend and React frontend, using Auth0 for authentication and PostgreSQL (GCP Cloud SQL) for data storage. Deployed on GCP Cloud Run with 19 automated Cloud Run Jobs (scrapers, agents, compute engine, briefs). Dashboard reads from `pl_*` tables. Google Sheets is no longer used as a data source — all data flows through PostgreSQL. Google Drive is still used for audio (NotebookLM) and brief uploads.
+Commodities Compass is a Business Intelligence application for commodities trading, providing real-time market insights, technical analysis, and trading signals for cocoa (ICE contracts). This is a monorepo with a FastAPI backend and React frontend, using Auth0 for authentication and PostgreSQL (GCP Cloud SQL) for data storage. Deployed on GCP Cloud Run with 20 automated Cloud Run Jobs (scrapers, agents, compute engine, briefs, intraday alerts). Dashboard reads from `pl_*` tables. Google Sheets is no longer used as a data source — all data flows through PostgreSQL. Google Drive is still used for audio (NotebookLM) and brief uploads.
 
 **Two production tracks coexist** :
 - **LEGACY** : `cc-daily-analysis` (LLM) → `pl_indicator_daily` row `legacy` → `cc-compass-brief` → `YYYYMMDD-CompassBrief.txt` → NotebookLM audio (legacy filename)
@@ -358,6 +358,19 @@ The frontend calendar shows `display_date` values. Non-trading days (weekends + 
 - **Cron**: `0 16 * * 1-5` (16:00 UTC weekdays — after both grindings scrapers).
 - **CLI**: `poetry run publication-calendar-watchdog [--dry-run] [--grace-days N]`
 
+### Intraday Monitor (`backend/scripts/intraday_monitor/`)
+
+- **Purpose**: intraday early-warning that the day's signal is *challenged*. Every 15 min during the London session, fetches the delayed front-month price and alerts the **first time** it crosses an "À surveiller" level (S1/R1), so the user learns of an invalidation while the market is still open — not the next morning. **Layer 2 only**: it does NOT touch the ensemble prediction (J+4-J+5, frozen at eve); the message says "le signal du jour est remis en cause", not "le modèle a eu tort".
+- **Fetch**: pure httpx, no Playwright (spike-validated 2026-07-23) — GET the Barchart overview page for the `XSRF-TOKEN` cookie → `core-api/v1/quotes/get?raw=1` → numeric `raw.lastPrice` + `raw.tradeTime`. Job image stays slim (512Mi). Cloud Run egress confirmed unblocked (shadow 24+27/07).
+- **Levels from structured columns, never LLM text**: reads `s1`/`r1` from `pl_derived_indicators` at the **last completed session** (the pivots shown on the dashboard today — static all day). The engine never parses `pl_indicator_daily.conclusion`.
+- **Idempotence**: first-cross-only per `(rule, session)` — `aud_alert_event` UNIQUE `(rule_id, session_date, crossing_seq)` + `ON CONFLICT DO NOTHING`. A re-cross or a manual re-run never re-sends (validated 2026-07-27: R1 then S1 fired once each, the S1 re-cross was deduped).
+- **Rules (config-as-data)**: `ref_alert_rule` seeded with `close_below_s1` (bearish) + `close_above_r1` (bullish). No RSI intraday (daily value isn't frozen in-session).
+- **Delivery**: `AlertSender` abstraction — `TelegramSender` (private broadcast channel, one `sendMessage` = fan-out) / `ConsoleSender` (dev/shadow). Channel selected by `ALERT_CHANNEL` env (`console` default, `telegram` live since 2026-07-28). `TELEGRAM_BOT_TOKEN` (Secret Manager) + `TELEGRAM_CHANNEL_ID` (numeric `-100…`, GitHub var). Transport-swappable (a `WhatsAppSender` could be added without touching the engine).
+- **Gates**: `should_skip_non_trading_day()` + `in_london_session()` (09:30-16:55 Europe/London, official ICE hours, DST via zoneinfo). Out-of-session tick = exit 0 (Sentry cron = success).
+- **Tables**: `pl_contract_data_intraday` (append-only observations), `ref_alert_rule`, `aud_alert_event`. Never writes `pl_contract_data_daily` (EOD truth = 1 row/day).
+- **Cron**: `*/15 8-16 * * 1-5` (wide UTC window; the in-code London gate trims the DST edges) — **CLI**: `poetry run intraday-monitor [--dry-run] [--verbose] [--force]`
+- **US**: [docs/user-stories/P1-intraday-threshold-alerts-telegram.md](docs/user-stories/P1-intraday-threshold-alerts-telegram.md)
+
 ### Known Issues & Lessons (2026-02-18 debugging sessions)
 
 **Bug 1 — Wrong raw block (old scraper)**: Used `re.search` → picked FIRST of 4+ raw blocks. The first block was often a next-month contract or options data → wrong V and OI. Fix: max-volume heuristic picks the block with highest `volume` (always the main contract).
@@ -541,11 +554,11 @@ The `PositionStatus` component automatically fetches and plays the audio file:
 - **Custom domain**: `app.com-compass.com` (frontend), `api.com-compass.com` (backend). Routed via Global HTTPS Load Balancer (static IP `34.36.87.103`) with Google-managed SSL certificates. Old `*.run.app` URLs still work in parallel.
 - **Platform**: GCP Cloud Run (region `europe-west9`).
 - **Load Balancer**: Global HTTPS LB with serverless NEGs. Required because Cloud Run domain mappings are not supported in `europe-west9`. Terraform-managed in `infra/terraform/loadbalancer.tf`. HTTP→HTTPS redirect included.
-- **CI/CD**: `.github/workflows/deploy.yml` — push to `main` triggers CI (lint + test) → Deploy (backend + frontend + 8 Cloud Run Jobs).
+- **CI/CD**: `.github/workflows/deploy.yml` — push to `main` triggers CI (lint + test) → Deploy (backend + frontend + all Cloud Run Jobs).
 - **Backend**: `backend/Dockerfile` (Python 3.11-slim, no Playwright, ~200MB). Alembic migrations on startup via `start.sh`. Cloud Run: 512Mi, 1 CPU, max 2 instances, VPC connector for Cloud SQL.
 - **Frontend**: `frontend/Dockerfile` (Node 18-alpine, serve static). Auth0 vars baked at build time via `--build-arg` from GitHub vars. Cloud Run: 256Mi, 1 CPU, max 2 instances. CSP in `index.html` whitelists `*.com-compass.com`, `*.auth0.com`, `*.sentry.io`.
-- **Cloud Run Jobs**: `backend/Dockerfile.jobs` (with Playwright, ~1GB). 8 jobs deployed via deploy.yml. `ENTRYPOINT ["poetry", "run"]`, command passed via job args. No retries (--max-retries=0).
-- **Cloud Scheduler**: 8 cron jobs in `europe-west1` (scheduler doesn't support `europe-west9`). Triggers Cloud Run Job execution via HTTP + OAuth. Schedule: 19:00-20:15 UTC weekdays. No retries (retryCount=0).
+- **Cloud Run Jobs**: `backend/Dockerfile.jobs` (with Playwright, ~1GB). All jobs deployed via deploy.yml (~20 catalogued + backfill/bootstrap utilities). `ENTRYPOINT ["poetry", "run"]`, command passed via job args. No retries (--max-retries=0). `cc-intraday-monitor` is httpx-only (512Mi, no Playwright).
+- **Cloud Scheduler**: cron jobs in `europe-west1` (scheduler doesn't support `europe-west9`). Triggers Cloud Run Job execution via HTTP + OAuth. Schedules span the day: FX 18:30 → evening pipeline 19:00-19:35 → publish-gate 20:00-09:30 → daytime fundamentals 13:00-16:00 → intraday alerts 08:00-16:00 (*/15) → monthly ENSO. No retries (retryCount=0).
 - **Secrets**: GCP Secret Manager (13 secrets). Non-sensitive env vars via GitHub Vars → deploy.yml `--set-env-vars`.
 - **Auth**: Workload Identity Federation (keyless GitHub → GCP auth). No SA key files in CI/CD.
 - **Infra as code**: `infra/terraform/` — Cloud SQL, VPC connector, service accounts, schedulers, load balancer.
@@ -580,6 +593,9 @@ P2b — the pipeline is split into two phases:
 
 # Publication gate — every 30 min, evening → 09:30 UTC next morning:
 20:00-09:30  cc-publish-session      → pl_session_release (atomic dashboard flip once data+audio ready)
+
+# Intraday alerts — every 15 min DURING the London session (in-code gate):
+08:00-16:00 (*/15)  cc-intraday-monitor → pl_contract_data_intraday + aud_alert_event + Telegram
 
 # Daytime fundamentals — calendar-gated against ref_publication_calendar:
 13:00  cc-eca-grindings-scraper      → pl_supply_demand_observation (ECA)

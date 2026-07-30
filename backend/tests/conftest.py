@@ -21,6 +21,18 @@ os.environ.setdefault("AUTH0_API_AUDIENCE", "https://test-api")
 os.environ.setdefault("AUTH0_ISSUER", "https://test.auth0.com/")
 os.environ.setdefault("GOOGLE_DRIVE_AUDIO_FOLDER_ID", "test-folder-id")
 
+# Make the vendored (non-installed) regime pack importable for tests that import
+# `regime.*` directly. regime isn't a pip dependency (its sklearn==1.6.1 pin would
+# force the backend image up; it runs via a sys.path append in
+# scripts/regime_shadow/__init__.py at runtime). Tests import regime before that
+# runs — conftest executes before collection, so set the path here.
+import sys  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+_VENDOR_REGIME = Path(__file__).resolve().parent.parent / "vendor" / "regime_v1.0.0"
+if str(_VENDOR_REGIME) not in sys.path:
+    sys.path.append(str(_VENDOR_REGIME))
+
 from collections.abc import AsyncGenerator, Generator  # noqa: E402
 
 import pytest  # noqa: E402

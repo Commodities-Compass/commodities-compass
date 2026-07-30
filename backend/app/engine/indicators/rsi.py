@@ -45,8 +45,17 @@ class WilderRSI:
         loss_out = np.full(n, np.nan)
         rs_out = np.full(n, np.nan)
 
-        # Daily changes
+        roll = (
+            result["is_roll_boundary"].to_numpy(dtype=bool)
+            if "is_roll_boundary" in result.columns
+            else np.zeros(n, dtype=bool)
+        )
+
+        # Daily changes. At a front-month roll the delta is a phantom spread
+        # (contract A close → contract B close), not a real move — neutralize it
+        # so the Wilder recursion sees a no-change day, not a fake gain/loss.
         deltas = np.diff(close, prepend=np.nan)
+        deltas[roll] = 0.0
         gains = np.where(deltas > 0, deltas, 0.0)
         losses = np.where(deltas < 0, -deltas, 0.0)
 

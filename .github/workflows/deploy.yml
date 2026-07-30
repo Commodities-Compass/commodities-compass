@@ -249,6 +249,14 @@ jobs:
           # — trigger manually via gcloud when R&D ships a new frozen artefact pack.
           deploy_job cc-ensemble-bootstrap-artifacts 1Gi  "ensemble-bootstrap-artifacts"
           deploy_job cc-ensemble-compute             1Gi  "ensemble-compute"
+          # Campaign 6 regime — INERT shadow (self-computing, isolated). cc-regime-shadow
+          # logs one decision per session to pl_regime_shadow for the shadow-eval; it is
+          # NEVER served and NEVER writes a shared table (pl_indicator_daily etc.). Runs on
+          # the current image (sklearn 1.5.2 — regime output verified identical to its 1.6.1
+          # freeze). Bootstrap job has no scheduler — trigger manually to (re)load the frozen
+          # pack after a merge, or when R&D ships a new one.
+          deploy_job cc-regime-bootstrap-artifacts   1Gi  "regime-bootstrap-artifacts"
+          deploy_job cc-regime-shadow                1Gi  "regime-shadow-compute"
           # Quarterly fundamentals (P3 user story). Gated on
           # ref_publication_calendar so the daily cron is cheap when no
           # publication is pending.

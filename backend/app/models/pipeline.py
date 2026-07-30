@@ -181,6 +181,14 @@ class PlDerivedIndicators(Base):
     # Daily return (new — not in legacy)
     daily_return: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
 
+    # Contract-roll contamination flag: True on the first row of each new
+    # front-month contract (the splice row). Return-based indicators neutralize
+    # the phantom jump on these rows; consumers (R&D training, ensemble wrapper)
+    # can exclude/down-weight them. See runner.mark_roll_boundaries.
+    is_roll_boundary: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
 
     __table_args__ = (
@@ -310,6 +318,57 @@ class PlIndicatorDaily(Base):
             name="uq_indicator_daily",
         ),
         Index("ix_indicator_daily_date", "date"),
+    )
+
+
+class PlRegimeShadow(Base):
+    """Shadow-mode regime decisions (Campaign 6 algo ships INERT — never served).
+
+    One row per (session date, front-month contract, algorithm version): the
+    Layer-2 decision + the routed regime/specialist + prob_up + the causal router
+    diagnostics at decide-time. Pure observation log for the shadow-eval (README
+    §6): compare live-forward hit-rate to the 0.50 floor over >=30 sessions before
+    any promotion. NEVER read by the dashboard; NEVER touches
+    pl_indicator_daily.decision. ``realized_return`` / ``production_score`` stay
+    NULL until the J+1 horizon closes, then are backfilled by the scoring pass.
+    """
+
+    __tablename__ = "pl_regime_shadow"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    date: Mapped[date] = mapped_column(DATE, nullable=False)
+    contract_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("ref_contract.id"), nullable=False
+    )
+    algorithm_version_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("pl_algorithm_version.id"), nullable=False
+    )
+
+    # Layer-2 output (binary OPEN/HEDGE; MONITOR only as a routed-absent fail-safe)
+    decision: Mapped[str] = mapped_column(VARCHAR(10), nullable=False)
+    regime: Mapped[str] = mapped_column(VARCHAR(20), nullable=False)
+    specialist: Mapped[str] = mapped_column(VARCHAR(20), nullable=False)
+    prob_up: Mapped[Decimal] = mapped_column(DECIMAL(6, 4), nullable=False)
+
+    # Causal router diagnostics (state at decide-time)
+    state_rsi_14d: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
+    state_atr_14d: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
+    state_trend20: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
+
+    # Backfilled once the J+1 horizon closes (shadow-eval scoring).
+    realized_return: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
+    production_score: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
+
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint(
+            "date",
+            "contract_id",
+            "algorithm_version_id",
+            name="uq_regime_shadow",
+        ),
+        Index("ix_regime_shadow_date", "date"),
     )
 
 

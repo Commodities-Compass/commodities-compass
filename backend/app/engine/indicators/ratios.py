@@ -41,5 +41,10 @@ class DailyReturn:
     def compute(self, df: pd.DataFrame) -> pd.DataFrame:
         result = df.copy()
         close = result["close"].astype(float)
-        result["daily_return"] = close.pct_change()
+        ret = close.pct_change()
+        if "is_roll_boundary" in result.columns:
+            # A front-month roll splices two contracts' closes: the day-over-day
+            # change is a phantom spread, not a real move. Neutralize it to 0.
+            ret = ret.mask(result["is_roll_boundary"].astype(bool), 0.0)
+        result["daily_return"] = ret
         return result

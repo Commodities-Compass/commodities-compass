@@ -70,10 +70,16 @@ def write_derived_indicators(
     Returns number of rows written.
     """
     rows_written = 0
+    # is_roll_boundary is a BOOLEAN (not a DECIMAL score) — write it alongside the
+    # numeric derived cols but bypass to_decimal.
+    write_cols = _DERIVED_COLS + ["is_roll_boundary"]
 
     for _, row in signals_df.iterrows():
         row_date = row["date"]
-        values = {col: to_decimal(row.get(col)) for col in _DERIVED_COLS}
+        values: dict[str, Any] = {
+            col: to_decimal(row.get(col)) for col in _DERIVED_COLS
+        }
+        values["is_roll_boundary"] = bool(row.get("is_roll_boundary", False))
 
         # Upsert: insert or update on (date, contract_id) conflict
         session.execute(
@@ -84,9 +90,9 @@ def write_derived_indicators(
                 ON CONFLICT ON CONSTRAINT uq_derived_indicators
                 DO UPDATE SET {updates}
             """.format(
-                    cols=", ".join(_DERIVED_COLS),
-                    placeholders=", ".join(f":{c}" for c in _DERIVED_COLS),
-                    updates=", ".join(f"{c} = EXCLUDED.{c}" for c in _DERIVED_COLS),
+                    cols=", ".join(write_cols),
+                    placeholders=", ".join(f":{c}" for c in write_cols),
+                    updates=", ".join(f"{c} = EXCLUDED.{c}" for c in write_cols),
                 )
             ),
             {

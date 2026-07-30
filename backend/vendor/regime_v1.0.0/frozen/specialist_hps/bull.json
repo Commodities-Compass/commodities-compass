@@ -1,0 +1,43 @@
+{
+  "name": "bull",
+  "model": "HistGradientBoostingClassifier",
+  "params": {
+    "categorical_features": "from_dtype",
+    "class_weight": null,
+    "early_stopping": "auto",
+    "interaction_cst": null,
+    "l2_regularization": 1.0,
+    "learning_rate": 0.05,
+    "loss": "log_loss",
+    "max_bins": 255,
+    "max_depth": 3,
+    "max_features": 1.0,
+    "max_iter": 200,
+    "max_leaf_nodes": 31,
+    "min_samples_leaf": 25,
+    "monotonic_cst": null,
+    "n_iter_no_change": 10,
+    "random_state": 42,
+    "scoring": "loss",
+    "tol": 1e-07,
+    "validation_fraction": 0.1,
+    "verbose": 0,
+    "warm_start": false
+  },
+  "features": [
+    "macd",
+    "macd_signal",
+    "rsi_14d",
+    "atr_14d",
+    "stochastic_d_14",
+    "close_pivot_ratio",
+    "volume_oi_ratio",
+    "daily_return",
+    "bollinger_width",
+    "trend20",
+    "trend60",
+    "vol20"
+  ],
+  "target": "sign(fwd1)",
+  "seed": 42
+}

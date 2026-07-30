@@ -1,0 +1,19 @@
+{
+  "trend_band_k": 0.8,
+  "trend_window": 20,
+  "trend_confirm_window": 60,
+  "vol_window": 20,
+  "rsi_oversold": 35.0,
+  "rsi_overbought": 65.0,
+  "atr_high_pctile": 0.67,
+  "priority": [
+    "oversold",
+    "overbought",
+    "highvol",
+    "bull",
+    "bear",
+    "transition"
+  ],
+  "note": "regime from trailing trend vs vol band; bull needs trend20>+band AND trend60>0; bear trend20<-band; else transition. oversold/overbought/highvol override by RSI/ATR.",
+  "atr_high_value": 48.6633
+}

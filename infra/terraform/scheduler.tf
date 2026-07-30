@@ -161,6 +161,16 @@ locals {
       # docs/user-stories/P1-intraday-threshold-alerts-telegram.md.
       schedule = "*/15 8-16 * * 1-5"
     }
+    # Campaign 6 regime — INERT shadow-compute (self-computing, isolated). Logs a
+    # decision per session to pl_regime_shadow for the shadow-eval; never served,
+    # never writes a shared table. 19:40 UTC weekdays — after cc-barchart-scraper
+    # (19:00) writes the session OHLCV that regime self-computes its features from
+    # (regime does NOT depend on cc-compute-indicators). Bootstrap job
+    # (cc-regime-bootstrap-artifacts) has no scheduler — trigger manually.
+    regime-shadow = {
+      description = "C6 regime: inert self-computing shadow decision → pl_regime_shadow"
+      schedule    = "40 19 * * 1-5"
+    }
   }
 }
 

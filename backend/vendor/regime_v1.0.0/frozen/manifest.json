@@ -1,0 +1,189 @@
+{
+  "algorithm_version": "1.0.0",
+  "algorithm_version_name": "regime",
+  "manifest_version": "1.0",
+  "horizon": "J+1",
+  "data_source": "rd_local",
+  "data_cutoff": "2026-07-27",
+  "seed": 42,
+  "git_sha": "d6c0ec766a393bbf182a926a767eccdaea4438cd",
+  "lib_versions": {
+    "python": "3.12.8",
+    "scikit-learn": "1.6.1",
+    "scipy": "1.14.1",
+    "lightgbm": "4.5.0",
+    "numpy": "1.26.4",
+    "pandas": "2.2.3"
+  },
+  "created_at": "2026-07-29T11:26:04+00:00",
+  "router_features": [
+    "macd",
+    "macd_signal",
+    "rsi_14d",
+    "atr_14d",
+    "stochastic_d_14",
+    "close_pivot_ratio",
+    "volume_oi_ratio",
+    "daily_return",
+    "bollinger_width",
+    "trend20",
+    "trend60",
+    "vol20"
+  ],
+  "artifacts": [
+    {
+      "artifact_kind": "regime_specialist_model",
+      "artifact_name": "bull",
+      "file": "specialist_models/bull.pkl",
+      "sha256": "f94e92fff1d0d7ec73d8a8b4acdcf706bea0e57bdc89b5b8511c59330db9be0e",
+      "n_bytes": 165247,
+      "payload_encoding": "pickle_highest",
+      "fit_train_start": "2016-04-22",
+      "fit_train_end": "2026-07-21",
+      "n_train": 544,
+      "class_balance": {
+        "UP": 0.4963,
+        "DOWN": 0.5037
+      }
+    },
+    {
+      "artifact_kind": "regime_specialist_hp",
+      "artifact_name": "bull",
+      "file": "specialist_hps/bull.json",
+      "sha256": "306d10b33f75dd3b01d5ca93e79fe4b8b48a972025adb54508680065ae3b0729",
+      "n_bytes": 905,
+      "payload_encoding": "json"
+    },
+    {
+      "artifact_kind": "regime_specialist_model",
+      "artifact_name": "bear",
+      "file": "specialist_models/bear.pkl",
+      "sha256": "e5bb2142f690551f993fc4c749d5916e4e73f68c4ab3c6c76cb010f6d4dfe6ba",
+      "n_bytes": 158303,
+      "payload_encoding": "pickle_highest",
+      "fit_train_start": "2016-04-01",
+      "fit_train_end": "2026-06-10",
+      "n_train": 541,
+      "class_balance": {
+        "UP": 0.4658,
+        "DOWN": 0.5342
+      }
+    },
+    {
+      "artifact_kind": "regime_specialist_hp",
+      "artifact_name": "bear",
+      "file": "specialist_hps/bear.json",
+      "sha256": "8c290ba45ae83377521ab495db25a31f7ad2f0d0500a99077edb5b20aa3ca3af",
+      "n_bytes": 905,
+      "payload_encoding": "json"
+    },
+    {
+      "artifact_kind": "regime_specialist_model",
+      "artifact_name": "transition",
+      "file": "specialist_models/transition.pkl",
+      "sha256": "608b2491a036058b49838d844c5f48a81dd3d4fa422554570b390dd424a28d2a",
+      "n_bytes": 188319,
+      "payload_encoding": "pickle_highest",
+      "fit_train_start": "2016-03-30",
+      "fit_train_end": "2026-07-24",
+      "n_train": 1488,
+      "class_balance": {
+        "UP": 0.4812,
+        "DOWN": 0.5188
+      }
+    },
+    {
+      "artifact_kind": "regime_specialist_hp",
+      "artifact_name": "transition",
+      "file": "specialist_hps/transition.json",
+      "sha256": "8de5668d89dbc10a5f693287a28a311f84921b03280b39881531de2b31631dd0",
+      "n_bytes": 911,
+      "payload_encoding": "json"
+    },
+    {
+      "artifact_kind": "regime_specialist_model",
+      "artifact_name": "highvol",
+      "file": "specialist_models/highvol.pkl",
+      "sha256": "643ca8bfcbe5a7c9293f5600c9a7e8067e5f0f83ba91f50578928e4e6f34126a",
+      "n_bytes": 179583,
+      "payload_encoding": "pickle_highest",
+      "fit_train_start": "2017-05-08",
+      "fit_train_end": "2026-07-24",
+      "n_train": 849,
+      "class_balance": {
+        "UP": 0.4876,
+        "DOWN": 0.5124
+      }
+    },
+    {
+      "artifact_kind": "regime_specialist_hp",
+      "artifact_name": "highvol",
+      "file": "specialist_hps/highvol.json",
+      "sha256": "374dfdd562a8b3e7b54edc4839c316747fb538d38d926d33b41b05446e8e0ae9",
+      "n_bytes": 908,
+      "payload_encoding": "json"
+    },
+    {
+      "artifact_kind": "regime_specialist_model",
+      "artifact_name": "oversold",
+      "file": "specialist_models/oversold.pkl",
+      "sha256": "4d3db9a6a74715b4311cebd2d73104a8ae931b38c44107a771072e39a3e25fc4",
+      "n_bytes": 151247,
+      "payload_encoding": "pickle_highest",
+      "fit_train_start": "2016-04-04",
+      "fit_train_end": "2026-03-05",
+      "n_train": 302,
+      "class_balance": {
+        "UP": 0.447,
+        "DOWN": 0.553
+      }
+    },
+    {
+      "artifact_kind": "regime_specialist_hp",
+      "artifact_name": "oversold",
+      "file": "specialist_hps/oversold.json",
+      "sha256": "70d0addddae259d92df884f1aa0eb9b83dc5b99c7518d58a69d0efc63945a9e5",
+      "n_bytes": 909,
+      "payload_encoding": "json"
+    },
+    {
+      "artifact_kind": "regime_specialist_model",
+      "artifact_name": "overbought",
+      "file": "specialist_models/overbought.pkl",
+      "sha256": "e62896f16d4561508b5240d37486b5d0f9fcf09b70baa28f4e6f8c9a379912ec",
+      "n_bytes": 172863,
+      "payload_encoding": "pickle_highest",
+      "fit_train_start": "2016-04-21",
+      "fit_train_end": "2026-07-15",
+      "n_train": 396,
+      "class_balance": {
+        "UP": 0.5278,
+        "DOWN": 0.4722
+      }
+    },
+    {
+      "artifact_kind": "regime_specialist_hp",
+      "artifact_name": "overbought",
+      "file": "specialist_hps/overbought.json",
+      "sha256": "fa067021c3226c14158507f9ef64b0c5e1ce7fb13b586c5c1545b1c3ae537ba1",
+      "n_bytes": 911,
+      "payload_encoding": "json"
+    },
+    {
+      "artifact_kind": "regime_router",
+      "artifact_name": "causal_router",
+      "file": "router/regime_router.json",
+      "sha256": "3e09e9dc45c83a66a6f57cbbebb049f51ec06770ad3fd151d08b89f807ce0a18",
+      "n_bytes": 493,
+      "payload_encoding": "json"
+    },
+    {
+      "artifact_kind": "canonical_snapshot",
+      "artifact_name": "reference_tail_120",
+      "file": "canonical_snapshot/reference_tail_120.parquet",
+      "sha256": "849339a9fba07f859fe93d0db1c934f31fe6bca6871a9182920d0f1922258728",
+      "n_bytes": 23809,
+      "payload_encoding": "parquet"
+    }
+  ]
+}

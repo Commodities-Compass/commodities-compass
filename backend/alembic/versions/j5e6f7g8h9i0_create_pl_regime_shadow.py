@@ -34,7 +34,10 @@ def upgrade() -> None:
     op.create_table(
         "pl_regime_shadow",
         sa.Column(
-            "id", sa.Uuid(), primary_key=True, server_default=sa.text("gen_random_uuid()")
+            "id",
+            sa.Uuid(),
+            primary_key=True,
+            server_default=sa.text("gen_random_uuid()"),
         ),
         sa.Column("date", sa.DATE(), nullable=False),
         sa.Column(

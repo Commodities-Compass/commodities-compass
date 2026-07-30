@@ -30,6 +30,12 @@ class TrueRange:
         close = result["close"].to_numpy(dtype=np.float64)
         n = len(close)
 
+        roll = (
+            result["is_roll_boundary"].to_numpy(dtype=bool)
+            if "is_roll_boundary" in result.columns
+            else np.zeros(n, dtype=bool)
+        )
+
         tr = np.full(n, np.nan)
         # First row: TR = High - Low (no previous close)
         tr[0] = high[0] - low[0]
@@ -37,11 +43,16 @@ class TrueRange:
         for idx in range(1, n):
             if np.isnan(high[idx]) or np.isnan(low[idx]) or np.isnan(close[idx - 1]):
                 continue
-            tr[idx] = max(
-                high[idx] - low[idx],
-                abs(high[idx] - close[idx - 1]),
-                abs(low[idx] - close[idx - 1]),
-            )
+            if roll[idx]:
+                # At a roll the previous close is the OLD contract → the cross-day
+                # terms are a phantom spread. Use the intraday range only.
+                tr[idx] = high[idx] - low[idx]
+            else:
+                tr[idx] = max(
+                    high[idx] - low[idx],
+                    abs(high[idx] - close[idx - 1]),
+                    abs(low[idx] - close[idx - 1]),
+                )
 
         result["atr"] = tr
         return result

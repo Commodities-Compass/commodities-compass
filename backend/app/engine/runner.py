@@ -184,6 +184,35 @@ def _assert_unique_dates(df: pd.DataFrame, source: str) -> None:
         )
 
 
+def mark_roll_boundaries(
+    df: pd.DataFrame, code_col: str = "contract_code"
+) -> pd.DataFrame:
+    """Flag the first row of each new front-month contract in the chained series.
+
+    A roll boundary is a row whose front-month contract differs from the previous
+    row's. There the continuous series splices contract A's close (T-1) to contract
+    B's (T) — a phantom price jump equal to the calendar spread, with no back-adjust.
+    Return-based indicators (DailyReturn / WilderRSI / TrueRange) neutralize the
+    cross-boundary change on these rows so the phantom jump never enters RSI/ATR/
+    daily_return (nor, downstream, their 252d z-scores). The flag is also persisted
+    so R&D can exclude roll rows from training and the ensemble wrapper can stay
+    cautious near rolls. The first row is never a boundary (series start, no
+    cross-contract predecessor). See .claude/rules/timeseries-uniqueness.md and the
+    C5 retrain handoff runbook §3.7.
+    """
+    result = df.copy()
+    if result.empty or code_col not in result.columns:
+        result["is_roll_boundary"] = pd.Series(
+            [False] * len(result), dtype=bool, index=result.index
+        )
+        return result
+    changed = result[code_col].ne(result[code_col].shift())
+    boundary = changed.to_numpy(dtype=bool)
+    boundary[0] = False  # series start, not a roll
+    result["is_roll_boundary"] = boundary
+    return result
+
+
 def _attach_version_macroeco(
     session: Session, df: pd.DataFrame, algo_version_id: uuid.UUID
 ) -> pd.DataFrame:
@@ -308,6 +337,11 @@ def load_all_market_data(session: Session) -> pd.DataFrame:
         "contract_code",
     ]
     df = _convert_numeric_columns(pd.DataFrame(rows, columns=pd.Index(columns)))
+    # NB: roll-boundary marking is intentionally NOT applied in the shared compute
+    # path — cc-compute-indicators (and therefore the ensemble/legacy that read
+    # pl_derived_indicators) stays byte-for-byte as prod. The regime shadow job does
+    # its own marking in scripts/regime_shadow/feature_engine.py. Re-enabling it here
+    # (with a prod recompute) is a deliberate step for the C5 retrain track.
     _assert_unique_dates(df, "load_all_market_data")
     return df
 

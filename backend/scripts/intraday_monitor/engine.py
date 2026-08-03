@@ -52,15 +52,46 @@ def detect_cross(prev: Decimal, curr: Decimal, level: Decimal, comparator: str) 
     raise ValueError(f"Unknown comparator: {comparator!r}")
 
 
+# The day's decision implies a directional thesis. A level break only matters
+# when it CONTRADICTS that thesis (an invalidation) — a break that confirms it
+# is noise. MONITOR (and any non-directional/absent decision) has no thesis, so
+# nothing can invalidate it. Backtest (10y cocoa): an invalidation touch closes
+# against the thesis 81% of the time same-day (vs 22% baseline).
+_THESIS_BIAS = {"OPEN": "bullish", "HEDGE": "bearish"}
+
+
+def is_invalidation(rule_direction: str, signal_decision: str | None) -> bool:
+    """True iff a crossing of ``rule_direction`` contradicts the day's thesis.
+
+    OPEN → bullish thesis, invalidated by a bearish break (S1).
+    HEDGE → bearish thesis, invalidated by a bullish break (R1).
+    MONITOR / missing decision → no thesis → never an invalidation.
+    """
+    bias = _THESIS_BIAS.get((signal_decision or "").strip().upper())
+    if bias is None:
+        return False
+    return rule_direction != bias
+
+
 def evaluate_rules(
     rules: Sequence[RuleSpec],
     levels: Mapping[str, Decimal | None],
     prev_price: Decimal,
     curr_price: Decimal,
+    signal_decision: str | None,
 ) -> list[Firing]:
-    """Return the rules whose level was crossed between prev and curr."""
+    """Return the rules whose level was crossed AND whose break invalidates the
+    day's signal. Rules that would merely confirm the thesis — and everything
+    when the decision is MONITOR or absent — never fire."""
     firings: list[Firing] = []
     for rule in rules:
+        if not is_invalidation(rule.direction, signal_decision):
+            logger.debug(
+                "Rule %s skipped: does not invalidate a %s signal",
+                rule.rule_key,
+                signal_decision or "None",
+            )
+            continue
         level = levels.get(rule.level_column)
         if level is None:
             logger.warning(

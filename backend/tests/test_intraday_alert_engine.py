@@ -25,6 +25,7 @@ from scripts.intraday_monitor.engine import (
     RuleSpec,
     detect_cross,
     evaluate_rules,
+    is_invalidation,
     render_message,
 )
 from tests.factories import (
@@ -96,21 +97,29 @@ class TestDetectCross:
 # ---------------------------------------------------------------------------
 
 
+def _both_rules() -> list[RuleSpec]:
+    return [
+        _rule_spec(),  # close_below_s1, bearish
+        _rule_spec(
+            rule_key="close_above_r1",
+            level_column="r1",
+            level_label="RESISTANCE 1",
+            comparator="above",
+            direction="bullish",
+        ),
+    ]
+
+
 class TestEvaluateRules:
-    def test_fires_matching_rule_only(self):
-        rules = [
-            _rule_spec(),
-            _rule_spec(
-                rule_key="close_above_r1",
-                level_column="r1",
-                level_label="RESISTANCE 1",
-                comparator="above",
-                direction="bullish",
-            ),
-        ]
+    def test_fires_invalidating_rule_only(self):
+        # OPEN thesis (bullish) → only the S1 (bearish) break invalidates.
         levels = {"s1": Decimal("3755"), "r1": Decimal("3928")}
         firings = evaluate_rules(
-            rules, levels, prev_price=Decimal("3760"), curr_price=Decimal("3750")
+            _both_rules(),
+            levels,
+            prev_price=Decimal("3760"),
+            curr_price=Decimal("3750"),
+            signal_decision="OPEN",
         )
         assert len(firings) == 1
         assert firings[0].rule.rule_key == "close_below_s1"
@@ -121,42 +130,136 @@ class TestEvaluateRules:
         rules = [_rule_spec()]
         levels = {"s1": Decimal("3755")}
         firings = evaluate_rules(
-            rules, levels, prev_price=Decimal("3800"), curr_price=Decimal("3740")
+            rules,
+            levels,
+            prev_price=Decimal("3800"),
+            curr_price=Decimal("3740"),
+            signal_decision="OPEN",
         )
         assert len(firings) == 1
 
     def test_between_levels_no_fire(self):
-        rules = [
-            _rule_spec(),
-            _rule_spec(
-                rule_key="close_above_r1",
-                level_column="r1",
-                comparator="above",
-                direction="bullish",
-            ),
-        ]
         levels = {"s1": Decimal("3755"), "r1": Decimal("3928")}
         assert (
             evaluate_rules(
-                rules,
+                _both_rules(),
                 levels,
                 prev_price=Decimal("3800"),
                 curr_price=Decimal("3810"),
+                signal_decision="OPEN",
             )
             == []
         )
 
     def test_missing_level_skips_rule(self):
-        rules = [_rule_spec()]
+        rules = [_rule_spec()]  # bearish, armed under OPEN
         assert (
             evaluate_rules(
                 rules,
                 {"s1": None},
                 prev_price=Decimal("3800"),
                 curr_price=Decimal("3700"),
+                signal_decision="OPEN",
             )
             == []
         )
+
+
+class TestInvalidationFilter:
+    """The break must CONTRADICT the day's thesis to fire (backtest-validated)."""
+
+    def test_open_s1_break_fires(self):
+        firings = evaluate_rules(
+            [_rule_spec()],
+            {"s1": Decimal("3755")},
+            prev_price=Decimal("3760"),
+            curr_price=Decimal("3750"),
+            signal_decision="OPEN",
+        )
+        assert len(firings) == 1
+
+    def test_open_r1_break_suppressed_confirmation(self):
+        # Price breaks R1 upward while OPEN (bullish) → confirms, not invalidates.
+        r1_rule = _rule_spec(
+            rule_key="close_above_r1",
+            level_column="r1",
+            comparator="above",
+            direction="bullish",
+        )
+        assert (
+            evaluate_rules(
+                [r1_rule],
+                {"r1": Decimal("3928")},
+                prev_price=Decimal("3920"),
+                curr_price=Decimal("3930"),
+                signal_decision="OPEN",
+            )
+            == []
+        )
+
+    def test_hedge_r1_break_fires(self):
+        r1_rule = _rule_spec(
+            rule_key="close_above_r1",
+            level_column="r1",
+            comparator="above",
+            direction="bullish",
+        )
+        firings = evaluate_rules(
+            [r1_rule],
+            {"r1": Decimal("3928")},
+            prev_price=Decimal("3920"),
+            curr_price=Decimal("3930"),
+            signal_decision="HEDGE",
+        )
+        assert len(firings) == 1
+
+    def test_hedge_s1_break_suppressed_confirmation(self):
+        assert (
+            evaluate_rules(
+                [_rule_spec()],
+                {"s1": Decimal("3755")},
+                prev_price=Decimal("3760"),
+                curr_price=Decimal("3750"),
+                signal_decision="HEDGE",
+            )
+            == []
+        )
+
+    def test_monitor_suppresses_all(self):
+        levels = {"s1": Decimal("3755"), "r1": Decimal("3928")}
+        assert (
+            evaluate_rules(
+                _both_rules(),
+                levels,
+                prev_price=Decimal("3760"),
+                curr_price=Decimal("3750"),
+                signal_decision="MONITOR",
+            )
+            == []
+        )
+
+    def test_missing_decision_suppresses_all(self):
+        # "pas de signal, pas d'alerte" — fail-safe.
+        levels = {"s1": Decimal("3755"), "r1": Decimal("3928")}
+        assert (
+            evaluate_rules(
+                _both_rules(),
+                levels,
+                prev_price=Decimal("3760"),
+                curr_price=Decimal("3750"),
+                signal_decision=None,
+            )
+            == []
+        )
+
+    def test_is_invalidation_matrix(self):
+        assert is_invalidation("bearish", "OPEN") is True
+        assert is_invalidation("bullish", "OPEN") is False
+        assert is_invalidation("bullish", "HEDGE") is True
+        assert is_invalidation("bearish", "HEDGE") is False
+        assert is_invalidation("bearish", "MONITOR") is False
+        assert is_invalidation("bullish", None) is False
+        assert is_invalidation("bearish", "open") is True  # case-insensitive
 
 
 # ---------------------------------------------------------------------------

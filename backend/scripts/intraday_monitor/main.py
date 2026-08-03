@@ -10,8 +10,9 @@ Cron (prod):
 
 Flow: gates → resolve front-month → fetch delayed price (httpx) → append
 pl_contract_data_intraday → evaluate ref_alert_rule levels (S1/R1 from the
-last COMPLETED session — the levels shown on the dashboard today) → on first
-cross per (rule, session): aud_alert_event + AlertSender.
+last COMPLETED session — the levels shown on the dashboard today), firing ONLY
+when the break INVALIDATES the day's signal (OPEN→S1, HEDGE→R1; MONITOR/absent
+→ nothing) → on first cross per (rule, session): aud_alert_event + AlertSender.
 """
 
 from __future__ import annotations
@@ -115,10 +116,13 @@ def main() -> int:
             )
             signal_decision = load_signal_decision(session, contract_id, levels_date)
 
-            firings = evaluate_rules(rules, levels, prev_price, quote.last_price)
+            firings = evaluate_rules(
+                rules, levels, prev_price, quote.last_price, signal_decision
+            )
             logger.info(
-                "Evaluated %d rules: prev=%s curr=%s → %d firing(s)",
+                "Evaluated %d rules (signal=%s): prev=%s curr=%s → %d invalidation(s)",
                 len(rules),
+                signal_decision or "None",
                 prev_price,
                 quote.last_price,
                 len(firings),

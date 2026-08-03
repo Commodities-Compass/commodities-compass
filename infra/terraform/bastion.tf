@@ -1,15 +1,23 @@
 # ==============================================================================
-# Bastion VM — IAP tunnel to Cloud SQL (private IP only)
+# Bastion — IAP tunnel to Cloud SQL (private IP only)
 # ==============================================================================
 #
-# Zero-cost access path to the private Cloud SQL instance from developer
-# machines. No public IP on the VM — all access goes through IAP TCP tunnel.
+# Access path to the private Cloud SQL instance from developer machines. No
+# public IP — all access goes through an IAP TCP tunnel.
+#
+# The bastion VM itself is EPHEMERAL and is NOT managed by Terraform (2026-08-03).
+# `europe-west9-a` capacity is intermittently exhausted across machine families
+# (t2d AND e2 have both failed to start there), so a single fixed-zone instance
+# is fragile. Instead, `.local/db-prod.sh` CREATES the VM on demand, trying
+# europe-west9 zones a→b→c until one has capacity, and DELETES it on teardown.
+# This file keeps only the durable, zone-independent scaffolding the ephemeral
+# VM relies on: its service account, IAM, and the IAP-SSH firewall rule (which
+# targets tag "bastion" network-wide, so it applies in any zone).
 #
 # Usage:
-#   gcloud compute ssh cc-bastion --zone europe-west9-a --tunnel-through-iap \
-#     --project cacaooo -- -N -L 5434:10.119.160.3:5432
-#
-#   psql -h 127.0.0.1 -p 5434 -U cc_app -d commodities_compass
+#   ./.local/db-prod.sh up      # create bastion (first available zone) + tunnel :5434
+#   ./.local/db-prod.sh psql    # psql against prod via the tunnel
+#   ./.local/db-prod.sh down    # close tunnel + delete the VM
 # ==============================================================================
 
 resource "google_service_account" "bastion" {
@@ -24,49 +32,10 @@ resource "google_project_iam_member" "bastion_log_writer" {
   member  = "serviceAccount:${google_service_account.bastion.email}"
 }
 
-resource "google_compute_instance" "bastion" {
-  name         = "cc-bastion"
-  machine_type = "e2-micro"
-  zone         = "${var.region}-a"
-
-  tags = ["bastion"]
-
-  boot_disk {
-    initialize_params {
-      image = "projects/cos-cloud/global/images/family/cos-stable"
-      size  = 10
-      type  = "pd-standard"
-    }
-  }
-
-  network_interface {
-    subnetwork = google_compute_subnetwork.main.id
-    # No access_config block = no public IP
-  }
-
-  service_account {
-    email  = google_service_account.bastion.email
-    scopes = ["logging-write"]
-  }
-
-  scheduling {
-    preemptible       = false
-    automatic_restart = true
-  }
-
-  shielded_instance_config {
-    enable_secure_boot          = true
-    enable_vtpm                 = true
-    enable_integrity_monitoring = true
-  }
-
-  labels = var.labels
-
-  depends_on = [
-    google_project_service.required_apis["compute.googleapis.com"],
-    google_project_service.required_apis["iap.googleapis.com"],
-  ]
-}
+# The bastion instance is created/destroyed on demand by .local/db-prod.sh
+# (ephemeral, multi-zone) — deliberately NOT a google_compute_instance here.
+# It boots as e2-small from cos-stable with tag "bastion", the SA above, the
+# main subnet, no public IP, and shielded-VM enabled.
 
 # --- Firewall: allow IAP to SSH into bastion ---
 

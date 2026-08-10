@@ -161,15 +161,25 @@ locals {
       # docs/user-stories/P1-intraday-threshold-alerts-telegram.md.
       schedule = "*/15 8-16 * * 1-5"
     }
-    # Campaign 6 regime — INERT shadow-compute (self-computing, isolated). Logs a
-    # decision per session to pl_regime_shadow for the shadow-eval; never served,
-    # never writes a shared table. 19:40 UTC weekdays — after cc-barchart-scraper
-    # (19:00) writes the session OHLCV that regime self-computes its features from
-    # (regime does NOT depend on cc-compute-indicators). Bootstrap job
-    # (cc-regime-bootstrap-artifacts) has no scheduler — trigger manually.
+    # Campaign 6 regime + judge — INERT shadow-compute bundled in a single job.
+    # Regime (Layer-1+2, self-computing) writes pl_regime_shadow, then judge
+    # (Layer-3 macro overlay, o4-mini LLM) reads regime + press + weather from
+    # the DB and writes pl_judge_shadow. Neither ever writes a shared table.
+    #
+    # 19:50 UTC DAILY — moved from `40 19 * * 1-5` to Phase-B daily eve-gated
+    # semantics (like brief-ensemble/press-review/meteo) so Sun eve fires for
+    # Mon's session and weekend news drift can flow through judge before the
+    # first Monday audio. The in-agent `phase_b_should_skip` cleanly exits 0
+    # on Fri/Sat eve (non-eve-of-trading), Sentry cron monitor treats that as
+    # success. Fires ~10 min after cc-compass-brief-ensemble (19:35 daily) —
+    # the brief is still generated FIRST during shadow (unchanged, ensemble
+    # decision); judge reads DB rows, not the brief file, so no timing race.
+    #
+    # F-graduation (post-eval, ≥30 sessions): brief-ensemble will move
+    # downstream of this job to read regime + judge overlay. Rescheduling only.
     regime-shadow = {
-      description = "C6 regime: inert self-computing shadow decision → pl_regime_shadow"
-      schedule    = "40 19 * * 1-5"
+      description = "C6 regime + judge (Layer-3 overlay): inert shadow decisions → pl_regime_shadow + pl_judge_shadow"
+      schedule    = "50 19 * * *"
     }
   }
 }

@@ -1,0 +1,56 @@
+====================================================================
+COMPASS DAILY BRIEF - Cocoa Outlook
+Date: 3 August 2026
+Decision horizon: 4 to 5 trading sessions
+====================================================================
+
+I - SIGNAL
+====================================================================
+  Position           : HEDGE
+  Confidence         : 2.00/5 - Technical supports, market sentiment neutral, fundamentals NUANCE.
+  Direction          : BAISSIERE
+  YTD performance    : +88.58%
+
+II - EDITORIAL READ
+====================================================================
+  Headline read of the day: Long-cycle specialist.
+
+III - ECO & PRESS REVIEW
+====================================================================
+Current conditions show slight water deficit in San-Pedro and Soubre, increasing risk for cocoa price volatility.
+
+Press review:
+SUPPLY
+Supply concerns in West Africa remain in focus ahead of the August 3 session. In Cote d'Ivoire, port arrivals have slowed markedly in recent weeks, contributing to upward pressure on spot premiums. According to headlines relayed by Cacao.ci, traders report "prices soaring" amid a "ralentissement des arrivees portuaires," though no exact volumes were published. In Ghana, COCOBOD has maintained its producer price for the 2025/26 light crop season, holding the farmgate price steady. Beyond port dynamics, weather risks are increasingly on traders' radar. Agence Ecofin reports Ghanaian cereal harvests have suffered $1.3 billion in losses since 2023 due to drought conditions, underscoring a broader rainfall deficit that could also affect cocoa trees if dryness persists. Meanwhile, major processing firms are sounding the alarm over El Nino. Donna Eastlake at Confectionery News notes that Barry Callebaut has publicly assessed a cocoa supply threat should El Nino intensify this southern hemisphere season.
+
+FUNDAMENTALS
+Global demand indicators remain mixed but generally supportive for cocoa. Nestle reported stronger organic growth and higher volumes in H1 2026 - even as headline net profit fell 31.4% - highlighting continued appetite for chocolate products. Barry Callebaut, the world's largest processor, posted its first quarterly volume growth in two years, suggesting processors are restocking as raw-bean prices stabilise. Processing data from Asia continue to show resilience: CocoaIntel noted Indonesia reported Q2 grindings up 30% year-on-year, according to a Transgraph forecast cited by market sources.
+
+MARKET
+On July 31, the front-month London September contract (CAU26) closed at 4,011 GBP/t. Traders will watch the opening for a continuation of the cautious tone set in New York, where the September cocoa contract reversed sharply lower on July 29 after climbing early in the session but failing to hold gains. StoneX has warned of a near-balanced 2026/27 world market, a backdrop that leaves little buffer for further bearish surprises. Spot premiums for prompt shipments out of Abidjan are reported to have firmed over the past week, reflecting the slowdown in vessel loadings.
+
+MARKET SENTIMENT
+Short-term market sentiment is cautious to mildly bullish. Supply-side anxieties - driven by slower Ivorian arrivals, Ghanaian weather concerns and early El Nino warnings - offer support to prices around the 4,000 GBP/t level. On the demand side, robust grindings in Indonesia and product innovation from major chocolate buyers suggest steady bean consumption. Key risks include renewed arrivals at Abidjan docks that could ease backwardation. Medium-term positioning remains neutral to slightly long as hedgers balance weather uncertainty against a near-balanced global supply/demand outlook.
+
+Impact summary: With London September cocoa closing at 4,011 GBP/t and port arrivals in Cote d'Ivoire reported to be lagging, the market opens with a supportive bias from the supply side. Ghana's decision to hold its producer price for the light crop season and distribution of 400,000 seedlings underpin medium-term output, while regional drought and El Nino concerns inject near-term bullish risk. On the demand front, stronger grindings in Indonesia and renewed volume growth at major processors lend balance. Overall, traders should favor modest long strategies into early August, remaining vigilant for shipment flows out of Abidjan and any shifts in weather forecasts.
+
+IV - WEATHER WATCH
+====================================================================
+Current conditions are normal for the season in nearly all zones, with only San-Pedro showing slightly degraded soil moisture. The J+1-J+5 forecast points to modest rainfall recovery and no escalation of stress. Market impact is low (2/10), with only localized minor deficit risk.
+Impact: 2/10; Justification: Only San-Pedro is slightly degraded (soil moisture at 16.4%), all other zones normal. Forecast: 4/6 zones with positive water balance, no widespread deficit or surplus expected.
+
+V - TECHNICAL SNAPSHOT - LAST SESSION
+====================================================================
+Session close : 2026-07-31
+  CLOSE=4,011.00 | HIGH=4,085.00 | LOW=3,810.00
+  VOLUME=10311 | OI=40679 | IV=0.47
+  STOCK_US=235,596.00 | STOCK_EU=35,665.80 | COM_NET=-21175
+
+VI - OPERATIONAL RECOMMENDATIONS
+====================================================================
+> Today's Compass decision supports a HEDGE strategy with moderate conviction, projecting a bearish direction.
+        - CLOSE settles at 4011, vs 3810 the prior session - bullish trend.
+        - VOLUME comes in at 10311, vs 4175 the prior session - activity picking up.
+        - RSI at 53.0524 - neutral zone.
+        - MACD at 55.4815 (positive) - momentum fading.
+====================================================================

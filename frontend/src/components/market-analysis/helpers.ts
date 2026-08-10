@@ -1,4 +1,23 @@
-import type { IndicatorRange } from '@/types/dashboard';
+import type {
+  FarmgatePriceResponse,
+  IndicatorRange,
+  MacroPanelResponse,
+} from '@/types/dashboard';
+
+/**
+ * Whether the Reference stratum has anything to show.
+ *
+ * Lives here rather than next to the component so the rail can decide whether
+ * to offer the page at all — the folio must never advertise an empty stratum.
+ */
+export function hasReferenceData(
+  farmgate?: FarmgatePriceResponse,
+  macro?: MacroPanelResponse
+): boolean {
+  const hasEnso =
+    macro?.enso_oni_month != null || macro?.enso_nino34_anomaly != null;
+  return Boolean(farmgate) || hasEnso;
+}
 
 export const INDICATOR_KEYS = [
   'macd',
@@ -158,16 +177,14 @@ export function fmtDate(iso?: string | null): string {
 export const gridStyle = (cols: number): React.CSSProperties => ({
   display: 'grid',
   gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-  gap: 24,
+  // Token, not a literal: the rail compacts it on phones, and an inline
+  // literal could only be overridden with !important.
+  gap: 'var(--field-gap, 24px)',
   alignItems: 'start',
 });
 
-export const gridStyle5: React.CSSProperties = gridStyle(5);
-export const gridStyle4: React.CSSProperties = gridStyle(4);
-
-export const inlineCell: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'baseline',
-  gap: 8,
-  whiteSpace: 'nowrap',
-};
+// No fixed 5-/4-column constants: since the rail shows one stratum at a time,
+// each panel fits its own column count (`gridStyle(items.length)`). A stratum
+// of 3 gauges gets 3 wide columns instead of 3 gauges stranded in a 5-column
+// grid — and a wider ruler is a more readable ruler. Cross-stratum gauge widths
+// are deliberately NOT held constant; the strata are never seen side by side.

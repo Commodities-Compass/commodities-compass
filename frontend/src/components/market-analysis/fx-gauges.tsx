@@ -1,9 +1,8 @@
 import { useTranslation } from 'react-i18next';
 import GaugeIndicator from '@/components/gauge-indicator';
-import { Eyebrow } from '@/components/editorial';
-import GroupHeader from './group-header';
+import Socle from './socle';
 import type { MacroPanelResponse } from '@/types/dashboard';
-import { MACRO_RANGES, gridStyle5 } from './helpers';
+import { MACRO_RANGES, gridStyle } from './helpers';
 
 interface FxGaugesProps {
   macro?: MacroPanelResponse;
@@ -16,9 +15,8 @@ interface FxGaugesProps {
 export default function FxGauges({ macro }: FxGaugesProps) {
   const { t } = useTranslation();
   return (
-    <div style={{ marginBottom: 28 }}>
-      <GroupHeader name={t('market.grp_fx')} cadence={t('market.cad_daily')} />
-      <div className="gauges-row" style={gridStyle5}>
+    <div>
+      <div className="gauges-row" style={gridStyle(3)}>
         <GaugeIndicator
           value={macro?.fx_dxy_proxy ?? MACRO_RANGES.FX_DXY.min}
           min={MACRO_RANGES.FX_DXY.min}
@@ -41,13 +39,7 @@ export default function FxGauges({ macro }: FxGaugesProps) {
           ranges={MACRO_RANGES.FX_XOFGBP.ranges}
         />
       </div>
-      {macro?.fx_xofgbp != null && (
-        <div style={{ marginTop: 8 }}>
-          <Eyebrow tone="subtle" size={9}>
-            {t('market.xofgbp_peg')}
-          </Eyebrow>
-        </div>
-      )}
+      {macro?.fx_xofgbp != null && <Socle>{t('market.xofgbp_peg')}</Socle>}
     </div>
   );
 }

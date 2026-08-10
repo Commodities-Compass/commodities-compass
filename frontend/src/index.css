@@ -53,6 +53,9 @@
   --radius-xl: 16px;
   --radius-full: 9999px;
 
+  /* Motion easing — decelerate-out, "settle, don't bounce" */
+  --ease-editorial: cubic-bezier(0.22, 0.61, 0.36, 1);
+
   --animate-bar-dance: bar-dance 0.8s ease-in-out infinite;
 
   @keyframes bar-dance {
@@ -92,6 +95,38 @@
     --chart-3: 0 0% 60%;             /* ink-light */
     --chart-4: 158 64% 40%;          /* open green */
     --chart-5: 38 92% 50%;           /* monitor amber */
+
+    /* Motion durations — the first shared timing scale in the app. Anything
+       longer than --motion-base is a transition the user waits on, not one
+       they read through. Native smooth-scroll duration is UA-owned and
+       deliberately NOT tokenized here. */
+    --motion-instant: 120ms;
+    --motion-base: 200ms;
+
+    /* Spacing scale (4px base) — replaces per-component magic numbers */
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --sp-3: 12px;
+    --sp-4: 16px;
+    --sp-5: 24px;
+    --sp-6: 32px;
+    --sp-7: 48px;
+
+    /* Minimum touch target (WCAG 2.5.5 / iOS HIG) */
+    --touch-min: 44px;
+
+    /* Gauge vertical rhythm. Exposed as custom properties so a container can
+       compact them per breakpoint — GaugeIndicator sets these inline, and an
+       inline style cannot be beaten by a class rule without !important.
+       `--gauge-ruler-top` is NOT free space: it stacks the value label (~15px)
+       over the marker triangle (10px) above the ruler line, so it has ~2px of
+       slack and no more. */
+    --gauge-label-gap: 18px;
+    --gauge-ruler-top: 28px;
+    --gauge-zone-gap: 6px;
+
+    /* Column gap of the strata fields (gauges + reference tiles). */
+    --field-gap: 24px;
 
     /* Editorial color aliases (for direct CSS usage in magazine components) */
     --ink: #1A1A1A;

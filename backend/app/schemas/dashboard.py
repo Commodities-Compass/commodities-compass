@@ -78,6 +78,13 @@ class IndicatorsGridResponse(BaseModel):
         None,
         description="Algorithm version that produced the indicators for this date.",
     )
+    contract_code: Optional[str] = Field(
+        None,
+        description=(
+            "Front-month contract code for this date (e.g. 'CAU26'). Display-only "
+            "provenance for the dashboard; null when the code cannot be resolved."
+        ),
+    )
 
 
 class RecommendationsResponse(BaseModel):

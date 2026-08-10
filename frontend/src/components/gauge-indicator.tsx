@@ -129,7 +129,7 @@ export default function GaugeIndicator({
           fontWeight: 600,
           letterSpacing: '0.18em',
           color: 'var(--ink-mid)',
-          marginBottom: 18,
+          marginBottom: 'var(--gauge-label-gap, 18px)',
         }}
       >
         {label}
@@ -139,7 +139,7 @@ export default function GaugeIndicator({
       <div
         style={{
           position: 'relative',
-          paddingTop: 28,
+          paddingTop: 'var(--gauge-ruler-top, 28px)',
           paddingBottom: 4,
         }}
       >
@@ -202,7 +202,7 @@ export default function GaugeIndicator({
           gauges like stocks naturally render `OPEN | MONITOR | HEDGE`). */}
       <div
         className="flex justify-between"
-        style={{ marginTop: 6 }}
+        style={{ marginTop: 'var(--gauge-zone-gap, 6px)' }}
       >
         <span style={zoneLabelStyle}>{leftLabel}</span>
         <span style={{ ...zoneLabelStyle, textAlign: 'center' }}>Monitor</span>

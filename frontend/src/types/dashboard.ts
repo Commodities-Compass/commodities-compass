@@ -27,6 +27,8 @@ export interface IndicatorsGridResponse {
     [key: string]: CommodityIndicator;
   };
   source_algorithm?: AlgorithmName | null;
+  /** Front-month contract for this date (e.g. "CAU26"). Display-only provenance. */
+  contract_code?: string | null;
 }
 
 export interface RecommendationsResponse {

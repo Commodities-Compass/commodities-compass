@@ -49,6 +49,7 @@ from app.utils.contract_resolver import (
     get_active_contract_id,
     get_active_algorithm_version_id,
     get_algorithm_version_for_date,
+    get_contract_code_by_id,
     resolve_contract_for_date,
 )
 from app.services.dashboard_transformers import (
@@ -286,10 +287,21 @@ async def get_indicators_grid(
         # Use business_date for response, or current date if not provided
         response_date = business_date or datetime.now(timezone.utc).date()
 
+        # Display-only provenance for the Section II socle. Never fatal: a
+        # missing code degrades the caption, not the indicators.
+        contract_code = await get_contract_code_by_id(db, contract_id)
+        if contract_code is None:
+            logger.warning(
+                "No ref_contract row for resolved contract_id %s — "
+                "indicators-grid served without contract_code",
+                contract_id,
+            )
+
         return transform_to_indicators_grid_response(
             indicators_data=indicators_data,
             response_date=response_date,
             source_algorithm=algo_name,
+            contract_code=contract_code,
         )
 
     except HTTPException:

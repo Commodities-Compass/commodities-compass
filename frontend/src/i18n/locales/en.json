@@ -105,7 +105,18 @@
     "fg_unit_bag": "/bag 64 kg",
     "fg_disclaimer": "Official guaranteed price (CCC / COCOBOD) — distinct from the real terrain price",
     "enso_ref": "ref {{date}} · 14-day lag",
-    "nino_meta": "SST anomaly"
+    "nino_meta": "SST anomaly",
+    "rail_carousel": "carousel",
+    "rail_slide": "slide",
+    "rail_label": "Indicator strata",
+    "rail_prev": "Previous stratum",
+    "rail_next": "Next stratum",
+    "rail_next_up": "Next",
+    "rail_end": "End of section",
+    "rail_position": "{{name}}, {{index}} of {{total}}",
+    "socle_contract": "Contract",
+    "socle_session": "Session",
+    "socle_ratio_eu_us": "EU/US ratio (tonnes)"
   },
   "weather": {
     "empty_state": "No weather report for this date.",

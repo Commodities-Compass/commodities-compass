@@ -39,7 +39,9 @@ class OpenAIJudgeLLM:
         start = time.monotonic()
         response = self._client.chat.completions.create(
             model=self._model_id,
-            max_completion_tokens=2048,
+            # 8192 matches press-review's budget — o4-mini's reasoning tokens
+            # count against this cap; 2048 was starving the visible output.
+            max_completion_tokens=8192,
             reasoning_effort="medium",
             response_format={"type": "json_object"},
             messages=[
@@ -47,17 +49,29 @@ class OpenAIJudgeLLM:
                 {"role": "user", "content": rendered["user"]},
             ],
         )
-        raw = (response.choices[0].message.content or "").strip()
+        choice = response.choices[0]
+        raw = (choice.message.content or "").strip()
         usage = response.usage
         latency_ms = int((time.monotonic() - start) * 1000)
         logger.info(
-            "judge(%s): %din/%dout, %dms, model=%s",
+            "judge(%s): %din/%dout, %dms, model=%s, finish=%s",
             session_date,
             usage.prompt_tokens if usage else 0,
             usage.completion_tokens if usage else 0,
             latency_ms,
             self._model_id,
+            choice.finish_reason,
         )
+        if not raw:
+            # Fail-loud with diagnostic context — empty content means either
+            # the model hit max_completion_tokens (finish_reason='length',
+            # reasoning ate the budget) or refused (content_filter). Silent
+            # json.loads('') masked which one.
+            raise RuntimeError(
+                f"judge LLM returned empty content for session {session_date} "
+                f"(finish_reason={choice.finish_reason}, model={self._model_id}, "
+                f"tokens_out={usage.completion_tokens if usage else 0})"
+            )
         data = json.loads(raw)
         return verdict_from_dict(
             data,

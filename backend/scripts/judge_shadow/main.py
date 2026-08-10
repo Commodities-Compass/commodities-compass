@@ -63,11 +63,8 @@ def _parse_args():
         default=None,
         help="Compute the last N trading sessions. Ignored when --session-date is set.",
     )
-    parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Bypass the eve-of-trading gate (for manual reruns on non-eve days).",
-    )
+    # --force is provided by build_base_argparser (bypasses the eve-of-trading
+    # gate for manual reruns on non-eve days).
     return parser.parse_args()
 
 

@@ -69,11 +69,8 @@ def _parse_args():
         help="Compute the last N chained sessions (seed a shadow history). "
         "Ignored when --session-date is set.",
     )
-    parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Bypass the Phase-B eve-of-trading gate (for manual reruns on non-eve days).",
-    )
+    # --force is provided by build_base_argparser (bypasses the Phase-B eve-of-
+    # trading gate for manual reruns on non-eve days).
     parser.add_argument(
         "--no-judge",
         action="store_true",

@@ -1,0 +1,43 @@
+{
+  "2026-07-31": {
+    "suggested_direction": "UP",
+    "confidence": 2,
+    "stance": "CONTRADICT",
+    "is_anomaly": false,
+    "evidence": [
+      "Short-term sentiment remains cautiously bullish (El Nino threat, slower CI arrivals)",
+      "near-balanced 2026/27 surplus forecasts from StoneX cap upside and signal demand remains solid"
+    ],
+    "drift_summary": "Baseline: press mildly supportive on supply strains but explicitly capped by a near-balanced 2026/27 balance sheet; no escalation.",
+    "disconfirming_case": "Ample midcrop arrivals materialise and the near-balanced surplus reasserts, keeping price range-bound.",
+    "key_risk": "El Nino intensification tightening the midcrop before the main crop."
+  },
+  "2026-08-03": {
+    "suggested_direction": "UP",
+    "confidence": 3,
+    "stance": "CONTRADICT",
+    "is_anomaly": true,
+    "evidence": [
+      "Overall, traders should favor modest long strategies into early August",
+      "traders report 'prices soaring' amid a 'ralentissement des arrivees portuaires'",
+      "Spot premiums for prompt shipments out of Abidjan are reported to have firmed over the past week"
+    ],
+    "drift_summary": "Press drifts from slightly-supportive baseline to an explicit modest-long tilt: port arrivals soaring, spot premiums firming, El Nino warnings escalating - against a bearish technical HEDGE at only 2/5 conviction.",
+    "disconfirming_case": "New York reversed sharply lower on 29 July and renewed Abidjan arrivals could ease backwardation; the near-balanced 2026/27 sheet caps sustained rallies.",
+    "key_risk": "Chasing a supply-scare tape that a wave of fresh arrivals could unwind."
+  },
+  "2026-08-04": {
+    "suggested_direction": "UP",
+    "confidence": 4,
+    "stance": "CONTRADICT",
+    "is_anomaly": true,
+    "evidence": [
+      "Short-term sentiment is decidedly bullish as acute crop risks in Ghana and slower Ivorian arrivals combine to tighten visible supply",
+      "Business Insider Africa reports output could fall by as much as 16% in the 2025/26 season",
+      "front-month New York contract rallied approximately 6.8% ... reflecting intensifying reports of crop stress in Ghana"
+    ],
+    "drift_summary": "Bullish escalation completes: a named driver (Ghana output -16%) plus a sharp 6.8% NY repricing, while the technical still reads bearish HEDGE.",
+    "disconfirming_case": "The 6.8% NY move already priced the Ghana scare; improved CI moisture and El Nino normalisation could mean-revert the two-day spike.",
+    "key_risk": "Flipping long at 4,402 after a two-session +9.75% run risks buying the top if the scare is already discounted."
+  }
+}

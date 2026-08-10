@@ -249,12 +249,20 @@ jobs:
           # — trigger manually via gcloud when R&D ships a new frozen artefact pack.
           deploy_job cc-ensemble-bootstrap-artifacts 1Gi  "ensemble-bootstrap-artifacts"
           deploy_job cc-ensemble-compute             1Gi  "ensemble-compute"
-          # Campaign 6 regime — INERT shadow (self-computing, isolated). cc-regime-shadow
-          # logs one decision per session to pl_regime_shadow for the shadow-eval; it is
-          # NEVER served and NEVER writes a shared table (pl_indicator_daily etc.). Runs on
-          # the current image (sklearn 1.5.2 — regime output verified identical to its 1.6.1
-          # freeze). Bootstrap job has no scheduler — trigger manually to (re)load the frozen
-          # pack after a merge, or when R&D ships a new one.
+          # Campaign 6 regime + judge — INERT shadow, bundled in one Cloud Run job.
+          # cc-regime-shadow computes the regime (Layer-1+2) decision, writes
+          # pl_regime_shadow, then invokes the judge macro overlay (Layer-3, o4-mini
+          # LLM reading press + weather from the DB) and writes pl_judge_shadow.
+          # Neither layer ever writes a shared table (pl_indicator_daily etc.).
+          # Runs on the current image (sklearn 1.5.2 — regime output verified
+          # identical to its 1.6.1 freeze; judge is pure JSON+HTTP, no ML deps).
+          # OPENAI_API_KEY is inherited from the shared SECRETS above (same
+          # provider as press-review). Bootstrap job has no scheduler — trigger
+          # manually to (re)load the frozen pack after a merge, or when R&D ships
+          # a new one. Judge has no bootstrap step (config + prompt live in code).
+          # The `regime-shadow-compute` entry point runs both layers; add
+          # --no-judge for regime-only manual runs. Standalone judge reruns:
+          # `poetry run judge-shadow-compute --session-date T`.
           deploy_job cc-regime-bootstrap-artifacts   1Gi  "regime-bootstrap-artifacts"
           deploy_job cc-regime-shadow                1Gi  "regime-shadow-compute"
           # Quarterly fundamentals (P3 user story). Gated on

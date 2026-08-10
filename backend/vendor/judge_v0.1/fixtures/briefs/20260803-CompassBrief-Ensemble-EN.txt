@@ -1,0 +1,56 @@
+====================================================================
+COMPASS DAILY BRIEF - Cocoa Outlook
+Date: 4 August 2026
+Decision horizon: 4 to 5 trading sessions
+====================================================================
+
+I - SIGNAL
+====================================================================
+  Position           : HEDGE
+  Confidence         : 3.00/5 - Tech + macro aligned, stocks neutral, weather NUANCE.
+  Direction          : BAISSIERE
+  YTD performance    : +87.78%
+
+II - EDITORIAL READ
+====================================================================
+  Headline read of the day: Bearish FX sentinel.
+
+III - ECO & PRESS REVIEW
+====================================================================
+Normal conditions with minimal weather concerns, except mild soil dryness in San-Pedro and Soubre, minimal market impact anticipated.
+
+Press review:
+SUPPLY
+Cocoa supplies remain under pressure heading into the 2026-08-04 session. According to CocoaIntel, the front-month New York September CAU26 contract began last Wednesday near $5,150/t and rallied approximately 6.8% to an intraday peak around $5,500/t before profit-taking stabilized the market near $5,400/t. This sharp advance reflected intensifying reports of crop stress in Ghana, where Business Insider Africa reports output could fall by as much as 16% in the 2025/26 season. Ghana's Cocoa Board has maintained the producer price for the light crop, supporting farmer incomes but doing little to ease broader supply fears. In Cote d'Ivoire, Cacao.ci reports that port arrivals have slowed markedly, tightening immediate availability of both main- and mid-crop beans, while farmers tell Reuters they need more sunshine to boost yields. Indonesia has raised its export benchmark amid expectations of a supply crunch, and Barry Callebaut has warned that an intensifying El Nino could further disrupt production across West Africa.
+
+FUNDAMENTALS
+No new global grindings or detailed consumer demand figures have emerged in the past 24 hours. Within the confectionery sector, Confectionery News reports that Nestle delivered stronger organic growth and improved volumes in H1 2026, though net profit fell 31.4% year-on-year on margin pressures. Barry Callebaut posted its first quarterly volume growth in two years, signalling a tentative recovery in industrial grindings demand, but elevated cocoa costs and rising interest in alternative cocoa ingredients continue to cloud the longer-term demand outlook.
+
+MARKET
+London's ICE Futures Europe front-month CAN26 contract closed at 4,402 GBP/t on August 3, marking a modest gain after an earlier dip in line with broader commodity volatility. Open interest remained near recent averages and trading volumes were seasonally moderate. Implied volatilities in options ticked up modestly, mirroring market concerns over potential supply shocks. Global benchmarks continue to follow New York price action, with the recent 6.8% rally in U.S. futures translating into firmer London bids.
+
+MARKET SENTIMENT
+Short-term sentiment is decidedly bullish as acute crop risks in Ghana and slower Ivorian arrivals combine to tighten visible supply. Many hedgers are lifting short positions or rolling into later spreads in anticipation of early-harvest bottlenecks. Over the medium term, however, sentiment is more balanced: stable farmgate pricing in Ghana and coordinated policy measures may support farmer engagement, while the potential for improved moisture in Cote d'Ivoire and normalisation of El Nino impacts temper further upside.
+
+Impact summary: Supply-side developments are predominantly bullish for near-term cocoa prices: Ghana crop stress and reports of slowing Ivorian port arrivals have triggered sharp repricing in nearby futures, encouraging hedgers to reduce short positions and roll into later contracts. Stable Ghanaian producer pricing and farmgate harmonisation with Cote d'Ivoire may temper farmer sell-offs but are unlikely to fully offset tight availability. On the demand front, early signs of recovery in industrial grindings from Barry Callebaut and volume gains at Nestle offer limited counterweight given margin pressures. Overall, positioning should retain a cautious bullish tilt.
+
+IV - WEATHER WATCH
+====================================================================
+Current conditions are normal to slightly degraded in a few Ivorian zones (San-Pedro, Soubre) due to mild soil dryness, but no location is in confirmed stress. The J+1-J+5 forecast shows moderate rainfall and positive water balances, so risk remains low. Market impact is minimal (2/10).
+Impact: 2/10; No location in confirmed stress, only San-Pedro and Soubre slightly degraded (soil moisture 15-21%), all others normal. Forecast: 5/6 zones remain with positive water balance, no heat or rainfall extremes.
+
+V - TECHNICAL SNAPSHOT - LAST SESSION
+====================================================================
+Session close : 2026-08-03
+  CLOSE=4,402.00 | HIGH=4,409.00 | LOW=3,991.00
+  VOLUME=8040 | OI=35992 | IV=0.45
+  STOCK_US=235,956.00 | STOCK_EU=35,665.80 | COM_NET=-18433
+
+VI - OPERATIONAL RECOMMENDATIONS
+====================================================================
+> Compass reading aligned with the HEDGE call, moderate conviction, neutral bias into the window ahead.
+        - CLOSE settles at 4402, vs 4011 the prior session - bullish trend.
+        - VOLUME comes in at 8040, vs 10311 the prior session - activity easing.
+        - RSI at 62.6706 - neutral zone.
+        - MACD at 84.8183 (positive) - momentum building.
+====================================================================

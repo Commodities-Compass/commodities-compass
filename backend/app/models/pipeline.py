@@ -372,6 +372,87 @@ class PlRegimeShadow(Base):
     )
 
 
+class PlJudgeShadow(Base):
+    """Shadow-mode judge (Layer-3 macro overlay above regime — INERT).
+
+    One row per (session date, front-month contract, algorithm version): the
+    base call received from regime, the LLM verdict (direction / confidence /
+    stance + evidence), the deterministic drift signal (weather series across
+    the brief window), and the fused final decision. Pure observation log for
+    the shadow-eval (README §6 "Shadow-eval spec" — intervention confusion
+    matrix + calibration curve after >=30 sessions). NEVER read by the
+    dashboard; NEVER touches pl_indicator_daily.decision. ``realized_return`` /
+    ``production_score`` stay NULL until the J+4-J+5 horizon closes, then are
+    backfilled by the scoring pass (symmetric with pl_regime_shadow).
+    """
+
+    __tablename__ = "pl_judge_shadow"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    date: Mapped[date] = mapped_column(DATE, nullable=False)
+    contract_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("ref_contract.id"), nullable=False
+    )
+    algorithm_version_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("pl_algorithm_version.id"), nullable=False
+    )
+
+    # Base call ingested from the underlying algorithm (regime today).
+    base_source: Mapped[str] = mapped_column(VARCHAR(50), nullable=False)
+    base_decision: Mapped[str] = mapped_column(VARCHAR(10), nullable=False)
+    base_confidence: Mapped[Decimal] = mapped_column(DECIMAL(4, 2), nullable=False)
+    base_direction_label: Mapped[Optional[str]] = mapped_column(VARCHAR(20))
+
+    # Regime provenance (which pl_regime_shadow row was consumed — Fri regime
+    # for a Mon judge run is normal and eval-relevant: log the source date).
+    regime_source_date: Mapped[date] = mapped_column(DATE, nullable=False)
+    regime: Mapped[str] = mapped_column(VARCHAR(30), nullable=False)
+    specialist: Mapped[str] = mapped_column(VARCHAR(30), nullable=False)
+    prob_up: Mapped[Decimal] = mapped_column(DECIMAL(6, 4), nullable=False)
+
+    # LLM verdict (o4-mini, temp 0, pinned prompt — see model_id below).
+    judge_direction: Mapped[str] = mapped_column(VARCHAR(10), nullable=False)
+    judge_stance: Mapped[str] = mapped_column(VARCHAR(15), nullable=False)
+    judge_confidence: Mapped[int] = mapped_column(INTEGER, nullable=False)
+    is_anomaly: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    evidence: Mapped[Optional[list]] = mapped_column(JSONB)
+    drift_summary: Mapped[Optional[str]] = mapped_column(TEXT)
+    disconfirming_case: Mapped[Optional[str]] = mapped_column(TEXT)
+    key_risk: Mapped[Optional[str]] = mapped_column(TEXT)
+
+    # Drift signal (deterministic — computed by judge.drift.compute_drift).
+    weather_series: Mapped[Optional[list]] = mapped_column(JSONB)
+    weather_delta: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(6, 3))
+    drift_notes: Mapped[Optional[list]] = mapped_column(JSONB)
+    n_days_window: Mapped[int] = mapped_column(INTEGER, nullable=False)
+
+    # Fused outcome (policy.fuse). ``changed`` = final != base.
+    final_decision: Mapped[str] = mapped_column(VARCHAR(10), nullable=False)
+    changed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    rationale: Mapped[Optional[str]] = mapped_column(TEXT)
+
+    # Provenance (for reproducibility of the LLM call — never byte-reproducible,
+    # but the (prompt_version, model_id) pair pins the rerun target).
+    prompt_version: Mapped[str] = mapped_column(VARCHAR(50), nullable=False)
+    model_id: Mapped[str] = mapped_column(VARCHAR(100), nullable=False)
+
+    # Backfilled once the horizon closes (shadow-eval scoring pass).
+    realized_return: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
+    production_score: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
+
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint(
+            "date",
+            "contract_id",
+            "algorithm_version_id",
+            name="uq_judge_shadow",
+        ),
+        Index("ix_judge_shadow_date", "date"),
+    )
+
+
 class PlFundamentalArticle(Base):
     """Press review + fundamentals. Replaces BIBLIO_ALL / market_research."""
 

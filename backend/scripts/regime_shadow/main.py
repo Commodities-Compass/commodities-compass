@@ -1,17 +1,23 @@
-"""cc-regime-shadow — compute the INERT regime decision, log to pl_regime_shadow.
+"""cc-regime-shadow — INERT shadow-compute for regime + judge (Layer-3 overlay).
 
-Campaign 6, two-layer causal-router + condition-specialist algo. Runs in SHADOW:
-each session it builds the front-month derived-indicator panel, routes to one of
-6 specialists, predicts J+1 direction, and writes the decision to
-``pl_regime_shadow`` for the §6 shadow-eval. It NEVER writes
-``pl_indicator_daily.decision`` and is NEVER served — promotion is a Compass flag
-flip AFTER shadow clears the 0.50 hit-rate floor over >=30 sessions.
+Campaign 6 bundled shadow job. Runs the two-layer regime router+specialist
+(Layer-1+2, self-computing, writes ``pl_regime_shadow``) then invokes the judge
+macro overlay (Layer-3, o4-mini LLM reading press + weather from the DB, writes
+``pl_judge_shadow``). Neither layer writes a shared table; both are inert until
+their respective shadow-evals clear.
+
+Scheduled 19:50 UTC daily with a Phase-B eve-of-trading gate (mirrors
+brief-ensemble / press-review / meteo): fires Sun-Thu eve for Mon-Fri targets,
+skips Fri/Sat eve cleanly (exit 0, Sentry treats as success). See
+scheduler.tf § regime-shadow for rationale.
 
 Usage:
-    poetry run regime-shadow-compute                          # latest chained session
+    poetry run regime-shadow-compute                          # cron: latest session
     poetry run regime-shadow-compute --session-date 2026-07-27
     poetry run regime-shadow-compute --backfill-days 60       # seed a shadow history
     poetry run regime-shadow-compute --dry-run --verbose
+    poetry run regime-shadow-compute --no-judge               # regime only, skip judge
+    poetry run regime-shadow-compute --force                  # bypass the eve gate
 """
 
 from __future__ import annotations
@@ -31,7 +37,7 @@ from sqlalchemy.orm import Session
 from scripts._shared.cli import build_base_argparser
 from scripts._shared.logging import configure_logging
 from scripts._shared.sentry import bootstrap_scraper
-from scripts.db import get_session
+from scripts.db import get_session, phase_b_should_skip
 from scripts.regime_shadow.db_writer import write_regime_shadow
 from scripts.regime_shadow.feature_engine import build_selfcomputed_features
 from scripts.regime_shadow.panel_loader import slice_panel
@@ -62,6 +68,17 @@ def _parse_args():
         default=None,
         help="Compute the last N chained sessions (seed a shadow history). "
         "Ignored when --session-date is set.",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Bypass the Phase-B eve-of-trading gate (for manual reruns on non-eve days).",
+    )
+    parser.add_argument(
+        "--no-judge",
+        action="store_true",
+        help="Skip the Layer-3 judge overlay (regime only). Use for regime-only "
+        "backfills or when the LLM path is unavailable.",
     )
     return parser.parse_args()
 
@@ -94,7 +111,17 @@ def main() -> int:
     args = _parse_args()
     configure_logging(verbose=args.verbose)
 
+    # Phase-B eve-of-trading gate (moved to daily scheduling 2026-08-10 to bundle
+    # the Layer-3 judge overlay). Skip cleanly on Fri/Sat eve when tomorrow is
+    # not a trading day, unless --session-date / --force are set.
+    if phase_b_should_skip(args.session_date, args.force):
+        logger.info(
+            "regime-shadow: not eve of a trading day + no --session-date/--force, skipping"
+        )
+        return 0
+
     written = 0
+    judge_written = 0
     with get_session() as session:
         aid = _resolve_version_id(session)
         pipe = load_regime_pipeline_from_db(session, algorithm_version_id=aid)
@@ -131,12 +158,43 @@ def main() -> int:
         if args.dry_run:
             logger.info("[DRY RUN] computed %d decision(s), no writes", len(dates))
         else:
+            # Commit regime rows FIRST so judge can read them in the same session
+            # (judge reads via pl_regime_shadow). If judge crashes below, regime
+            # data is durable (pipeline-error-handling.md: producer fail-loud,
+            # but regime already succeeded so its shadow row is safe).
             session.commit()
             logger.info("wrote %d regime shadow row(s)", written)
 
+        # --- Layer 3: judge macro overlay ------------------------------------
+        # Bundled in the same Cloud Run job. Reads press + weather from the DB
+        # (no Drive dependency, no race with brief-generation timing), pulls the
+        # regime row we just committed as base_call, calls OpenAI o4-mini, and
+        # writes pl_judge_shadow. Fail-loud: an OpenAI outage or a missing
+        # brief article crashes the whole job — the recovery path is
+        # `poetry run judge-shadow-compute --session-date T` for retry.
+        if not args.dry_run and not args.no_judge:
+            from scripts.judge_shadow.llm_openai import OpenAIJudgeLLM
+            from scripts.judge_shadow.runner import run_for_session
+
+            llm = OpenAIJudgeLLM()
+            for d in dates:
+                judge_written += run_for_session(
+                    session, data_date=d, llm=llm, dry_run=False
+                )
+            session.commit()
+            logger.info("wrote %d judge shadow row(s)", judge_written)
+        elif args.no_judge:
+            logger.info("--no-judge set, skipping Layer-3 overlay")
+
     sentry_sdk.set_context(
         "regime_shadow",
-        {"n_dates": len(dates), "written": written, "dry_run": args.dry_run},
+        {
+            "n_dates": len(dates),
+            "regime_written": written,
+            "judge_written": judge_written,
+            "dry_run": args.dry_run,
+            "no_judge": args.no_judge,
+        },
     )
     return 0
 

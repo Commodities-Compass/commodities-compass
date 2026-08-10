@@ -152,6 +152,33 @@ class TestBriefBuilder:
                 target_date=date(2026, 8, 3),
             )
 
+    def test_weather_missing_impact_prefix_is_prepended(self) -> None:
+        # pl_weather_observation stores "2/10; Justification: ..." (no
+        # "Impact: " prefix — that gets added by the brief-generator at
+        # render time). brief_builder must prepend so the R&D parser matches.
+        raw = "2/10; Justification: San-Pedro slightly degraded."
+        session = _mock_session_for_brief(weather=raw)
+        brief = build_brief_from_db(
+            session,
+            data_date=date(2026, 7, 31),
+            target_date=date(2026, 8, 3),
+        )
+        assert brief.weather.impact_10 == pytest.approx(2.0), (
+            "Impact prefix must be prepended so R&D parser matches — else "
+            "weather_series stays empty for the whole shadow log."
+        )
+
+    def test_weather_already_prefixed_not_double_prepended(self) -> None:
+        # If the DB text already starts with "Impact:", leave it alone.
+        raw = "Impact: 4/10; Justification: rain deficit widening."
+        session = _mock_session_for_brief(weather=raw)
+        brief = build_brief_from_db(
+            session,
+            data_date=date(2026, 7, 31),
+            target_date=date(2026, 8, 3),
+        )
+        assert brief.weather.impact_10 == pytest.approx(4.0)
+
 
 # ---------- regime_reader --------------------------------------------------
 

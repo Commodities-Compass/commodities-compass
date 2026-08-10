@@ -66,7 +66,19 @@ def _fetch_press(
 def _fetch_weather(
     session: Session, target_date: date_cls, language: str = _LANGUAGE
 ) -> str:
-    """Return the weather impact-assessment text for the given date, or raise."""
+    """Return the weather impact-assessment text for the given date, or raise.
+
+    The R&D parser (``judge.brief_parser._parse_weather``) matches
+    ``Impact:\\s*(\\d+)\\s*/\\s*10`` to extract the numeric market-impact score
+    that feeds the deterministic drift signal. Our meteo agent stores the score
+    prefix as ``"2/10; Justification: ..."`` (the ``"Impact: "`` prefix is added
+    by the brief-generator at render time, not by the agent). Left as-is,
+    the parser silently misses → ``weather.impact_10 = None`` on every row →
+    ``weather_series`` empty, ``weather_delta`` NULL. The LLM still gets the
+    prose via ``weather.summary`` so decisions aren't affected, but the
+    pre-computed numeric drift is lost. Prepend the prefix here so the R&D
+    parser can match without touching the pack.
+    """
     row = session.execute(
         text(
             """
@@ -83,7 +95,8 @@ def _fetch_weather(
         raise BriefDataMissingError(
             f"no {language} weather observation for {target_date}"
         )
-    return str(row.body)
+    body = str(row.body)
+    return body if body.lstrip().startswith("Impact:") else f"Impact: {body}"
 
 
 def _fetch_technicals(

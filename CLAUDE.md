@@ -288,7 +288,7 @@ The frontend calendar shows `display_date` values. Non-trading days (weekends + 
 - **Cron**: `0 22 20 * 1-5` (20th of month, 22:00 UTC — NOAA publishes mid-month for prior month, 5-day buffer).
 - **Lag policy**: 14 days, applied at compute-time by the engine (`pd.merge_asof(direction="backward")`), not by the scraper.
 - **CLI**: `poetry run enso-scraper [--dry-run] [--force] [--verbose]`
-- **Backfill (one-shot)**: `poetry run enso-scraper-backfill [--verify]` — imports `docs/onboarding/ENSO/{oni,nino34}_monthly.csv` (~1830 rows, 1950-2026).
+- **Backfill (one-shot)**: `poetry run enso-scraper-backfill [--verify]` — imports `docs/archive/onboarding/ENSO/{oni,nino34}_monthly.csv` (~1830 rows, 1950-2026).
 - **US**: [docs/user-stories/P1-scraper-enso.md](docs/user-stories/P1-scraper-enso.md)
 
 ### FX Scraper (`backend/scripts/fx_scraper/`)
@@ -306,14 +306,14 @@ The frontend calendar shows `display_date` values. Non-trading days (weekends + 
 - **Cron**: `30 18 * * 1-5` (18:30 UTC business days, before `cc-ensemble-compute` at 19:18).
 - **Why ECB not yfinance/FRED/Stooq**: R&D rejected those (Cloudflare, API-key, rate limits). ECB is the most reliable open source.
 - **CLI**: `poetry run fx-scraper [--dry-run] [--force] [--verbose]`
-- **Backfill (one-shot)**: `poetry run fx-scraper-backfill [--verify]` — imports `docs/onboarding/FX/{dxy_proxy,gbpusd}_daily.csv` (~3164 rows, 2014-2026).
+- **Backfill (one-shot)**: `poetry run fx-scraper-backfill [--verify]` — imports `docs/archive/onboarding/FX/{dxy_proxy,gbpusd}_daily.csv` (~3164 rows, 2014-2026).
 - **US**: [docs/user-stories/P1-scraper-fx.md](docs/user-stories/P1-scraper-fx.md)
 
 ### ICE COT EU Scraper (`backend/scripts/ice_cot_eu_scraper/`)
 
 - **Data**: ICE Europe COT cocoa weekly positioning — Producer/Merchant (long/short), Managed Money (long/short, the R&D signal), Other Reportables, Non-Reportable, plus Open Interest. Net columns (`prod_merc_net`, `m_money_net`) are Postgres `GENERATED` columns — auto-computed, never written directly.
 - **Source**: ICE public CSV at `https://www.theice.com/publicdocs/futures/COTHist{YYYY}.csv` (free, no auth, ~175 columns, UTF-8 BOM). One file per calendar year, ~52 weeks × 5 markets per file. Filter: `Market_and_Exchange_Names == "ICE Cocoa Futures - ICE Futures Europe"` + `FutOnly_or_Combined == "FutOnly"`.
-- **Target table**: `pl_cot_eu_weekly` (dedicated weekly snapshot table, schema includes Managed Money decomposition for ensemble R&D features — see [docs/onboarding/HEDI_DATA_MAP.md §3.4](docs/onboarding/HEDI_DATA_MAP.md#34-pl_cot_eu_weekly)).
+- **Target table**: `pl_cot_eu_weekly` (dedicated weekly snapshot table, schema includes Managed Money decomposition for ensemble R&D features — see [docs/archive/onboarding/HEDI_DATA_MAP.md §3.4](docs/archive/onboarding/HEDI_DATA_MAP.md#34-pl_cot_eu_weekly)).
 - **Method**: Pure httpx + stdlib `csv.DictReader` (no pandas, no browser). BOM-stripping + strict header validation (fail-loud on schema drift). `release_date = report_date + 3 days` (ICE/CFTC publication lag).
 - **Cron**: `10 22 * * 1-5` (22:10 UTC weekdays). ICE publishes Friday ~21:30 CET for prior Tuesday's snapshot; daily run + idempotent UPSERT on `(release_date, contract_market)` catches late publishes without coupling cron to ICE's exact time.
 - **CLI**: `poetry run ice-cot-eu-scraper [--dry-run] [--year YYYY] [--force] [--verbose]` — `--year` for backfill (defaults to current UTC year).

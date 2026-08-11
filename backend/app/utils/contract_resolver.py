@@ -84,6 +84,39 @@ async def get_active_contract_code(db: AsyncSession) -> str:
     return str(result)
 
 
+async def get_contract_code_by_id(
+    db: AsyncSession, contract_id: uuid.UUID
+) -> str | None:
+    """Get a contract code (e.g. 'CAU26') from its id.
+
+    Unlike ``get_active_contract_code``, this resolves the code for an
+    *arbitrary* contract — the dashboard needs the front-month of the requested
+    date, which across a roll is not the active one.
+
+    Returns ``None`` when the id has no row instead of raising: the code is
+    display-only provenance (the Section II socle), so a miss must degrade the
+    caption, never the whole indicators response. The caller logs the miss.
+    """
+    key = f"contract_code_by_id:{contract_id}"
+    cached = _cache.get(key)
+    if isinstance(cached, str):
+        return cached
+
+    async with _cache_lock:
+        cached = _cache.get(key)
+        if isinstance(cached, str):
+            return cached
+        result = await db.execute(
+            select(RefContract.code).where(RefContract.id == contract_id).limit(1)
+        )
+        value = result.scalar_one_or_none()
+        if value is None:
+            return None
+        code = str(value)
+        _cache[key] = code
+        return code
+
+
 async def get_active_algorithm_version_id(db: AsyncSession) -> uuid.UUID:
     """Get the active algorithm version ID from pl_algorithm_version.
 

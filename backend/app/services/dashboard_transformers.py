@@ -77,6 +77,7 @@ def transform_to_indicators_grid_response(
     indicators_data: Dict[str, Dict[str, Any]],
     response_date: date,
     source_algorithm: Optional[str] = None,
+    contract_code: Optional[str] = None,
 ) -> IndicatorsGridResponse:
     """Transform indicators data to IndicatorsGridResponse."""
     indicators = {}
@@ -107,6 +108,7 @@ def transform_to_indicators_grid_response(
         date=response_datetime,
         indicators=indicators,
         source_algorithm=source_algorithm,
+        contract_code=contract_code,
     )
 
 

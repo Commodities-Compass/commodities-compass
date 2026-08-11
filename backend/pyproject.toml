@@ -111,6 +111,7 @@ ensemble-bootstrap-artifacts = "scripts.ensemble_bootstrap.main:main"
 ensemble-compute = "scripts.ensemble_compute.main:main"
 regime-bootstrap-artifacts = "scripts.regime_shadow.bootstrap:main"
 regime-shadow-compute = "scripts.regime_shadow.main:main"
+judge-shadow-compute = "scripts.judge_shadow.main:main"
 seed-gcp = "scripts.seed_gcp:main"
 seed-trading-calendar = "scripts.seed_trading_calendar:main"
 seed-historical-csv = "scripts.seed_historical_csv:main"
@@ -138,11 +139,12 @@ include = ["app", "tests"]
 # Vendored R&D code has its own type contract; exclude to avoid duplicating
 # pyright runs and to not block our CI on R&D-side stubs missing.
 exclude = ["scripts", "vendor"]
-# regime is vendored but NOT pip-installed (its sklearn==1.6.1 pin would force the
-# backend image up; it runs via a sys.path append at import time — see
-# scripts/regime_shadow/__init__.py). Point pyright at the vendored package so
-# `import regime.*` resolves in tests without installing it.
-extraPaths = ["vendor/regime_v1.0.0"]
+# regime + judge are vendored but NOT pip-installed (regime pins sklearn==1.6.1
+# which would force the backend image up; judge ships without a pyproject — both
+# run via sys.path append at import time — see scripts/{regime,judge}_shadow/
+# __init__.py). Point pyright at the vendored packages so `import regime.*` /
+# `import judge.*` resolve in tests without installing them.
+extraPaths = ["vendor/regime_v1.0.0", "vendor/judge_v0.1"]
 pythonVersion = "3.11"
 typeCheckingMode = "basic"
 

@@ -7,9 +7,8 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useIsTouch } from '@/hooks/useIsTouch';
-import GroupHeader from './group-header';
-import { Eyebrow } from '@/components/editorial';
-import { gridStyle5 } from './helpers';
+import Socle from './socle';
+import { gridStyle, hasReferenceData } from './helpers';
 import type {
   FarmgatePriceEntry,
   FarmgatePriceResponse,
@@ -140,9 +139,7 @@ export default function ReferenceStrata({
   const { t, i18n } = useTranslation();
   const lang = i18n.language?.startsWith('en') ? 'en' : 'fr';
 
-  const hasEnso =
-    macro?.enso_oni_month != null || macro?.enso_nino34_anomaly != null;
-  if (!farmgate && !hasEnso) return null;
+  if (!hasReferenceData(farmgate, macro)) return null;
 
   const nf0 = new Intl.NumberFormat(lang, { maximumFractionDigits: 0 });
   const nf2 = new Intl.NumberFormat(lang, {
@@ -186,56 +183,60 @@ export default function ReferenceStrata({
     </div>
   );
 
+  // Collected first so the grid can fit its own column count — the rail shows
+  // one stratum at a time, so a 3-cell Reference panel gets 3 wide columns
+  // instead of 3 cells stranded in a fixed 5-column grid.
+  const cells: ReactNode[] = [];
+  if (farmgate) {
+    cells.push(fgCell('CIV', farmgate.civ));
+    cells.push(fgCell('Ghana', farmgate.ghana));
+  }
+  if (macro?.enso_oni_month != null) {
+    cells.push(
+      <InfoTooltip
+        name={t('indicators.enso_oni_name')}
+        desc={t('indicators.enso_oni_desc')}
+      >
+        <div style={cellHelp}>
+          <span style={tagBase}>{t('market.tag_monthly')}</span>
+          <span style={country}>ENSO ONI</span>
+          <span style={valMid}>{nf2.format(macro.enso_oni_month)}</span>
+          {macro.enso_reference_date && (
+            <span style={meta}>
+              {t('market.enso_ref', {
+                date: fmtDate(macro.enso_reference_date),
+              })}
+            </span>
+          )}
+        </div>
+      </InfoTooltip>
+    );
+  }
+  if (macro?.enso_nino34_anomaly != null) {
+    cells.push(
+      <InfoTooltip
+        name={t('indicators.nino34_name')}
+        desc={t('indicators.nino34_desc')}
+      >
+        <div style={cellHelp}>
+          <span style={tagBase}>{t('market.tag_monthly')}</span>
+          <span style={country}>Niño 3.4</span>
+          <span style={valMid}>{nf2.format(macro.enso_nino34_anomaly)}</span>
+          <span style={meta}>{t('market.nino_meta')}</span>
+        </div>
+      </InfoTooltip>
+    );
+  }
+
   return (
-    <div style={{ marginBottom: 28 }}>
-      <GroupHeader
-        name={t('market.grp_reference')}
-        cadence={t('market.cad_seasonal')}
-      />
-      <div style={gridStyle5}>
-        {farmgate && fgCell('CIV', farmgate.civ)}
-        {farmgate && fgCell('Ghana', farmgate.ghana)}
-        {macro?.enso_oni_month != null && (
-          <InfoTooltip
-            name={t('indicators.enso_oni_name')}
-            desc={t('indicators.enso_oni_desc')}
-          >
-            <div style={cellHelp}>
-              <span style={tagBase}>{t('market.tag_monthly')}</span>
-              <span style={country}>ENSO ONI</span>
-              <span style={valMid}>{nf2.format(macro.enso_oni_month)}</span>
-              {macro.enso_reference_date && (
-                <span style={meta}>
-                  {t('market.enso_ref', {
-                    date: fmtDate(macro.enso_reference_date),
-                  })}
-                </span>
-              )}
-            </div>
-          </InfoTooltip>
-        )}
-        {macro?.enso_nino34_anomaly != null && (
-          <InfoTooltip
-            name={t('indicators.nino34_name')}
-            desc={t('indicators.nino34_desc')}
-          >
-            <div style={cellHelp}>
-              <span style={tagBase}>{t('market.tag_monthly')}</span>
-              <span style={country}>Niño 3.4</span>
-              <span style={valMid}>
-                {nf2.format(macro.enso_nino34_anomaly)}
-              </span>
-              <span style={meta}>{t('market.nino_meta')}</span>
-            </div>
-          </InfoTooltip>
-        )}
+    <div>
+      <div className="gauges-row" style={gridStyle(cells.length || 1)}>
+        {cells.map((cell, i) => (
+          <div key={i}>{cell}</div>
+        ))}
       </div>
       {farmgate && (farmgate.civ || farmgate.ghana) && (
-        <div style={{ marginTop: 16 }}>
-          <Eyebrow tone="subtle" size={9}>
-            {t('market.fg_disclaimer')}
-          </Eyebrow>
-        </div>
+        <Socle>{t('market.fg_disclaimer')}</Socle>
       )}
     </div>
   );

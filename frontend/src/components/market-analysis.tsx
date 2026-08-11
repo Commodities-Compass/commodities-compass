@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import { useTranslation } from 'react-i18next';
 import SectionHeader from '@/components/section-header';
 import {
   useIndicatorsGrid,
@@ -9,10 +9,14 @@ import {
   useFarmgatePrice,
 } from '@/hooks/useDashboard';
 import { parseConclusion } from '@/utils/recommendation-parser';
+import StrataRail, {
+  type RailPanel,
+} from '@/components/market-analysis/strata-rail';
 import TechnicalsGauges from '@/components/market-analysis/technicals-gauges';
 import FxGauges from '@/components/market-analysis/fx-gauges';
 import PositioningGauges from '@/components/market-analysis/positioning-gauges';
 import ReferenceStrata from '@/components/market-analysis/reference-strata';
+import { hasReferenceData } from '@/components/market-analysis/helpers';
 import EditorialAnalysis from '@/components/market-analysis/editorial-analysis';
 
 interface MarketAnalysisProps {
@@ -27,17 +31,11 @@ function split3(arr: string[]): [string[], string[], string[]] {
   return [arr.slice(0, per), arr.slice(per, per * 2), arr.slice(per * 2)];
 }
 
-// Dotted rule marking a cadence boundary between gauge strata.
-const dividerStyle: CSSProperties = {
-  height: 1,
-  borderTop: '1px dotted var(--rule)',
-  marginBottom: 28,
-};
-
 export default function MarketAnalysis({
   targetDate,
   className,
 }: MarketAnalysisProps) {
+  const { t } = useTranslation();
   const { data: gridData, isLoading: gridLoading } =
     useIndicatorsGrid(targetDate);
   const { data: recoData, isLoading: recoLoading } =
@@ -65,27 +63,61 @@ export default function MarketAnalysis({
     : { analysis: [], watchlist: [] };
   const [bucketReco, bucketSupply, bucketTechnical] = split3(parsed.analysis);
 
+  // Ordered by data cadence, fastest → slowest: daily gauges (Technicals, FX)
+  // → weekly (Positioning & Supply) → seasonal/monthly references. The rail
+  // pages through them one at a time; a stratum with no data is dropped from
+  // the folio rather than rendered empty.
+  const panels: RailPanel[] = [
+    {
+      id: 'technicals',
+      name: t('market.grp_technicals'),
+      cadence: t('market.cad_daily'),
+      content: (
+        <TechnicalsGauges
+          indicators={gridData?.indicators}
+          contractCode={gridData?.contract_code}
+          sessionDate={gridData?.date}
+        />
+      ),
+    },
+    {
+      id: 'fx',
+      name: t('market.grp_fx'),
+      cadence: t('market.cad_daily'),
+      content: <FxGauges macro={macro} />,
+    },
+    {
+      id: 'positioning',
+      name: t('market.grp_positioning'),
+      cadence: t('market.cad_weekly'),
+      content: <PositioningGauges positioning={positioning} />,
+    },
+  ];
+
+  if (hasReferenceData(farmgate, macro)) {
+    panels.push({
+      id: 'reference',
+      name: t('market.grp_reference'),
+      cadence: t('market.cad_seasonal'),
+      content: <ReferenceStrata farmgate={farmgate} macro={macro} />,
+    });
+  }
+
   return (
     <div className={className}>
       <section style={{ padding: '32px 0 24px' }}>
         <SectionHeader numeral="II" title="Market Analysis" />
 
-        {/* Section II is ordered by data cadence, fastest → slowest:
-            daily gauges (Technicals, FX) → weekly (Positioning & Supply) →
-            seasonal/monthly references (guaranteed price, ENSO). Dotted rules
-            mark the cadence boundaries. All rows share the 5-column grid. */}
-        <TechnicalsGauges indicators={gridData?.indicators} />
-        <FxGauges macro={macro} />
+        <StrataRail panels={panels} />
 
-        <div aria-hidden style={dividerStyle} />
-
-        <PositioningGauges positioning={positioning} />
-
-        <div aria-hidden style={dividerStyle} />
-
-        <ReferenceStrata farmgate={farmgate} macro={macro} />
-
-        <div aria-hidden style={dividerStyle} />
+        <div
+          aria-hidden
+          style={{
+            height: 1,
+            borderTop: '1px dotted var(--rule)',
+            margin: '28px 0',
+          }}
+        />
 
         <EditorialAnalysis
           isLoading={isLoading}
@@ -101,13 +133,11 @@ export default function MarketAnalysis({
         @media (max-width: 1023px) {
           .market-grid { grid-template-columns: 1fr !important; }
         }
+        /* One gauge per row on phones. Paging is what pays for the extra
+           height, and a full-width ruler (~350px vs ~160px in a 2-col grid)
+           is the difference between reading the marker and guessing it. */
         @media (max-width: 767px) {
-          .gauges-row { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
-          .macro-row { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
-          .positioning-row { grid-template-columns: 1fr !important; }
-        }
-        @media (max-width: 479px) {
-          .gauges-row { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 16px !important; }
+          .gauges-row { grid-template-columns: 1fr !important; }
         }
       `}</style>
     </div>

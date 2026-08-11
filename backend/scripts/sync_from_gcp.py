@@ -42,6 +42,8 @@ SYNC_TABLES = [
     "ref_commodity",
     "ref_contract",
     "ref_trading_calendar",
+    "ref_alert_rule",
+    "ref_publication_calendar",
     "test_range",
     # Algorithm config (ref_contract FK)
     "pl_algorithm_version",
@@ -50,6 +52,7 @@ SYNC_TABLES = [
     "pl_model_artifact",
     # Pipeline data
     "pl_contract_data_daily",
+    "pl_contract_data_intraday",
     "pl_derived_indicators",
     "pl_indicator_daily",
     "pl_signal_component",
@@ -60,6 +63,12 @@ SYNC_TABLES = [
     # Ensemble (Campaign 5) — FK to pl_algorithm_version + ref_contract (both above)
     "pl_orchestrator_decision",
     "pl_specialist_prediction",
+    # Campaign 6 regime shadow — FK to pl_algorithm_version + ref_contract (both above)
+    "pl_regime_shadow",
+    # Serving / ops state (standalone — no FK to sync tables)
+    "pl_session_release",
+    "pl_official_farmgate_price",
+    "pl_sentiment_feature",
     # Positioning / external / fundamentals (newer scrapers, standalone — no FK to sync tables)
     "pl_cot_eu_weekly",
     "pl_cot_us_weekly",
@@ -70,6 +79,8 @@ SYNC_TABLES = [
     "aud_pipeline_run",
     "aud_data_quality_check",
     "aud_llm_call",
+    # Alert events — FK to ref_alert_rule + ref_contract (both above)
+    "aud_alert_event",
 ]
 
 

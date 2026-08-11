@@ -1,0 +1,56 @@
+====================================================================
+COMPASS DAILY BRIEF - Cocoa Outlook
+Date: 31 July 2026
+Decision horizon: 4 to 5 trading sessions
+====================================================================
+
+I - SIGNAL
+====================================================================
+  Position           : MONITOR
+  Confidence         : 2.00/5 - Technical and macro factors support, market sentiment neutral, fundamentals and weather nuance.
+  Direction          : NEUTRE
+  YTD performance    : +89.27%
+
+II - EDITORIAL READ
+====================================================================
+  Headline read of the day: Trend reader - benchmark.
+
+III - ECO & PRESS REVIEW
+====================================================================
+Confirmed water-deficit stress in San-Pedro and Soubre suggests possible decrease in cocoa yield.
+
+Press review:
+SUPPLY
+Pressure on West African supply intensified as local reports point to a slowdown in port arrivals in Cote d'Ivoire, sending farmgate and port prices higher. According to Cocoa.ci, traders in Abidjan note that vessels are taking longer to unload, exacerbating near-term tightness. In Ghana, the Cocoa Post highlights a government push to harmonise farmgate prices with Ivorian levels and maintain the producer price for the 2025/26 light crop season, but market participants remain concerned about smuggling and quality controls. Disease and weather also loom over the crop: Barry Callebaut voiced concern that an intensifying El Nino could disrupt Cote d'Ivoire's midcrop and Ghana's light crop, potentially denting yields if dry conditions persist.
+
+FUNDAMENTALS
+The supply/demand balance for 2026/27 is tracking tighter than previously thought. StoneX, as relayed by CocoaIntel on 29 July, warned of a near-balanced market next season, trimming earlier surplus projections. Meanwhile, Transgraph forecasts cited in CocoaIntel point to a still-smaller 2026/27 surplus, even as grindings in Indonesia jumped by about 30% in Q2, reflecting healthy processing demand in Asia. On the demand side, confectionery majors continue to invest in innovation: Nestle's latest KitKat sharing range drove organic volume gains in H1 2026, while Barry Callebaut posted its first quarterly volume growth in two years.
+
+MARKET
+Front-month London cocoa (CAU26) closed at 3,810 GBP/t on 30 July, slightly above its two-week average, as dealers weighed global crop risks against ideas of ample midcrop arrivals. Spread structures have flattened modestly, suggesting less premium for deferred availability amid a near-balanced outlook. Open interest in London has held firm, pointing to sustained forward hedging by processors and exporters in West Africa.
+
+MARKET SENTIMENT
+Short-term sentiment remains cautiously bullish. Traders cite Nigeria's upcoming midcrop and the threat of El Nino as factors that could tighten market availability before the main crop. However, the larger 2026/27 balance sheet appears more stable than in recent seasons, capping sharp rallies. Medium-term positioning suggests market players are reducing outright length and favouring calendar spreads, reflecting uncertainty around arrivals in Cote d'Ivoire and Ghana.
+
+Impact summary: The market impact for a cocoa hedger is mixed but tilts slightly supportive. Local supply strains - driven by slower arrivals in Cote d'Ivoire and persistent concerns over Ghanaian smuggling - have underpinned farmgate and port premiums, while El Nino fears add weather risk premium. Conversely, near-balanced 2026/27 surplus forecasts from StoneX and robust grindings growth in Indonesia cap upside and signal global demand remains solid. Traders should weigh short-dated hedges to lock in current levels given potential midcrop outturns, but maintain flexibility via spreads.
+
+IV - WEATHER WATCH
+====================================================================
+Current conditions across Ghana and Cote d'Ivoire are mostly normal for the season, with no confirmed stress zones. The J+1-J+5 forecast is humid but not extreme, supporting only a moderate rise in brown pod/black pod risk. Market impact is limited at 3/10.
+Impact: 3/10; All zones normal or slightly degraded, no confirmed deficit or surplus stress. Forecast indicates continued humidity but not widespread intense rain.
+
+V - TECHNICAL SNAPSHOT - LAST SESSION
+====================================================================
+Session close : 2026-07-30
+  CLOSE=3,810.00 | HIGH=3,916.00 | LOW=3,770.00
+  VOLUME=4175 | OI=41274 | IV=0.49
+  STOCK_US=235,321.00 | STOCK_EU=35,665.80 | COM_NET=-21175
+
+VI - OPERATIONAL RECOMMENDATIONS
+====================================================================
+> Today's readings converge with a MONITOR decision, reflecting a neutral direction with weak conviction.
+        - CLOSE settles at 3810, vs 3902 the prior session - bearish trend.
+        - VOLUME comes in at 4175, vs 7541 the prior session - activity easing.
+        - RSI at 46.4684 - neutral zone.
+        - MACD at 57.041 (positive) - momentum fading.
+====================================================================

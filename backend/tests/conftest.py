@@ -33,6 +33,12 @@ _VENDOR_REGIME = Path(__file__).resolve().parent.parent / "vendor" / "regime_v1.
 if str(_VENDOR_REGIME) not in sys.path:
     sys.path.append(str(_VENDOR_REGIME))
 
+# Same rationale for the vendored `judge` pack — sys.path append at runtime
+# lives in scripts/judge_shadow/__init__.py, tests import earlier.
+_VENDOR_JUDGE = Path(__file__).resolve().parent.parent / "vendor" / "judge_v0.1"
+if str(_VENDOR_JUDGE) not in sys.path:
+    sys.path.append(str(_VENDOR_JUDGE))
+
 from collections.abc import AsyncGenerator, Generator  # noqa: E402
 
 import pytest  # noqa: E402

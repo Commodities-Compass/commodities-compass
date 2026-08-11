@@ -8,7 +8,7 @@ research drafts, and one-shot artifacts live elsewhere (see end of this file).
 
 | Folder | What's inside |
 |---|---|
-| [`architecture/`](architecture/) | High-level pipeline + system design. Read these first if you're new: `PIPELINE_LEGACY.md`, `PIPELINE_ENSEMBLE.md`, `JOBS_AND_SCRAPERS.md`. Plus the ensemble bridge spec and the soft-gate decision explanation. |
+| [`architecture/`](architecture/) | High-level pipeline + system design. Read these first if you're new: `CODE_MAP.md`, `PIPELINE_LEGACY.md`, `PIPELINE_ENSEMBLE.md`, `JOBS_AND_SCRAPERS.md`. Plus the ensemble bridge spec, the soft-gate decision explanation, and **`entitlement-and-tenancy.md`** (per-client show/hide of dashboard sections/features). |
 | [`runbooks/`](runbooks/) | Operational playbooks for prod incidents and routine procedures (brief dual-track, contract roll, ensemble failure recovery, DB sync from GCP, etc.). |
 | [`brand/`](brand/) | Compass CC brand pack: logo library (PNG/JPG/favicon/social/transparent), brand bible HTML, gauge & magazine reference designs. Referenced by `CLAUDE.md § Brand identity`. |
 | [`gcp-cost-analysis/`](gcp-cost-analysis/) | Monthly GCP cost breakdowns + analysis. |

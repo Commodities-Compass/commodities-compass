@@ -59,6 +59,25 @@ class Settings(BaseSettings):
         "BRIEF_DEFAULT_VERSION", default="legacy", cast=str
     )
 
+    # Per-client entitlement enforcement. Default OFF → dark deploy: principals
+    # are resolved but no 403 is raised (every authenticated user sees everything,
+    # preserving today's single-shared-view behavior). Flip ON only AFTER every
+    # existing login is seeded with a tenant_account + grants (rollout §10),
+    # otherwise default-deny locks everyone out.
+    ENTITLEMENTS_ENFORCED: bool = config(
+        "ENTITLEMENTS_ENFORCED", default=False, cast=bool
+    )
+
+    # HMAC secret for signing the unauthenticated /audio/stream capability token.
+    # Required only when ENTITLEMENTS_ENFORCED is on (dark mode keeps the stream
+    # open). Store in GCP Secret Manager in prod.
+    AUDIO_URL_SECRET: str = config("AUDIO_URL_SECRET", default="", cast=str)
+
+    # TTL (seconds) for the resolved-principal in-memory cache. Prod default 600
+    # (10 min). Set to 0 locally to disable caching so entitlement/tier changes
+    # are reflected on the very next request (useful for demos).
+    PRINCIPAL_CACHE_TTL: int = config("PRINCIPAL_CACHE_TTL", default=600, cast=int)
+
     # External APIs
     WEATHER_API_KEY: str = config("WEATHER_API_KEY", default="", cast=str)
     NEWS_API_KEY: str = config("NEWS_API_KEY", default="", cast=str)

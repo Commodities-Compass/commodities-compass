@@ -13,9 +13,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_current_user
+from app.core.config import settings
 from app.core.database import get_db
+from app.core.entitlements import export_key
 from app.core.rate_limit import limiter
+from app.core.tenancy import TenantPrincipal, get_current_principal
 from app.services.export_service import (
     available_series,
     stream_series_csv,
@@ -37,7 +39,7 @@ async def export_series(
     date_from: str = Query(..., alias="from", description="Start date (YYYY-MM-DD)"),
     date_to: str = Query(..., alias="to", description="End date (YYYY-MM-DD)"),
     format: str = Query("csv", description="Output format (csv only for now)"),
-    current_user: dict = Depends(get_current_user),
+    principal: TenantPrincipal = Depends(get_current_principal),
     db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
     """Stream a data series as CSV over an inclusive date range.
@@ -50,6 +52,12 @@ async def export_series(
         raise HTTPException(
             status_code=400,
             detail=f"Unknown series '{series}'. Available: {available_series()}",
+        )
+    # Per-client entitlement: each export series is gated by its own key.
+    if settings.ENTITLEMENTS_ENFORCED and not principal.has(export_key(series)):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Export series '{series}' is not included in your plan.",
         )
     if format.lower() not in _SUPPORTED_FORMATS:
         raise HTTPException(

@@ -39,6 +39,9 @@ from .audit import AudPipelineRun, AudLlmCall, AudDataQualityCheck, AudAlertEven
 # MVP schema — Signal tables
 from .signal import PlSignalComponent
 
+# Tenant schema — per-client accounts, seats, entitlements (serving-layer only)
+from .tenant import TenantAccount, TenantUser, TenantEntitlement
+
 __all__ = [
     "Base",
     "TestRange",
@@ -65,4 +68,8 @@ __all__ = [
     "AudAlertEvent",
     # Signal
     "PlSignalComponent",
+    # Tenant
+    "TenantAccount",
+    "TenantUser",
+    "TenantEntitlement",
 ]

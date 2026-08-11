@@ -10,6 +10,21 @@ class UserResponse(BaseModel):
     email: str | None = Field(None, description="User email")
     name: str | None = Field(None, description="User display name")
     permissions: list[str] = Field(default_factory=list, description="User permissions")
+    # Per-client entitlement context (resolved from the tenant tables). The
+    # frontend consumes `entitlements` to gate sections/features. Empty for a
+    # user with no tenant seat (default-deny under enforcement).
+    tier: str | None = Field(None, description="Tenant tier")
+    account_code: str | None = Field(None, description="Tenant account code")
+    entitlements: list[str] = Field(
+        default_factory=list, description="Granted entitlement keys"
+    )
+    # Mirrors the backend flag so the frontend gates ONLY when enforcement is on.
+    # When false (dark mode), the UI shows everything regardless of entitlements —
+    # matching the backend, which serves everything. Prevents a blank dashboard
+    # for legacy/un-seeded users before the flag is flipped.
+    enforced: bool = Field(
+        False, description="Whether entitlement enforcement is active server-side"
+    )
 
 
 class TokenVerifyResponse(BaseModel):

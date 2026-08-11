@@ -8,7 +8,10 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
-from app.core.auth import get_current_user
+from app.core.audio_signing import sign_stream_token, verify_stream_token
+from app.core.config import settings
+from app.core.tenancy import require_any_entitlement
+from app.core.entitlements import SECTION_PODCAST
 from app.services.audio_service import get_audio_service
 
 router = APIRouter()
@@ -93,12 +96,29 @@ async def stream_audio(
             "ensemble-only and never serves an FR audio."
         ),
     ),
+    token: Optional[str] = Query(
+        default=None,
+        description=(
+            "Signed capability token minted by /dashboard/audio. Required only "
+            "when ENTITLEMENTS_ENFORCED is on (the podcast hard boundary)."
+        ),
+    ),
 ):
     """Stream audio file from Google Drive through backend proxy.
 
     Supports HTTP Range requests (required by iOS Safari for audio playback).
     """
     try:
+        # Hard boundary: this endpoint is unauthenticated (for the <audio> element),
+        # so gate it on a signed token instead of the JWT. Dark mode leaves it open.
+        if settings.ENTITLEMENTS_ENFORCED and not verify_stream_token(
+            token, target_date or "", version or "", language or ""
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Missing or invalid audio access token.",
+            )
+
         parsed_date = _resolve_date(target_date)
         result = await _fetch_audio_info(
             parsed_date, version=version, language=language
@@ -201,7 +221,10 @@ async def stream_audio(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/info")
+@router.get(
+    "/info",
+    dependencies=[Depends(require_any_entitlement(SECTION_PODCAST))],
+)
 async def get_audio_info(
     target_date: Optional[str] = Query(
         default=None,
@@ -221,9 +244,8 @@ async def get_audio_info(
             "ensemble-only and never serves an FR audio."
         ),
     ),
-    current_user: dict = Depends(get_current_user),
 ):
-    """Get audio file information without streaming."""
+    """Get audio file information without streaming (podcast-gated)."""
     try:
         parsed_date = None
         if target_date:
@@ -264,6 +286,12 @@ async def get_audio_info(
             params.append(f"language={language}")
         if params:
             stream_url += "?" + "&".join(params)
+
+        if settings.ENTITLEMENTS_ENFORCED:
+            stream_token = sign_stream_token(
+                target_date or "", version or "", language or ""
+            )
+            stream_url += ("&" if "?" in stream_url else "?") + f"token={stream_token}"
 
         return {
             "url": stream_url,

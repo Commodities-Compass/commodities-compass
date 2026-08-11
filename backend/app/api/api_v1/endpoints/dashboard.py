@@ -17,6 +17,10 @@ from app.core.rate_limit import limiter
 from app.core.database import get_db
 from app.core.auth import get_current_user
 from app.core.i18n import resolve_language
+from app.core import entitlements as ent
+from app.core.audio_signing import sign_stream_token
+from app.core.config import settings
+from app.core.tenancy import require_any_entitlement
 from app.schemas.auth import NonTradingDaysResponse
 from app.schemas.dashboard import (
     PositionStatusResponse,
@@ -172,7 +176,11 @@ async def _parse_and_validate_date(date_str: str, db: AsyncSession) -> date:
         raise HTTPException(status_code=503, detail=str(e))
 
 
-@router.get("/position-status", response_model=PositionStatusResponse)
+@router.get(
+    "/position-status",
+    response_model=PositionStatusResponse,
+    dependencies=[Depends(require_any_entitlement(ent.SECTION_SIGNAL, ent.CHROME_TICKER))],
+)
 @limiter.limit("60/minute")
 async def get_position_status(
     request: Request,
@@ -236,7 +244,11 @@ async def get_position_status(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/indicators-grid", response_model=IndicatorsGridResponse)
+@router.get(
+    "/indicators-grid",
+    response_model=IndicatorsGridResponse,
+    dependencies=[Depends(require_any_entitlement(ent.SECTION_MARKET, ent.CHROME_TICKER))],
+)
 @limiter.limit("60/minute")
 async def get_indicators_grid(
     request: Request,
@@ -301,7 +313,11 @@ async def get_indicators_grid(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/recommendations", response_model=RecommendationsResponse)
+@router.get(
+    "/recommendations",
+    response_model=RecommendationsResponse,
+    dependencies=[Depends(require_any_entitlement(ent.SECTION_SIGNAL, ent.SECTION_MARKET))],
+)
 @limiter.limit("60/minute")
 async def get_recommendations(
     request: Request,
@@ -376,7 +392,11 @@ async def get_recommendations(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/chart-data", response_model=ChartDataResponse)
+@router.get(
+    "/chart-data",
+    response_model=ChartDataResponse,
+    dependencies=[Depends(require_any_entitlement(ent.SECTION_CHART, ent.CHROME_TICKER))],
+)
 @limiter.limit("60/minute")
 async def get_chart_data_endpoint(
     request: Request,
@@ -426,7 +446,11 @@ async def get_chart_data_endpoint(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/news", response_model=NewsResponse)
+@router.get(
+    "/news",
+    response_model=NewsResponse,
+    dependencies=[Depends(require_any_entitlement(ent.SECTION_NEWS))],
+)
 @limiter.limit("60/minute")
 async def get_news(
     request: Request,
@@ -483,7 +507,11 @@ async def get_news(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/news/sentiment", response_model=NewsSentimentResponse)
+@router.get(
+    "/news/sentiment",
+    response_model=NewsSentimentResponse,
+    dependencies=[Depends(require_any_entitlement(ent.SECTION_NEWS))],
+)
 @limiter.limit("60/minute")
 async def get_news_sentiment(
     request: Request,
@@ -527,7 +555,15 @@ async def get_news_sentiment(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/weather", response_model=WeatherEnrichedResponse)
+@router.get(
+    "/weather",
+    response_model=WeatherEnrichedResponse,
+    dependencies=[
+        Depends(
+            require_any_entitlement(ent.SECTION_WEATHER, ent.SECTION_WEATHER_SUMMARY)
+        )
+    ],
+)
 @limiter.limit("60/minute")
 async def get_weather(
     request: Request,
@@ -622,7 +658,11 @@ async def get_weather(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/audio", response_model=AudioResponse)
+@router.get(
+    "/audio",
+    response_model=AudioResponse,
+    dependencies=[Depends(require_any_entitlement(ent.SECTION_PODCAST))],
+)
 @limiter.limit("10/minute")
 async def get_audio(
     request: Request,
@@ -706,6 +746,17 @@ async def get_audio(
             params.append(f"language={lang}")
         if params:
             stream_url += "?" + "&".join(params)
+
+        # Hard boundary: mint a signed capability token bound to the resolved
+        # params so the unauthenticated /audio/stream only serves callers who
+        # passed the podcast gate here. Dark mode (flag off) leaves the stream open.
+        if settings.ENTITLEMENTS_ENFORCED:
+            token = sign_stream_token(
+                trading_day.isoformat() if trading_day else "",
+                version or "",
+                str(lang) if str(lang) != "fr" else "",
+            )
+            stream_url += ("&" if "?" in stream_url else "?") + f"token={token}"
 
         return AudioResponse(
             url=stream_url,  # Backend streaming URL
@@ -816,7 +867,11 @@ async def get_non_trading_days(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/macro-panel", response_model=MacroPanelResponse)
+@router.get(
+    "/macro-panel",
+    response_model=MacroPanelResponse,
+    dependencies=[Depends(require_any_entitlement(ent.FEATURE_MACRO_PANEL))],
+)
 @limiter.limit("60/minute")
 async def get_macro_panel_endpoint(
     request: Request,
@@ -856,7 +911,11 @@ async def get_macro_panel_endpoint(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/farmgate-price", response_model=FarmgatePriceResponse)
+@router.get(
+    "/farmgate-price",
+    response_model=FarmgatePriceResponse,
+    dependencies=[Depends(require_any_entitlement(ent.FEATURE_FARMGATE))],
+)
 @limiter.limit("60/minute")
 async def get_farmgate_price_endpoint(
     request: Request,
@@ -889,7 +948,11 @@ async def get_farmgate_price_endpoint(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/positioning", response_model=PositioningResponse)
+@router.get(
+    "/positioning",
+    response_model=PositioningResponse,
+    dependencies=[Depends(require_any_entitlement(ent.FEATURE_POSITIONING))],
+)
 @limiter.limit("60/minute")
 async def get_positioning_endpoint(
     request: Request,
@@ -923,7 +986,11 @@ async def get_positioning_endpoint(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/ensemble-diagnostics", response_model=EnsembleDiagnosticsResponse)
+@router.get(
+    "/ensemble-diagnostics",
+    response_model=EnsembleDiagnosticsResponse,
+    dependencies=[Depends(require_any_entitlement(ent.FEATURE_ENSEMBLE_DIAGNOSTICS))],
+)
 @limiter.limit("60/minute")
 async def get_ensemble_diagnostics_endpoint(
     request: Request,
@@ -976,7 +1043,11 @@ async def get_ensemble_diagnostics_endpoint(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/specialist-votes", response_model=SpecialistVotesResponse)
+@router.get(
+    "/specialist-votes",
+    response_model=SpecialistVotesResponse,
+    dependencies=[Depends(require_any_entitlement(ent.FEATURE_SPECIALIST_VOTES))],
+)
 @limiter.limit("60/minute")
 async def get_specialist_votes_endpoint(
     request: Request,

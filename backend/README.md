@@ -229,3 +229,10 @@ The backend follows a clean architecture pattern with separation of concerns:
 
 **Audit:**
 - **`AudPipelineRun`** / **`AudLlmCall`** / **`AudDataQualityCheck`** — Observability and lineage tracking
+
+**Tenant (per-client entitlement):**
+- **`TenantAccount`** / **`TenantUser`** / **`TenantEntitlement`** — serving-layer show/hide of dashboard sections/features per client (append-only grants + `v_tenant_entitlement_current` view)
+
+### Per-Client Entitlement
+
+Show/hide dashboard sections/features/export series per client, gated by entitlement keys bundled into commercial tiers. Serving-layer only (the pipeline never sees a tenant). **Ships dark by default** (`ENTITLEMENTS_ENFORCED=false`). Core: `app/core/{entitlements,tenancy,audio_signing}.py`. CLI: `poetry run {create-tenant,link-seat,grant-entitlement,revoke-entitlement,set-tier}`. Full design + rollout: **[docs/architecture/entitlement-and-tenancy.md](../docs/architecture/entitlement-and-tenancy.md)**.

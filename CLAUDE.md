@@ -497,6 +497,20 @@ All API endpoints are prefixed with `/v1` and include:
 - `/dashboard/non-trading-days` - Exchange holidays + latest display_date for calendar:
   - `GET /dashboard/non-trading-days?year=2026` - Returns non-trading weekday dates and `latest_trading_day` (= `MAX(display_date)` from actual data)
 
+## Per-Client Entitlement & Tenancy
+
+Serving-layer show/hide of dashboard **sections / features / export series** per client. The pipeline never sees a tenant ("pipelines shared, tenants subscribe" — North Star). Ships **dark by default** and is a serving-layer concern only. **Full design + rollout: [docs/architecture/entitlement-and-tenancy.md](docs/architecture/entitlement-and-tenancy.md)** (read before touching it).
+
+- **Model**: 3 tables + a temporal view — `tenant_account` (client/org: `code`, `tier`, `locale`, `max_seats`, algo pin), `tenant_user` (seat: `auth0_sub` → account), `tenant_entitlement` (append-only per-key grant: `effective_from`/`active`), collapsed by `v_tenant_entitlement_current` (mirrors the `pl_algorithm_config` temporal pattern). Files: `app/models/tenant.py`.
+- **Keys & tiers** (`app/core/entitlements.py`): opaque `read:<domain>:<name>` keys bundled into **7 commercial tiers** from the "Compass CC matrix" (`coop_essentiel · coop_premium · export_essentiel · export_premium · export_pro · signal_plus · origin_desk`) + `TIER_MAX_SEATS`. Reduced variants are sub-keys (weather `…:summary`, hedge `…:initiation`). CSV export keys exist but are in **no tier by default**.
+- **`internal` marker**: a non-commercial tier that resolves to the **full catalogue at read-time** (`resolve_principal` short-circuit) — always everything, incl. future keys, no re-backfill. Used to grandfather existing users into the whole app before the flip, and for staff.
+- **Enforcement** (`app/core/tenancy.py`): `resolve_principal(sub)` (TTL cache, `PRINCIPAL_CACHE_TTL`, 0 = off) → `require_any_entitlement(*keys)` FastAPI dep = the first `403`. **Default-deny**: a login with no `tenant_user` row sees nothing under enforcement. Toggle: env `ENTITLEMENTS_ENFORCED` (default **false** = no-op gates, unchanged UX). `/auth/me` returns `{entitlements, tier, enforced}`.
+- **Audio hard boundary**: `/audio/stream` is unauthenticated (HTML `<audio>`), so it's gated by a signed HMAC token minted by the podcast-gated `/dashboard/audio` — enforced only when the flag is on. Secret: `AUDIO_URL_SECRET`.
+- **Provisioning CLI** (manual, append-only): `poetry run {create-tenant,link-seat,grant-entitlement,revoke-entitlement,set-tier}` (+ dev-only `demo-set-tier` = set an account to *exactly* one tier). `--tier` accepts the 7 commercial tiers + `internal`.
+- **Frontend**: `EntitlementsProvider` (fetches `/auth/me`) + `<Entitled anyOf={[…]}>` gate the sections/ticker; gating is active **only when `enforced=true`** (dark mode shows everything). The API `403` is the real boundary; the UI hide is cosmetic.
+- **Adding a feature = component + endpoint + one key + assign to tiers in `TIER_TEMPLATES`.** Never fork the frontend per tier; per-tier differences stay at the entitlement-key layer.
+- **Rollout**: (1) ship dark → zero impact; (2) before flipping, grandfather all current Auth0 logins onto `internal` + set `AUDIO_URL_SECRET`; (3) flip `ENTITLEMENTS_ENFORCED=true`.
+
 ## Google Drive Audio Integration
 
 The application integrates with Google Drive to fetch daily audio bulletins for the position status component.

@@ -69,6 +69,18 @@ SELECT latest.* FROM (
 WHERE latest.active
 """
 
+# Same story for the tenant entitlement current-view (created by Alembic in prod).
+_TENANT_VIEW_DDL = """
+CREATE OR REPLACE VIEW v_tenant_entitlement_current AS
+SELECT latest.* FROM (
+    SELECT DISTINCT ON (account_id, entitlement_key) *
+    FROM tenant_entitlement
+    WHERE effective_from <= CURRENT_DATE
+    ORDER BY account_id, entitlement_key, effective_from DESC
+) latest
+WHERE latest.active
+"""
+
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_database():
@@ -77,13 +89,16 @@ def setup_database():
 
     with test_sync_engine.begin() as conn:
         conn.execute(text("DROP VIEW IF EXISTS v_algorithm_config_current CASCADE"))
+        conn.execute(text("DROP VIEW IF EXISTS v_tenant_entitlement_current CASCADE"))
     Base.metadata.drop_all(test_sync_engine)
     Base.metadata.create_all(test_sync_engine)
     with test_sync_engine.begin() as conn:
         conn.execute(text(_CONFIG_VIEW_DDL))
+        conn.execute(text(_TENANT_VIEW_DDL))
     yield
     with test_sync_engine.begin() as conn:
         conn.execute(text("DROP VIEW IF EXISTS v_algorithm_config_current CASCADE"))
+        conn.execute(text("DROP VIEW IF EXISTS v_tenant_entitlement_current CASCADE"))
     Base.metadata.drop_all(test_sync_engine)
 
 

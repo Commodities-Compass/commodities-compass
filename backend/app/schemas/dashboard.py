@@ -328,9 +328,10 @@ class MacroPanelResponse(BaseModel):
 
 
 class FarmgatePriceEntry(BaseModel):
-    """One region's official / guaranteed farmgate price (latest effective)."""
+    """One region + sub-campaign's official / guaranteed farmgate price."""
 
     region: str = Field(..., description="civ | ghana")
+    campaign_type: str = Field(..., description="principale | intermediaire")
     season_label: str = Field(..., description="Campaign label, e.g. 2025/26")
     price_native: float = Field(..., description="Guaranteed price in native currency")
     currency: str = Field(..., description="XOF (CIV) | GHS (Ghana)")
@@ -341,16 +342,24 @@ class FarmgatePriceEntry(BaseModel):
     announced_date: Optional[str] = Field(None, description="Date announced")
 
 
+class FarmgateRegionPrices(BaseModel):
+    """A region's guaranteed price for each sub-campaign (null if none)."""
+
+    principale: Optional[FarmgatePriceEntry] = None
+    intermediaire: Optional[FarmgatePriceEntry] = None
+
+
 class FarmgatePriceResponse(BaseModel):
     """Official guaranteed farmgate price — CIV (CCC) + Ghana (COCOBOD).
 
-    The *official / guaranteed* price, distinct from the real terrain price. A
-    region is null when no price has been announced on or before the date.
+    The *official / guaranteed* price, distinct from the real terrain price.
+    Each region carries its ``principale`` (main crop) and ``intermediaire``
+    (mid-crop) guaranteed price; a slot is null when nothing was announced.
     """
 
     date: str = Field(..., description="Requested date (YYYY-MM-DD)")
-    civ: Optional[FarmgatePriceEntry] = None
-    ghana: Optional[FarmgatePriceEntry] = None
+    civ: FarmgateRegionPrices = Field(default_factory=FarmgateRegionPrices)
+    ghana: FarmgateRegionPrices = Field(default_factory=FarmgateRegionPrices)
 
 
 class PositioningResponse(BaseModel):

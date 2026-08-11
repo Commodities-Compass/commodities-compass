@@ -57,6 +57,12 @@ def main() -> int:
     )
     parser.add_argument("--region", required=True, choices=["civ", "ghana"])
     parser.add_argument(
+        "--campaign",
+        default="principale",
+        choices=["principale", "intermediaire"],
+        help="Sub-campaign: principale (main crop) | intermediaire (mid-crop)",
+    )
+    parser.add_argument(
         "--price", required=True, help="Guaranteed price (native currency)"
     )
     parser.add_argument(
@@ -100,8 +106,9 @@ def main() -> int:
         return 1
 
     logger.info(
-        "Farmgate price → region=%s season=%s price=%s %s (%s) effective=%s source=%s",
+        "Farmgate price → region=%s campaign=%s season=%s price=%s %s (%s) effective=%s source=%s",
         args.region,
+        args.campaign,
         args.season,
         price,
         currency,
@@ -119,6 +126,7 @@ def main() -> int:
             session.add(
                 PlOfficialFarmgatePrice(
                     region=args.region,
+                    campaign_type=args.campaign,
                     season_label=args.season,
                     effective_date=effective_date,
                     announced_date=announced_date,

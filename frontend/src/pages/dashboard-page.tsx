@@ -33,7 +33,14 @@ export default function DashboardPage() {
         </DashboardErrorBoundary>
       </Entitled>
 
-      <Entitled anyOf={[ENT.SECTION_MARKET]}>
+      <Entitled
+        anyOf={[
+          ENT.SECTION_MARKET,
+          ENT.FEATURE_MACRO_PANEL,
+          ENT.FEATURE_POSITIONING,
+          ENT.FEATURE_FARMGATE,
+        ]}
+      >
         <DashboardErrorBoundary>
           <MarketAnalysis targetDate={currentDate} />
         </DashboardErrorBoundary>

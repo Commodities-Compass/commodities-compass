@@ -18,6 +18,8 @@ import PositioningGauges from '@/components/market-analysis/positioning-gauges';
 import ReferenceStrata from '@/components/market-analysis/reference-strata';
 import { hasReferenceData } from '@/components/market-analysis/helpers';
 import EditorialAnalysis from '@/components/market-analysis/editorial-analysis';
+import { useEntitlements } from '@/contexts/EntitlementsContext';
+import { ENT } from '@/entitlements';
 
 interface MarketAnalysisProps {
   targetDate?: string;
@@ -36,6 +38,15 @@ export default function MarketAnalysis({
   className,
 }: MarketAnalysisProps) {
   const { t } = useTranslation();
+  const { has } = useEntitlements();
+  // Section II is composed of independently-gated strata: the technical/FX
+  // gauges + editorial belong to the market section; positioning, macro and the
+  // farmgate reference are their own features. A tier that has only `farmgate`
+  // (e.g. Coop Essentiel) sees Section II with just the guaranteed-price block.
+  const showMarket = has(ENT.SECTION_MARKET);
+  const showMacro = has(ENT.FEATURE_MACRO_PANEL);
+  const showPositioning = has(ENT.FEATURE_POSITIONING);
+  const showFarmgate = has(ENT.FEATURE_FARMGATE);
   const { data: gridData, isLoading: gridLoading } =
     useIndicatorsGrid(targetDate);
   const { data: recoData, isLoading: recoLoading } =
@@ -67,8 +78,9 @@ export default function MarketAnalysis({
   // → weekly (Positioning & Supply) → seasonal/monthly references. The rail
   // pages through them one at a time; a stratum with no data is dropped from
   // the folio rather than rendered empty.
-  const panels: RailPanel[] = [
-    {
+  const panels: RailPanel[] = [];
+  if (showMarket) {
+    panels.push({
       id: 'technicals',
       name: t('market.grp_technicals'),
       cadence: t('market.cad_daily'),
@@ -79,27 +91,35 @@ export default function MarketAnalysis({
           sessionDate={gridData?.date}
         />
       ),
-    },
-    {
+    });
+  }
+  if (showMacro) {
+    panels.push({
       id: 'fx',
       name: t('market.grp_fx'),
       cadence: t('market.cad_daily'),
       content: <FxGauges macro={macro} />,
-    },
-    {
+    });
+  }
+  if (showPositioning) {
+    panels.push({
       id: 'positioning',
       name: t('market.grp_positioning'),
       cadence: t('market.cad_weekly'),
       content: <PositioningGauges positioning={positioning} />,
-    },
-  ];
+    });
+  }
 
-  if (hasReferenceData(farmgate, macro)) {
+  // Reference stratum: farmgate (gated by feature:farmgate) + ENSO (macro).
+  // Pass only the entitled data so an un-entitled part is never rendered.
+  const fgGated = showFarmgate ? farmgate : undefined;
+  const macroRefGated = showMacro ? macro : undefined;
+  if (hasReferenceData(fgGated, macroRefGated)) {
     panels.push({
       id: 'reference',
       name: t('market.grp_reference'),
       cadence: t('market.cad_seasonal'),
-      content: <ReferenceStrata farmgate={farmgate} macro={macro} />,
+      content: <ReferenceStrata farmgate={fgGated} macro={macroRefGated} />,
     });
   }
 
@@ -108,25 +128,29 @@ export default function MarketAnalysis({
       <section style={{ padding: '32px 0 24px' }}>
         <SectionHeader numeral="II" title="Market Analysis" />
 
-        <StrataRail panels={panels} />
+        {panels.length > 0 && <StrataRail panels={panels} />}
 
-        <div
-          aria-hidden
-          style={{
-            height: 1,
-            borderTop: '1px dotted var(--rule)',
-            margin: '28px 0',
-          }}
-        />
+        {showMarket && (
+          <>
+            <div
+              aria-hidden
+              style={{
+                height: 1,
+                borderTop: '1px dotted var(--rule)',
+                margin: '28px 0',
+              }}
+            />
 
-        <EditorialAnalysis
-          isLoading={isLoading}
-          showNarrativeMismatch={showNarrativeMismatch}
-          bucketReco={bucketReco}
-          bucketSupply={bucketSupply}
-          bucketTechnical={bucketTechnical}
-          watchlist={parsed.watchlist}
-        />
+            <EditorialAnalysis
+              isLoading={isLoading}
+              showNarrativeMismatch={showNarrativeMismatch}
+              bucketReco={bucketReco}
+              bucketSupply={bucketSupply}
+              bucketTechnical={bucketTechnical}
+              watchlist={parsed.watchlist}
+            />
+          </>
+        )}
       </section>
 
       <style>{`

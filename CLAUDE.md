@@ -484,7 +484,7 @@ All API endpoints are prefixed with `/v1` and include:
   - `GET /dashboard/chart-data` - Historical data for charting (1-365 days)
   - `GET /dashboard/news` - Latest market research article
   - `GET /dashboard/weather` - Latest weather update and market impact
-  - `GET /dashboard/farmgate-price` - Official/guaranteed farmgate price (CIV/CCC + Ghana/COCOBOD), latest effective ≤ date per region. Append-only `pl_official_farmgate_price`; ops entry via `poetry run set-farmgate-price`. Distinct from the real terrain price (Programme Fondateur).
+  - `GET /dashboard/farmgate-price` - Official/guaranteed farmgate price (CIV/CCC + Ghana/COCOBOD), latest effective ≤ date **per region AND per sub-campaign** (`principale` = main crop Oct→Mar / `intermediaire` = mid-crop Apr→Sep). Response nests `civ: {principale, intermediaire}`, `ghana: {...}`. Append-only `pl_official_farmgate_price` (has `campaign_type`); ops entry via `poetry run set-farmgate-price --campaign principale|intermediaire`. Distinct from the real terrain price (Programme Fondateur).
   - `GET /dashboard/audio` - Audio file metadata with backend streaming URL
   - `GET /dashboard/latest-indicator` - Legacy stub (use `/indicators-grid` instead)
   - `GET /dashboard/dashboard-data` - Legacy stub (use specific endpoints instead)

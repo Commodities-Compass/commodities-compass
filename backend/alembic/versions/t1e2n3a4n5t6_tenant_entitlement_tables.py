@@ -12,7 +12,7 @@ by pl_algorithm_config / v_algorithm_config_current:
 Idempotent (safe re-apply on GCP): guarded table creation + CREATE OR REPLACE VIEW.
 
 Revision ID: t1e2n3a4n5t6
-Revises: k6f7g8h9i0j1
+Revises: m8b9c0d1e2f3
 Create Date: 2026-07-28
 """
 
@@ -23,7 +23,7 @@ from alembic import op
 from sqlalchemy import inspect
 
 revision: str = "t1e2n3a4n5t6"
-down_revision: Union[str, Sequence[str], None] = "k6f7g8h9i0j1"
+down_revision: Union[str, Sequence[str], None] = "m8b9c0d1e2f3"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

@@ -7,19 +7,25 @@ import dataclasses
 from . import policy, prompt
 from .drift import compute_drift
 from .llm import JudgeLLM
-from .schema import BaseCall, Brief, JudgeOutcome
+from .schema import BaseCall, Brief, JudgeOutcome, PriorJudgeRecord
 
 
 def decide(
     window: list[Brief],
     llm: JudgeLLM,
     base_override: BaseCall | None = None,
+    history: list[PriorJudgeRecord] | None = None,
 ) -> JudgeOutcome:
     """Run the overlay for the last brief in ``window`` (oldest-first).
 
     ``base_override`` swaps today's base call for one supplied by an external
     algorithm (the full system passes `regime`'s shadow decision here). The
     brief's press/weather content is kept; only the decision + conviction move.
+
+    ``history`` (oldest-first, v0.2 fine-tune) is the judge's own prior
+    decisions replayed in the prompt so the LLM can reconcile against
+    realised price moves (kills the "chase" pattern). ``None`` keeps the
+    v0.1-equivalent behaviour so existing goldens replay unchanged.
     """
     if not window:
         raise ValueError("empty brief window")
@@ -36,7 +42,7 @@ def decide(
         window = [*window[:-1], today]
 
     drift = compute_drift(window)
-    rendered = prompt.render(window, drift)
+    rendered = prompt.render(window, drift, history=history)
     verdict = llm.judge(rendered, session_date=today.session_date)
 
     final = policy.fuse(today.base_decision, verdict)
@@ -54,6 +60,10 @@ def decide(
         "judge_confidence": verdict.confidence,
         "is_anomaly": verdict.is_anomaly,
         "weather_series": list(drift.weather_impact_series),
+        # v0.2 fine-tune: price path + history replayed — logged for eval.
+        "price_cum_move": drift.price_cum_move,
+        "price_series": list(drift.price_series),
+        "n_history": len(history or []),
         "prompt_version": verdict.prompt_version,
         "model_id": verdict.model_id,
         "rationale": rationale,

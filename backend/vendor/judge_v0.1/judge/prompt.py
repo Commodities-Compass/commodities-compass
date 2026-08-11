@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 
 from . import config
-from .schema import Brief, Drift
+from .schema import Brief, Direction, Drift, PriorJudgeRecord
 
 SYSTEM_PROMPT = """You are the macro/press overlay ("judge") sitting on top of a purely technical \
 cocoa trading algorithm. The algorithm is blind to news, weather and fundamentals; you are its \
@@ -31,6 +31,14 @@ where cocoa prices actually went. You are standing at the decision, blind to the
 - Ground every claim: cite at least TWO concrete facts quoted from the briefs. If you cannot \
 cite two, your stance MUST be NEUTRAL with confidence 1.
 - Before concluding, state the disconfirming case (what would make the algorithm's call right).
+- PRICE-VS-THESIS: you are given the recent price path. Before committing to a direction, \
+reconcile it: if the market has ALREADY moved substantially in the direction your macro thesis \
+implies, the story is likely PRICED IN — do NOT treat a persistent narrative as fresh news. \
+Lower confidence and prefer MONITOR/keep over a fresh flip. A flip is justified only when the \
+thesis is NOT yet reflected in price.
+- YOUR OWN HISTORY: you are given your recent calls and how price moved since. If you have been \
+calling the same direction and price has moved AGAINST you, treat that as strong evidence your \
+thesis is stale/priced — be willing to unwind toward the base (or MONITOR) rather than double down.
 
 CONFIDENCE RUBRIC (confidence in your stance, 1-5):
   5 = multiple independent briefs point the same way + a concrete named driver (weather event, \
@@ -64,8 +72,51 @@ def _brief_block(b: Brief, *, label: str) -> str:
     )
 
 
-def build_user_prompt(window: list[Brief], drift: Drift) -> str:
-    """window is oldest-first; the last element is today's decision brief."""
+def _price_block(drift: Drift) -> str:
+    if drift.price_cum_move is None:
+        return "PRICE ACTION over window: insufficient closes."
+    steps = ", ".join(f"{m * 100:+.1f}%" for m in drift.price_step_moves)
+    return (
+        f"PRICE ACTION over window: cumulative {drift.price_cum_move * 100:+.1f}% "
+        f"(session steps: {steps}). Has the market ALREADY moved in the direction your "
+        f"macro thesis implies? If yes, the story is likely already priced."
+    )
+
+
+def _history_block(
+    history: list[PriorJudgeRecord], today_close: float | None
+) -> str:
+    if not history:
+        return "YOUR RECENT CALLS: none on record (first decision in the window)."
+    lines = ["YOUR RECENT CALLS (reconcile against price since):"]
+    for rec in reversed(history):  # most recent first
+        move_txt, verdict = "n/a", ""
+        if today_close is not None and rec.close:
+            mv = (today_close - rec.close) / rec.close
+            move_txt = f"{mv * 100:+.1f}%"
+            if rec.suggested_direction is Direction.UP:
+                verdict = " (WITH your call)" if mv > 0 else " (AGAINST your call)"
+            elif rec.suggested_direction is Direction.DOWN:
+                verdict = " (WITH your call)" if mv < 0 else " (AGAINST your call)"
+        lines.append(
+            f"- {rec.session_date}: you concluded {rec.final_decision.value} "
+            f"(dir={rec.suggested_direction.value}, conf={rec.confidence}); "
+            f"price since: {move_txt}{verdict}"
+        )
+    return "\n".join(lines)
+
+
+def build_user_prompt(
+    window: list[Brief],
+    drift: Drift,
+    history: list[PriorJudgeRecord] | None = None,
+) -> str:
+    """window is oldest-first; the last element is today's decision brief.
+
+    ``history`` (oldest-first) is the judge's own prior decisions replayed so
+    the LLM can reconcile against realised price moves. Backward-compatible:
+    ``history=None`` renders the v0.1 prompt (no history block).
+    """
     if not window:
         raise ValueError("empty brief window")
 
@@ -87,17 +138,27 @@ def build_user_prompt(window: list[Brief], drift: Drift) -> str:
         f"{today.base_confidence:.1f}/5).\n\n"
         f"PRE-COMPUTED DRIFT over the window: {drift_line}. "
         f"Weather-impact series (oldest->newest): {weather_series}/10.\n\n"
+        f"{_price_block(drift)}\n\n"
+        f"{_history_block(history or [], today.close)}\n\n"
         f"{prior_blocks}\n{today_block}\n"
         "Judge the algorithm's call against this macro/press/weather picture. "
         "Return the JSON verdict."
     )
 
 
-def render(window: list[Brief], drift: Drift) -> dict[str, str]:
-    """Return {system, user, prompt_version} ready for an LLM call."""
+def render(
+    window: list[Brief],
+    drift: Drift,
+    history: list[PriorJudgeRecord] | None = None,
+) -> dict[str, str]:
+    """Return {system, user, prompt_version} ready for an LLM call.
+
+    ``history`` (oldest-first) is optional; when omitted the prompt renders
+    without the YOUR RECENT CALLS block (v0.1-equivalent user text).
+    """
     return {
         "system": SYSTEM_PROMPT,
-        "user": build_user_prompt(window, drift),
+        "user": build_user_prompt(window, drift, history=history),
         "prompt_version": config.PROMPT_VERSION,
     }
 

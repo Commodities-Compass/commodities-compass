@@ -109,12 +109,30 @@ class BaseCall:
 
 
 @dataclass(frozen=True)
+class PriorJudgeRecord:
+    """A past judge decision, replayed into the prompt so the judge is no longer
+    stateless. In the full system these come from prior pl_judge_shadow rows."""
+
+    session_date: str
+    final_decision: Decision
+    suggested_direction: Direction
+    confidence: int
+    close: float | None = None  # front-month close at that decision (for move-since)
+
+
+@dataclass(frozen=True)
 class Drift:
     """Cross-day movement in the macro picture, computed deterministically."""
 
     n_days: int
     weather_impact_series: tuple[float, ...] = ()
     weather_delta: float | None = None
+    # Price action over the window (fractional returns) — feeds the price-vs-
+    # thesis reconciliation so the judge can see whether its thesis is already
+    # priced in. Added in v0.2 fine-tune.
+    price_series: tuple[float, ...] = ()
+    price_cum_move: float | None = None
+    price_step_moves: tuple[float, ...] = ()
     notes: tuple[str, ...] = ()
 
 

@@ -17,15 +17,16 @@ from __future__ import annotations
 import logging
 from datetime import date as date_cls
 
-from judge.config import BRIEF_WINDOW  # type: ignore
+from judge.config import BRIEF_WINDOW, HISTORY_WINDOW  # type: ignore
 from judge.integration import prob_up_to_confidence  # type: ignore
 from judge.runner import decide as judge_decide  # type: ignore
 from judge.schema import BaseCall, Brief, Decision  # type: ignore
 from sqlalchemy.orm import Session
 
-from scripts.db import get_previous_session_date, get_next_session_date
+from scripts.db import get_next_session_date, get_previous_session_date
 from scripts.judge_shadow.brief_builder import build_brief_from_db
 from scripts.judge_shadow.db_writer import write_judge_shadow
+from scripts.judge_shadow.history_store import DBJudgeHistoryStore
 from scripts.judge_shadow.llm_openai import OpenAIJudgeLLM
 from scripts.judge_shadow.regime_reader import (
     RegimeShadowRow,
@@ -39,6 +40,7 @@ logger = logging.getLogger(__name__)
 # Judge is meant to work with a window of daily briefs — cap the window at
 # BRIEF_WINDOW (=3) and pull the last N trading days.
 _WINDOW = BRIEF_WINDOW
+_HISTORY = HISTORY_WINDOW
 
 
 def _prior_data_dates(session: Session, data_date: date_cls, n: int) -> list[date_cls]:
@@ -119,7 +121,14 @@ def run_for_session(
     if llm is None:
         llm = OpenAIJudgeLLM()
 
-    outcome = judge_decide(window, llm, base_override=base_call)
+    # v0.2 fine-tune: replay the judge's own recent decisions so it can
+    # reconcile against realised price moves (kills the "chase" pattern).
+    # Empty list on first-ever run — the pack's renderer degrades gracefully.
+    history = DBJudgeHistoryStore(session).load_recent_decisions(
+        data_date.isoformat(), _HISTORY
+    )
+
+    outcome = judge_decide(window, llm, base_override=base_call, history=history)
 
     logger.info(
         "  %s: base=%-7s -> final=%-7s (changed=%s) judge=%s/%s conf=%d",

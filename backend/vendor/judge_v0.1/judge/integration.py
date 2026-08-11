@@ -23,7 +23,7 @@ from typing import Protocol, runtime_checkable
 from . import config
 from .llm import JudgeLLM
 from .runner import decide
-from .schema import BaseCall, Brief, Decision, JudgeOutcome
+from .schema import BaseCall, Brief, Decision, JudgeOutcome, PriorJudgeRecord
 
 
 # --- Seams the product implements --------------------------------------------
@@ -47,6 +47,20 @@ class ShadowSink(Protocol):
 
     def write(self, log_fields: dict[str, object]) -> None:
         """PROD: persist to the shadow table (never to pl_indicator_daily)."""
+        ...
+
+
+class JudgeHistoryStore(Protocol):
+    """Source of the judge's own prior decisions (v0.2 fine-tune)."""
+
+    def load_recent_decisions(
+        self, session_date: str, n: int
+    ) -> list[PriorJudgeRecord]:
+        """Return the last ``n`` judge decisions BEFORE ``session_date``,
+        from ``pl_judge_shadow`` (plus the front-month close at each date so
+        the LLM can compute the price-since-you-called move). Oldest-first.
+        PROD: implement this against the shadow table + chained OHLCV view.
+        """
         ...
 
 
@@ -98,18 +112,28 @@ def run_shadow(
     llm: JudgeLLM,
     sink: ShadowSink | None = None,
     window: int = config.BRIEF_WINDOW,
+    history_store: "JudgeHistoryStore | None" = None,
+    history_window: int = config.HISTORY_WINDOW,
 ) -> JudgeOutcome:
     """Run regime -> judge for one session and log the outcome.
 
     PROD: call this once per session, after regime has produced its shadow
-    decision and the day's brief has been generated/stored.
+    decision and the day's brief has been generated/stored. ``history_store``
+    (v0.2 fine-tune) replays the judge's own prior decisions into the prompt
+    so it can reconcile against realised price moves; omit for v0.1 behaviour.
     """
     briefs = store.load_recent(session_date, window)
     if not briefs:
         raise ValueError(f"no briefs available up to {session_date}")
 
+    history = (
+        history_store.load_recent_decisions(session_date, history_window)
+        if history_store is not None
+        else None
+    )
+
     base = regime_base_call(regime_decision)
-    outcome = decide(briefs, llm, base_override=base)
+    outcome = decide(briefs, llm, base_override=base, history=history)
 
     # Enrich the log with regime provenance for the pipeline analysis.
     outcome.log_fields.update(

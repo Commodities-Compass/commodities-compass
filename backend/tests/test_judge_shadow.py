@@ -33,6 +33,7 @@ from scripts.judge_shadow.brief_builder import (
     build_brief_from_db,
 )
 from scripts.judge_shadow.db_writer import write_judge_shadow
+from scripts.judge_shadow.history_store import DBJudgeHistoryStore
 from scripts.judge_shadow.regime_reader import (
     RegimeShadowMissingError,
     RegimeShadowRow,
@@ -268,6 +269,69 @@ def _sample_outcome() -> JudgeOutcome:
         rationale="policy: contradict conf 3 -> MONITOR",
         log_fields=log,
     )
+
+
+class TestHistoryStore:
+    """DBJudgeHistoryStore reads pl_judge_shadow + v_contract_data_chained."""
+
+    def test_empty_history_returns_empty_list(self) -> None:
+        session = MagicMock()
+        session.execute.return_value.fetchall.return_value = []
+        history = DBJudgeHistoryStore(session).load_recent_decisions("2026-08-10", 3)
+        assert history == []
+
+    def test_history_returned_oldest_first(self) -> None:
+        # DB returns DESC (newest first); adapter must reverse to oldest-first.
+        session = MagicMock()
+        session.execute.return_value.fetchall.return_value = [
+            MagicMock(
+                date=date(2026, 8, 7),
+                final_decision="HEDGE",
+                judge_direction="DOWN",
+                judge_confidence=3,
+                close=4249.0,
+            ),
+            MagicMock(
+                date=date(2026, 8, 6),
+                final_decision="HEDGE",
+                judge_direction="DOWN",
+                judge_confidence=4,
+                close=4245.0,
+            ),
+            MagicMock(
+                date=date(2026, 8, 5),
+                final_decision="MONITOR",
+                judge_direction="UP",
+                judge_confidence=3,
+                close=4345.0,
+            ),
+        ]
+        history = DBJudgeHistoryStore(session).load_recent_decisions("2026-08-10", 3)
+        assert len(history) == 3
+        assert [h.session_date for h in history] == [
+            "2026-08-05",
+            "2026-08-06",
+            "2026-08-07",
+        ]
+        # Latest call surfaces the correct decision/direction/close
+        assert history[-1].final_decision.value == "HEDGE"
+        assert history[-1].suggested_direction.value == "DOWN"
+        assert history[-1].close == pytest.approx(4249.0)
+
+    def test_null_close_survives(self) -> None:
+        session = MagicMock()
+        session.execute.return_value.fetchall.return_value = [
+            MagicMock(
+                date=date(2026, 8, 7),
+                final_decision="OPEN",
+                judge_direction="UP",
+                judge_confidence=4,
+                close=None,  # chained view can miss on a boundary
+            )
+        ]
+        history = DBJudgeHistoryStore(session).load_recent_decisions("2026-08-10", 1)
+        assert history[0].close is None
+        # Prompt-side renders "n/a" for the move — graceful, not a crash.
 
 
 class TestWriterIsolation:

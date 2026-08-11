@@ -62,7 +62,7 @@ def test_tier_catalogue_matches_matrix() -> None:
 
 @pytest.mark.unit
 def test_seat_caps_match_matrix() -> None:
-    assert ent.max_seats_for(ent.COOP_ESSENTIEL) == 0  # push-only
+    assert ent.max_seats_for(ent.COOP_ESSENTIEL) == 1  # minimal dashboard
     assert ent.max_seats_for(ent.COOP_PREMIUM) == 2
     assert ent.max_seats_for(ent.EXPORT_PREMIUM) == 3
     assert ent.max_seats_for(ent.EXPORT_PRO) == 4

@@ -146,6 +146,7 @@ export interface MacroPanelResponse {
 
 export interface FarmgatePriceEntry {
   region: string;
+  campaign_type: 'principale' | 'intermediaire';
   season_label: string;
   price_native: number;
   currency: string;
@@ -156,10 +157,15 @@ export interface FarmgatePriceEntry {
   announced_date: string | null;
 }
 
+export interface FarmgateRegionPrices {
+  principale: FarmgatePriceEntry | null;
+  intermediaire: FarmgatePriceEntry | null;
+}
+
 export interface FarmgatePriceResponse {
   date: string;
-  civ: FarmgatePriceEntry | null;
-  ghana: FarmgatePriceEntry | null;
+  civ: FarmgateRegionPrices;
+  ghana: FarmgateRegionPrices;
 }
 
 export interface PositioningResponse {

@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/tooltip';
 import { useIsTouch } from '@/hooks/useIsTouch';
 import Socle from './socle';
-import { gridStyle, hasReferenceData } from './helpers';
+import { gridStyle, hasFarmgateData, hasReferenceData } from './helpers';
 import type {
   FarmgatePriceEntry,
   FarmgatePriceResponse,
@@ -157,39 +157,62 @@ export default function ReferenceStrata({
     u === 'per_kg' ? '/kg' : u === 'per_tonne' ? '/t' : t('market.fg_unit_bag');
   const currencyLabel = (c: string) => (c === 'XOF' ? 'FCFA' : c);
 
-  const fgCell = (region: string, entry: FarmgatePriceEntry | null) => (
+  // Campaign tag with a hover tooltip explaining the sub-campaign period.
+  const campaignTag = (campaign: 'principale' | 'intermediaire') => (
+    <InfoTooltip
+      name={t(`market.fg_camp_${campaign}`)}
+      desc={t(`market.fg_camp_${campaign}_desc`)}
+    >
+      <span style={{ ...tagSeason, cursor: 'help' }}>
+        {t(`market.fg_camp_${campaign}`)}
+      </span>
+    </InfoTooltip>
+  );
+
+  const fgCell = (region: string, entry: FarmgatePriceEntry) => (
+    <div style={cell}>
+      {campaignTag(entry.campaign_type)}
+      <span style={country}>
+        {t('market.fg_price')} — {region}
+      </span>
+      <span style={valBig}>
+        {nf0.format(entry.price_native)}{' '}
+        <span style={unit}>
+          {currencyLabel(entry.currency)}
+          {unitLabel(entry.unit)}
+        </span>
+      </span>
+      <span style={meta}>
+        {entry.season_label} · {fmtDate(entry.effective_date)} ·{' '}
+        {entry.source.toUpperCase()}
+      </span>
+    </div>
+  );
+
+  const fgNotAnnounced = (region: string) => (
     <div style={cell}>
       <span style={tagSeason}>{t('market.tag_season')}</span>
       <span style={country}>
         {t('market.fg_price')} — {region}
       </span>
-      {entry ? (
-        <>
-          <span style={valBig}>
-            {nf0.format(entry.price_native)}{' '}
-            <span style={unit}>
-              {currencyLabel(entry.currency)}
-              {unitLabel(entry.unit)}
-            </span>
-          </span>
-          <span style={meta}>
-            {entry.season_label} · {fmtDate(entry.effective_date)} ·{' '}
-            {entry.source.toUpperCase()}
-          </span>
-        </>
-      ) : (
-        <span style={valBig}>{t('market.fg_not_announced')}</span>
-      )}
+      <span style={valBig}>{t('market.fg_not_announced')}</span>
     </div>
   );
 
   // Collected first so the grid can fit its own column count — the rail shows
-  // one stratum at a time, so a 3-cell Reference panel gets 3 wide columns
-  // instead of 3 cells stranded in a fixed 5-column grid.
+  // one stratum at a time. One card per (region, sub-campaign) that exists:
+  // CIV shows principale + intermediaire; Ghana shows whichever is announced.
   const cells: ReactNode[] = [];
-  if (farmgate) {
-    cells.push(fgCell('CIV', farmgate.civ));
-    cells.push(fgCell('Ghana', farmgate.ghana));
+  for (const [key, label] of [
+    ['civ', 'CIV'],
+    ['ghana', 'Ghana'],
+  ] as const) {
+    const rp = farmgate?.[key];
+    const p = rp?.principale;
+    const i = rp?.intermediaire;
+    if (p) cells.push(fgCell(label, p));
+    if (i) cells.push(fgCell(label, i));
+    if (farmgate && !p && !i) cells.push(fgNotAnnounced(label));
   }
   if (macro?.enso_oni_month != null) {
     cells.push(
@@ -235,9 +258,7 @@ export default function ReferenceStrata({
           <div key={i}>{cell}</div>
         ))}
       </div>
-      {farmgate && (farmgate.civ || farmgate.ghana) && (
-        <Socle>{t('market.fg_disclaimer')}</Socle>
-      )}
+      {hasFarmgateData(farmgate) && <Socle>{t('market.fg_disclaimer')}</Socle>}
     </div>
   );
 }

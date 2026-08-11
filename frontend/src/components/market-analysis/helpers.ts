@@ -10,13 +10,23 @@ import type {
  * Lives here rather than next to the component so the rail can decide whether
  * to offer the page at all — the folio must never advertise an empty stratum.
  */
+export function hasFarmgateData(farmgate?: FarmgatePriceResponse): boolean {
+  if (!farmgate) return false;
+  return Boolean(
+    farmgate.civ?.principale ||
+      farmgate.civ?.intermediaire ||
+      farmgate.ghana?.principale ||
+      farmgate.ghana?.intermediaire
+  );
+}
+
 export function hasReferenceData(
   farmgate?: FarmgatePriceResponse,
   macro?: MacroPanelResponse
 ): boolean {
   const hasEnso =
     macro?.enso_oni_month != null || macro?.enso_nino34_anomaly != null;
-  return Boolean(farmgate) || hasEnso;
+  return hasFarmgateData(farmgate) || hasEnso;
 }
 
 export const INDICATOR_KEYS = [

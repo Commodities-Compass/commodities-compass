@@ -194,11 +194,12 @@ TIER_TEMPLATES: Mapping[str, frozenset[str]] = MappingProxyType(
 )
 
 # Contracted dashboard seats per tier (matrix "Accès dashboard" row). Coop
-# Essentiel = 0 (push only). Stored on the account; NOT hard-enforced (link-seat
-# warns past the cap — see docs decision "Store max_seats, don't hard-enforce").
+# Essentiel = 1 (minimal dashboard: guaranteed-price reference only). Stored on
+# the account; NOT hard-enforced (link-seat warns past the cap — see docs
+# decision "Store max_seats, don't hard-enforce").
 TIER_MAX_SEATS: Mapping[str, int] = MappingProxyType(
     {
-        COOP_ESSENTIEL: 0,
+        COOP_ESSENTIEL: 1,
         COOP_PREMIUM: 2,
         EXPORT_ESSENTIEL: 2,
         EXPORT_PREMIUM: 3,

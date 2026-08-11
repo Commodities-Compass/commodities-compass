@@ -21,8 +21,8 @@
 | 8 | Entitlement cache TTL | **10 minutes** | Bounds staleness of a downgrade; avoids a DB hit per request; still tighter than Auth0's 6h JWKS revocation latency. |
 | 9 | Tier catalogue | **7 tiers from the commercial matrix** | `coop_essentiel · coop_premium · export_essentiel · export_premium · export_pro · signal_plus · origin_desk` (COOP / EXPORT orientations). Replaces the placeholder starter/pro/enterprise. |
 | 10 | Reduced variants | **Sub-keys** | Weather full (`read:section:weather`) vs weekly `…:summary`; hedge full vs `…:initiation`. A tier holds one; endpoints serving both accept either (any-of). |
-| 11 | Seat counts | **`max_seats`, soft cap** | Contracted dashboard seats (2/2/3/4/4/4; Coop Essentiel = 0 push-only) stored on `tenant_account`. `link-seat` WARNS past the cap, never blocks. |
-| 12 | Coop Essentiel | **0-seat push tier** | Modeled as a real tier (grants exist for push-content generation) with `max_seats=0` — no dashboard login. |
+| 11 | Seat counts | **`max_seats`, soft cap** | Contracted dashboard seats (1/2/2/3/4/4/4) stored on `tenant_account`. `link-seat` WARNS past the cap, never blocks. |
+| 12 | Coop Essentiel | **1-seat minimal dashboard** | A real tier with `max_seats=1`; its dashboard shows only the guaranteed-price reference (Section II = farmgate block). (Was push-only/0-seat; bumped to 1 for the minimal dashboard.) |
 | 13 | Existing users / staff | **`internal` full-access marker** | A non-commercial tier that resolves to the COMPLETE catalogue **at read-time** (`resolve_principal` short-circuit), so it always includes future keys with no re-backfill. Used to grandfather the current base into "the whole app" before the flip. |
 
 **Core principle** (North Star): *pipelines are shared, tenants subscribe.* Entitlement/isolation lives entirely in the **serving layer** — the pipeline (`app/engine/`, scrapers) never sees a tenant.
@@ -87,7 +87,7 @@ Named bundles that expand into per-key grants at provisioning time. The **stored
 
 | Key / matrix row | CE | CP | EE | EP | XP | S+ | OD |
 |---|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
-| **max_seats** | 0¹ | 2 | 2 | 3 | 4 | 4 | 4 |
+| **max_seats** | 1¹ | 2 | 2 | 3 | 4 | 4 | 4 |
 | `read:decision:physical_sale` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `read:decision:hedge` (initiation on CE) | init | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `read:section:signal` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -101,7 +101,7 @@ Named bundles that expand into per-key grants at provisioning time. The **stored
 | `read:section:chart` (historique+S/R) | — | ✅ | — | ✅ | ✅ | ✅ | ✅ |
 | `read:chrome:ticker` | —¹ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-¹ Coop Essentiel = **push-only**: 0 dashboard seats, no ticker; grants exist so push content can be generated from the same check. `link-seat` warns if you add a seat anyway (soft cap).
+¹ Coop Essentiel = **1-seat minimal dashboard**: no ticker; Section II shows only the guaranteed-price reference (farmgate). `link-seat` warns past the cap (soft).
 ² Podcast is **"option"** on Signal+/Origin — à la carte, so **not** in the default template; grant separately.
 ³ ENSO (matrix "prix garantis + ENSO") travels with `macro_panel`, so Coop Essentiel gets `farmgate` but not the ENSO sub-panel.
 

@@ -9,7 +9,7 @@ no-op when the flag is off, and the per-series export filter.
 from __future__ import annotations
 
 import uuid
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import Callable, Generator
 from datetime import date, timedelta
 
 import pytest
@@ -43,9 +43,14 @@ def test_tier_catalogue_matches_matrix() -> None:
     export_prem = ent.expand_tier(ent.EXPORT_PREMIUM)
     signal_plus = ent.expand_tier(ent.SIGNAL_PLUS)
     # Reduced weather variant on the essentiel tiers, full on premium.
-    assert ent.SECTION_WEATHER_SUMMARY in coop_ess and ent.SECTION_WEATHER not in coop_ess
+    assert (
+        ent.SECTION_WEATHER_SUMMARY in coop_ess and ent.SECTION_WEATHER not in coop_ess
+    )
     assert ent.SECTION_WEATHER_SUMMARY in export_ess
-    assert ent.SECTION_WEATHER in export_prem and ent.SECTION_WEATHER_SUMMARY not in export_prem
+    assert (
+        ent.SECTION_WEATHER in export_prem
+        and ent.SECTION_WEATHER_SUMMARY not in export_prem
+    )
     # Export Essentiel is lean: no positioning / press / history.
     assert ent.FEATURE_POSITIONING not in export_ess
     assert ent.SECTION_NEWS not in export_ess
@@ -88,7 +93,7 @@ def test_key_validity() -> None:
 # Fixtures — cache isolation + auth override
 # --------------------------------------------------------------------------- #
 @pytest.fixture(autouse=True)
-def _clear_principal_cache() -> None:
+def _clear_principal_cache() -> Generator[None, None, None]:
     """The principal cache is module-level; clear it so subs don't leak between tests."""
     if tenancy._principal_cache is not None:
         tenancy._principal_cache.clear()
@@ -98,7 +103,7 @@ def _clear_principal_cache() -> None:
 
 
 @pytest.fixture
-def auth_as() -> AsyncGenerator[Callable[[str], None], None]:
+def auth_as() -> Generator[Callable[[str], None], None, None]:
     """Return a setter that overrides get_current_user with a given Auth0 sub."""
 
     def _set(sub: str) -> None:
@@ -179,9 +184,7 @@ async def test_entitled_section_passes_the_gate(
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_dark_mode_lets_everyone_through(
-    client: AsyncClient, auth_as
-) -> None:
+async def test_dark_mode_lets_everyone_through(client: AsyncClient, auth_as) -> None:
     """Flag OFF (default): no tenant row, still not 403 — preserves single-shared-view."""
     assert settings.ENTITLEMENTS_ENFORCED is False
     auth_as("auth0|nobody")
@@ -195,7 +198,9 @@ async def test_auth_me_surfaces_entitlements(
     client: AsyncClient, db_session: AsyncSession, auth_as
 ) -> None:
     sub = "auth0|me"
-    await _seed_tenant(db_session, sub, {ent.SECTION_SIGNAL, ent.SECTION_CHART}, tier="coop_premium")
+    await _seed_tenant(
+        db_session, sub, {ent.SECTION_SIGNAL, ent.SECTION_CHART}, tier="coop_premium"
+    )
     auth_as(sub)
     r = await client.get(ME)
     assert r.status_code == 200
@@ -227,7 +232,9 @@ async def test_revoke_tombstone_hides_key_from_current_view(
 ) -> None:
     """A later active=false row wins in the current view → the key is gone → 403."""
     sub = "auth0|revoked"
-    account = TenantAccount(code=f"acct-{uuid.uuid4().hex[:8]}", name="T", tier="export_premium")
+    account = TenantAccount(
+        code=f"acct-{uuid.uuid4().hex[:8]}", name="T", tier="export_premium"
+    )
     db_session.add(account)
     await db_session.flush()
     db_session.add(TenantUser(account_id=account.id, auth0_sub=sub))

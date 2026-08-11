@@ -55,11 +55,16 @@ def main() -> int:
     seats = max_seats_for(args.tier)
     logger.info(
         "Set account=%s to EXACTLY tier=%s (%d keys, %d seats)",
-        args.account, args.tier, len(tier_keys), seats,
+        args.account,
+        args.tier,
+        len(tier_keys),
+        seats,
     )
     if args.dry_run:
         logger.info("[DRY RUN] granted: %s", sorted(tier_keys))
-        logger.info("[DRY RUN] tombstoned: %s", sorted(ALL_ENTITLEMENT_KEYS - tier_keys))
+        logger.info(
+            "[DRY RUN] tombstoned: %s", sorted(ALL_ENTITLEMENT_KEYS - tier_keys)
+        )
         return 0
 
     today = date.today()

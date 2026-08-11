@@ -81,12 +81,16 @@ def _append_grant(session, account_id, key: str, active: bool) -> None:
 # create-tenant
 # --------------------------------------------------------------------------- #
 def create_tenant() -> int:
-    p = argparse.ArgumentParser(description="Create a tenant account + seed its tier grants.")
+    p = argparse.ArgumentParser(
+        description="Create a tenant account + seed its tier grants."
+    )
     p.add_argument("--code", required=True, help="Stable handle, e.g. acme")
     p.add_argument("--name", required=True)
     p.add_argument("--tier", required=True, choices=sorted(PROVISIONABLE_TIERS))
     p.add_argument("--locale", default="fr")
-    p.add_argument("--algo-version", default=None, help="pl_algorithm_version.id to pin (optional)")
+    p.add_argument(
+        "--algo-version", default=None, help="pl_algorithm_version.id to pin (optional)"
+    )
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args()
 
@@ -94,7 +98,12 @@ def create_tenant() -> int:
     seats = max_seats_for(args.tier)
     logger.info(
         "Create tenant code=%s name=%s tier=%s locale=%s → %d grants, %d seats",
-        args.code, args.name, args.tier, args.locale, len(keys), seats,
+        args.code,
+        args.name,
+        args.tier,
+        args.locale,
+        len(keys),
+        seats,
     )
     if args.dry_run:
         logger.info("[DRY RUN] grants: %s", keys)
@@ -126,7 +135,9 @@ def create_tenant() -> int:
 # link-seat
 # --------------------------------------------------------------------------- #
 def link_seat() -> int:
-    p = argparse.ArgumentParser(description="Link an Auth0 identity (seat) to an account.")
+    p = argparse.ArgumentParser(
+        description="Link an Auth0 identity (seat) to an account."
+    )
     p.add_argument("--account", required=True, help="tenant_account.code")
     p.add_argument("--auth0-sub", required=True, help="JWT sub, e.g. auth0|abc")
     p.add_argument("--email", default=None)
@@ -162,7 +173,9 @@ def link_seat() -> int:
             logger.warning(
                 "Seat cap: account %s has %d/%d active seats — adding this one EXCEEDS "
                 "the contracted cap (allowed, not blocked).",
-                args.account, active_seats, account.max_seats,
+                args.account,
+                active_seats,
+                account.max_seats,
             )
         session.add(
             TenantUser(
@@ -174,7 +187,10 @@ def link_seat() -> int:
         )
     logger.info(
         "Linked seat %s to %s (%d/%d seats used).",
-        args.auth0_sub, args.account, active_seats + 1, account.max_seats,
+        args.auth0_sub,
+        args.account,
+        active_seats + 1,
+        account.max_seats,
     )
     return 0
 
@@ -183,7 +199,9 @@ def link_seat() -> int:
 # grant / revoke entitlement
 # --------------------------------------------------------------------------- #
 def _grant_or_revoke(active: bool, verb: str) -> int:
-    p = argparse.ArgumentParser(description=f"{verb.capitalize()} an entitlement key (append-only).")
+    p = argparse.ArgumentParser(
+        description=f"{verb.capitalize()} an entitlement key (append-only)."
+    )
     p.add_argument("--account", required=True, help="tenant_account.code")
     p.add_argument("--key", required=True, help="e.g. read:section:weather")
     p.add_argument("--dry-run", action="store_true")
@@ -195,7 +213,9 @@ def _grant_or_revoke(active: bool, verb: str) -> int:
             + "\n  ".join(sorted(ALL_ENTITLEMENT_KEYS))
         )
 
-    logger.info("%s %s on account=%s (effective %s)", verb, args.key, args.account, date.today())
+    logger.info(
+        "%s %s on account=%s (effective %s)", verb, args.key, args.account, date.today()
+    )
     if args.dry_run:
         logger.info("[DRY RUN] No row written.")
         return 0
@@ -228,7 +248,9 @@ def set_tier() -> int:
     args = p.parse_args()
 
     keys = sorted(expand_tier(args.tier))
-    logger.info("Set tier %s on account=%s → %d grants", args.tier, args.account, len(keys))
+    logger.info(
+        "Set tier %s on account=%s → %d grants", args.tier, args.account, len(keys)
+    )
     if args.dry_run:
         logger.info("[DRY RUN] grants: %s", keys)
         return 0
@@ -245,7 +267,9 @@ def set_tier() -> int:
     logger.info(
         "Set %s to tier %s and appended %d grants "
         "(keys outside the tier are NOT revoked — use revoke-entitlement).",
-        args.account, args.tier, len(keys),
+        args.account,
+        args.tier,
+        len(keys),
     )
     return 0
 

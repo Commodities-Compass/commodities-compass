@@ -40,9 +40,7 @@ def upgrade() -> None:
             sa.Column("code", sa.VARCHAR(50), nullable=False),
             sa.Column("name", sa.VARCHAR(200), nullable=False),
             sa.Column("tier", sa.VARCHAR(30), nullable=False),
-            sa.Column(
-                "locale", sa.VARCHAR(5), nullable=False, server_default="fr"
-            ),
+            sa.Column("locale", sa.VARCHAR(5), nullable=False, server_default="fr"),
             sa.Column(
                 "max_seats",
                 sa.INTEGER(),
@@ -61,9 +59,7 @@ def upgrade() -> None:
                 nullable=False,
                 server_default=sa.text("true"),
             ),
-            sa.Column(
-                "created_at", sa.TIMESTAMP(), server_default=sa.func.now()
-            ),
+            sa.Column("created_at", sa.TIMESTAMP(), server_default=sa.func.now()),
             sa.UniqueConstraint("code", name="uq_tenant_account_code"),
         )
 
@@ -79,18 +75,14 @@ def upgrade() -> None:
             ),
             sa.Column("auth0_sub", sa.VARCHAR(255), nullable=False),
             sa.Column("email", sa.VARCHAR(255), nullable=True),
-            sa.Column(
-                "role", sa.VARCHAR(30), nullable=False, server_default="viewer"
-            ),
+            sa.Column("role", sa.VARCHAR(30), nullable=False, server_default="viewer"),
             sa.Column(
                 "is_active",
                 sa.Boolean(),
                 nullable=False,
                 server_default=sa.text("true"),
             ),
-            sa.Column(
-                "created_at", sa.TIMESTAMP(), server_default=sa.func.now()
-            ),
+            sa.Column("created_at", sa.TIMESTAMP(), server_default=sa.func.now()),
             sa.UniqueConstraint("auth0_sub", name="uq_tenant_user_auth0_sub"),
         )
         op.create_index("ix_tenant_user_account", "tenant_user", ["account_id"])
@@ -118,9 +110,7 @@ def upgrade() -> None:
                 nullable=False,
                 server_default=sa.text("true"),
             ),
-            sa.Column(
-                "created_at", sa.TIMESTAMP(), server_default=sa.func.now()
-            ),
+            sa.Column("created_at", sa.TIMESTAMP(), server_default=sa.func.now()),
             sa.UniqueConstraint(
                 "account_id",
                 "entitlement_key",

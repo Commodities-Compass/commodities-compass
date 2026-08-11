@@ -44,7 +44,9 @@ def test_verify_rejects_field_mismatch(secret) -> None:
 def test_verify_rejects_tamper(secret) -> None:
     tok = sign.sign_stream_token("2026-08-03", "ensemble", "")
     body, _, sig = tok.partition(".")
-    assert not sign.verify_stream_token(f"{body}.deadbeef", "2026-08-03", "ensemble", "")
+    assert not sign.verify_stream_token(
+        f"{body}.deadbeef", "2026-08-03", "ensemble", ""
+    )
 
 
 @pytest.mark.unit

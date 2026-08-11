@@ -52,9 +52,7 @@ class TenantAccount(Base):
     # runtime — the per-key rows in tenant_entitlement are the source of truth.
     tier: Mapped[str] = mapped_column(VARCHAR(30), nullable=False)
     # North Star tenant.account.locale (default fr, matches the content tables).
-    locale: Mapped[str] = mapped_column(
-        VARCHAR(5), nullable=False, server_default="fr"
-    )
+    locale: Mapped[str] = mapped_column(VARCHAR(5), nullable=False, server_default="fr")
     # Contracted dashboard-seat cap (matrix "Accès dashboard"). NOT hard-enforced
     # — link-seat warns past it. 0 = push-only tier (no dashboard login).
     max_seats: Mapped[int] = mapped_column(
@@ -70,9 +68,7 @@ class TenantAccount(Base):
     )
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
 
-    __table_args__ = (
-        UniqueConstraint("code", name="uq_tenant_account_code"),
-    )
+    __table_args__ = (UniqueConstraint("code", name="uq_tenant_account_code"),)
 
 
 class TenantUser(Base):

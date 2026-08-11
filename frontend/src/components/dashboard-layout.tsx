@@ -16,7 +16,7 @@ import {
 import { useDashboardDate } from '@/hooks/useDashboardDate';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useEntitlements } from '@/contexts/EntitlementsContext';
-import { ENT } from '@/lib/entitlement-keys';
+import { ENT } from '@/entitlements';
 import type { Language } from '@/contexts/LanguageContext';
 import DateSelector from '@/components/date-selector';
 import LiveSignalStrip from '@/components/live-signal-strip';

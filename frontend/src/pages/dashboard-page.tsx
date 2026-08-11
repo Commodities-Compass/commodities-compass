@@ -8,7 +8,7 @@ import WeatherUpdateCard from '@/components/weather-update-card';
 import { DashboardErrorBoundary } from '@/components/DashboardErrorBoundary';
 import { useDashboardDate } from '@/hooks/useDashboardDate';
 import { Entitled, useEntitlements } from '@/contexts/EntitlementsContext';
-import { ENT } from '@/lib/entitlement-keys';
+import { ENT } from '@/entitlements';
 
 export default function DashboardPage() {
   const { currentDate } = useDashboardDate();

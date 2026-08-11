@@ -180,7 +180,9 @@ async def _parse_and_validate_date(date_str: str, db: AsyncSession) -> date:
 @router.get(
     "/position-status",
     response_model=PositionStatusResponse,
-    dependencies=[Depends(require_any_entitlement(ent.SECTION_SIGNAL, ent.CHROME_TICKER))],
+    dependencies=[
+        Depends(require_any_entitlement(ent.SECTION_SIGNAL, ent.CHROME_TICKER))
+    ],
 )
 @limiter.limit("60/minute")
 async def get_position_status(
@@ -248,7 +250,9 @@ async def get_position_status(
 @router.get(
     "/indicators-grid",
     response_model=IndicatorsGridResponse,
-    dependencies=[Depends(require_any_entitlement(ent.SECTION_MARKET, ent.CHROME_TICKER))],
+    dependencies=[
+        Depends(require_any_entitlement(ent.SECTION_MARKET, ent.CHROME_TICKER))
+    ],
 )
 @limiter.limit("60/minute")
 async def get_indicators_grid(
@@ -328,7 +332,9 @@ async def get_indicators_grid(
 @router.get(
     "/recommendations",
     response_model=RecommendationsResponse,
-    dependencies=[Depends(require_any_entitlement(ent.SECTION_SIGNAL, ent.SECTION_MARKET))],
+    dependencies=[
+        Depends(require_any_entitlement(ent.SECTION_SIGNAL, ent.SECTION_MARKET))
+    ],
 )
 @limiter.limit("60/minute")
 async def get_recommendations(
@@ -407,7 +413,9 @@ async def get_recommendations(
 @router.get(
     "/chart-data",
     response_model=ChartDataResponse,
-    dependencies=[Depends(require_any_entitlement(ent.SECTION_CHART, ent.CHROME_TICKER))],
+    dependencies=[
+        Depends(require_any_entitlement(ent.SECTION_CHART, ent.CHROME_TICKER))
+    ],
 )
 @limiter.limit("60/minute")
 async def get_chart_data_endpoint(

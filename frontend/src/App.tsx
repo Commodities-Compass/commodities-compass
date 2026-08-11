@@ -10,6 +10,7 @@ import { useAuth } from '@/hooks/useAuth';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { DashboardDateProvider } from '@/contexts/DashboardDateContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
+import { EntitlementsProvider } from '@/contexts/EntitlementsContext';
 import { I18nSync } from '@/i18n/I18nSync';
 
 const DashboardLayout = React.lazy(() => import('@/components/dashboard-layout'));
@@ -97,6 +98,7 @@ export default function App() {
   return (
     <LanguageProvider>
       <I18nSync />
+      <EntitlementsProvider>
       <Router>
         <Suspense fallback={<LoadingSpinner />}>
           <Routes>
@@ -134,6 +136,7 @@ export default function App() {
           </Routes>
         </Suspense>
       </Router>
+      </EntitlementsProvider>
     </LanguageProvider>
   );
 }

@@ -15,6 +15,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useDashboardDate } from '@/hooks/useDashboardDate';
 import { useLanguage } from '@/hooks/useLanguage';
+import { useEntitlements } from '@/contexts/EntitlementsContext';
+import { ENT } from '@/entitlements';
 import type { Language } from '@/contexts/LanguageContext';
 import DateSelector from '@/components/date-selector';
 import LiveSignalStrip from '@/components/live-signal-strip';
@@ -30,6 +32,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const { user, logout } = useAuth();
   const { currentDate, calendarDate, setCurrentDate, sessionDate } = useDashboardDate();
   const { language, setLanguage } = useLanguage();
+  const { has } = useEntitlements();
+  const showTicker = has(ENT.CHROME_TICKER);
   const showLangSwitcher = import.meta.env.VITE_FEATURE_LANG_SWITCHER === 'true';
 
   const rawName = user?.name && !user.name.includes('@') ? user.name : null;
@@ -203,15 +207,17 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           `}</style>
 
           {/* Compass Pulse — sparkline + YTD + inline stats, single thin row */}
-          <div
-            style={{
-              marginTop: 12,
-              paddingTop: 10,
-              borderTop: '1px dotted var(--rule)',
-            }}
-          >
-            <MastheadPulse />
-          </div>
+          {showTicker && (
+            <div
+              style={{
+                marginTop: 12,
+                paddingTop: 10,
+                borderTop: '1px dotted var(--rule)',
+              }}
+            >
+              <MastheadPulse />
+            </div>
+          )}
 
           {/* Signal legend (compact, just below title block) */}
           <div
@@ -250,18 +256,20 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       </header>
 
       {/* ===== LIVE TICKER (between masthead and hero) ===== */}
-      <div
-        className="border-b"
-        style={{
-          background: 'var(--paper-off)',
-          borderColor: 'var(--ink)',
-          padding: '8px 0',
-        }}
-      >
-        <div className="max-w-7xl mx-auto px-6 md:px-10 flex items-center">
-          <LiveSignalStrip />
+      {showTicker && (
+        <div
+          className="border-b"
+          style={{
+            background: 'var(--paper-off)',
+            borderColor: 'var(--ink)',
+            padding: '8px 0',
+          }}
+        >
+          <div className="max-w-7xl mx-auto px-6 md:px-10 flex items-center">
+            <LiveSignalStrip />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ===== MAIN ===== */}
       <main className="max-w-7xl mx-auto px-6 md:px-10">{children}</main>

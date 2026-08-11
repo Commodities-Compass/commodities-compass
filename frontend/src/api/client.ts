@@ -55,6 +55,12 @@ apiClient.interceptors.response.use(
       localStorage.removeItem('auth0_token');
       sessionStorage.setItem('auth_401_error', 'true');
       window.dispatchEvent(new CustomEvent('auth:token-expired'));
+    } else if (error.response?.status === 403) {
+      // Entitlement boundary: authenticated but not entitled. Never log out —
+      // the section is simply hidden/omitted. Let the caller handle it.
+      console.warn(
+        `[API 403] ${error.config?.method?.toUpperCase()} ${error.config?.url} — not included in plan`,
+      );
     } else {
       console.error(
         `[API Error] ${error.config?.method?.toUpperCase()} ${error.config?.url} — status=${error.response?.status ?? 'network'}`,

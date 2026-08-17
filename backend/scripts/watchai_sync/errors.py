@@ -95,5 +95,21 @@ class ReconciliationError(WatchAiSyncError):
     """
 
 
-class ProdTargetRefusedError(WatchAiSyncError):
-    """``--target prod`` was requested. Phase 1 is local-only by scope."""
+class ProdTargetNotConfiguredError(WatchAiSyncError):
+    """``--target prod`` without ``WATCHAI_PROD_DATABASE_URL``.
+
+    The prod connection string is never in the repo: it carries a password and
+    it points at a tunnel that only exists while the bastion is up. Requiring it
+    from the environment keeps the secret out of git AND makes the load fail
+    immediately when the tunnel is down, instead of silently writing local.
+    """
+
+
+class ProdOperatorRequiredError(WatchAiSyncError):
+    """``--target prod`` without an explicit ``--ingested-by``.
+
+    ``pl_origin_ingest_batch`` is the only record a prod load happened — there
+    is no Cloud Run execution to point at. Defaulting the operator to the OS
+    user would stamp whatever account ran the tunnel, which is not an
+    accountable answer to "who loaded this".
+    """

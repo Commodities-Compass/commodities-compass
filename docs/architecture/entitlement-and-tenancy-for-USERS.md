@@ -21,9 +21,8 @@
 | 8 | Entitlement cache TTL | **10 minutes** | Bounds staleness of a downgrade; avoids a DB hit per request; still tighter than Auth0's 6h JWKS revocation latency. |
 | 9 | Tier catalogue | **7 tiers from the commercial matrix** | `coop_essentiel · coop_premium · export_essentiel · export_premium · export_pro · signal_plus · origin_desk` (COOP / EXPORT orientations). Replaces the placeholder starter/pro/enterprise. |
 | 10 | Reduced variants | **Sub-keys** | Weather full (`read:section:weather`) vs weekly `…:summary`; hedge full vs `…:initiation`. A tier holds one; endpoints serving both accept either (any-of). |
-| 11 | Seat counts | **`max_seats`, soft cap** | Contracted dashboard seats (1/2/2/3/4/4/4) stored on `tenant_account`. `link-seat` WARNS past the cap, never blocks. |
-| 12 | Coop Essentiel | **1-seat minimal dashboard** | A real tier with `max_seats=1`; its dashboard shows only the guaranteed-price reference (Section II = farmgate block). (Was push-only/0-seat; bumped to 1 for the minimal dashboard.) |
-| 13 | Existing users / staff | **`internal` full-access marker** | A non-commercial tier that resolves to the COMPLETE catalogue **at read-time** (`resolve_principal` short-circuit), so it always includes future keys with no re-backfill. Used to grandfather the current base into "the whole app" before the flip. |
+| 11 | Seat counts | **`max_seats`, soft cap** | Contracted dashboard seats (2/2/3/4/4/4; Coop Essentiel = 0 push-only) stored on `tenant_account`. `link-seat` WARNS past the cap, never blocks. |
+| 12 | Coop Essentiel | **0-seat push tier** | Modeled as a real tier (grants exist for push-content generation) with `max_seats=0` — no dashboard login. |
 
 **Core principle** (North Star): *pipelines are shared, tenants subscribe.* Entitlement/isolation lives entirely in the **serving layer** — the pipeline (`app/engine/`, scrapers) never sees a tenant.
 
@@ -87,7 +86,7 @@ Named bundles that expand into per-key grants at provisioning time. The **stored
 
 | Key / matrix row | CE | CP | EE | EP | XP | S+ | OD |
 |---|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
-| **max_seats** | 1¹ | 2 | 2 | 3 | 4 | 4 | 4 |
+| **max_seats** | 0¹ | 2 | 2 | 3 | 4 | 4 | 4 |
 | `read:decision:physical_sale` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `read:decision:hedge` (initiation on CE) | init | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `read:section:signal` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -99,18 +98,11 @@ Named bundles that expand into per-key grants at provisioning time. The **stored
 | `read:feature:positioning` | — | ✅ | — | ✅ | ✅ | ✅ | ✅ |
 | `read:section:news` (press) | — | ✅ | — | ✅ | ✅ | ✅ | ✅ |
 | `read:section:chart` (historique+S/R) | — | ✅ | — | ✅ | ✅ | ✅ | ✅ |
-| `read:chrome:ticker` | ✅ réduit¹ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `read:watchai:campaign_monthly` | `:reduced`⁴ | ✅ | `:reduced`⁴ | ✅ | ✅ | ✅ | ✅ |
-| `read:watchai:market_views` | — | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `read:watchai:destinations` | — | — | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `read:watchai:benchmark` | — | — | — | ✅ | ✅ | n/a | n/a |
-| `read:watchai:nominative` | — | — | — | ✅ | ✅ | ✅ | ✅ |
+| `read:chrome:ticker` | —¹ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-¹ **Corrected 2026-08-17.** Coop Essentiel was specified as push-only with 0 seats and no ticker; it is now a **1-seat dashboard** and holds `chrome:ticker` like everyone else. The band is *chrome* — the rows sold inside it are gated **per cell** by `LiveSignalStrip` against `read:section:market` (Volume·OI·RSI·MACD·%K·ATR·V/OI), `read:feature:positioning` (Stock EU/US·COT MM EU/US) and `read:feature:macro_panel` (FX DXY). What is left when a tier holds none of the three is `Signal · ICE LDN · DoD · YTD · Session`. There is deliberately **no `chrome:ticker:summary` variant**: a reduced band falls out of the keys a tier already holds, and the same filter closed a real leak where Export Essentiel — which does not buy "Positionnement fonds & fondamentaux" — was seeing stocks and COT in the band. The queries behind an ungated cell are skipped (`enabled: false`), not merely unrendered, so an unentitled viewer no longer generates a 403 per page load.
+¹ Coop Essentiel = **1 siège, dashboard réduit** (décision du 2026-08-17, qui remplace le design push-only à 0 siège). Il a le bandeau, mais réduit : les cellules techniques, positionnement et macro sont filtrées une par une contre les clés que le palier n'achète pas, ce qui laisse `Signal · ICE LDN · DoD · YTD · Session`. `link-seat` prévient au-delà du plafond (soft cap).
 ² Podcast is **"option"** on Signal+/Origin — à la carte, so **not** in the default template; grant separately.
 ³ ENSO (matrix "prix garantis + ENSO") travels with `macro_panel`, so Coop Essentiel gets `farmgate` but not the ENSO sub-panel.
-
-⁴ `read:watchai:campaign_monthly:reduced` — the campaign row **without** the market views, so Section VI renders a single untabbed panel. Named `:push` until 2026-08-17, when the push channel was dropped in favour of the 1-seat dashboard. Renaming an entitlement key needs **no data migration**: `resolve_principal` selects keys without validating them against the catalogue, so a stale grant is inert; re-template the account with `poetry run set-tier` to pick the new key up.
 
 `export_pro` == `export_premium` on the Compass CC surface (they differ only in WatchAI/Formation/seats). Source of truth: `TIER_TEMPLATES` + `TIER_MAX_SEATS` in [entitlements.py](../../backend/app/core/entitlements.py) (a code constant; promote to a `tenant_tier_template` table if ops need to edit bundles without a deploy).
 
@@ -177,7 +169,7 @@ v_tenant_entitlement_current        -- latest active row per (account_id, key); 
 - **Surface entitlements**: extend `UserResponse` on `/auth/me` (or a new `/auth/entitlements`) to return the key set. Consumed once at login.
 - **`EntitlementsProvider`** at App root — copy [`LanguageContext.tsx`](../../frontend/src/contexts/LanguageContext.tsx) verbatim; expose `useEntitlements()`.
 - **Gate the six blocks** in [dashboard-page.tsx](../../frontend/src/pages/dashboard-page.tsx): `hasEntitlement('read:section:x') && <Block/>`.
-- **Gate the ticker** (`LiveSignalStrip` + `MastheadPulse`) in [dashboard-layout.tsx](../../frontend/src/components/dashboard-layout.tsx) behind `read:chrome:ticker`, and **its cells individually** inside [live-signal-strip.tsx](../../frontend/src/components/live-signal-strip.tsx) — see note ¹ under the tier table.
+- **Gate the ticker** (`LiveSignalStrip` + `MastheadPulse`) in [dashboard-layout.tsx](../../frontend/src/components/dashboard-layout.tsx) behind `read:chrome:ticker`.
 - **403 handling** in [api/client.ts](../../frontend/src/api/client.ts) — a **new interceptor branch distinct from 401**: a 403 must **not** log the user out (today the only non-200 handled is `401 → logout`). Render a "not included in your plan" state or silently hide.
 - **Export UI**: show only entitled series.
 
@@ -209,13 +201,11 @@ Poetry scripts, in the spirit of `set-farmgate-price`:
 
 ### 10. Rollout — dark-deploy then flip (non-breaking)
 
-1. **Ship dark (step 1)** — merge to `main` ([migrations-prod-via-main-only](../../.claude/rules/migrations-prod-via-main-only.md)); the migration creates the 3 tables + view, and `ENTITLEMENTS_ENFORCED` is unset (**false**). Gates are no-ops, `/auth/me` returns `enforced:false`, the frontend shows everything → **zero user impact, no backfill needed**. Build features on top of this.
-2. **Backfill before the flip (mandatory, because default-deny)** — grandfather every current login onto the **`internal`** tier so they keep the *whole* app, including future features (a commercial tier like `export_pro` would silently revoke CSV export, which is open today):
-   - `poetry run create-tenant --code cc-existing --name "Existing users" --tier internal`
-   - `poetry run link-seat --account cc-existing --auth0-sub <sub>` for each existing Auth0 login (enumerate via the Auth0 Management API).
-3. **Set the signing secret** `AUDIO_URL_SECRET` (Secret Manager) — required once enforcement is on (podcast hard boundary).
+1. **Migration via `main` only** ([migrations-prod-via-main-only](../../.claude/rules/migrations-prod-via-main-only.md)) — ship the 3 tables + view.
+2. **Backfill (mandatory, because default-deny)**: create one `tenant_account` for the current client, `link-seat` every existing Auth0 login, **grant all keys** → nobody loses access (same backfill-safe posture as the `language` `server_default`).
+3. **Deploy enforcement behind a flag** `ENTITLEMENTS_ENFORCED=false` (dark).
 4. **Verify** against seeded data via the bastion.
-5. **Flip** `ENTITLEMENTS_ENFORCED=true` — GCP: `--update-env-vars`, never `--set-env-vars`. Locally, `PRINCIPAL_CACHE_TTL=0` makes tier changes reflect on the next request (demos).
+5. **Flip** `ENTITLEMENTS_ENFORCED=true` — GCP: `--update-env-vars`, never `--set-env-vars`.
 
 ---
 

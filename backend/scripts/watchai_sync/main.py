@@ -24,7 +24,11 @@ from sqlalchemy.orm import Session
 
 from scripts.watchai_sync import acquire as acquire_module
 from scripts.watchai_sync import config, db_writer, reconciliation, transform
-from scripts.watchai_sync.errors import ProdTargetRefusedError, WatchAiSyncError
+from scripts.watchai_sync.errors import (
+    ProdOperatorRequiredError,
+    ProdTargetNotConfiguredError,
+    WatchAiSyncError,
+)
 
 logger = logging.getLogger("watchai_sync")
 
@@ -56,7 +60,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--target",
         choices=("local", "prod"),
         default="local",
-        help="Destination database. Phase 1 is local-only; 'prod' is refused.",
+        help="Destination database. 'prod' reads WATCHAI_PROD_DATABASE_URL and "
+        "requires the bastion tunnel to be up — see "
+        "docs/runbooks/watchai-ingestion.md.",
     )
     parser.add_argument(
         "--database-url",
@@ -81,28 +87,42 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def resolve_database_url(target: str, override: str | None) -> str:
-    """Pick the connection string, refusing prod outright in Phase 1.
+    """Pick the connection string. Local is the default; prod is a deliberate act.
 
-    Prod is not merely defaulted away from: a manual CLI writing 170k rows into
-    Cloud SQL through the bastion needs the runbook and the explicit decision
-    that Phase 2 covers (integration doc §4, "Governance of the prod write").
-    Until then the flag exists so the refusal is explicit rather than implied.
+    Prod is never defaulted to and its URL is never in the repo — it carries a
+    password and points at a tunnel that exists only while the bastion is up.
+    Reading it from the environment keeps the secret out of git and turns a
+    forgotten tunnel into an immediate failure rather than a silent local write.
     """
-    if target == "prod":
-        raise ProdTargetRefusedError(
-            "--target prod is refused in Phase 1: this phase is local-only by "
-            "scope, and a prod load needs docs/runbooks/watchai-ingestion.md "
-            "plus the bastion tunnel (integration doc §4)."
-        )
-    if override:
-        return override
     import os
 
+    # Checked before the target so `--database-url` is never a silent no-op: an
+    # explicitly passed connection string is already a deliberate act.
+    if override:
+        return override
+    if target == "prod":
+        url = os.getenv("WATCHAI_PROD_DATABASE_URL")
+        if not url:
+            raise ProdTargetNotConfiguredError(
+                "--target prod needs WATCHAI_PROD_DATABASE_URL. Bring the tunnel "
+                "up with `./.local/db-prod.sh up`, then export the URL pointing "
+                "at 127.0.0.1:5434. Procedure: docs/runbooks/watchai-ingestion.md "
+                "§ 'Prod load'."
+            )
+        return url
     return os.getenv("DATABASE_SYNC_URL") or config.LOCAL_DATABASE_URL
 
 
 def run(args: argparse.Namespace) -> int:
     database_url = resolve_database_url(args.target, args.database_url)
+    # A prod load has no Cloud Run execution behind it, so the batch row is the
+    # only record it happened. The OS user of whoever held the tunnel is not an
+    # accountable answer to "who loaded this" — demand a name.
+    if args.target == "prod" and not args.dry_run and not args.ingested_by:
+        raise ProdOperatorRequiredError(
+            "--target prod requires an explicit --ingested-by: pl_origin_ingest_batch "
+            "is the only audit trail for a manual prod load."
+        )
     ingested_by = args.ingested_by or _default_operator()
 
     snapshot = acquire_module.acquire(args.source)

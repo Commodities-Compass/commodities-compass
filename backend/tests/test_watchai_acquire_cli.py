@@ -7,6 +7,7 @@ rather than a hand-typed string.
 
 from __future__ import annotations
 
+import argparse
 import os
 import subprocess
 from pathlib import Path
@@ -17,7 +18,8 @@ import pytest
 from scripts.watchai_sync import acquire, config, main
 from scripts.watchai_sync.errors import (
     DirtyWorkingTreeError,
-    ProdTargetRefusedError,
+    ProdOperatorRequiredError,
+    ProdTargetNotConfiguredError,
     SourceNotFoundError,
     SourceSchemaError,
 )
@@ -282,11 +284,59 @@ def test_missing_mapping_column_fails_loud(checkout: Path) -> None:
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
-def test_prod_target_is_refused_in_phase_1() -> None:
-    """Prod is not merely defaulted away from — a manual 170k-row write into
-    Cloud SQL needs the runbook and Phase 2's explicit decision."""
-    with pytest.raises(ProdTargetRefusedError, match="runbook"):
+def test_prod_target_without_env_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A forgotten tunnel must not silently fall back to the local database.
+
+    The prod URL only exists while the bastion is up, so its absence is the
+    normal signal that the operator has not opened one — and writing 172k rows
+    into the local DB instead would look like a successful prod load.
+    """
+    monkeypatch.delenv("WATCHAI_PROD_DATABASE_URL", raising=False)
+    with pytest.raises(ProdTargetNotConfiguredError, match="db-prod.sh up"):
         main.resolve_database_url("prod", None)
+
+
+def test_prod_target_reads_the_tunnel_url_from_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Never from the repo: the string carries a password."""
+    monkeypatch.setenv(
+        "WATCHAI_PROD_DATABASE_URL", "postgresql://cc_app@127.0.0.1:5434/db"
+    )
+    assert (
+        main.resolve_database_url("prod", None)
+        == "postgresql://cc_app@127.0.0.1:5434/db"
+    )
+
+
+def test_prod_write_demands_a_named_operator() -> None:
+    """`pl_origin_ingest_batch` is the only record a manual prod load happened,
+    so the OS user of whoever held the tunnel is not an accountable answer."""
+    args = argparse.Namespace(
+        target="prod", dry_run=False, ingested_by=None, database_url="postgresql://x/y"
+    )
+    with pytest.raises(ProdOperatorRequiredError, match="audit trail"):
+        main.run(args)
+
+
+def test_prod_dry_run_does_not_demand_an_operator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The runbook makes a prod dry-run mandatory before the real load; requiring
+    a name to *look* would push operators to skip the rehearsal."""
+    monkeypatch.setenv(
+        "WATCHAI_PROD_DATABASE_URL", "postgresql://cc_app@127.0.0.1:5434/db"
+    )
+    args = argparse.Namespace(
+        target="prod",
+        dry_run=True,
+        ingested_by=None,
+        database_url=None,
+        source="/nonexistent",
+    )
+    # Fails later, on the source — not on the operator guard.
+    with pytest.raises(SourceNotFoundError):
+        main.run(args)
 
 
 def test_explicit_database_url_wins(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -49,6 +49,9 @@ On-demand| cc-ensemble-bootstrap-artifacts       | ENSEMBLE     | Manual (no sch
 
 ## 2 — Catalogue master (tableau)
 
+> **Hors catalogue — `watchai-sync`.** Les flux physiques origine (bloc ② WatchAI) n'ont **ni Cloud Run Job ni scheduler** : la source est un checkout de fichiers `watch-ai`, pas une API, donc l'ingestion est une **CLI manuelle** lancée par un humain (`poetry run watchai-sync`). Elle écrit `pl_origin_*` et ne touche à aucune table du pipeline quotidien. Ce n'est pas un oubli de ce catalogue : il n'y a rien à ordonnancer. Procédure — y compris le chargement prod via bastion : [watchai-ingestion.md](../runbooks/watchai-ingestion.md).
+
+
 | Job | Cron UTC | Track | Input source | Output table | Statut |
 |---|---|---|---|---|---|
 | **cc-barchart-scraper** | `0 19 * * 1-5` | shared | Barchart.com HTML/XHR (CAK26) | `pl_contract_data_daily` (OHLCV+IV) | ✅ Actif |

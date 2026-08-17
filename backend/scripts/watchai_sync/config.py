@@ -186,8 +186,9 @@ RESTATEMENT_TOLERANCE_TONNES: Final[float] = 0.5
 
 # --- Local default target ---------------------------------------------------
 # scripts/db.py deliberately has no fallback URL so a scraper can never write
-# locally by accident. This job is the mirror case — it is local by default and
-# prod is refused outright in Phase 1 — so a local default is the safe choice.
+# locally by accident. This job is the mirror case — local by default, and prod
+# reachable only through an explicit `--target prod` plus a tunnel URL from the
+# environment — so a local default is the safe choice.
 LOCAL_DATABASE_URL: Final[str] = (
     "postgresql://postgres:password@localhost:5433/commodities_compass"
 )

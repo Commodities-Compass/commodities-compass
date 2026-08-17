@@ -106,6 +106,20 @@ Named bundles that expand into per-key grants at provisioning time. The **stored
 | `read:watchai:benchmark` | — | — | — | ✅ | ✅ | n/a | n/a |
 | `read:watchai:nominative` | — | — | — | ✅ | ✅ | ✅ | ✅ |
 
+⁵ **Three ways of saying "not by default", and they are not interchangeable.**
+`—` = not sold (403). `n/a` = meaningless — Signal+ and Origin Desk have no
+exporter identity, so `/origin/benchmark` is simply absent from their template.
+`s/ CdC` = sold separately, so Origin Desk's nominative key is grantable per
+account but not in the default bundle. A test that expects 200 for Origin Desk on
+`/origin/exporters` is asserting the wrong thing.
+
+The benchmark is the **only per-tenant view in the product**. Its identity lives
+on `tenant_account.exporter_entity_id`, is filled by hand (`poetry run
+map-exporter`) and is applied **at read time** — never a column on `pl_origin_*`,
+which stays tenant-free. The endpoint reads it from the authenticated principal
+and accepts no exporter parameter: a client-supplied id would let any Export
+Premium account open a competitor's book.
+
 ¹ **Corrected 2026-08-17.** Coop Essentiel was specified as push-only with 0 seats and no ticker; it is now a **1-seat dashboard** and holds `chrome:ticker` like everyone else. The band is *chrome* — the rows sold inside it are gated **per cell** by `LiveSignalStrip` against `read:section:market` (Volume·OI·RSI·MACD·%K·ATR·V/OI), `read:feature:positioning` (Stock EU/US·COT MM EU/US) and `read:feature:macro_panel` (FX DXY). What is left when a tier holds none of the three is `Signal · ICE LDN · DoD · YTD · Session`. There is deliberately **no `chrome:ticker:summary` variant**: a reduced band falls out of the keys a tier already holds, and the same filter closed a real leak where Export Essentiel — which does not buy "Positionnement fonds & fondamentaux" — was seeing stocks and COT in the band. The queries behind an ungated cell are skipped (`enabled: false`), not merely unrendered, so an unentitled viewer no longer generates a 403 per page load.
 ² Podcast is **"option"** on Signal+/Origin — à la carte, so **not** in the default template; grant separately.
 ³ ENSO (matrix "prix garantis + ENSO") travels with `macro_panel`, so Coop Essentiel gets `farmgate` but not the ENSO sub-panel.

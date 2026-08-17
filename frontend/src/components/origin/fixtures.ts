@@ -1,4 +1,7 @@
 import type {
+  OriginBenchmarkResponse,
+  OriginDestinationsResponse,
+  OriginExportersResponse,
   MonthlyFlow,
   OriginCampaignResponse,
   OriginMarketViewsResponse,
@@ -140,4 +143,133 @@ export const marketViews: OriginMarketViewsResponse = {
     { product_code: 'POUDRE', is_bean_equivalent: false, export_tonnes: 21_456, share_pct: 1.3 },
   ],
   transformation,
+};
+
+const line = (
+  label: string,
+  tonnes: number,
+  previous: number,
+  share: number,
+  delta: number | null
+) => ({
+  label,
+  export_tonnes: tonnes,
+  previous_tonnes: previous,
+  delta_pct: delta,
+  window: { from: '2025-10-01', to: '2026-07-01', months: 10 },
+  share_pct: share,
+});
+
+export const destinations: OriginDestinationsResponse = {
+  data_as_of: '2026-07-31',
+  season: '2025-2026',
+  available_seasons: ['2025-2026', '2024-2025', '2021-2022'],
+  previous_season: '2024-2025',
+  destinations: [
+    line('PAYS-BAS', 409_405, 373_237, 23.9, 9.7),
+    line('ETATS-UNIS', 239_705, 144_782, 14.0, 65.6),
+    line('BELGIQUE', 203_972, 119_196, 11.9, 71.1),
+    // A destination that stopped mid-season: its window is shorter, and its
+    // delta is computed over the months it actually shipped.
+    { ...line('MALAISIE', 145_449, 80_395, 8.5, 80.9), window: { from: '2025-10-01', to: '2026-03-01', months: 6 } },
+    // Growth off a zero baseline is undefined, not infinite.
+    line('COREE DU SUD', 4_200, 0, 0.2, null),
+  ],
+  ports: [
+    line('ABIDJAN', 865_401, 763_733, 50.6, 13.3),
+    line('SAN PEDRO', 844_946, 664_338, 49.4, 27.2),
+  ],
+  concentration: { top1_share_pct: 23.9, top3_share_pct: 49.9, count: 49 },
+};
+
+export const exporters: OriginExportersResponse = {
+  data_as_of: '2026-07-31',
+  season: '2025-2026',
+  available_seasons: ['2025-2026', '2024-2025', '2021-2022'],
+  previous_season: '2024-2025',
+  growth_floor_tonnes: 250,
+  exporters: [
+    {
+      exporter: 'CARGILL',
+      is_gepex_member: true,
+      exports_beans_t: 147_350,
+      exports_transformed_t: 51_771,
+      exports_total_t: 199_121,
+      purchases_t: 277_565,
+      grinding_derived_t: 64_714,
+      balance_t: 65_456,
+      transformation_share_pct: 26.0,
+      previous_exports_t: 174_667,
+      growth_pct: 14.0,
+      outflow_exceeds_purchases: false,
+    },
+    {
+      // The majority case on real data: 58 of 102 exporters ship more than the
+      // purchase master records for them. A flag, never an error.
+      exporter: 'CYRIAN',
+      is_gepex_member: false,
+      exports_beans_t: 90_833,
+      exports_transformed_t: 0,
+      exports_total_t: 90_833,
+      purchases_t: 74_540,
+      grinding_derived_t: 0,
+      balance_t: -16_293,
+      transformation_share_pct: 0,
+      previous_exports_t: 49_635,
+      growth_pct: 83.0,
+      outflow_exceeds_purchases: true,
+    },
+    {
+      // Below the 250 t floor last season — growth is suppressed, not computed.
+      exporter: 'PETIT NEGOCE',
+      is_gepex_member: false,
+      exports_beans_t: 812,
+      exports_transformed_t: 0,
+      exports_total_t: 812,
+      purchases_t: 900,
+      grinding_derived_t: 0,
+      balance_t: 88,
+      transformation_share_pct: 0,
+      previous_exports_t: 180,
+      growth_pct: null,
+      outflow_exceeds_purchases: false,
+    },
+  ],
+  movers: {
+    up: [
+      { exporter: 'ETRAYAWIEN', growth_pct: 451.0, exports_total_t: 5_520, previous_exports_t: 1_001 },
+    ],
+    down: [
+      { exporter: 'IVCAO', growth_pct: -92.0, exports_total_t: 1_251, previous_exports_t: 15_700 },
+    ],
+  },
+};
+
+export const benchmark: OriginBenchmarkResponse = {
+  data_as_of: '2026-07-31',
+  season: '2025-2026',
+  available_seasons: ['2025-2026', '2024-2025', '2021-2022'],
+  previous_season: '2024-2025',
+  applicable: true,
+  exporter: 'CARGILL',
+  position: {
+    exports_total_t: 199_121,
+    market_total_t: 1_710_347,
+    market_share_pct: 11.6,
+    rank: 1,
+    exporters_ranked: 102,
+    own_destinations: [
+      { label: 'PAYS-BAS', export_tonnes: 88_400, share_pct: 44.4 },
+      { label: 'ETATS-UNIS', export_tonnes: 61_200, share_pct: 30.7 },
+      { label: 'BELGIQUE', export_tonnes: 49_521, share_pct: 24.9 },
+    ],
+  },
+};
+
+/** An account with no exporter identity: `n/a`, never a zeroed book. */
+export const benchmarkNotApplicable: OriginBenchmarkResponse = {
+  ...benchmark,
+  applicable: false,
+  exporter: null,
+  position: null,
 };

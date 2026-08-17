@@ -6,8 +6,17 @@ import EditorialTabs, { type EditorialTab } from '@/components/editorial-tabs';
 import { Eyebrow } from '@/components/editorial';
 import { ENT } from '@/entitlements';
 import { useEntitlements } from '@/contexts/EntitlementsContext';
-import { useOriginCampaign, useOriginMarketViews } from '@/hooks/useOriginFlows';
+import {
+  useOriginCampaign,
+  useOriginDestinations,
+  useOriginBenchmark,
+  useOriginExporters,
+  useOriginMarketViews,
+} from '@/hooks/useOriginFlows';
 import CampaignTab from './CampaignTab';
+import DestinationsTab from './DestinationsTab';
+import BenchmarkTab from './BenchmarkTab';
+import ExportersTab from './ExportersTab';
 import MarketViewsTab from './MarketViewsTab';
 import OriginPeriodSelector from './OriginPeriodSelector';
 
@@ -28,17 +37,28 @@ export default function OriginFlowsCard({ className }: { className?: string }) {
   const { t } = useTranslation();
   const { has, hasAny } = useEntitlements();
   const canSeeMarketViews = has(ENT.WATCHAI_MARKET_VIEWS);
+  const canSeeDestinations = has(ENT.WATCHAI_DESTINATIONS);
+  const canSeeExporters = has(ENT.WATCHAI_NOMINATIVE);
+  const canSeeBenchmark = has(ENT.WATCHAI_BENCHMARK);
   const canSeeCampaign = hasAny([ENT.WATCHAI_CAMPAIGN, ENT.WATCHAI_CAMPAIGN_REDUCED]);
 
   const [season, setSeason] = useState<string | undefined>(undefined);
 
   const campaign = useOriginCampaign(season);
   const marketViews = useOriginMarketViews(season, canSeeMarketViews);
+  const destinations = useOriginDestinations(season, canSeeDestinations);
+  const exporters = useOriginExporters(season, canSeeExporters);
+  const benchmark = useOriginBenchmark(season, canSeeBenchmark);
 
   // Either payload can drive the selector — both carry the season list and the
   // stamp. Prefer whichever has landed.
-  const meta = campaign.data ?? marketViews.data;
-  const isLoading = campaign.isLoading || (canSeeMarketViews && marketViews.isLoading);
+  const meta = campaign.data ?? marketViews.data ?? destinations.data ?? exporters.data ?? benchmark.data;
+  const isLoading =
+    campaign.isLoading ||
+    (canSeeMarketViews && marketViews.isLoading) ||
+    (canSeeDestinations && destinations.isLoading) ||
+    (canSeeExporters && exporters.isLoading) ||
+    (canSeeBenchmark && benchmark.isLoading);
   const failed = (!campaign.data && campaign.error) || (canSeeMarketViews && !marketViews.data && marketViews.error);
 
   if (isLoading) {
@@ -78,6 +98,20 @@ export default function OriginFlowsCard({ className }: { className?: string }) {
   if (canSeeMarketViews && marketViews.data) {
     tabs.push({ id: 'market', label: t('origin.tab_market') });
     panels.market = <MarketViewsTab data={marketViews.data} />;
+  }
+  if (canSeeDestinations && destinations.data) {
+    tabs.push({ id: 'destinations', label: t('origin.tab_destinations') });
+    panels.destinations = <DestinationsTab data={destinations.data} />;
+  }
+  // Benchmark before the nominative list: a client asks "where am I" before
+  // "who else is there", and the matrix sells them at the same tier anyway.
+  if (canSeeBenchmark && benchmark.data) {
+    tabs.push({ id: 'benchmark', label: t('origin.tab_benchmark') });
+    panels.benchmark = <BenchmarkTab data={benchmark.data} />;
+  }
+  if (canSeeExporters && exporters.data) {
+    tabs.push({ id: 'exporters', label: t('origin.tab_exporters') });
+    panels.exporters = <ExportersTab data={exporters.data} />;
   }
 
   if (tabs.length === 0) return null;

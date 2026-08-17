@@ -414,24 +414,117 @@ def ytd_block(
     )
 
 
+GROWTH_FLOOR_TONNES: Final[float] = 250.0
+"""Below this, a growth percentage is noise (business-rules §8).
+
+A 2 t base turning into 82 t is +4 000 % and means nothing. The floor is a named
+constant rather than a literal because it is a **published editorial threshold** —
+a reader who sees an exporter missing from the movers list is entitled to know
+what excluded it.
+"""
+
+
+@dataclass(frozen=True)
+class ExporterFlow:
+    """One exporter's season, in bean-equivalent terms.
+
+    ``balance_t`` is the same arithmetic as the season balance, applied to a
+    single operator's book: what they bought, minus what they shipped as beans,
+    minus what their transformed exports imply they ground.
+    """
+
+    exporter: str
+    is_gepex_member: bool
+    exports_beans_t: float
+    exports_transformed_t: float
+    purchases_t: float
+    grinding_derived_t: float
+    balance_t: float
+    transformation_share_pct: float | None
+    previous_exports_t: float
+    growth_pct: float | None
+    outflow_exceeds_purchases: bool
+
+
+def exporter_flow(
+    *,
+    exporter: str,
+    is_gepex_member: bool,
+    exports_beans_t: float,
+    exports_transformed_t: float,
+    purchases_t: float,
+    previous_exports_t: float,
+) -> ExporterFlow:
+    """Assemble one exporter's line, including its own apparent balance.
+
+    ``transformation_share_pct`` is business-rules §7: each exporter's *own*
+    transformed exports as a share of their total, the only observable proxy.
+    STATSER is a GEPEX aggregate and is **never** allocated across operators —
+    doing so would invent a per-operator grinding figure that nobody measured.
+
+    ``growth_pct`` is suppressed below :data:`GROWTH_FLOOR_TONNES` (§8) rather
+    than returned and filtered downstream, so every consumer applies the same
+    floor. ``None`` therefore means "not meaningful", which is also what a zero
+    baseline means — both are unquantifiable, and conflating them is correct here.
+    """
+    total_exports = exports_beans_t + exports_transformed_t
+    derived = derive_grinding(exports_transformed_t)
+    balance = purchases_t - exports_beans_t - derived
+    return ExporterFlow(
+        exporter=exporter,
+        is_gepex_member=is_gepex_member,
+        exports_beans_t=exports_beans_t,
+        exports_transformed_t=exports_transformed_t,
+        purchases_t=purchases_t,
+        grinding_derived_t=derived,
+        balance_t=balance,
+        transformation_share_pct=(
+            exports_transformed_t / total_exports * 100 if total_exports > 0 else None
+        ),
+        previous_exports_t=previous_exports_t,
+        growth_pct=(
+            (total_exports / previous_exports_t - 1) * 100
+            if previous_exports_t >= GROWTH_FLOOR_TONNES
+            else None
+        ),
+        # Same publishable state as the season balance: an exporter shipping more
+        # than the purchase master records for them is normal — 34 of them do not
+        # appear in it at all. Never an error (business-rules §4.3).
+        outflow_exceeds_purchases=balance < 0,
+    )
+
+
 # ---------------------------------------------------------------------------
 # invariants (§4.3) — the signature of a double-count
 # ---------------------------------------------------------------------------
 class BalanceInvariantError(Exception):
-    """A computed balance violates an invariant that arithmetic guarantees.
+    """A computed balance violates a bound that the *arithmetic* guarantees.
 
-    Both conditions are impossible on coherent data, so either failing means the
-    computation double-counted — exactly the v1 bug. Raising is correct: serving a
-    124 % outflow rate to a client is worse than serving an error.
+    **Test-only. Never wire this into the serving path.** The bounds hold for a
+    coherent single population; our two sides are not one — 102 exporters appear
+    on the customs export side against 81 on the purchase side, and 34 shipping
+    102 829 t are absent from the purchase master entirely. Real history breaches
+    them: 2021-2022 reaches a 108,1 % outflow rate and is *correct*. Serving is
+    responsible for publishing that as the ``outflow_exceeds_purchases`` flag, and
+    a 500 there would take the section down on a season that is simply honest
+    about its own data (business-rules §4.3).
+
+    What this guard is actually for: **fixtures and golden values**, where the
+    population IS controlled, so a breach can only mean the computation
+    double-counted — the v1 bug that added transformed exports raw.
     """
 
 
 def assert_balance_invariants(balance: SeasonBalance) -> None:
-    """``0 ≤ taux_sortie ≤ 100`` and ``solde ≥ 0``, at season grain.
+    """``0 ≤ taux_sortie ≤ 100`` and ``solde ≥ 0`` on *controlled* data.
+
+    See :class:`BalanceInvariantError` — **tests and fixtures only**, never the
+    serving path. Note the two conditions are algebraically one statement
+    (``solde = achats × (1 − taux_sortie/100)``), so a fixture built to trip one
+    trips the other; they were never two independent checks.
 
     Season grain, not monthly: a single month can legitimately show a negative
-    balance (off-season shipments draw on stock bought earlier). A negative
-    *season* balance means selling matter that was never purchased.
+    balance (off-season shipments draw on stock bought earlier).
     """
     outflow = balance.ratios.outflow_rate_pct
     if outflow is not None and not (0.0 <= outflow <= 100.0):
@@ -463,3 +556,30 @@ def _shift_back_one_year(period: date) -> date:
 def _previous_season(season: str) -> str:
     start, end = (int(part) for part in season.split("-"))
     return f"{start - 1}-{end - 1}"
+
+
+def previous_season(season: str) -> str:
+    """``2025-2026`` → ``2024-2025``. Public because the equivalent-period rule
+    applies to every breakdown, not only to the three YTD sources."""
+    return _previous_season(season)
+
+
+def equivalent_period_delta(
+    per_month: dict[date, float], previous_per_month: dict[date, float]
+) -> tuple[float, float, float | None, tuple[date, ...]]:
+    """Compare a breakdown against **the same months** a year earlier.
+
+    The same rule as :func:`ytd_block`, reduced to its arithmetic so a caller can
+    apply it per destination or per port. Comparing a partial season against a
+    full previous one is the error this exists to prevent: on a 10-month season it
+    would understate every line by two months of volume and invent a collapse.
+
+    The window is the caller's month set — the months that source actually
+    published — so a destination that stopped shipping in March is compared over
+    the months it did ship, not over the season's full span.
+    """
+    months = tuple(sorted(period for period, value in per_month.items() if value))
+    current = sum(per_month[period] for period in months)
+    previous = sum(previous_per_month.get(_shift_back_one_year(p), 0.0) for p in months)
+    delta = (current / previous - 1) * 100 if previous > 0 else None
+    return current, previous, delta, months

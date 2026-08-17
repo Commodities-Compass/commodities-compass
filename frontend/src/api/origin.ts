@@ -1,6 +1,9 @@
 import { apiClient } from './client';
 import type {
   OriginCampaignResponse,
+  OriginBenchmarkResponse,
+  OriginDestinationsResponse,
+  OriginExportersResponse,
   OriginMarketViewsResponse,
 } from '@/types/origin';
 
@@ -23,6 +26,32 @@ export const originApi = {
     const response = await apiClient.get<OriginCampaignResponse>(
       '/dashboard/origin/campaign',
       { params: { ...(season && { season }), ...(month && { month }) } }
+    );
+    return response.data;
+  },
+
+  getDestinations: async (
+    season?: string
+  ): Promise<OriginDestinationsResponse> => {
+    const response = await apiClient.get<OriginDestinationsResponse>(
+      '/dashboard/origin/destinations',
+      { params: season ? { season } : undefined }
+    );
+    return response.data;
+  },
+
+  getExporters: async (season?: string): Promise<OriginExportersResponse> => {
+    const response = await apiClient.get<OriginExportersResponse>(
+      '/dashboard/origin/exporters',
+      { params: season ? { season } : undefined }
+    );
+    return response.data;
+  },
+
+  getBenchmark: async (season?: string): Promise<OriginBenchmarkResponse> => {
+    const response = await apiClient.get<OriginBenchmarkResponse>(
+      '/dashboard/origin/benchmark',
+      { params: season ? { season } : undefined }
     );
     return response.data;
   },

@@ -58,6 +58,10 @@ class TenantPrincipal:
     tier: str | None = None
     locale: str = "fr"
     algorithm_version_id: uuid.UUID | None = None
+    #: Which exporter this account IS, for the benchmark. ``None`` is normal and
+    #: means "no exporter identity" — Signal+/Origin Desk have none by nature.
+    #: Read-time only: the cube never carries a tenant.
+    exporter_entity_id: uuid.UUID | None = None
     entitlements: frozenset[str] = field(default_factory=frozenset)
 
     def has(self, key: str) -> bool:
@@ -81,7 +85,8 @@ async def resolve_principal(sub: str, session: AsyncSession) -> TenantPrincipal:
         await session.execute(
             text(
                 """
-                SELECT a.id, a.code, a.tier, a.locale, a.algorithm_version_id
+                SELECT a.id, a.code, a.tier, a.locale, a.algorithm_version_id,
+                       a.exporter_entity_id
                 FROM tenant_user u
                 JOIN tenant_account a ON a.id = u.account_id
                 WHERE u.auth0_sub = :sub AND u.is_active AND a.is_active
@@ -98,7 +103,7 @@ async def resolve_principal(sub: str, session: AsyncSession) -> TenantPrincipal:
             _principal_cache[sub] = principal
         return principal
 
-    account_id, code, tier, locale, algo_id = account_row
+    account_id, code, tier, locale, algo_id, exporter_entity_id = account_row
 
     # Internal / full-access accounts resolve to the COMPLETE catalogue at
     # read-time — always everything, including keys added after provisioning.
@@ -110,6 +115,7 @@ async def resolve_principal(sub: str, session: AsyncSession) -> TenantPrincipal:
             tier=tier,
             locale=locale or "fr",
             algorithm_version_id=algo_id,
+            exporter_entity_id=exporter_entity_id,
             entitlements=frozenset(ALL_ENTITLEMENT_KEYS),
         )
         if _principal_cache is not None:
@@ -133,6 +139,7 @@ async def resolve_principal(sub: str, session: AsyncSession) -> TenantPrincipal:
         tier=tier,
         locale=locale or "fr",
         algorithm_version_id=algo_id,
+        exporter_entity_id=exporter_entity_id,
         entitlements=frozenset(r[0] for r in key_rows),
     )
     if _principal_cache is not None:

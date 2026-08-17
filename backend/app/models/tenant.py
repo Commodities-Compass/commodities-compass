@@ -60,6 +60,18 @@ class TenantAccount(Base):
     )
     # North Star per-tenant knob #1: pin a decision track (legacy vs ensemble).
     # NULL = latest stable / dashboard default (no per-client pin).
+    #: Which exporter this account IS, for the "vos flux vs marché" benchmark.
+    #:
+    #: **Filled by hand and reviewed — never fuzzy-matched.** A mis-mapping shows a
+    #: client a competitor's book, which is the single worst failure this codebase
+    #: can produce. NULL is the normal state: Signal+ and Origin Desk have no
+    #: exporter identity at all (the matrix marks their benchmark `n/a`), and an
+    #: account that simply has not been mapped yet must read as "not applicable"
+    #: rather than as an empty book.
+    exporter_entity_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid, ForeignKey("ref_origin_entity.id", ondelete="RESTRICT"), nullable=True
+    )
+
     algorithm_version_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         ForeignKey("pl_algorithm_version.id"), nullable=True
     )

@@ -133,3 +133,97 @@ export interface OriginMarketViewsResponse {
    *  product mix, but no balance to compute. Zeros would read as a measurement. */
   transformation: TransformationBlock | null;
 }
+
+/** One destination or one port. */
+export interface BreakdownLine {
+  label: string;
+  export_tonnes: number;
+  previous_tonnes: number;
+  /** Against the SAME months a year earlier, never the previous season in full.
+   *  NULL against a zero baseline — growth off zero is undefined. */
+  delta_pct: number | null;
+  /** Per line, not per view: a destination that stopped shipping in March is
+   *  compared over the months it did ship, so two lines can cover different spans. */
+  window: OriginWindow;
+  share_pct: number | null;
+}
+
+export interface DestinationConcentration {
+  top1_share_pct: number | null;
+  top3_share_pct: number | null;
+  count: number;
+}
+
+export interface OriginDestinationsResponse {
+  data_as_of: string;
+  season: string;
+  available_seasons: string[];
+  previous_season: string;
+  destinations: BreakdownLine[];
+  ports: BreakdownLine[];
+  concentration: DestinationConcentration;
+}
+
+/** One named exporter — gated by `read:watchai:nominative`. */
+export interface ExporterFlowLine {
+  exporter: string;
+  is_gepex_member: boolean;
+  exports_beans_t: number;
+  exports_transformed_t: number;
+  exports_total_t: number;
+  purchases_t: number;
+  grinding_derived_t: number;
+  balance_t: number;
+  /** This exporter's OWN transformed share (§7). STATSER is a GEPEX aggregate
+   *  and is never allocated across operators. */
+  transformation_share_pct: number | null;
+  previous_exports_t: number;
+  /** NULL below the 250 t floor — growth off a tiny base is noise (§8). */
+  growth_pct: number | null;
+  outflow_exceeds_purchases: boolean;
+}
+
+export interface ExporterMover {
+  exporter: string;
+  growth_pct: number | null;
+  exports_total_t: number;
+  previous_exports_t: number;
+}
+
+export interface OriginExportersResponse {
+  data_as_of: string;
+  season: string;
+  available_seasons: string[];
+  previous_season: string;
+  growth_floor_tonnes: number;
+  exporters: ExporterFlowLine[];
+  movers: { up: ExporterMover[]; down: ExporterMover[] };
+}
+
+export interface OwnDestinationLine {
+  label: string;
+  export_tonnes: number;
+  share_pct: number | null;
+}
+
+export interface BenchmarkPosition {
+  exports_total_t: number;
+  market_total_t: number;
+  market_share_pct: number | null;
+  /** Over EVERY exporter, not a truncated top-N. */
+  rank: number | null;
+  exporters_ranked: number;
+  own_destinations: OwnDestinationLine[];
+}
+
+export interface OriginBenchmarkResponse {
+  data_as_of: string;
+  season: string;
+  available_seasons: string[];
+  previous_season: string;
+  /** FALSE is a first-class answer: no exporter identity. Not an empty book —
+   *  that would read as "you shipped nothing", which is a different claim. */
+  applicable: boolean;
+  exporter: string | null;
+  position: BenchmarkPosition | null;
+}

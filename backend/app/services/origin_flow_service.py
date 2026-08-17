@@ -29,6 +29,11 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.origin_balance import (
+    GROWTH_FLOOR_TONNES,
+    ExporterFlow,
+    exporter_flow,
+    equivalent_period_delta,
+    previous_season,
     PERIMETER_ALL,
     PERIMETER_GEPEX,
     MonthlyOriginSeries,
@@ -111,6 +116,127 @@ async def get_market_views(
         "monthly": [_monthly_row(row) for row in series],
         "product_mix": await _product_mix(db, batch_id, selected),
         "transformation": _transformation_block(selected, series, gepex_series),
+    }
+
+
+async def get_destinations(
+    db: AsyncSession, season: str | None = None
+) -> dict[str, Any]:
+    """Where the origin's cocoa actually goes — by destination and by port.
+
+    **Aggregated only.** The cube carries an exporter dimension on the same rows,
+    but naming who shipped to whom is `read:watchai:nominative`, a key the tiers
+    reaching this view do not necessarily hold. Every query here collapses the
+    exporter dimension away before returning.
+
+    Each line is compared against **the same months** a year earlier, not against
+    the previous season in full: on a 10-month season the full-season comparison
+    understates every destination by two months and reads as a collapse.
+    """
+    batch_id, data_as_of = await _current_batch(db)
+    seasons = await _available_seasons(db, batch_id)
+    selected = _resolve_season(season, seasons)
+
+    destinations = await _ranked_breakdown(db, batch_id, selected, "destination")
+    ports = await _ranked_breakdown(db, batch_id, selected, "port")
+
+    return {
+        "data_as_of": data_as_of,
+        "season": selected,
+        "available_seasons": seasons,
+        "previous_season": previous_season(selected),
+        "destinations": destinations,
+        "ports": ports,
+        "concentration": _concentration(destinations),
+    }
+
+
+async def get_exporters(db: AsyncSession, season: str | None = None) -> dict[str, Any]:
+    """Named exporter flows and each one's apparent balance — `:nominative` only.
+
+    This is the one view that names operators, which is why it is the most tightly
+    gated row of block ②. Everything else in Section VI collapses the exporter
+    dimension away precisely so it can be sold separately.
+
+    The movers lists are computed here rather than left to the UI: the 250 t floor
+    (business-rules §8) is an editorial threshold, and two consumers applying it
+    differently would publish two different podiums from one dataset.
+    """
+    batch_id, data_as_of = await _current_batch(db)
+    seasons = await _available_seasons(db, batch_id)
+    selected = _resolve_season(season, seasons)
+    previous = previous_season(selected)
+
+    exports = await _exports_by_exporter(db, batch_id, selected)
+    prior = await _exports_by_exporter(db, batch_id, previous)
+    purchases = await _purchases_by_exporter(db, batch_id, selected)
+
+    flows = [
+        exporter_flow(
+            exporter=name,
+            is_gepex_member=gepex,
+            exports_beans_t=beans,
+            exports_transformed_t=transformed,
+            purchases_t=purchases.get(name, 0.0),
+            previous_exports_t=sum(prior.get(name, (0.0, 0.0, False))[:2]),
+        )
+        for name, (beans, transformed, gepex) in exports.items()
+    ]
+    flows.sort(key=lambda f: f.exports_beans_t + f.exports_transformed_t, reverse=True)
+
+    return {
+        "data_as_of": data_as_of,
+        "season": selected,
+        "available_seasons": seasons,
+        "previous_season": previous,
+        "growth_floor_tonnes": GROWTH_FLOOR_TONNES,
+        "exporters": [_exporter_row(f) for f in flows],
+        "movers": _movers(flows),
+    }
+
+
+async def get_benchmark(
+    db: AsyncSession, exporter_entity_id: uuid.UUID | None, season: str | None = None
+) -> dict[str, Any]:
+    """ "Vos flux vs marché" — one exporter measured against the whole origin.
+
+    Net-new: WatchAI has no per-tenant view at all, its GEPEX toggle is a global
+    filter rather than an identity. The identity is read from
+    ``tenant_account.exporter_entity_id`` and applied **at read time**; it is never
+    a column on the cube, which stays tenant-free ("pipelines shared, tenants
+    subscribe").
+
+    ``applicable=False`` is the answer for an account with no exporter identity —
+    Signal+ and Origin Desk have none by nature, and a freshly created account has
+    none yet. The matrix distinguishes *not sold* (`—`, a 403) from *meaningless*
+    (`n/a`), and this endpoint has to as well: returning an empty book to a
+    consultancy would read as "you shipped nothing".
+    """
+    batch_id, data_as_of = await _current_batch(db)
+    seasons = await _available_seasons(db, batch_id)
+    selected = _resolve_season(season, seasons)
+
+    base = {
+        "data_as_of": data_as_of,
+        "season": selected,
+        "available_seasons": seasons,
+        "previous_season": previous_season(selected),
+    }
+    if exporter_entity_id is None:
+        return {**base, "applicable": False, "exporter": None, "position": None}
+
+    identity = await _exporter_identity(db, exporter_entity_id)
+    if identity is None:
+        # The account is mapped to an entity the current batch does not know —
+        # ref_origin_entity is rebuilt on every sync. Loud "not applicable" beats
+        # a zeroed book that reads as "you shipped nothing".
+        return {**base, "applicable": False, "exporter": None, "position": None}
+
+    return {
+        **base,
+        "applicable": True,
+        "exporter": identity,
+        "position": await _benchmark_position(db, batch_id, selected, identity),
     }
 
 
@@ -498,6 +624,264 @@ async def _month_synthesis(
         "purchases_t": float(purchases),
         "valcaf_fcfa": float(row[1]),
         "duties_taxes_fcfa": float(row[2]),
+    }
+
+
+async def _breakdown_by_month(
+    db: AsyncSession, batch_id: uuid.UUID, seasons: tuple[str, str], dimension: str
+) -> dict[str, dict[date, float]]:
+    """``{label: {month: tonnes}}`` for one dimension, over two seasons at once.
+
+    One query for both seasons because the equivalent-period comparison needs
+    them side by side; the season is not part of the returned key, since the
+    month already carries the year.
+
+    The join onto ``ref_origin_entity`` is on its primary key, so it cannot fan
+    out — and this feeds a *sum*, not a rolling computation, so even a fan-out
+    would give a wrong total rather than the silent corruption the
+    timeseries-uniqueness rule guards against. Stated because that rule makes
+    every join in this file worth a sentence.
+    """
+    label = {
+        "destination": "COALESCE(e.canonical_name, 'INCONNUE')",
+        "port": "f.port",
+    }[dimension]
+    join = (
+        "LEFT JOIN ref_origin_entity e ON e.id = f.destination_entity_id"
+        if dimension == "destination"
+        else ""
+    )
+    rows = await db.execute(
+        text(
+            f"""
+            SELECT {label} AS label, f.period_date, SUM(f.export_tonnes)
+              FROM pl_origin_flow_monthly f
+              {join}
+             WHERE f.ingest_batch_id = :b AND f.season IN (:current, :previous)
+             GROUP BY 1, 2
+            """
+        ),
+        {"b": batch_id, "current": seasons[0], "previous": seasons[1]},
+    )
+    out: dict[str, dict[date, float]] = {}
+    for label_value, period, tonnes in rows:
+        out.setdefault(label_value, {})[period] = float(tonnes)
+    return out
+
+
+async def _ranked_breakdown(
+    db: AsyncSession, batch_id: uuid.UUID, season: str, dimension: str
+) -> list[dict[str, Any]]:
+    """One line per destination (or port), ranked, each on its own window."""
+    previous = previous_season(season)
+    by_month = await _breakdown_by_month(db, batch_id, (season, previous), dimension)
+
+    lines = []
+    for label, months in by_month.items():
+        # A line's window is the months IT shipped in this season — a destination
+        # that stopped in March is compared over those months, not the full span.
+        current = {p: t for p, t in months.items() if _season_of(p) == season}
+        if not current:
+            continue
+        prior = {p: t for p, t in months.items() if _season_of(p) == previous}
+        current_t, previous_t, delta_pct, window = equivalent_period_delta(
+            current, prior
+        )
+        lines.append(
+            {
+                "label": label,
+                "export_tonnes": current_t,
+                "previous_tonnes": previous_t,
+                "delta_pct": delta_pct,
+                "window": _window(window),
+                "share_pct": None,  # filled once the total is known
+            }
+        )
+    total = sum(line["export_tonnes"] for line in lines)
+    for line in lines:
+        line["share_pct"] = line["export_tonnes"] / total * 100 if total > 0 else None
+    return sorted(lines, key=lambda line: line["export_tonnes"], reverse=True)
+
+
+def _season_of(period: date) -> str:
+    """Oct→Sep. October opens the season that carries that calendar year."""
+    start = period.year if period.month >= 10 else period.year - 1
+    return f"{start}-{start + 1}"
+
+
+def _concentration(destinations: list[dict[str, Any]]) -> dict[str, Any]:
+    """How few buyers the origin depends on.
+
+    An exporter reads this as counterparty risk, which is why it is served rather
+    than left to the client: "top 3 = 49 %" is the sentence, and computing it in
+    the UI would let two consumers disagree about what "top" means.
+    """
+    total = sum(line["export_tonnes"] for line in destinations)
+    if total <= 0:
+        return {"top1_share_pct": None, "top3_share_pct": None, "count": 0}
+    top3 = sum(line["export_tonnes"] for line in destinations[:3])
+    return {
+        "top1_share_pct": destinations[0]["export_tonnes"] / total * 100,
+        "top3_share_pct": top3 / total * 100,
+        "count": len(destinations),
+    }
+
+
+async def _exports_by_exporter(
+    db: AsyncSession, batch_id: uuid.UUID, season: str
+) -> dict[str, tuple[float, float, bool]]:
+    """``{exporter: (beans_t, transformed_t, is_gepex)}`` for one season."""
+    rows = await db.execute(
+        text(
+            """
+            SELECT e.canonical_name, e.is_gepex_member,
+                   SUM(f.export_tonnes) FILTER (WHERE f.is_bean_equivalent),
+                   SUM(f.export_tonnes) FILTER (WHERE NOT f.is_bean_equivalent)
+              FROM pl_origin_flow_monthly f
+              JOIN ref_origin_entity e ON e.id = f.exporter_entity_id
+             WHERE f.ingest_batch_id = :b AND f.season = :season
+             GROUP BY 1, 2
+            """
+        ),
+        {"b": batch_id, "season": season},
+    )
+    return {
+        row[0]: (float(row[2] or 0.0), float(row[3] or 0.0), bool(row[1]))
+        for row in rows
+    }
+
+
+async def _purchases_by_exporter(
+    db: AsyncSession, batch_id: uuid.UUID, season: str
+) -> dict[str, float]:
+    """Purchases are already exporter x month — collapse the month away only.
+
+    Kept a separate round trip from exports on purpose: joining exporter x product
+    x month against exporter x month is exactly the fan-out shape the
+    timeseries-uniqueness rule exists for, and here it would silently multiply
+    every purchase figure by the number of products that exporter ships.
+    """
+    rows = await db.execute(
+        text(
+            """
+            SELECT e.canonical_name, SUM(p.net_weight_kg) / 1000.0
+              FROM pl_origin_purchase_monthly p
+              JOIN ref_origin_entity e ON e.id = p.exporter_entity_id
+             WHERE p.ingest_batch_id = :b AND p.season = :season
+             GROUP BY 1
+            """
+        ),
+        {"b": batch_id, "season": season},
+    )
+    return {row[0]: float(row[1]) for row in rows}
+
+
+def _exporter_row(flow: ExporterFlow) -> dict[str, Any]:
+    return {
+        "exporter": flow.exporter,
+        "is_gepex_member": flow.is_gepex_member,
+        "exports_beans_t": flow.exports_beans_t,
+        "exports_transformed_t": flow.exports_transformed_t,
+        "exports_total_t": flow.exports_beans_t + flow.exports_transformed_t,
+        "purchases_t": flow.purchases_t,
+        "grinding_derived_t": flow.grinding_derived_t,
+        "balance_t": flow.balance_t,
+        "transformation_share_pct": flow.transformation_share_pct,
+        "previous_exports_t": flow.previous_exports_t,
+        "growth_pct": flow.growth_pct,
+        "outflow_exceeds_purchases": flow.outflow_exceeds_purchases,
+    }
+
+
+def _movers(flows: list[ExporterFlow]) -> dict[str, list[dict[str, Any]]]:
+    """Top 3 up and down, on the §8 rules.
+
+    Two exclusions, both deliberate: the 250 t floor kills the meaningless
+    +4 000 % off a 2 t base, and an exporter who shipped **nothing** this season is
+    kept out of the drops — otherwise operators who simply stopped monopolise the
+    −100 % podium and hide the real decliners.
+    """
+    eligible = [f for f in flows if f.growth_pct is not None]
+    risers = sorted(eligible, key=lambda f: f.growth_pct or 0.0, reverse=True)
+    fallers = sorted(
+        (f for f in eligible if f.exports_beans_t + f.exports_transformed_t > 0),
+        key=lambda f: f.growth_pct or 0.0,
+    )
+    brief = lambda f: {  # noqa: E731
+        "exporter": f.exporter,
+        "growth_pct": f.growth_pct,
+        "exports_total_t": f.exports_beans_t + f.exports_transformed_t,
+        "previous_exports_t": f.previous_exports_t,
+    }
+    return {
+        "up": [brief(f) for f in risers[:3]],
+        "down": [brief(f) for f in fallers[:3]],
+    }
+
+
+async def _exporter_identity(db: AsyncSession, entity_id: uuid.UUID) -> str | None:
+    row = (
+        await db.execute(
+            text(
+                "SELECT canonical_name FROM ref_origin_entity "
+                "WHERE id = :id AND entity_type = 'exporter'"
+            ),
+            {"id": entity_id},
+        )
+    ).one_or_none()
+    return row[0] if row else None
+
+
+async def _benchmark_position(
+    db: AsyncSession, batch_id: uuid.UUID, season: str, exporter: str
+) -> dict[str, Any]:
+    """Share, rank and own destination mix for one exporter.
+
+    Rank is computed over **every** exporter, not over a truncated top-N: being
+    23rd of 102 is the information, and a list cut at 20 would report "unranked"
+    for exactly the clients most likely to ask.
+
+    The client's own destinations are theirs to see — this is the one place a
+    destination is attached to a named operator, and it is that operator.
+    """
+    exports = await _exports_by_exporter(db, batch_id, season)
+    totals = {
+        name: beans + transformed for name, (beans, transformed, _) in exports.items()
+    }
+    market_total = sum(totals.values())
+    own = totals.get(exporter, 0.0)
+    ranked = sorted(totals.values(), reverse=True)
+    rank = ranked.index(own) + 1 if own in ranked else None
+
+    rows = await db.execute(
+        text(
+            """
+            SELECT COALESCE(d.canonical_name, 'INCONNUE'), SUM(f.export_tonnes)
+              FROM pl_origin_flow_monthly f
+              JOIN ref_origin_entity e ON e.id = f.exporter_entity_id
+              LEFT JOIN ref_origin_entity d ON d.id = f.destination_entity_id
+             WHERE f.ingest_batch_id = :b AND f.season = :season
+               AND e.canonical_name = :exporter
+             GROUP BY 1 ORDER BY 2 DESC
+            """
+        ),
+        {"b": batch_id, "season": season, "exporter": exporter},
+    )
+    own_destinations = [
+        {
+            "label": row[0],
+            "export_tonnes": float(row[1]),
+            "share_pct": float(row[1]) / own * 100 if own > 0 else None,
+        }
+        for row in rows
+    ]
+    return {
+        "exports_total_t": own,
+        "market_total_t": market_total,
+        "market_share_pct": own / market_total * 100 if market_total > 0 else None,
+        "rank": rank,
+        "exporters_ranked": len(totals),
+        "own_destinations": own_destinations,
     }
 
 

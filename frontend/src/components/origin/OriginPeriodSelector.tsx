@@ -1,5 +1,7 @@
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Eyebrow } from '@/components/editorial';
 import { useLanguage } from '@/hooks/useLanguage';
 import { numberLocale } from './shared';
@@ -15,17 +17,23 @@ interface OriginPeriodSelectorProps {
 /**
  * Season selector for Section VI, anchored top-right in the section rule.
  *
+ * Built as the same Popover + listbox as `MetricDropdown` in Section III rather
+ * than a native `<select>`. The native control was the first cut — correct for
+ * free on keyboard and screen readers, and an OS picker on a phone — but it
+ * renders as the **system** menu: system font, system highlight, none of the
+ * magazine vocabulary. In a page whose whole premise is that it reads like a
+ * printed briefing, that one control broke the illusion. Matching the shipped
+ * dropdown was the cheaper fix than inventing a third look.
+ *
  * Deliberately **not** `DateSelector` and **not** wired to
  * `DashboardDateContext`. Origin data is monthly; the rest of the dashboard is
  * daily. Folding a monthly dimension into the daily context is the collision the
  * timeseries-uniqueness rule exists to prevent, and it would refetch this data on
  * every click of the daily picker.
  *
- * A native `<select>` rather than a Radix popover: 13 seasons is a plain list, it
- * is keyboard- and screen-reader-correct for free, and it renders as the OS
- * picker on the phone this section has to work on. It is dressed as a control —
- * boxed, with a chevron and an inverting hover — because an underlined value
- * alone read as a printed heading rather than something you could change.
+ * What the native element gave away and is restored here by hand: arrow-key
+ * navigation, Home/End, and focusing the active option on open. 13 seasons is
+ * long enough that stepping through them with Tab alone would be a regression.
  */
 export default function OriginPeriodSelector({
   seasons,
@@ -35,38 +43,141 @@ export default function OriginPeriodSelector({
 }: OriginPeriodSelectorProps) {
   const { t } = useTranslation();
   const { language } = useLanguage();
+  const [open, setOpen] = useState(false);
+  const listRef = useRef<HTMLUListElement>(null);
+
+  // Open onto the current season rather than the top of a 13-item list.
+  useEffect(() => {
+    if (!open) return;
+    const active = listRef.current?.querySelector<HTMLButtonElement>('[data-active="true"]');
+    active?.focus();
+  }, [open]);
+
+  const move = (from: number, delta: number | 'first' | 'last') => {
+    const items = listRef.current?.querySelectorAll<HTMLButtonElement>('[role="option"]');
+    if (!items?.length) return;
+    const next =
+      delta === 'first'
+        ? 0
+        : delta === 'last'
+          ? items.length - 1
+          : Math.min(items.length - 1, Math.max(0, from + delta));
+    items[next]?.focus();
+  };
+
   return (
     <div className="flex flex-col items-end gap-1.5" style={{ alignSelf: 'flex-end' }}>
       <style>{`
-        .origin-season { position: relative; display: inline-flex; align-items: center; gap: 6px;
-          border: 1px solid var(--ink); background: var(--paper-off); padding: 5px 9px 5px 11px;
-          cursor: pointer; transition: background 140ms ease, color 140ms ease; color: var(--ink); }
-        .origin-season:hover, .origin-season:focus-within { background: var(--ink); color: var(--paper); }
-        .origin-season:focus-within { outline: 2px solid var(--ink); outline-offset: 2px; }
-        .origin-season select { font-family: var(--font-mono); font-size: 12.5px; font-weight: 600;
-          letter-spacing: .06em; color: inherit; background: transparent; border: none;
-          padding: 0; margin: 0; cursor: pointer; appearance: none; outline: none; }
-        /* The list itself is OS-rendered and never inherits the inverted colours. */
-        .origin-season select option { color: var(--ink); background: var(--paper); }
+        .origin-season-trigger:hover { color: var(--ink-mid) !important; }
+        .origin-season-option:hover {
+          background: var(--paper-off) !important;
+          color: var(--ink) !important;
+        }
       `}</style>
 
-      <span className="origin-season">
-        <Eyebrow tone="subtle" size={9} tracking="0.2em" style={{ color: 'inherit', opacity: 0.75 }}>
-          {t('origin.campaign_selector_label')}
-        </Eyebrow>
-        <select
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          aria-label={t('origin.campaign_selector_aria')}
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            aria-haspopup="listbox"
+            aria-expanded={open}
+            aria-label={t('origin.campaign_selector_aria')}
+            className="origin-season-trigger uppercase inline-flex items-center gap-2"
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 10,
+              fontWeight: 600,
+              letterSpacing: '0.2em',
+              color: 'var(--ink)',
+              background: 'transparent',
+              border: 'none',
+              borderBottom: '1px solid var(--ink)',
+              padding: '8px 0',
+              cursor: 'pointer',
+              transition: 'color 120ms',
+            }}
+          >
+            <Eyebrow tone="subtle" size={9} tracking="0.18em" style={{ marginRight: 2 }}>
+              {t('origin.campaign_selector_label')}
+            </Eyebrow>
+            {value}
+            <ChevronDown style={{ width: 11, height: 11, opacity: 0.65 }} />
+          </button>
+        </PopoverTrigger>
+
+        <PopoverContent
+          align="end"
+          sideOffset={4}
+          collisionPadding={16}
+          className="p-0"
+          style={{
+            background: 'var(--paper)',
+            border: '1px solid var(--ink)',
+            borderRadius: 0,
+            boxShadow: 'none',
+            minWidth: 160,
+          }}
         >
-          {seasons.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-        <ChevronDown aria-hidden size={13} strokeWidth={2.2} style={{ flexShrink: 0 }} />
-      </span>
+          {/* 13 seasons and growing by one a year — the list scrolls inside the
+              panel instead of running off the viewport. */}
+          <ul
+            ref={listRef}
+            role="listbox"
+            aria-label={t('origin.campaign_selector_aria')}
+            style={{
+              listStyle: 'none',
+              margin: 0,
+              padding: 0,
+              maxHeight: 264,
+              overflowY: 'auto',
+            }}
+          >
+            {seasons.map((s, i) => {
+              const isActive = s === value;
+              return (
+                <li key={s}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={isActive}
+                    data-active={isActive ? 'true' : 'false'}
+                    onClick={() => {
+                      onChange(s);
+                      setOpen(false);
+                    }}
+                    onKeyDown={(e) => {
+                      const map = { ArrowDown: 1, ArrowUp: -1 } as const;
+                      if (e.key in map) {
+                        e.preventDefault();
+                        move(i, map[e.key as keyof typeof map]);
+                      } else if (e.key === 'Home' || e.key === 'End') {
+                        e.preventDefault();
+                        move(i, e.key === 'Home' ? 'first' : 'last');
+                      }
+                    }}
+                    className="origin-season-option uppercase w-full text-left"
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 10,
+                      fontWeight: isActive ? 700 : 500,
+                      letterSpacing: '0.18em',
+                      color: isActive ? 'var(--ink)' : 'var(--ink-mid)',
+                      background: isActive ? 'var(--paper-off)' : 'transparent',
+                      border: 'none',
+                      borderBottom: '1px dotted var(--rule)',
+                      padding: '10px 14px',
+                      cursor: 'pointer',
+                      transition: 'background 120ms, color 120ms',
+                    }}
+                  >
+                    {s}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </PopoverContent>
+      </Popover>
 
       {/* Staleness is made visible to the reader rather than alerted to ops —
           ingestion is manual, so there is no execution log to watch. */}

@@ -13,7 +13,10 @@ const build = (d: EnsembleDiagnosticsResponse) => buildEnsembleExplanation(d, t)
 function makeDiag(
   overrides: Partial<EnsembleDiagnosticsResponse>,
 ): EnsembleDiagnosticsResponse {
-  const base: EnsembleDiagnosticsResponse = {
+  // Deliberately partial: each test overrides what it reads and never touches
+  // the remaining 13 fields. Widening through `unknown` states that this is a
+  // fixture, not a claim that the shape is complete.
+  const base = {
     date: '2026-05-29',
     decision_wrapped: 'OPEN',
     soft_gate_decision: 'OPEN',
@@ -27,7 +30,7 @@ function makeDiag(
     macro_half_life_days: null,
     running_acc_5d: null,
     source_algorithm: 'ensemble_v1_softgate_wrapper',
-  } as EnsembleDiagnosticsResponse;
+  } as unknown as EnsembleDiagnosticsResponse;
   return { ...base, ...overrides };
 }
 

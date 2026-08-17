@@ -69,6 +69,7 @@ cachetools = "^7.0.5"
 ensemble = {path = "vendor/campaign5_ensemble_v1.0.0", develop = false}
 pyarrow = "^24.0.0"
 pdfplumber = "^0.11.9"
+openpyxl = "^3.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^9.0.0"
@@ -128,6 +129,7 @@ demo-set-tier = "scripts.demo_tier:main"
 watchlist-eval = "scripts.watchlist_eval.main:main"
 backtest-seasonal = "scripts.seasonal_backtest.main:main"
 julien-handoff = "scripts.julien_handoff.main:main"
+watchai-sync = "scripts.watchai_sync.main:main"
 
 [tool.ruff]
 # Vendored R&D code lives under its own pyproject/ruff settings and ships

@@ -211,9 +211,14 @@ There is no Cloud Run job behind this: a human opens a tunnel and writes ~172 k 
 
 1. **The migration must already be in prod.** `n9c0d1e2f3g4` ships with `main` and is applied by `start.sh` on a Cloud Run cold start — never `alembic upgrade head` through the tunnel from any branch. Confirm:
    ```
-   ./.local/db-prod.sh exec "SELECT version_num FROM pl_alembic_version;"
-   ./.local/db-prod.sh exec "SELECT count(*) FROM pl_origin_flow_monthly;"
+   ./.local/db-prod.sh exec "SELECT version_num FROM alembic_version;"   -- expect n9c0d1e2f3g4
+   ./.local/db-prod.sh exec "SELECT relname, n_live_tup FROM pg_stat_user_tables
+                             WHERE relname LIKE '%origin%' ORDER BY relname;"
    ```
+   The six tables are `pl_origin_export_declaration`, `pl_origin_purchase_monthly`,
+   `pl_origin_grinding_monthly`, `ref_origin_entity` (the exporter registry lives in
+   the `ref_` namespace, not `pl_`), `pl_origin_flow_monthly` and
+   `pl_origin_ingest_batch`.
 2. **Have the source at hand.** The same `watch-ai` checkout the reconciliation was verified against — see [Spec provenance and drift](#spec-provenance-and-drift). A source lagging the app is normal; a source *ahead* of the pinned commit means re-verifying the goldens first.
 
 ### The load

@@ -115,7 +115,10 @@ function MetricDropdown({ value, onChange }: MetricDropdownProps) {
         align="end"
         sideOffset={4}
         collisionPadding={16}
-        className="p-0"
+        // `w-auto` is load-bearing: the shadcn PopoverContent primitive hardcodes
+        // `w-72` (288px), so the minWidth below cannot shrink it — a class sets
+        // `width` outright. The longest label here is OPEN INTEREST at ~101px.
+        className="p-0 w-auto"
         style={{
           background: 'var(--paper)',
           border: '1px solid var(--ink)',

@@ -66,11 +66,13 @@ EXPORT_KEYS: frozenset[str] = frozenset(export_key(s) for s in _EXPORT_SERIES)
 # Côte d'Ivoire customs exports, exporter purchases, GEPEX grindings. Data landed
 # by `poetry run watchai-sync`; served from `pl_origin_flow_monthly`.
 WATCHAI_CAMPAIGN = "read:watchai:campaign_monthly"
-# Reduced variant. NOTE the name is provisional: the "push" channel it was named
-# for is no longer the plan — Coop Essentiel gets a reduced dashboard plus a
-# button generating a WatchAI PDF. Rename to `:pdf` when that ships; keeping the
-# spec'd name until then avoids churning grants for a design still open.
-WATCHAI_CAMPAIGN_PUSH = "read:watchai:campaign_monthly:push"
+# Reduced variant: the campaign row without the market views. Named `:push` until
+# 2026-08-17, when Coop Essentiel became a one-seat dashboard and the push channel
+# was dropped. Renaming was safe because `resolve_principal` reads keys without
+# validating them against the catalogue, so a stale grant is inert rather than a
+# failure — but any account already on `coop_essentiel` must be re-templated
+# (`poetry run set-tier`) to pick the new key up.
+WATCHAI_CAMPAIGN_REDUCED = "read:watchai:campaign_monthly:reduced"
 WATCHAI_MARKET_VIEWS = "read:watchai:market_views"
 WATCHAI_DESTINATIONS = "read:watchai:destinations"
 WATCHAI_BENCHMARK = "read:watchai:benchmark"
@@ -82,7 +84,7 @@ WATCHAI_NOMINATIVE = "read:watchai:nominative"
 WATCHAI_KEYS: frozenset[str] = frozenset(
     {
         WATCHAI_CAMPAIGN,
-        WATCHAI_CAMPAIGN_PUSH,
+        WATCHAI_CAMPAIGN_REDUCED,
         WATCHAI_MARKET_VIEWS,
         WATCHAI_DESTINATIONS,
         WATCHAI_BENCHMARK,
@@ -136,7 +138,7 @@ VARIANT_PAIRS: Mapping[str, str] = MappingProxyType(
     {
         SECTION_WEATHER: SECTION_WEATHER_SUMMARY,
         DECISION_HEDGE: DECISION_HEDGE_INITIATION,
-        WATCHAI_CAMPAIGN: WATCHAI_CAMPAIGN_PUSH,
+        WATCHAI_CAMPAIGN: WATCHAI_CAMPAIGN_REDUCED,
     }
 )
 
@@ -229,12 +231,12 @@ _ORIGIN_DESK_KEYS: frozenset[str] = _EXPORT_PREMIUM_KEYS - {SECTION_PODCAST}
 # `_COOP_PREMIUM_KEYS` on block (1), but on block (2) Export Premium adds
 # destinations + benchmark + nominative that Coop Premium does not buy. Composing
 # per block is what keeps that alias honest instead of silently wrong.
-_WATCHAI_COOP_ESSENTIEL: frozenset[str] = frozenset({WATCHAI_CAMPAIGN_PUSH})
+_WATCHAI_COOP_ESSENTIEL: frozenset[str] = frozenset({WATCHAI_CAMPAIGN_REDUCED})
 _WATCHAI_COOP_PREMIUM: frozenset[str] = frozenset(
     {WATCHAI_CAMPAIGN, WATCHAI_MARKET_VIEWS}
 )
 _WATCHAI_EXPORT_ESSENTIEL: frozenset[str] = frozenset(
-    {WATCHAI_CAMPAIGN_PUSH, WATCHAI_MARKET_VIEWS, WATCHAI_DESTINATIONS}
+    {WATCHAI_CAMPAIGN_REDUCED, WATCHAI_MARKET_VIEWS, WATCHAI_DESTINATIONS}
 )
 # "100 % débloqué dès Export Premium" — all five matrix rows.
 _WATCHAI_EXPORT_PREMIUM: frozenset[str] = frozenset(

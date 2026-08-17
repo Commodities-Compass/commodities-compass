@@ -76,7 +76,7 @@ export default function DashboardPage() {
       <Entitled
         anyOf={[
           ENT.WATCHAI_CAMPAIGN,
-          ENT.WATCHAI_CAMPAIGN_PUSH,
+          ENT.WATCHAI_CAMPAIGN_REDUCED,
           ENT.WATCHAI_MARKET_VIEWS,
         ]}
       >

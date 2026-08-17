@@ -56,7 +56,7 @@ _MONTH_QUERY = Query(
     dependencies=[
         # Any-of: the reduced variant is a real grant, not a downgrade to deny.
         Depends(
-            require_any_entitlement(ent.WATCHAI_CAMPAIGN, ent.WATCHAI_CAMPAIGN_PUSH)
+            require_any_entitlement(ent.WATCHAI_CAMPAIGN, ent.WATCHAI_CAMPAIGN_REDUCED)
         )
     ],
 )

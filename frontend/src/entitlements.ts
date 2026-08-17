@@ -22,7 +22,7 @@ export const ENT = {
   // The reduced variant of the campaign row. Coop Essentiel holds only this one
   // and never WATCHAI_CAMPAIGN, so the campaign gate is an anyOf over the pair.
   WATCHAI_CAMPAIGN: 'read:watchai:campaign_monthly',
-  WATCHAI_CAMPAIGN_PUSH: 'read:watchai:campaign_monthly:push',
+  WATCHAI_CAMPAIGN_REDUCED: 'read:watchai:campaign_monthly:reduced',
   WATCHAI_MARKET_VIEWS: 'read:watchai:market_views',
   WATCHAI_DESTINATIONS: 'read:watchai:destinations',
   WATCHAI_BENCHMARK: 'read:watchai:benchmark',

@@ -290,11 +290,11 @@ async def test_tier_gate_matrix(
 async def test_coop_essentiel_reaches_campaign_through_the_reduced_variant(
     client_for, enforced
 ) -> None:
-    """It holds `campaign_monthly:push`, never `campaign_monthly` — the any-of gate
+    """It holds `campaign_monthly:reduced`, never `campaign_monthly` — the any-of gate
     is what makes the reduced grant a grant rather than a denial."""
     template = ent.TIER_TEMPLATES[ent.COOP_ESSENTIEL]
 
-    assert ent.WATCHAI_CAMPAIGN_PUSH in template
+    assert ent.WATCHAI_CAMPAIGN_REDUCED in template
     assert ent.WATCHAI_CAMPAIGN not in template
     async with client_for(ent.COOP_ESSENTIEL) as client:
         assert (await client.get(CAMPAIGN_URL)).status_code == 200

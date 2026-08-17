@@ -15,7 +15,7 @@ import OriginPeriodSelector from './OriginPeriodSelector';
  * Section VI — physical market. Matrix block ②, Côte d'Ivoire physical flows.
  *
  * One tab per entitlement key held, and the tab strip is hidden when only one
- * survives: Coop Essentiel holds `campaign_monthly:push` and nothing else, so
+ * survives: Coop Essentiel holds `campaign_monthly:reduced` and nothing else, so
  * showing a lone tab would read as a broken control rather than a deliberate
  * single view.
  *
@@ -28,7 +28,7 @@ export default function OriginFlowsCard({ className }: { className?: string }) {
   const { t } = useTranslation();
   const { has, hasAny } = useEntitlements();
   const canSeeMarketViews = has(ENT.WATCHAI_MARKET_VIEWS);
-  const canSeeCampaign = hasAny([ENT.WATCHAI_CAMPAIGN, ENT.WATCHAI_CAMPAIGN_PUSH]);
+  const canSeeCampaign = hasAny([ENT.WATCHAI_CAMPAIGN, ENT.WATCHAI_CAMPAIGN_REDUCED]);
 
   const [season, setSeason] = useState<string | undefined>(undefined);
 

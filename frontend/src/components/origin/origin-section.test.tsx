@@ -40,7 +40,7 @@ describe('Section VI — entitlement-driven composition', () => {
   it('drops the market tab — and its request — for a tier without the key', () => {
     // Coop Essentiel: the reduced campaign key only. A lone tab would read as a
     // broken control, so the strip is hidden entirely rather than shown with one.
-    held.add(ENT.WATCHAI_CAMPAIGN_PUSH);
+    held.add(ENT.WATCHAI_CAMPAIGN_REDUCED);
     render(<OriginFlowsCard />);
 
     expect(screen.queryByRole('tab')).not.toBeInTheDocument();

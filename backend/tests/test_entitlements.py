@@ -90,7 +90,7 @@ def test_watchai_block_matches_matrix() -> None:
     export_prem = ent.expand_tier(ent.EXPORT_PREMIUM)
 
     # Coop Essentiel: the reduced campaign row only.
-    assert coop_ess & ent.WATCHAI_KEYS == {ent.WATCHAI_CAMPAIGN_PUSH}
+    assert coop_ess & ent.WATCHAI_KEYS == {ent.WATCHAI_CAMPAIGN_REDUCED}
     # Coop Premium: campaign (full) + market views, and nothing that names an
     # operator, a destination or a port.
     assert coop_prem & ent.WATCHAI_KEYS == {
@@ -98,7 +98,7 @@ def test_watchai_block_matches_matrix() -> None:
         ent.WATCHAI_MARKET_VIEWS,
     }
     # "100 % débloqué dès Export Premium".
-    assert ent.WATCHAI_KEYS - {ent.WATCHAI_CAMPAIGN_PUSH} <= export_prem
+    assert ent.WATCHAI_KEYS - {ent.WATCHAI_CAMPAIGN_REDUCED} <= export_prem
 
 
 @pytest.mark.unit

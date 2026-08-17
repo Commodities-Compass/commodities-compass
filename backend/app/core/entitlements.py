@@ -62,6 +62,34 @@ def export_key(series: str) -> str:
 
 EXPORT_KEYS: frozenset[str] = frozenset(export_key(s) for s in _EXPORT_SERIES)
 
+# --- WatchAI (matrix block (2)) — origin physical flows ----------------------
+# Côte d'Ivoire customs exports, exporter purchases, GEPEX grindings. Data landed
+# by `poetry run watchai-sync`; served from `pl_origin_flow_monthly`.
+WATCHAI_CAMPAIGN = "read:watchai:campaign_monthly"
+# Reduced variant. NOTE the name is provisional: the "push" channel it was named
+# for is no longer the plan — Coop Essentiel gets a reduced dashboard plus a
+# button generating a WatchAI PDF. Rename to `:pdf` when that ships; keeping the
+# spec'd name until then avoids churning grants for a design still open.
+WATCHAI_CAMPAIGN_PUSH = "read:watchai:campaign_monthly:push"
+WATCHAI_MARKET_VIEWS = "read:watchai:market_views"
+WATCHAI_DESTINATIONS = "read:watchai:destinations"
+WATCHAI_BENCHMARK = "read:watchai:benchmark"
+# Per-exporter flows and the solde apparent. Gates anything that names an
+# operator — including growth top-3 lists, which is why the campaign row carries
+# none.
+WATCHAI_NOMINATIVE = "read:watchai:nominative"
+
+WATCHAI_KEYS: frozenset[str] = frozenset(
+    {
+        WATCHAI_CAMPAIGN,
+        WATCHAI_CAMPAIGN_PUSH,
+        WATCHAI_MARKET_VIEWS,
+        WATCHAI_DESTINATIONS,
+        WATCHAI_BENCHMARK,
+        WATCHAI_NOMINATIVE,
+    }
+)
+
 SECTION_KEYS: frozenset[str] = frozenset(
     {
         SECTION_SIGNAL,
@@ -93,7 +121,12 @@ DECISION_KEYS: frozenset[str] = frozenset(
 # The complete, valid key catalogue. A key outside this set is a bug (typo in a
 # grant, a stale gate) — the CLI and gates validate against it, fail-loud.
 ALL_ENTITLEMENT_KEYS: frozenset[str] = (
-    SECTION_KEYS | CHROME_KEYS | FEATURE_KEYS | DECISION_KEYS | EXPORT_KEYS
+    SECTION_KEYS
+    | CHROME_KEYS
+    | FEATURE_KEYS
+    | DECISION_KEYS
+    | EXPORT_KEYS
+    | WATCHAI_KEYS
 )
 
 # Reduced-variant pairs (full → reduced). A tier holds at most one of each pair;
@@ -103,6 +136,7 @@ VARIANT_PAIRS: Mapping[str, str] = MappingProxyType(
     {
         SECTION_WEATHER: SECTION_WEATHER_SUMMARY,
         DECISION_HEDGE: DECISION_HEDGE_INITIATION,
+        WATCHAI_CAMPAIGN: WATCHAI_CAMPAIGN_PUSH,
     }
 )
 
@@ -173,7 +207,8 @@ _EXPORT_ESSENTIEL_KEYS: frozenset[str] = (
 # Export Premium — full dashboard (3 seats).
 _EXPORT_PREMIUM_KEYS: frozenset[str] = _COOP_PREMIUM_KEYS
 
-# Export Pro — same Compass CC surface as Premium (differs in WatchAI/Formation/seats).
+# Export Pro — same Compass CC surface as Premium, and the same block (2) surface
+# too (both hold all five WatchAI rows). They differ on Formation and seats only.
 _EXPORT_PRO_KEYS: frozenset[str] = _EXPORT_PREMIUM_KEYS
 
 # Signal+ / Origin Desk — full dashboard, podcast is "option" (à la carte → not
@@ -181,15 +216,45 @@ _EXPORT_PRO_KEYS: frozenset[str] = _EXPORT_PREMIUM_KEYS
 _SIGNAL_PLUS_KEYS: frozenset[str] = _EXPORT_PREMIUM_KEYS - {SECTION_PODCAST}
 _ORIGIN_DESK_KEYS: frozenset[str] = _EXPORT_PREMIUM_KEYS - {SECTION_PODCAST}
 
+# --- WatchAI bundles per tier (matrix block (2)) -----------------------------
+# Kept separate from the Compass CC bundles above and unioned in TIER_TEMPLATES,
+# because the two blocks do NOT move together: `_EXPORT_PREMIUM_KEYS` aliases
+# `_COOP_PREMIUM_KEYS` on block (1), but on block (2) Export Premium adds
+# destinations + benchmark + nominative that Coop Premium does not buy. Composing
+# per block is what keeps that alias honest instead of silently wrong.
+_WATCHAI_COOP_ESSENTIEL: frozenset[str] = frozenset({WATCHAI_CAMPAIGN_PUSH})
+_WATCHAI_COOP_PREMIUM: frozenset[str] = frozenset(
+    {WATCHAI_CAMPAIGN, WATCHAI_MARKET_VIEWS}
+)
+_WATCHAI_EXPORT_ESSENTIEL: frozenset[str] = frozenset(
+    {WATCHAI_CAMPAIGN_PUSH, WATCHAI_MARKET_VIEWS, WATCHAI_DESTINATIONS}
+)
+# "100 % débloqué dès Export Premium" — all five matrix rows.
+_WATCHAI_EXPORT_PREMIUM: frozenset[str] = frozenset(
+    {
+        WATCHAI_CAMPAIGN,
+        WATCHAI_MARKET_VIEWS,
+        WATCHAI_DESTINATIONS,
+        WATCHAI_BENCHMARK,
+        WATCHAI_NOMINATIVE,
+    }
+)
+# Signal+ / Origin Desk have no exporter identity, so benchmark is `n/a` in the
+# matrix — meaningless rather than unsold. The endpoint returns "not applicable",
+# never 403; the key is simply absent.
+_WATCHAI_SIGNAL_PLUS: frozenset[str] = _WATCHAI_EXPORT_PREMIUM - {WATCHAI_BENCHMARK}
+# Origin Desk: nominative is `s/ CdC` (à la carte) → not in the default template.
+_WATCHAI_ORIGIN_DESK: frozenset[str] = _WATCHAI_SIGNAL_PLUS - {WATCHAI_NOMINATIVE}
+
 TIER_TEMPLATES: Mapping[str, frozenset[str]] = MappingProxyType(
     {
-        COOP_ESSENTIEL: _COOP_ESSENTIEL_KEYS,
-        COOP_PREMIUM: _COOP_PREMIUM_KEYS,
-        EXPORT_ESSENTIEL: _EXPORT_ESSENTIEL_KEYS,
-        EXPORT_PREMIUM: _EXPORT_PREMIUM_KEYS,
-        EXPORT_PRO: _EXPORT_PRO_KEYS,
-        SIGNAL_PLUS: _SIGNAL_PLUS_KEYS,
-        ORIGIN_DESK: _ORIGIN_DESK_KEYS,
+        COOP_ESSENTIEL: _COOP_ESSENTIEL_KEYS | _WATCHAI_COOP_ESSENTIEL,
+        COOP_PREMIUM: _COOP_PREMIUM_KEYS | _WATCHAI_COOP_PREMIUM,
+        EXPORT_ESSENTIEL: _EXPORT_ESSENTIEL_KEYS | _WATCHAI_EXPORT_ESSENTIEL,
+        EXPORT_PREMIUM: _EXPORT_PREMIUM_KEYS | _WATCHAI_EXPORT_PREMIUM,
+        EXPORT_PRO: _EXPORT_PRO_KEYS | _WATCHAI_EXPORT_PREMIUM,
+        SIGNAL_PLUS: _SIGNAL_PLUS_KEYS | _WATCHAI_SIGNAL_PLUS,
+        ORIGIN_DESK: _ORIGIN_DESK_KEYS | _WATCHAI_ORIGIN_DESK,
     }
 )
 

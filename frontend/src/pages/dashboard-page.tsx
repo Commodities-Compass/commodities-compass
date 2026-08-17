@@ -5,6 +5,7 @@ import SignalHero from '@/components/signal-hero';
 import PodcastPlayer from '@/components/podcast-player';
 import PriceChart from '@/components/price-chart';
 import WeatherUpdateCard from '@/components/weather-update-card';
+import OriginFlowsCard from '@/components/origin/OriginFlowsCard';
 import { DashboardErrorBoundary } from '@/components/DashboardErrorBoundary';
 import { useDashboardDate } from '@/hooks/useDashboardDate';
 import { Entitled, useEntitlements } from '@/contexts/EntitlementsContext';
@@ -66,6 +67,21 @@ export default function DashboardPage() {
       <Entitled anyOf={[ENT.SECTION_WEATHER, ENT.SECTION_WEATHER_SUMMARY]}>
         <DashboardErrorBoundary>
           <WeatherUpdateCard targetDate={currentDate} summary={weatherSummary} />
+        </DashboardErrorBoundary>
+      </Entitled>
+
+      {/* VI — origin physical flows (matrix block 2). No targetDate: this section
+          is monthly and carries its own season selector, deliberately outside
+          DashboardDateContext. */}
+      <Entitled
+        anyOf={[
+          ENT.WATCHAI_CAMPAIGN,
+          ENT.WATCHAI_CAMPAIGN_REDUCED,
+          ENT.WATCHAI_MARKET_VIEWS,
+        ]}
+      >
+        <DashboardErrorBoundary>
+          <OriginFlowsCard />
         </DashboardErrorBoundary>
       </Entitled>
     </div>

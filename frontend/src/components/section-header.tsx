@@ -1,6 +1,12 @@
+import type { ReactNode } from 'react';
 interface SectionHeaderProps {
   numeral: string;
   title: string;
+  /**
+   * Optional control anchored to the right of the rule — for a section that owns
+   * its own period, like VI. Sections I-V pass nothing and are unchanged.
+   */
+  aside?: ReactNode;
   className?: string;
 }
 
@@ -9,7 +15,12 @@ interface SectionHeaderProps {
  * voice of the magazine), numeral in Playfair light gray (decorative).
  * Tab labels (rendered via EditorialTabs) use the Playfair italic voice.
  */
-export default function SectionHeader({ numeral, title, className }: SectionHeaderProps) {
+export default function SectionHeader({
+  numeral,
+  title,
+  aside,
+  className,
+}: SectionHeaderProps) {
   return (
     <div
       className={`flex items-baseline gap-4 mb-6 ${className ?? ''}`.trim()}
@@ -42,6 +53,7 @@ export default function SectionHeader({ numeral, title, className }: SectionHead
         {title}
       </h2>
       <span aria-hidden className="flex-1 h-px" style={{ background: 'var(--rule)' }} />
+      {aside}
     </div>
   );
 }

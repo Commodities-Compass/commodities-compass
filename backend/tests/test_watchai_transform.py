@@ -351,14 +351,6 @@ def test_source_max_periods_are_reported_per_source() -> None:
     }
 
 
-def test_rendement_broyage_is_pinned() -> None:
-    """The single constant whose silent drift would restate every published
-    balance (integration doc risk #1). Pinned in config, not inlined."""
-    from scripts.watchai_sync.config import RENDEMENT_BROYAGE
-
-    assert RENDEMENT_BROYAGE == 0.80
-
-
 def test_data_as_of_is_the_newest_period_across_all_three_sources() -> None:
     """The three sources publish on different lags; the stamp is the max, so the
     UI never claims to be older than the freshest thing it holds."""

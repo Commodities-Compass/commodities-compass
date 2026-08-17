@@ -101,16 +101,48 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
 
 const ChartTooltip = RechartsPrimitive.Tooltip
 
+/**
+ * One entry of the payload Recharts hands to a custom tooltip.
+ *
+ * Declared here rather than derived from `ComponentProps<typeof Tooltip>`:
+ * Recharts 3 no longer surfaces `payload` / `label` on the Tooltip component's
+ * own props — they are injected into whatever is passed as `content`. The v2-era
+ * derivation therefore resolved to a type without them, and every field below was
+ * a compile error that `tsc --noEmit` on a solution tsconfig never reported.
+ */
+type ChartTooltipPayloadItem = {
+  name?: string | number
+  value?: string | number
+  dataKey?: string | number
+  color?: string
+  payload?: Record<string, unknown> & { fill?: string }
+}
+
 const ChartTooltipContent = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<typeof RechartsPrimitive.Tooltip> &
-    React.ComponentProps<"div"> & {
-      hideLabel?: boolean
-      hideIndicator?: boolean
-      indicator?: "line" | "dot" | "dashed"
-      nameKey?: string
-      labelKey?: string
-    }
+  React.ComponentProps<"div"> & {
+    active?: boolean
+    payload?: ChartTooltipPayloadItem[]
+    label?: unknown
+    labelFormatter?: (
+      label: unknown,
+      payload: ChartTooltipPayloadItem[]
+    ) => React.ReactNode
+    labelClassName?: string
+    formatter?: (
+      value: unknown,
+      name: unknown,
+      item: ChartTooltipPayloadItem,
+      index: number,
+      itemPayload: unknown
+    ) => React.ReactNode
+    color?: string
+    hideLabel?: boolean
+    hideIndicator?: boolean
+    indicator?: "line" | "dot" | "dashed"
+    nameKey?: string
+    labelKey?: string
+  }
 >(
   (
     {
@@ -187,7 +219,7 @@ const ChartTooltipContent = React.forwardRef<
           {payload.map((item, index) => {
             const key = `${nameKey || item.name || item.dataKey || "value"}`
             const itemConfig = getPayloadConfigFromPayload(config, item, key)
-            const indicatorColor = color || item.payload.fill || item.color
+            const indicatorColor = color || item.payload?.fill || item.color
 
             return (
               <div
@@ -257,13 +289,23 @@ ChartTooltipContent.displayName = "ChartTooltip"
 
 const ChartLegend = RechartsPrimitive.Legend
 
+/** Same rationale as the tooltip: Recharts 3's `LegendProps` no longer exposes
+ *  `payload` / `verticalAlign` to a `Pick<>`, so the injected shape is declared. */
+type ChartLegendPayloadItem = {
+  value?: string | number
+  dataKey?: string | number
+  color?: string
+  payload?: Record<string, unknown>
+}
+
 const ChartLegendContent = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<"div"> &
-    Pick<RechartsPrimitive.LegendProps, "payload" | "verticalAlign"> & {
-      hideIcon?: boolean
-      nameKey?: string
-    }
+  React.ComponentProps<"div"> & {
+    payload?: ChartLegendPayloadItem[]
+    verticalAlign?: "top" | "middle" | "bottom"
+    hideIcon?: boolean
+    nameKey?: string
+  }
 >(
   (
     { className, hideIcon = false, payload, verticalAlign = "bottom", nameKey },

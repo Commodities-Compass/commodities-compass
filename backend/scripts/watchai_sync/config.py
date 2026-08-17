@@ -41,22 +41,10 @@ SPEC_SOURCE_FILE_SET_SHA256: Final[str] = (
 # must never be divided (the trap flagged at webapp_tax.py:1919).
 KG_PER_TONNE: Final[int] = 1000
 
-# --- Material balance (business-rules §4) -----------------------------------
-# Grinding yield: 1 t of beans yields 0,80 t of transformed product. Used to
-# convert transformed exports *back* to bean equivalent before they enter the
-# balance:
-#
-#     broyage_deduit_t = transfo_exporte_t / RENDEMENT_BROYAGE
-#     solde_t          = achats_t - feves_exportees_t - broyage_deduit_t
-#
-# Adding a product weight straight to bean tonnages is the v1 bug Julien fixed
-# on 2026-07-17: it double-counted the same matter (the beans were already
-# consumed by grinding), showing a 124 % taux de sortie and a negative solde.
-#
-# Not consumed in Phase 1 — the balance lives in the Phase 3 service — but it is
-# pinned here now because it is the single constant whose silent drift would
-# restate every published figure (integration doc risk #1).
-RENDEMENT_BROYAGE: Final[float] = 0.80
+# The material balance (business-rules §4) is NOT computed here — it belongs to
+# the serving layer, and its one constant lives with it in
+# `app/services/origin_balance.py::RENDEMENT_BROYAGE`. Ingestion stores tonnages;
+# it does not interpret them.
 
 # --- Season (business-rules §3) ---------------------------------------------
 # Cocoa season runs October → September. season(d) = "Y-Y+1" if month >= 10.

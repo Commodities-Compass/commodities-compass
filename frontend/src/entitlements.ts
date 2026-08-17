@@ -17,4 +17,14 @@ export const ENT = {
   FEATURE_MACRO_PANEL: 'read:feature:macro_panel',
   FEATURE_POSITIONING: 'read:feature:positioning',
   FEATURE_FARMGATE: 'read:feature:farmgate',
+
+  // --- WatchAI (matrix block 2) — origin physical flows --------------------
+  // The reduced variant of the campaign row. Coop Essentiel holds only this one
+  // and never WATCHAI_CAMPAIGN, so the campaign gate is an anyOf over the pair.
+  WATCHAI_CAMPAIGN: 'read:watchai:campaign_monthly',
+  WATCHAI_CAMPAIGN_REDUCED: 'read:watchai:campaign_monthly:reduced',
+  WATCHAI_MARKET_VIEWS: 'read:watchai:market_views',
+  WATCHAI_DESTINATIONS: 'read:watchai:destinations',
+  WATCHAI_BENCHMARK: 'read:watchai:benchmark',
+  WATCHAI_NOMINATIVE: 'read:watchai:nominative',
 } as const;

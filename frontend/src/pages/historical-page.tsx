@@ -107,7 +107,6 @@ export default function HistoricalPage() {
                     min={indicatorDetails.min}
                     max={indicatorDetails.max}
                     label={indicatorDetails.label}
-                    size="lg"
                   />
                 </div>
               </div>

@@ -32,10 +32,11 @@ export const usePositionStatus = (targetDate?: string) => {
   });
 };
 
-export const useIndicatorsGrid = (targetDate?: string) => {
+export const useIndicatorsGrid = (targetDate?: string, enabled = true) => {
   return useQuery<IndicatorsGridResponse>({
     queryKey: ['indicators-grid', targetDate],
     queryFn: () => dashboardApi.getIndicatorsGrid(targetDate),
+    enabled,
     ...DAILY_QUERY_OPTIONS,
   });
 };
@@ -115,18 +116,20 @@ const isOnOrAfterEnsembleStart = (targetDate?: string): boolean => {
   return targetDate >= ENSEMBLE_FIRST_DATE;
 };
 
-export const useMacroPanel = (targetDate?: string) => {
+export const useMacroPanel = (targetDate?: string, enabled = true) => {
   return useQuery<MacroPanelResponse>({
     queryKey: ['macro-panel', targetDate],
     queryFn: () => dashboardApi.getMacroPanel(targetDate),
+    enabled,
     ...DAILY_QUERY_OPTIONS,
   });
 };
 
-export const usePositioning = (targetDate?: string) => {
+export const usePositioning = (targetDate?: string, enabled = true) => {
   return useQuery<PositioningResponse>({
     queryKey: ['positioning', targetDate],
     queryFn: () => dashboardApi.getPositioning(targetDate),
+    enabled,
     ...DAILY_QUERY_OPTIONS,
   });
 };

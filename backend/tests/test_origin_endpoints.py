@@ -27,6 +27,9 @@ from app.main import app
 from app.services.origin_flow_service import (
     OriginDataUnavailableError,
     get_campaign,
+    get_benchmark,
+    get_destinations,
+    get_exporters,
     get_market_views,
 )
 
@@ -81,17 +84,32 @@ async def _seed(db: AsyncSession) -> uuid.UUID:
                 {"n": name, "g": gepex},
             )
         ).scalar_one()
-    destination = (
-        await db.execute(
-            text(
-                """
-                INSERT INTO ref_origin_entity
-                    (entity_type, source_name, canonical_name)
-                VALUES ('destination', 'PAYS-BAS', 'PAYS-BAS') RETURNING id
-                """
+    # Two destinations and two ports so a ranking has something to rank. The
+    # SAME tonnage is merely split across them — beans leave Abidjan for the
+    # Netherlands, transformed leaves San-Pédro for Malaysia — so every existing
+    # campaign/market assertion, which aggregates both dimensions away, is
+    # unchanged. That is the point: this fixture must not silently restate the
+    # numbers the other tests check by hand.
+    destinations = {}
+    for country in ("PAYS-BAS", "MALAISIE"):
+        destinations[country] = (
+            await db.execute(
+                text(
+                    """
+                    INSERT INTO ref_origin_entity
+                        (entity_type, source_name, canonical_name)
+                    VALUES ('destination', :n, :n) RETURNING id
+                    """
+                ),
+                {"n": country},
             )
-        )
-    ).scalar_one()
+        ).scalar_one()
+
+    # product -> (destination, port)
+    routing = {
+        "FEVES": (destinations["PAYS-BAS"], "ABIDJAN"),
+        "MASSE": (destinations["MALAISIE"], "SAN PEDRO"),
+    }
 
     months = {
         SEASON: [date(2025, 10, 1), date(2025, 11, 1), date(2025, 12, 1)],
@@ -114,7 +132,7 @@ async def _seed(db: AsyncSession) -> uuid.UUID:
                                  exporter_entity_id, product_code,
                                  destination_entity_id, port, export_tonnes,
                                  valcaf, duties_taxes)
-                            VALUES (:b, :p, :s, :e, :prod, :d, 'ABIDJAN', :t,
+                            VALUES (:b, :p, :s, :e, :prod, :d, :port, :t,
                                     :v, :x)
                             """
                         ),
@@ -124,7 +142,8 @@ async def _seed(db: AsyncSession) -> uuid.UUID:
                             "s": season,
                             "e": exporters[name],
                             "prod": product,
-                            "d": destination,
+                            "d": routing[product][0],
+                            "port": routing[product][1],
                             "t": tonnes,
                             "v": tonnes * 1_000_000,
                             "x": tonnes * 100_000,
@@ -510,3 +529,310 @@ async def test_missing_data_surfaces_as_503_not_404(client_for, seeded) -> None:
 
     async with client_for(ent.COOP_PREMIUM) as client:
         assert (await client.get(CAMPAIGN_URL)).status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# destinations & ports (matrix block (2), row 3 — Export Essentiel and up)
+# ---------------------------------------------------------------------------
+# Seed arithmetic, all hand-checkable:
+#   season 2025-2026 = 3 months x (700 t FEVES + 160 t MASSE) = 2 100 + 480
+#   FEVES  -> PAYS-BAS via ABIDJAN ; MASSE -> MALAISIE via SAN PEDRO
+#   previous season holds only Oct+Nov, so the 3-month equivalent window picks up
+#   two months of it and zero for December: 1 400 and 320 -> +50 % on both lines.
+@pytest.mark.asyncio
+async def test_destinations_are_ranked_with_shares_and_equivalent_period(
+    seeded: AsyncSession,
+) -> None:
+    payload = await get_destinations(seeded)
+
+    assert [line["label"] for line in payload["destinations"]] == [
+        "PAYS-BAS",
+        "MALAISIE",
+    ]
+    nl, my = payload["destinations"]
+    assert nl["export_tonnes"] == pytest.approx(2_100.0)
+    assert my["export_tonnes"] == pytest.approx(480.0)
+    assert nl["share_pct"] == pytest.approx(2_100 / 2_580 * 100)
+
+    # The comparison is against the SAME months a year earlier, not the previous
+    # season in full — December has no counterpart and contributes zero.
+    assert nl["previous_tonnes"] == pytest.approx(1_400.0)
+    assert nl["delta_pct"] == pytest.approx(50.0)
+    assert my["delta_pct"] == pytest.approx(50.0)
+    assert nl["window"]["months"] == 3
+
+
+@pytest.mark.asyncio
+async def test_ports_reconcile_with_destinations_and_with_season_exports(
+    seeded: AsyncSession,
+) -> None:
+    """Two independent breakdowns of one quantity must add up to it.
+
+    A share that does not sum to the season total is the signature of a fan-out
+    or a dropped NULL — cheap to assert, and it would have caught a bad join in
+    either query.
+    """
+    payload = await get_destinations(seeded)
+    campaign = await get_campaign(seeded)
+
+    season_exports = sum(row["exports_total_t"] for row in campaign["monthly"])
+    assert sum(
+        line["export_tonnes"] for line in payload["destinations"]
+    ) == pytest.approx(season_exports)
+    assert sum(line["export_tonnes"] for line in payload["ports"]) == pytest.approx(
+        season_exports
+    )
+    assert sum(line["share_pct"] for line in payload["destinations"]) == pytest.approx(
+        100.0
+    )
+
+
+@pytest.mark.asyncio
+async def test_destinations_never_name_an_exporter(seeded: AsyncSession) -> None:
+    """The cube carries the exporter on the very same rows this view aggregates.
+
+    Naming one is `read:watchai:nominative`, which Export Essentiel does not buy —
+    so the dimension must be collapsed in the query, not merely left out of the
+    schema.
+    """
+    payload = await get_destinations(seeded)
+    rendered = " ".join(_flatten(payload))
+    assert "CARGILL" not in rendered
+    assert "OTHERCO" not in rendered
+
+
+@pytest.mark.asyncio
+async def test_concentration_is_served_not_left_to_the_client(
+    seeded: AsyncSession,
+) -> None:
+    payload = await get_destinations(seeded)
+    assert payload["concentration"]["count"] == 2
+    assert payload["concentration"]["top1_share_pct"] == pytest.approx(
+        2_100 / 2_580 * 100
+    )
+    # Only two destinations exist, so "top 3" is the whole market.
+    assert payload["concentration"]["top3_share_pct"] == pytest.approx(100.0)
+
+
+_DESTINATION_GATE = [
+    (ent.COOP_ESSENTIEL, 403),
+    (ent.COOP_PREMIUM, 403),  # buys the campaign + market views, not destinations
+    (ent.EXPORT_ESSENTIEL, 200),
+    (ent.EXPORT_PREMIUM, 200),
+    (ent.EXPORT_PRO, 200),
+    (ent.SIGNAL_PLUS, 200),
+    (ent.ORIGIN_DESK, 200),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("tier", "expected"), _DESTINATION_GATE)
+async def test_destinations_gate_matches_the_matrix(
+    client_for, enforced: None, tier: str, expected: int
+) -> None:
+    """Matrix row "Destinations & ports agrégés": `—` for both coop tiers."""
+    async with client_for(tier) as client:
+        response = await client.get("/api/v1/dashboard/origin/destinations")
+    assert response.status_code == expected
+
+
+# ---------------------------------------------------------------------------
+# nominative exporter flows (matrix block (2), row 5 — Export Premium and up)
+# ---------------------------------------------------------------------------
+# Seed arithmetic per season 2025-2026 (3 months):
+#   CARGILL  beans 1 800, transformed 480, purchases 3 000
+#            derived grinding 480 / 0.80 = 600 -> balance 3 000 - 1 800 - 600 = 600
+#            previous season (2 months) total 1 520 -> +50 %
+#   OTHERCO  beans 300, purchases 600 -> balance 300
+#            previous season total 200 t, BELOW the 250 t floor -> growth is None
+@pytest.mark.asyncio
+async def test_exporter_balance_is_bean_equivalent_per_operator(
+    seeded: AsyncSession,
+) -> None:
+    payload = await get_exporters(seeded)
+    cargill = next(e for e in payload["exporters"] if e["exporter"] == "CARGILL")
+
+    assert cargill["exports_beans_t"] == pytest.approx(1_800.0)
+    assert cargill["exports_transformed_t"] == pytest.approx(480.0)
+    # The transformed tonnage goes back through / 0.80 before entering the
+    # balance — adding it raw is the v1 double-count.
+    assert cargill["grinding_derived_t"] == pytest.approx(600.0)
+    assert cargill["balance_t"] == pytest.approx(600.0)
+    assert cargill["outflow_exceeds_purchases"] is False
+
+
+@pytest.mark.asyncio
+async def test_transformation_share_is_the_operators_own_exports(
+    seeded: AsyncSession,
+) -> None:
+    """business-rules §7 — STATSER is a GEPEX aggregate, never allocated."""
+    payload = await get_exporters(seeded)
+    cargill = next(e for e in payload["exporters"] if e["exporter"] == "CARGILL")
+    otherco = next(e for e in payload["exporters"] if e["exporter"] == "OTHERCO")
+
+    assert cargill["transformation_share_pct"] == pytest.approx(480 / 2_280 * 100)
+    # Ships beans only — a real zero, not a missing measurement.
+    assert otherco["transformation_share_pct"] == pytest.approx(0.0)
+
+
+@pytest.mark.asyncio
+async def test_growth_below_the_floor_is_suppressed_not_computed(
+    seeded: AsyncSession,
+) -> None:
+    """business-rules §8 — a 200 t base makes any percentage noise.
+
+    Suppressed in the service rather than filtered in the UI, so every consumer
+    applies the same threshold and two of them cannot publish two podiums.
+    """
+    payload = await get_exporters(seeded)
+    assert payload["growth_floor_tonnes"] == pytest.approx(250.0)
+
+    cargill = next(e for e in payload["exporters"] if e["exporter"] == "CARGILL")
+    otherco = next(e for e in payload["exporters"] if e["exporter"] == "OTHERCO")
+    assert cargill["growth_pct"] == pytest.approx(50.0)  # 1 520 t base, above floor
+    assert otherco["growth_pct"] is None  # 200 t base, below floor
+
+    # And the suppressed line cannot reach the podium.
+    assert "OTHERCO" not in [m["exporter"] for m in payload["movers"]["up"]]
+    assert "OTHERCO" not in [m["exporter"] for m in payload["movers"]["down"]]
+
+
+@pytest.mark.asyncio
+async def test_exporters_reconcile_with_the_campaign_totals(
+    seeded: AsyncSession,
+) -> None:
+    payload = await get_exporters(seeded)
+    campaign = await get_campaign(seeded)
+    assert sum(e["exports_total_t"] for e in payload["exporters"]) == pytest.approx(
+        sum(row["exports_total_t"] for row in campaign["monthly"])
+    )
+    assert sum(e["purchases_t"] for e in payload["exporters"]) == pytest.approx(
+        sum(row["purchases_t"] for row in campaign["monthly"])
+    )
+
+
+_NOMINATIVE_GATE = [
+    (ent.COOP_ESSENTIEL, 403),
+    (ent.COOP_PREMIUM, 403),
+    (ent.EXPORT_ESSENTIEL, 403),  # buys destinations, NOT the names behind them
+    (ent.EXPORT_PREMIUM, 200),
+    (ent.EXPORT_PRO, 200),
+    (ent.SIGNAL_PLUS, 200),
+    # `s/ CdC` in the matrix — à la carte, so deliberately NOT in the default
+    # template. The matrix has three distinct ways of saying "not by default" and
+    # they are not interchangeable: `—` not sold, `n/a` meaningless (no exporter
+    # identity), `s/ CdC` sold separately. Only the last is grantable per account.
+    (ent.ORIGIN_DESK, 403),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("tier", "expected"), _NOMINATIVE_GATE)
+async def test_nominative_gate_matches_the_matrix(
+    client_for, enforced: None, tier: str, expected: int
+) -> None:
+    """The tightest row of block ②: Export Essentiel sees destinations but never
+    which operator shipped to them."""
+    async with client_for(tier) as client:
+        response = await client.get("/api/v1/dashboard/origin/exporters")
+    assert response.status_code == expected
+
+
+# ---------------------------------------------------------------------------
+# benchmark (matrix block (2), row 4 — Export Premium / Pro, `n/a` above)
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_benchmark_without_an_identity_is_not_applicable_not_empty(
+    seeded: AsyncSession,
+) -> None:
+    """`n/a` and `—` are different answers and the API must distinguish them.
+
+    Signal+ and Origin Desk have no exporter identity by nature; a freshly
+    created Export Premium account has none yet. Returning a zeroed book would
+    read as "you shipped nothing", which is a different and false statement.
+    """
+    payload = await get_benchmark(seeded, None)
+    assert payload["applicable"] is False
+    assert payload["exporter"] is None
+    assert payload["position"] is None
+
+
+@pytest.mark.asyncio
+async def test_benchmark_ranks_over_every_exporter(seeded: AsyncSession) -> None:
+    entity_id = (
+        await seeded.execute(
+            text(
+                "SELECT id FROM ref_origin_entity "
+                "WHERE entity_type='exporter' AND canonical_name='CARGILL'"
+            )
+        )
+    ).scalar_one()
+
+    payload = await get_benchmark(seeded, entity_id)
+    assert payload["applicable"] is True
+    assert payload["exporter"] == "CARGILL"
+
+    position = payload["position"]
+    # CARGILL ships 2 280 t of a 2 580 t market (OTHERCO ships 300).
+    assert position["exports_total_t"] == pytest.approx(2_280.0)
+    assert position["market_total_t"] == pytest.approx(2_580.0)
+    assert position["market_share_pct"] == pytest.approx(2_280 / 2_580 * 100)
+    # Rank is over the whole population, never a truncated top-N.
+    assert position["rank"] == 1
+    assert position["exporters_ranked"] == 2
+
+
+@pytest.mark.asyncio
+async def test_benchmark_shows_only_the_clients_own_destinations(
+    seeded: AsyncSession,
+) -> None:
+    """The one place a destination is attached to a named operator — and it is
+    the operator asking."""
+    entity_id = (
+        await seeded.execute(
+            text(
+                "SELECT id FROM ref_origin_entity "
+                "WHERE entity_type='exporter' AND canonical_name='OTHERCO'"
+            )
+        )
+    ).scalar_one()
+
+    payload = await get_benchmark(seeded, entity_id)
+    labels = [d["label"] for d in payload["position"]["own_destinations"]]
+    # OTHERCO ships beans only, which the fixture routes to the Netherlands.
+    assert labels == ["PAYS-BAS"]
+    assert "MALAISIE" not in labels
+
+
+@pytest.mark.asyncio
+async def test_benchmark_on_an_entity_the_batch_no_longer_knows(
+    seeded: AsyncSession,
+) -> None:
+    """`ref_origin_entity` is rebuilt on every sync — a stale link must read as
+    'not applicable', never as a zeroed book."""
+    payload = await get_benchmark(seeded, uuid.uuid4())
+    assert payload["applicable"] is False
+    assert payload["position"] is None
+
+
+_BENCHMARK_GATE = [
+    (ent.COOP_ESSENTIEL, 403),
+    (ent.COOP_PREMIUM, 403),
+    (ent.EXPORT_ESSENTIEL, 403),
+    (ent.EXPORT_PREMIUM, 200),
+    (ent.EXPORT_PRO, 200),
+    # `n/a` in the matrix — no exporter identity, so the key is simply absent and
+    # the gate refuses. Distinct from `—`: not meaningless-but-sold, meaningless.
+    (ent.SIGNAL_PLUS, 403),
+    (ent.ORIGIN_DESK, 403),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("tier", "expected"), _BENCHMARK_GATE)
+async def test_benchmark_gate_matches_the_matrix(
+    client_for, enforced: None, tier: str, expected: int
+) -> None:
+    async with client_for(tier) as client:
+        response = await client.get("/api/v1/dashboard/origin/benchmark")
+    assert response.status_code == expected

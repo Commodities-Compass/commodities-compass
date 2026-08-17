@@ -276,3 +276,117 @@ def set_tier() -> int:
 
 if __name__ == "__main__":
     sys.exit(grant_entitlement())
+
+
+def map_exporter() -> int:
+    """Link an account to the exporter it IS, for the benchmark.
+
+    The riskiest write in this module: a wrong mapping shows a client a
+    competitor's book. Three guards, all deliberate.
+
+    **No fuzzy matching, ever** (integration doc §3). The operator passes the
+    exact canonical name; a near-miss is refused with the candidates printed, so
+    the human picks rather than an algorithm guessing. "OLAM" and "OLAM CI" are a
+    different company's book.
+
+    **Confirmation is required** unless `--yes` is passed, and the prompt echoes
+    both sides of the link — the failure this prevents is not a typo in the SQL,
+    it is a plausible-looking name attached to the wrong account.
+
+    **Re-mapping a mapped account is refused** without `--force`: an account
+    already linked is one a human already reviewed, and silently repointing it is
+    how a client starts seeing someone else's flows after an unrelated change.
+    """
+    p = argparse.ArgumentParser(
+        description="Map a tenant account to its exporter entity (benchmark identity)."
+    )
+    p.add_argument("--account", required=True, help="tenant_account.code")
+    p.add_argument(
+        "--exporter",
+        help="EXACT ref_origin_entity.canonical_name. Omit with --list to browse.",
+    )
+    p.add_argument("--list", action="store_true", help="List exporter names and exit.")
+    p.add_argument("--unmap", action="store_true", help="Clear the mapping.")
+    p.add_argument("--force", action="store_true", help="Allow re-mapping.")
+    p.add_argument("--yes", action="store_true", help="Skip the confirmation prompt.")
+    args = p.parse_args()
+
+    with get_session() as session:
+        if args.list:
+            names = session.execute(
+                text(
+                    "SELECT canonical_name FROM ref_origin_entity "
+                    "WHERE entity_type = 'exporter' ORDER BY canonical_name"
+                )
+            ).scalars()
+            for name in names:
+                print(name)
+            return 0
+
+        account = session.execute(
+            select(TenantAccount).where(TenantAccount.code == args.account)
+        ).scalar_one_or_none()
+        if account is None:
+            raise SystemExit(f"No tenant_account with code {args.account!r}.")
+
+        if args.unmap:
+            account.exporter_entity_id = None
+            logger.info(
+                "Unmapped %s — its benchmark now reads 'not applicable'.", args.account
+            )
+            return 0
+
+        if not args.exporter:
+            raise SystemExit("--exporter is required (or --list, or --unmap).")
+
+        if account.exporter_entity_id is not None and not args.force:
+            raise SystemExit(
+                f"{args.account} is already mapped. Re-mapping shows the client a "
+                "different book — pass --force only if that is what you intend."
+            )
+
+        row = session.execute(
+            text(
+                "SELECT id, canonical_name FROM ref_origin_entity "
+                "WHERE entity_type = 'exporter' AND canonical_name = :n"
+            ),
+            {"n": args.exporter},
+        ).one_or_none()
+        if row is None:
+            near = (
+                session.execute(
+                    text(
+                        "SELECT canonical_name FROM ref_origin_entity "
+                        "WHERE entity_type = 'exporter' AND canonical_name ILIKE :q "
+                        "ORDER BY canonical_name LIMIT 10"
+                    ),
+                    {"q": f"%{args.exporter}%"},
+                )
+                .scalars()
+                .all()
+            )
+            raise SystemExit(
+                f"No exporter named {args.exporter!r}. "
+                + (
+                    "Did you mean one of: " + ", ".join(near)
+                    if near
+                    else "Use --list to browse."
+                )
+                + "\nNames are matched EXACTLY on purpose — a near-miss is a "
+                "different company's book."
+            )
+
+        entity_id, canonical = row
+        if not args.yes:
+            answer = input(
+                f"Link account {account.code!r} ({account.name}) to exporter "
+                f"{canonical!r}? This is what the client will see as their own "
+                "flows. [y/N] "
+            )
+            if answer.strip().lower() not in {"y", "yes"}:
+                logger.info("Aborted — nothing written.")
+                return 1
+
+        account.exporter_entity_id = entity_id
+        logger.info("Mapped account=%s → exporter=%s", account.code, canonical)
+    return 0

@@ -196,3 +196,150 @@ class SeasonTotal(BaseModel):
 
 
 OriginMarketViewsResponse.model_rebuild()
+
+
+class BreakdownLine(BaseModel):
+    """One destination or one port, on its own equivalent period.
+
+    ``window`` is carried per line rather than once for the whole view: a
+    destination that stopped shipping in March is compared over the months it did
+    ship, so two lines in the same response can legitimately cover different spans.
+    """
+
+    label: str
+    export_tonnes: float
+    previous_tonnes: float
+    delta_pct: Optional[float] = Field(
+        None,
+        description="Against the SAME months a year earlier, never the previous "
+        "season in full — on a 10-month season that would understate every line "
+        "by two months and read as a collapse. NULL against a zero baseline.",
+    )
+    window: Window
+    share_pct: Optional[float] = None
+
+
+class DestinationConcentration(BaseModel):
+    """Counterparty risk, served rather than left to the client so two consumers
+    cannot disagree about what "top" means."""
+
+    top1_share_pct: Optional[float] = None
+    top3_share_pct: Optional[float] = None
+    count: int
+
+
+class OriginDestinationsResponse(BaseModel):
+    """Matrix block ② row "Destinations & ports agrégés".
+
+    **Aggregated by construction.** The cube carries an exporter dimension on the
+    same rows, but naming who shipped where is `read:watchai:nominative` — a
+    different key, which Export Essentiel does not hold. The exporter dimension is
+    collapsed away in the query, not filtered in the schema.
+    """
+
+    data_as_of: date
+    season: str
+    available_seasons: list[str]
+    previous_season: str
+    destinations: list[BreakdownLine]
+    ports: list[BreakdownLine]
+    concentration: DestinationConcentration
+
+
+class ExporterFlowLine(BaseModel):
+    """One named exporter's season — gated by `read:watchai:nominative`."""
+
+    exporter: str
+    is_gepex_member: bool
+    exports_beans_t: float
+    exports_transformed_t: float
+    exports_total_t: float
+    purchases_t: float
+    grinding_derived_t: float
+    balance_t: float
+    transformation_share_pct: Optional[float] = Field(
+        None,
+        description="This exporter's OWN transformed exports as a share of their "
+        "total (business-rules §7). STATSER is a GEPEX aggregate and is never "
+        "allocated across operators — that would invent a figure nobody measured.",
+    )
+    previous_exports_t: float
+    growth_pct: Optional[float] = Field(
+        None,
+        description="NULL below the 250 t floor: growth off a tiny base is noise, "
+        "not information (§8).",
+    )
+    outflow_exceeds_purchases: bool
+
+
+class ExporterMover(BaseModel):
+    exporter: str
+    growth_pct: Optional[float] = None
+    exports_total_t: float
+    previous_exports_t: float
+
+
+class ExporterMovers(BaseModel):
+    up: list[ExporterMover]
+    down: list[ExporterMover]
+
+
+class OriginExportersResponse(BaseModel):
+    """Matrix block ② row "Flux nominatifs & solde apparent" — Export Premium and up.
+
+    The only view in Section VI that names operators. Every other view collapses
+    the exporter dimension in its query precisely so this one can be sold apart.
+    """
+
+    data_as_of: date
+    season: str
+    available_seasons: list[str]
+    previous_season: str
+    growth_floor_tonnes: float = Field(
+        ...,
+        description="Published so a reader can tell why an exporter is missing "
+        "from the movers list.",
+    )
+    exporters: list[ExporterFlowLine]
+    movers: ExporterMovers
+
+
+class OwnDestinationLine(BaseModel):
+    label: str
+    export_tonnes: float
+    share_pct: Optional[float] = None
+
+
+class BenchmarkPosition(BaseModel):
+    """Where one exporter sits in the origin."""
+
+    exports_total_t: float
+    market_total_t: float
+    market_share_pct: Optional[float] = None
+    rank: Optional[int] = Field(
+        None,
+        description="Over EVERY exporter, not a truncated top-N: being 23rd of "
+        "102 is the information, and a list cut at 20 would report 'unranked' for "
+        "exactly the clients most likely to ask.",
+    )
+    exporters_ranked: int
+    own_destinations: list[OwnDestinationLine]
+
+
+class OriginBenchmarkResponse(BaseModel):
+    """Matrix block ② row "Benchmark « vos flux vs marché »" — Export Premium/Pro.
+
+    ``applicable=False`` is a first-class answer, not an error. The matrix marks
+    this row `n/a` for Signal+ and Origin Desk — they have no exporter identity by
+    nature — and a freshly created account has none yet. Returning an empty book
+    instead would read as "you shipped nothing", which is a different and false
+    statement.
+    """
+
+    data_as_of: date
+    season: str
+    available_seasons: list[str]
+    previous_season: str
+    applicable: bool
+    exporter: Optional[str] = None
+    position: Optional[BenchmarkPosition] = None

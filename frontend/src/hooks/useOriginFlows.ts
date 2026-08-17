@@ -2,6 +2,9 @@ import { useQuery } from '@tanstack/react-query';
 import { originApi } from '@/api/origin';
 import type {
   OriginCampaignResponse,
+  OriginBenchmarkResponse,
+  OriginDestinationsResponse,
+  OriginExportersResponse,
   OriginMarketViewsResponse,
 } from '@/types/origin';
 
@@ -40,6 +43,38 @@ export const useOriginMarketViews = (season?: string, enabled = true) => {
     // Skipped for tiers without `read:watchai:market_views` — firing it would
     // guarantee a 403 and a red line in the console for a section that is simply
     // not sold to them.
+    enabled,
+    ...MONTHLY_QUERY_OPTIONS,
+  });
+};
+
+/** Destinations & ports — Export Essentiel and up. `enabled` mirrors the
+ *  entitlement so an unentitled viewer never fires a request that would 403. */
+export const useOriginDestinations = (season?: string, enabled = true) => {
+  return useQuery<OriginDestinationsResponse>({
+    queryKey: ['origin-destinations', season],
+    queryFn: () => originApi.getDestinations(season),
+    enabled,
+    ...MONTHLY_QUERY_OPTIONS,
+  });
+};
+
+/** Named exporter flows — Export Premium and up, the tightest gate in block ②. */
+export const useOriginExporters = (season?: string, enabled = true) => {
+  return useQuery<OriginExportersResponse>({
+    queryKey: ['origin-exporters', season],
+    queryFn: () => originApi.getExporters(season),
+    enabled,
+    ...MONTHLY_QUERY_OPTIONS,
+  });
+};
+
+/** "Vos flux vs marché" — Export Premium / Pro only. The identity comes from the
+ *  authenticated principal server-side; there is no client-supplied exporter. */
+export const useOriginBenchmark = (season?: string, enabled = true) => {
+  return useQuery<OriginBenchmarkResponse>({
+    queryKey: ['origin-benchmark', season],
+    queryFn: () => originApi.getBenchmark(season),
     enabled,
     ...MONTHLY_QUERY_OPTIONS,
   });

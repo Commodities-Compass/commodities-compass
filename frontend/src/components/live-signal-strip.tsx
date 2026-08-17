@@ -8,6 +8,8 @@ import {
   usePositioning,
 } from '@/hooks/useDashboard';
 import { Eyebrow, DotSeparator, DataValue } from '@/components/editorial';
+import { useEntitlements } from '@/contexts/EntitlementsContext';
+import { ENT } from '@/entitlements';
 
 const SIGNAL_HEX = {
   OPEN: '#10B981',
@@ -57,6 +59,8 @@ interface TickerItem {
   value: string;
   valueColor?: string;
   dot?: string;
+  /** Entitlement gate. Absent = ungated (signal, price, DoD, YTD, session). */
+  show?: boolean;
 }
 
 function TickerCell({ item }: { item: TickerItem }) {
@@ -88,9 +92,20 @@ export default function LiveSignalStrip() {
   const { currentDate } = useDashboardDate();
   const { data: pos } = usePositionStatus(currentDate);
   const { data: chart } = useChartData(5, currentDate);
-  const { data: grid } = useIndicatorsGrid(currentDate);
-  const { data: macro } = useMacroPanel(currentDate);
-  const { data: positioning } = usePositioning(currentDate);
+  // The band is chrome, but the cells in it are not: the technical readouts are
+  // the "Technique + FX" row of the matrix and the stock/COT readouts are
+  // "Positionnement", both of which some tiers holding the ticker do not buy.
+  // Gating per cell rather than hiding the whole band keeps the masthead's
+  // signature for every tier while spending nothing that was not sold — and it
+  // is why the queries behind those cells are skipped, not merely unrendered.
+  const { has } = useEntitlements();
+  const canSeeTechnical = has(ENT.SECTION_MARKET);
+  const canSeePositioning = has(ENT.FEATURE_POSITIONING);
+  const canSeeMacro = has(ENT.FEATURE_MACRO_PANEL);
+
+  const { data: grid } = useIndicatorsGrid(currentDate, canSeeTechnical);
+  const { data: macro } = useMacroPanel(currentDate, canSeeMacro);
+  const { data: positioning } = usePositioning(currentDate, canSeePositioning);
 
   const sortedPoints = (chart?.data ?? [])
     .filter((p) => p.close != null)
@@ -110,7 +125,7 @@ export default function LiveSignalStrip() {
   const percentK = indicators.percentK?.value ?? null;
   const atr = indicators.atr?.value ?? null;
 
-  const items: TickerItem[] = [
+  const allItems: TickerItem[] = [
     {
       key: 'signal',
       label: 'Signal',
@@ -130,15 +145,15 @@ export default function LiveSignalStrip() {
             ? 'var(--color-signal-open)'
             : 'var(--color-signal-hedge)',
     },
-    { key: 'vol', label: 'Volume', value: fmtInt(latest?.volume) },
-    { key: 'oi', label: 'OI', value: fmtInt(latest?.open_interest) },
-    { key: 'rsi', label: 'RSI', value: fmtNum(rsi) },
-    { key: 'macd', label: 'MACD', value: fmtNum(macd) },
-    { key: 'pk', label: '%K', value: fmtNum(percentK) },
-    { key: 'atr', label: 'ATR', value: fmtNum(atr) },
-    { key: 'voi', label: 'V/OI', value: fmtNum(volOi) },
+    { key: 'vol', show: canSeeTechnical, label: 'Volume', value: fmtInt(latest?.volume) },
+    { key: 'oi', show: canSeeTechnical, label: 'OI', value: fmtInt(latest?.open_interest) },
+    { key: 'rsi', show: canSeeTechnical, label: 'RSI', value: fmtNum(rsi) },
+    { key: 'macd', show: canSeeTechnical, label: 'MACD', value: fmtNum(macd) },
+    { key: 'pk', show: canSeeTechnical, label: '%K', value: fmtNum(percentK) },
+    { key: 'atr', show: canSeeTechnical, label: 'ATR', value: fmtNum(atr) },
+    { key: 'voi', show: canSeeTechnical, label: 'V/OI', value: fmtNum(volOi) },
     {
-      key: 'stockEu',
+      key: 'stockEu', show: canSeePositioning,
       label: 'Stock EU',
       value:
         positioning?.stock_eu_tonnes != null
@@ -146,7 +161,7 @@ export default function LiveSignalStrip() {
           : '—',
     },
     {
-      key: 'stockUs',
+      key: 'stockUs', show: canSeePositioning,
       label: 'Stock US',
       value:
         positioning?.stock_us_tonnes != null
@@ -154,12 +169,12 @@ export default function LiveSignalStrip() {
           : '—',
     },
     {
-      key: 'fxDxy',
+      key: 'fxDxy', show: canSeeMacro,
       label: 'FX DXY',
       value: fmtNum(macro?.fx_dxy_proxy, 3),
     },
     {
-      key: 'cotMmEu',
+      key: 'cotMmEu', show: canSeePositioning,
       label: 'COT MM EU',
       value: fmtSignedCompact(positioning?.cot_managed_money_net),
       valueColor:
@@ -170,7 +185,7 @@ export default function LiveSignalStrip() {
             : 'var(--color-signal-hedge)',
     },
     {
-      key: 'cotMmUs',
+      key: 'cotMmUs', show: canSeePositioning,
       label: 'COT MM US',
       value: fmtSignedCompact(positioning?.cot_us_managed_money_net),
       valueColor:
@@ -193,6 +208,8 @@ export default function LiveSignalStrip() {
     },
     { key: 'session', label: 'Session', value: (pos?.date ?? currentDate).slice(0, 10) },
   ];
+
+  const items = allItems.filter((it) => it.show !== false);
 
   const row = (keyPrefix: string) => (
     <div className="inline-flex items-center" aria-hidden={keyPrefix === 'b'}>

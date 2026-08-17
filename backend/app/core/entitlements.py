@@ -154,8 +154,14 @@ ORIGIN_DESK = "origin_desk"
 _CONVICTION = frozenset({FEATURE_SPECIALIST_VOTES, FEATURE_ENSEMBLE_DIAGNOSTICS})
 _TECHNIQUE_FX = frozenset({SECTION_MARKET, FEATURE_MACRO_PANEL})
 
-# Coop Essentiel — "push only" (0 dashboard seats). Entitlements exist so push
-# content can be generated from the same check; no login / no ticker.
+# Coop Essentiel — a real dashboard on one seat (decision of 2026-08-17, which
+# replaced the original push-only design). It holds the ticker like every other
+# tier: the band is chrome, and the cells inside it that belong to rows this tier
+# does not buy (technique, positioning, macro) are filtered per cell by
+# `LiveSignalStrip` against SECTION_MARKET / FEATURE_POSITIONING /
+# FEATURE_MACRO_PANEL. That is why there is no `chrome:ticker:summary` variant
+# key — a reduced band falls out of the keys the tier already holds, and the same
+# filter closes the same leak on Export Essentiel.
 _COOP_ESSENTIEL_KEYS: frozenset[str] = frozenset(
     {
         DECISION_PHYSICAL_SALE,
@@ -164,6 +170,7 @@ _COOP_ESSENTIEL_KEYS: frozenset[str] = frozenset(
         SECTION_PODCAST,
         FEATURE_FARMGATE,
         SECTION_WEATHER_SUMMARY,
+        CHROME_TICKER,
     }
 )
 

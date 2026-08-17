@@ -61,6 +61,47 @@ def test_tier_catalogue_matches_matrix() -> None:
 
 
 @pytest.mark.unit
+def test_coop_essentiel_holds_a_reduced_ticker_by_composition() -> None:
+    """The band is chrome; the cells inside it are sold rows.
+
+    Coop Essentiel became a real one-seat dashboard on 2026-08-17, so it holds
+    `chrome:ticker`. It must NOT hold the keys the technical, positioning and
+    macro cells are filtered against — those are what make the band reduce to
+    signal/price/DoD/YTD/session without a `chrome:ticker:summary` variant.
+    """
+    coop_ess = ent.expand_tier(ent.COOP_ESSENTIEL)
+    assert ent.CHROME_TICKER in coop_ess
+    assert not (
+        {ent.SECTION_MARKET, ent.FEATURE_POSITIONING, ent.FEATURE_MACRO_PANEL}
+        & coop_ess
+    )
+    # Export Essentiel buys Technique + FX but not Positionnement: the band must
+    # be able to show one without the other, which is why the filter is per cell.
+    export_ess = ent.expand_tier(ent.EXPORT_ESSENTIEL)
+    assert {ent.CHROME_TICKER, ent.SECTION_MARKET} <= export_ess
+    assert ent.FEATURE_POSITIONING not in export_ess
+
+
+@pytest.mark.unit
+def test_watchai_block_matches_matrix() -> None:
+    """Matrix block (2), row by row."""
+    coop_ess = ent.expand_tier(ent.COOP_ESSENTIEL)
+    coop_prem = ent.expand_tier(ent.COOP_PREMIUM)
+    export_prem = ent.expand_tier(ent.EXPORT_PREMIUM)
+
+    # Coop Essentiel: the reduced campaign row only.
+    assert coop_ess & ent.WATCHAI_KEYS == {ent.WATCHAI_CAMPAIGN_PUSH}
+    # Coop Premium: campaign (full) + market views, and nothing that names an
+    # operator, a destination or a port.
+    assert coop_prem & ent.WATCHAI_KEYS == {
+        ent.WATCHAI_CAMPAIGN,
+        ent.WATCHAI_MARKET_VIEWS,
+    }
+    # "100 % débloqué dès Export Premium".
+    assert ent.WATCHAI_KEYS - {ent.WATCHAI_CAMPAIGN_PUSH} <= export_prem
+
+
+@pytest.mark.unit
 def test_seat_caps_match_matrix() -> None:
     assert ent.max_seats_for(ent.COOP_ESSENTIEL) == 1  # minimal dashboard
     assert ent.max_seats_for(ent.COOP_PREMIUM) == 2

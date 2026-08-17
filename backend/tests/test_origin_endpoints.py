@@ -321,6 +321,39 @@ async def test_campaign_monthly_series_and_synthesis(seeded: AsyncSession) -> No
     assert payload["month"]["exports_t"] == pytest.approx(860.0)
 
 
+async def test_monthly_balance_is_served_not_left_to_the_client(
+    seeded: AsyncSession,
+) -> None:
+    """The same arithmetic must have one implementation. A client re-deriving
+    `achats − fèves − transformé/0.80` would be free to drift from the season
+    balance computed here (.claude/rules/pipeline-continuity.md)."""
+    october = (await get_campaign(seeded))["monthly"][0]
+
+    # 1 200 t bought, 700 t of beans out, 160 t of product out (= 200 t of beans).
+    assert october["grinding_derived_t"] == pytest.approx(200.0)
+    assert october["balance_t"] == pytest.approx(1_200.0 - 700.0 - 200.0)
+
+
+async def test_monthly_balance_may_be_negative(seeded: AsyncSession) -> None:
+    """A single month can legitimately go negative — that is not an error state,
+    so the field is a plain float rather than something clamped at zero."""
+    batch = (
+        await seeded.execute(
+            text("SELECT id FROM pl_origin_ingest_batch WHERE is_current")
+        )
+    ).scalar_one()
+    await seeded.execute(
+        text(
+            "DELETE FROM pl_origin_purchase_monthly "
+            "WHERE ingest_batch_id = :b AND period_date = '2025-10-01'"
+        ),
+        {"b": batch},
+    )
+
+    october = (await get_campaign(seeded))["monthly"][0]
+    assert october["balance_t"] < 0
+
+
 async def test_ytd_windows_differ_per_source(seeded: AsyncSession) -> None:
     """The §6 rule, visible in the payload: exports and purchases have 3 months,
     grinding 1. A shared window would invent a collapse."""

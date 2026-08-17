@@ -35,6 +35,7 @@ from app.services.origin_balance import (
     compute_season_balance,
     confront_statser,
     cumulative_balance,
+    monthly_balance,
     ytd_block,
 )
 
@@ -215,6 +216,15 @@ def _ytd_blocks(
 
 
 def _monthly_row(row: MonthlyOriginSeries) -> dict[str, Any]:
+    """One month, with its bean-equivalent balance already computed.
+
+    ``balance_t`` is served rather than left to the client: it is the same
+    ``÷ RENDEMENT_BROYAGE`` arithmetic as the season balance, and a consumer
+    re-deriving it would be a second implementation free to drift from this one
+    (.claude/rules/pipeline-continuity.md — the writer receives, it does not
+    recompute). A single month may legitimately be negative: off-season shipments
+    draw on stock bought earlier.
+    """
     return {
         "period": row.period,
         "purchases_t": row.purchases_t,
@@ -222,6 +232,8 @@ def _monthly_row(row: MonthlyOriginSeries) -> dict[str, Any]:
         "exports_transformed_t": row.exports_transformed_t,
         "exports_total_t": row.exports_total_t,
         "grinding_declared_t": row.grinding_declared_t,
+        "grinding_derived_t": monthly_balance(row).grinding_derived_t,
+        "balance_t": monthly_balance(row).balance_t,
     }
 
 

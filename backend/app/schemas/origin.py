@@ -41,6 +41,16 @@ class MonthlyFlow(BaseModel):
         description="STATSER declaration. NULL means not yet published — it trails "
         "the other two sources by 2-3 months — never zero.",
     )
+    grinding_derived_t: float = Field(
+        description="Transformed exports converted back to bean equivalent "
+        "(/ 0.80). NOT the STATSER declaration above."
+    )
+    balance_t: float = Field(
+        description="achats − exports fèves − broyage déduit, for this month. "
+        "Served rather than recomputed client-side so the arithmetic has one "
+        "implementation. May be negative for a single month — off-season "
+        "shipments draw on stock bought earlier."
+    )
 
 
 class YtdComparison(BaseModel):

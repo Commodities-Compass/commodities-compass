@@ -109,13 +109,17 @@ export default function OriginPeriodSelector({
           align="end"
           sideOffset={4}
           collisionPadding={16}
-          className="p-0"
+          // `w-auto` is load-bearing: the shadcn PopoverContent primitive hardcodes
+          // `w-72` (288px), so an inline minWidth cannot shrink it — a class sets
+          // `width` outright. A season label measures 70px; without this the panel
+          // is two-thirds empty.
+          className="p-0 w-auto"
           style={{
             background: 'var(--paper)',
             border: '1px solid var(--ink)',
             borderRadius: 0,
             boxShadow: 'none',
-            minWidth: 160,
+            minWidth: 140,
           }}
         >
           {/* 13 seasons and growing by one a year — the list scrolls inside the

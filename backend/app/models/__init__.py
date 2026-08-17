@@ -33,6 +33,16 @@ from .pipeline import (
     PlSeasonalScore,
 )
 
+# MVP schema — Origin physical flows (WatchAI ingestion)
+from .origin import (
+    PlOriginIngestBatch,
+    RefOriginEntity,
+    PlOriginExportDeclaration,
+    PlOriginPurchaseMonthly,
+    PlOriginGrindingMonthly,
+    PlOriginFlowMonthly,
+)
+
 # MVP schema — Audit tables
 from .audit import AudPipelineRun, AudLlmCall, AudDataQualityCheck, AudAlertEvent
 
@@ -58,6 +68,13 @@ __all__ = [
     "PlFundamentalArticle",
     "PlWeatherObservation",
     "PlSeasonalScore",
+    # Origin physical flows
+    "PlOriginIngestBatch",
+    "RefOriginEntity",
+    "PlOriginExportDeclaration",
+    "PlOriginPurchaseMonthly",
+    "PlOriginGrindingMonthly",
+    "PlOriginFlowMonthly",
     # Audit
     "AudPipelineRun",
     "AudLlmCall",

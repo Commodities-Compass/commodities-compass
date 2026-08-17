@@ -2,7 +2,7 @@
 
 > Loads Côte d'Ivoire physical-origin data (customs exports, exporter purchases, GEPEX grindings) from **a folder on disk** into Compass Postgres.
 > Design: `docs/feature-proposals/watchai/watchai-integration.md` · semantics: `business-rules.md` (both gitignored — working tree only).
-> **Phase 1 scope: local database only.** `--target prod` is refused by the CLI; a prod load is Phase 2 and needs the section at the bottom filled in first.
+> Local is the default target. **A prod load is a deliberate manual write into Cloud SQL** through the bastion — see [Prod load](#prod-load) before running one.
 
 ---
 
@@ -46,7 +46,7 @@ If the folder happens to be a git checkout, branch / SHA / commit date are recor
 |---|---|
 | `--dry-run` | Full run — cube, reconciliation, diff — inside a transaction it rolls back. Nothing persists. |
 | `--skip-compute` | Land the observation tables, skip the cube. Reconciliation is skipped too (it reads the cube). |
-| `--target {local,prod}` | Default `local`. `prod` is refused in Phase 1. |
+| `--target {local,prod}` | Default `local`. `prod` reads `WATCHAI_PROD_DATABASE_URL` and needs the bastion tunnel up. |
 | `--database-url` | Overrides `DATABASE_SYNC_URL`, which overrides the local docker-compose URL. |
 | `--ingested-by` | Operator handle on the batch row. Defaults to the OS user. |
 | `--keep-batches N` | Retention, default 2. The previous batch is what the next run diffs against — do not set 1. |
@@ -202,23 +202,62 @@ The CLI prints a warning when the source is a git checkout on a branch other tha
 
 ---
 
-## Phase 2 — prod load (not yet authorised)
+<a id="prod-load"></a>
+## Prod load
 
-`--target prod` currently raises. Before it is enabled, this section must specify:
+There is no Cloud Run job behind this: a human opens a tunnel and writes ~172 k rows into prod Cloud SQL. That sits in the third branch of [migrations-prod-via-main-only](../../.claude/rules/migrations-prod-via-main-only.md) §3 — *"un ordre direct du user, en pleine conscience qu'il sort du process"*. **Never a `psql` one-off**: the CLI is the only path, because `pl_origin_ingest_batch` is the only record the operation happened.
 
-1. The bastion tunnel setup (`.local/db-prod.sh up`) and the exact connection string.
-2. Confirmation that migration `n9c0d1e2f3g4` has landed on `main` and been applied by a Cloud Run cold start — **never** `alembic upgrade head` from a feature branch (`.claude/rules/migrations-prod-via-main-only.md`).
-3. A mandatory `--dry-run` against prod first, with the restatement diff reviewed.
-4. `--ingested-by` set to a real human, since `pl_origin_ingest_batch` is the only record the operation happened.
+### Before you start
 
-A manual CLI writing 172k rows into prod Cloud SQL sits in the third branch of the migrations rule — *"un ordre direct du user, en pleine conscience qu'il sort du process"*. Never a `psql` one-off.
+1. **The migration must already be in prod.** `n9c0d1e2f3g4` ships with `main` and is applied by `start.sh` on a Cloud Run cold start — never `alembic upgrade head` through the tunnel from any branch. Confirm:
+   ```
+   ./.local/db-prod.sh exec "SELECT version_num FROM pl_alembic_version;"
+   ./.local/db-prod.sh exec "SELECT count(*) FROM pl_origin_flow_monthly;"
+   ```
+2. **Have the source at hand.** The same `watch-ai` checkout the reconciliation was verified against — see [Spec provenance and drift](#spec-provenance-and-drift). A source lagging the app is normal; a source *ahead* of the pinned commit means re-verifying the goldens first.
+
+### The load
+
+```bash
+./.local/db-prod.sh up                    # creates the bastion VM + tunnel on :5434
+export WATCHAI_PROD_DATABASE_URL='postgresql://cc_app:<password>@127.0.0.1:5434/commodities_compass'
+
+# 1. Mandatory rehearsal — writes nothing, rolls the transaction back.
+poetry run watchai-sync --source ../watch-ai --target prod --dry-run
+
+# 2. Read the restatement diff and the reconciliation block. Only then:
+poetry run watchai-sync --source ../watch-ai --target prod --ingested-by "<your name>"
+
+./.local/db-prod.sh down                  # closes the tunnel and DELETES the VM
+```
+
+The password lives in `.local/db-prod.sh` (gitignored). **Never** put the URL in the repo, in a shell history you export, or in a `.env` that ships.
+
+### The two guards, and why they exist
+
+| Guard | Fails when | Why |
+|---|---|---|
+| `ProdTargetNotConfiguredError` | `--target prod` with no `WATCHAI_PROD_DATABASE_URL` | A forgotten tunnel would otherwise fall through to the **local** default and print a successful load. The operator would have no way to tell. |
+| `ProdOperatorRequiredError` | a prod write with no explicit `--ingested-by` | The batch row is the only audit trail. Defaulting to the OS user stamps whoever held the tunnel, which is not an accountable answer to "who loaded this". A `--dry-run` is exempt, so the mandatory rehearsal is never a reason to skip. |
+
+`--database-url` overrides both targets and is checked first — an explicitly passed connection string is already a deliberate act, and a flag that silently does nothing is worse than one that obeys.
+
+### After
+
+```
+./.local/db-prod.sh exec "SELECT batch_id, ingested_by, ingested_at, source_commit
+                          FROM pl_origin_ingest_batch ORDER BY ingested_at DESC LIMIT 3;"
+```
+
+Then check the section end to end: `GET /api/v1/dashboard/origin/campaign` must return 200 rather than the 503 it serves while the tables are empty.
 
 ---
 
-## Out of Phase 1 scope
+## The material balance lives elsewhere
 
-The **material balance** (business-rules §4–§5) lives in the Phase 3 service, not here. Two things to carry forward when it ships:
+The **material balance** (business-rules §4–§5) is not computed here — it is a serving-layer concern, shipped in `app/services/origin_balance.py` (PR #94). This job lands facts; the balance is derived at query time. Three things that were learned building it:
 
 - It is bean-equivalent arithmetic: `broyage_deduit_t = transfo_exporte_t / RENDEMENT_BROYAGE`, then `solde_t = achats_t − feves_exportees_t − broyage_deduit_t`. Adding transformed exports raw is the v1 double-count Julien fixed on 2026-07-17 (124 % taux de sortie, negative solde).
 - **Grinding is derived, not read.** STATSER becomes a *confrontation* — the gap between derived and declared is published as a consistency signal. That is what lets the balance recover the 2-3 months STATSER lags by, and it confines the GEPEX-perimeter bias to the confrontation alone.
-- The two invariants — `0 ≤ taux_sortie_pct ≤ 100` and `solde_t ≥ 0` — belong in the test suite as assertions, not in a comment. Either failing is the signature of a double-count.
+- **Those two "invariants" are not invariants.** `0 ≤ taux_sortie_pct ≤ 100` and `solde_t ≥ 0` were ported as assertions and failed immediately: **2021-2022 reaches 108,1 %**, because 34 exporters shipping 102 829 t are absent from the purchase master (102 exporters on the export side, 81 on the purchase side) and stock carries across seasons. They are also algebraically one statement, not two. They ship as the flag `outflow_exceeds_purchases` — hence *solde apparent*. See [business-rules.md](../feature-proposals/watchai/business-rules.md) §4.3.
+- The STATSER confrontation is computed **GEPEX on both sides**. Comparing all-CI derived against GEPEX declared is a perimeter error that silently changes the gap; `confront_statser` takes `perimeter` as a required, non-defaulted keyword so it cannot recur.

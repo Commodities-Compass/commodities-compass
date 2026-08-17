@@ -494,8 +494,24 @@ All API endpoints are prefixed with `/v1` and include:
   - `GET /audio/info` - Audio metadata (requires auth)
 - `/data/*` - Data series export (requires auth, CSV only):
   - `GET /data/export?series=…&from=YYYY-MM-DD&to=YYYY-MM-DD&format=csv` - Streams a `pl_*` series as a CSV attachment over an inclusive date range. Series: `ohlcv`, `indicators`, `fx`, `cot_eu`, `cot_us`, `stocks`, `weather`. `ohlcv`/`indicators` read the roll-safe `v_contract_data_chained` view (front-month by OI/volume). Any valid Auth0 user (single shared-view model — no keys/quotas/metering; that's the co-construct Enterprise API). Rate-limited 30/min. Service: `app/services/export_service.py`.
+- `/dashboard/origin/*` - WatchAI physical origin flows (Côte d'Ivoire), matrix block ②. Entitlement-gated, monthly grain:
+  - `GET /dashboard/origin/campaign?season=YYYY-YYYY` - monthly purchases/exports/beans/transformed/grindings + per-row balance + season-to-date vs the **equivalent period** of the previous season. Gate: `read:watchai:campaign_monthly` or `:reduced`.
+  - `GET /dashboard/origin/market-views?season=…` - season totals, 6-line product mix, bean-equivalent material balance + STATSER confrontation. Gate: `read:watchai:market_views`.
+  - Both return **503** while `pl_origin_*` is empty — ingestion is manual (`poetry run watchai-sync`), there is no job to wait on. Service: `app/services/origin_flow_service.py` + `origin_balance.py`.
 - `/dashboard/non-trading-days` - Exchange holidays + latest display_date for calendar:
   - `GET /dashboard/non-trading-days?year=2026` - Returns non-trading weekday dates and `latest_trading_day` (= `MAX(display_date)` from actual data)
+
+## WatchAI Origin Flows (matrix block ②)
+
+Côte d'Ivoire **physical** flows — customs export declarations, exporter purchases, GEPEX grindings — behind Section VI "Marché physique". Independent of the daily pipeline: **monthly** grain, commodity-level, no contract, no scheduler. **Full docs: [docs/runbooks/watchai-ingestion.md](docs/runbooks/watchai-ingestion.md)** (read before any load).
+
+- **Ingestion is manual and has no Cloud Run job.** The upstream is a `watch-ai` checkout of files, not an API: `poetry run watchai-sync --source ../watch-ai [--dry-run]`. Local is the default target; **a prod load is a deliberate act** through the IAP bastion (`--target prod` + `WATCHAI_PROD_DATABASE_URL` + a named `--ingested-by`) — see the runbook's *Prod load* section. `pl_origin_ingest_batch` is the only audit trail; never load via `psql`.
+- **Tables**: `pl_origin_{declaration,purchase,grinding,entity}` (facts) → `pl_origin_flow_monthly` (the cube) + `pl_origin_ingest_batch`. Batch identity is a **content hash** of the source files, so re-running on unchanged files is a no-op regardless of the upstream commit.
+- **Material balance is bean-equivalent**: `broyage_deduit_t = transfo_exporte_t / 0.80` before entering `solde_t = achats_t − feves_exportees_t − broyage_deduit_t`. Adding transformed exports raw is the v1 double-count that printed 124 % outflow.
+- **`solde ≥ 0` is NOT an invariant.** 2021-2022 reaches 108,1 % because 34 exporters shipping 102 829 t are absent from the purchase master and stock carries across seasons. It is published as the flag `outflow_exceeds_purchases` ("Sorties > achats"), never a 500 — hence *solde apparent*.
+- **STATSER is confronted, not consumed**: grindings are derived from transformed exports and compared against the declaration, **GEPEX on both sides** (`perimeter` is a required non-defaulted kwarg in `confront_statser`). This is what lets the balance recover the 2-3 months STATSER lags by.
+- **Season-to-date is a month-set intersection per source**, each with its **own** window: grindings typically compare 7 months where exports compare 10. Forcing a shared window invents a ~30 % collapse that is pure publication lag — the window is printed under every line.
+- **Spec drift is the top risk**: semantics are pinned to `plakoplister/watch-ai@11336ef` (`refonte-da-v2`), an active branch. `RENDEMENT_BROYAGE = 0.80` is the constant to watch; the reconciliation gate skips (never fails) when the source file-set hash differs.
 
 ## Per-Client Entitlement & Tenancy
 
@@ -635,7 +651,7 @@ For terminal-first error triage (Claude or human): see [docs/runbooks/sentry-tri
 
 ## Development Notes
 
-- Backend uses Poetry scripts: `poetry run dev`, `poetry run lint`, `poetry run daily-analysis`, `poetry run meteo-agent`, `poetry run compass-brief`, `poetry run press-review`, `poetry run barchart-scraper`, `poetry run ice-stocks-scraper`, `poetry run cftc-scraper`, `poetry run compute-indicators`, `poetry run set-farmgate-price`, `poetry run seed-gcp`, `poetry run seed-trading-calendar`
+- Backend uses Poetry scripts: `poetry run dev`, `poetry run lint`, `poetry run watchai-sync`, `poetry run daily-analysis`, `poetry run meteo-agent`, `poetry run compass-brief`, `poetry run press-review`, `poetry run barchart-scraper`, `poetry run ice-stocks-scraper`, `poetry run cftc-scraper`, `poetry run compute-indicators`, `poetry run set-farmgate-price`, `poetry run seed-gcp`, `poetry run seed-trading-calendar`
 - Frontend environment variables exposed via custom Vite `define` config (no VITE_ prefix needed)
 - Database migrations managed via Alembic (migrations are idempotent for safe GCP re-application)
 - Pre-commit hooks run via Husky (backend: ruff + pyright, frontend: eslint fix)

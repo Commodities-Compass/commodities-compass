@@ -10,9 +10,15 @@ import StressHistoryBlock from '@/components/weather/StressHistoryBlock';
 interface WeatherUpdateCardProps {
   targetDate?: string;
   className?: string;
+  /** "résumé hebdo" tier: show the weekly campaign block only, hide daily detail. */
+  summary?: boolean;
 }
 
-export default function WeatherUpdateCard({ targetDate, className }: WeatherUpdateCardProps) {
+export default function WeatherUpdateCard({
+  targetDate,
+  className,
+  summary = false,
+}: WeatherUpdateCardProps) {
   const { t } = useTranslation();
   const { data, isLoading, error } = useWeather(targetDate);
   const [isBulletinOpen, setIsBulletinOpen] = useState(true);
@@ -48,6 +54,12 @@ export default function WeatherUpdateCard({ targetDate, className }: WeatherUpda
     <section className={className} style={{ padding: '24px 0' }}>
       <SectionHeader numeral="V" title="Weather Intelligence" />
 
+      {summary && (
+        <Eyebrow as="div" tone="subtle" tracking="0.2em" style={{ marginBottom: 12 }}>
+          {t('weather.weekly_summary_label', 'Résumé hebdomadaire')}
+        </Eyebrow>
+      )}
+
       {data.campaign && data.seasons && data.seasons.length > 0 && (
         <CampaignBlock
           campaign={data.campaign}
@@ -56,14 +68,14 @@ export default function WeatherUpdateCard({ targetDate, className }: WeatherUpda
         />
       )}
 
-      {data.stress_history && data.stress_history.length > 0 && (
+      {!summary && data.stress_history && data.stress_history.length > 0 && (
         <StressHistoryBlock
           history={data.stress_history}
           harmattanByLocation={harmattanByLocation}
         />
       )}
 
-      {data.description && (
+      {!summary && data.description && (
         <div
           style={{
             padding: '16px 18px',

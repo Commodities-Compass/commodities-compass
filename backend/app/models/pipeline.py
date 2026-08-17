@@ -688,12 +688,17 @@ class PlOfficialFarmgatePrice(Base):
     __table_args__ = (
         UniqueConstraint(
             "region",
+            "campaign_type",
             "effective_date",
             "announced_date",
-            name="uq_farmgate_region_effective_announced",
+            name="uq_farmgate_region_campaign_effective_announced",
         ),
         Index("ix_farmgate_region_effective", "region", "effective_date"),
         CheckConstraint("region IN ('civ', 'ghana')", name="ck_farmgate_region"),
+        CheckConstraint(
+            "campaign_type IN ('principale', 'intermediaire')",
+            name="ck_farmgate_campaign",
+        ),
         CheckConstraint(
             "unit IN ('per_kg', 'per_bag_64kg', 'per_tonne')",
             name="ck_farmgate_unit",
@@ -709,6 +714,11 @@ class PlOfficialFarmgatePrice(Base):
         server_default=text("gen_random_uuid()"),
     )
     region: Mapped[str] = mapped_column(VARCHAR(10), nullable=False)
+    # Sub-campaign: 'principale' (main crop, Oct→Mar) | 'intermediaire' (mid-crop,
+    # Apr→Sep). The CCC/COCOBOD guarantee a distinct price per sub-campaign.
+    campaign_type: Mapped[str] = mapped_column(
+        VARCHAR(16), nullable=False, server_default="principale"
+    )
     season_label: Mapped[str] = mapped_column(VARCHAR(20), nullable=False)
     effective_date: Mapped[date] = mapped_column(DATE, nullable=False)
     announced_date: Mapped[Optional[date]] = mapped_column(DATE)

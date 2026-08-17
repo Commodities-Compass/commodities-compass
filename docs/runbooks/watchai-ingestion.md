@@ -1,7 +1,7 @@
 # Runbook — WatchAI origin ingestion (`watchai-sync`)
 
 > Loads Côte d'Ivoire physical-origin data (customs exports, exporter purchases, GEPEX grindings) from **a folder on disk** into Compass Postgres.
-> Design: `docs/feature-proposals/watchai/watchai-integration.md` · semantics: `business-rules.md` (both gitignored — working tree only).
+> Design: [watchai-integration.md](../watchai/watchai-integration.md) · semantics: [business-rules.md](../watchai/business-rules.md).
 > Local is the default target. **A prod load is a deliberate manual write into Cloud SQL** through the bastion — see [Prod load](#prod-load) before running one.
 
 ---
@@ -259,5 +259,5 @@ The **material balance** (business-rules §4–§5) is not computed here — it 
 
 - It is bean-equivalent arithmetic: `broyage_deduit_t = transfo_exporte_t / RENDEMENT_BROYAGE`, then `solde_t = achats_t − feves_exportees_t − broyage_deduit_t`. Adding transformed exports raw is the v1 double-count Julien fixed on 2026-07-17 (124 % taux de sortie, negative solde).
 - **Grinding is derived, not read.** STATSER becomes a *confrontation* — the gap between derived and declared is published as a consistency signal. That is what lets the balance recover the 2-3 months STATSER lags by, and it confines the GEPEX-perimeter bias to the confrontation alone.
-- **Those two "invariants" are not invariants.** `0 ≤ taux_sortie_pct ≤ 100` and `solde_t ≥ 0` were ported as assertions and failed immediately: **2021-2022 reaches 108,1 %**, because 34 exporters shipping 102 829 t are absent from the purchase master (102 exporters on the export side, 81 on the purchase side) and stock carries across seasons. They are also algebraically one statement, not two. They ship as the flag `outflow_exceeds_purchases` — hence *solde apparent*. See [business-rules.md](../feature-proposals/watchai/business-rules.md) §4.3.
+- **Those two "invariants" are not invariants.** `0 ≤ taux_sortie_pct ≤ 100` and `solde_t ≥ 0` were ported as assertions and failed immediately: **2021-2022 reaches 108,1 %**, because 34 exporters shipping 102 829 t are absent from the purchase master (102 exporters on the export side, 81 on the purchase side) and stock carries across seasons. They are also algebraically one statement, not two. They ship as the flag `outflow_exceeds_purchases` — hence *solde apparent*. See [business-rules.md](../watchai/business-rules.md) §4.3.
 - The STATSER confrontation is computed **GEPEX on both sides**. Comparing all-CI derived against GEPEX declared is a perimeter error that silently changes the gap; `confront_statser` takes `perimeter` as a required, non-defaulted keyword so it cannot recur.

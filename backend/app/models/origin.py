@@ -1,7 +1,7 @@
 """Origin physical-flow tables — Côte d'Ivoire customs exports, purchases, grindings.
 
 Ingested from the WatchAI monthly parquet masters by ``poetry run watchai-sync``.
-Design: docs/feature-proposals/watchai/watchai-integration.md §3.
+Design: docs/watchai/watchai-integration.md §3.
 
 Two invariants shape every table here:
 

@@ -12,7 +12,7 @@ parquet files on an OVH VPS. This migration lands the Compass-side schema so
 the data can be replicated into our Postgres and served under Compass
 entitlements, with no runtime coupling to that VPS.
 
-Design: docs/feature-proposals/watchai/watchai-integration.md §3.
+Design: docs/watchai/watchai-integration.md §3.
 
 What this migration does
 ------------------------

@@ -1,6 +1,6 @@
 """Material balance for origin physical flows — pure arithmetic, no I/O.
 
-Spec: `docs/feature-proposals/watchai/business-rules.md` §4-§6.
+Spec: `docs/watchai/business-rules.md` §4-§6.
 
 This module is deliberately free of database and HTTP concerns: it takes monthly
 tonnages in, returns computed blocks out. That is what makes the invariants below

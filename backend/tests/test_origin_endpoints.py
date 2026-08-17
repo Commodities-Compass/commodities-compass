@@ -40,6 +40,9 @@ PREV_SEASON = "2024-2025"
 # load balancer exposes /v1, and a literal would pass locally and 404 in CI.
 CAMPAIGN_URL = f"{settings.API_V1_STR}/dashboard/origin/campaign"
 MARKET_VIEWS_URL = f"{settings.API_V1_STR}/dashboard/origin/market-views"
+DESTINATIONS_URL = f"{settings.API_V1_STR}/dashboard/origin/destinations"
+EXPORTERS_URL = f"{settings.API_V1_STR}/dashboard/origin/exporters"
+BENCHMARK_URL = f"{settings.API_V1_STR}/dashboard/origin/benchmark"
 
 
 # ---------------------------------------------------------------------------
@@ -632,7 +635,7 @@ async def test_destinations_gate_matches_the_matrix(
 ) -> None:
     """Matrix row "Destinations & ports agrégés": `—` for both coop tiers."""
     async with client_for(tier) as client:
-        response = await client.get("/api/v1/dashboard/origin/destinations")
+        response = await client.get(DESTINATIONS_URL)
     assert response.status_code == expected
 
 
@@ -734,7 +737,7 @@ async def test_nominative_gate_matches_the_matrix(
     """The tightest row of block ②: Export Essentiel sees destinations but never
     which operator shipped to them."""
     async with client_for(tier) as client:
-        response = await client.get("/api/v1/dashboard/origin/exporters")
+        response = await client.get(EXPORTERS_URL)
     assert response.status_code == expected
 
 
@@ -834,5 +837,5 @@ async def test_benchmark_gate_matches_the_matrix(
     client_for, enforced: None, tier: str, expected: int
 ) -> None:
     async with client_for(tier) as client:
-        response = await client.get("/api/v1/dashboard/origin/benchmark")
+        response = await client.get(BENCHMARK_URL)
     assert response.status_code == expected

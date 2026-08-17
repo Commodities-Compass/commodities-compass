@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, within } from '../../test/test-utils';
+import { fireEvent, render, screen } from '../../test/test-utils';
 import { ENT } from '@/entitlements';
 import { campaign, marketViews, transformation } from './fixtures';
 
@@ -54,11 +54,19 @@ describe('Section VI — entitlement-driven composition', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('season selector is reachable and lists every available season', () => {
+  it('season selector shows the current season and lists every available one', async () => {
     held.add(ENT.WATCHAI_CAMPAIGN);
     render(<OriginFlowsCard />);
-    const select = screen.getByRole('combobox');
-    expect(within(select).getAllByRole('option')).toHaveLength(3);
+
+    // Editorial dropdown, not a native <select>: the options exist only once the
+    // panel is open, which is what keeps the list inside the brand's own styling.
+    const trigger = screen.getByRole('button', { expanded: false });
+    expect(trigger).toHaveTextContent('2025-2026');
+
+    fireEvent.click(trigger);
+    const options = await screen.findAllByRole('option');
+    expect(options.map((o) => o.textContent)).toEqual(['2025-2026', '2024-2025', '2021-2022']);
+    expect(options[0]).toHaveAttribute('aria-selected', 'true');
   });
 });
 

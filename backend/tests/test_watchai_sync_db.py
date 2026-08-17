@@ -257,15 +257,16 @@ def test_is_bean_equivalent_is_generated_from_product_code(
     """A GENERATED column so no query can re-list the bean set and get it wrong."""
     batch_id = _load(sync_db_session)
 
-    flags = dict(
-        sync_db_session.execute(
+    flags = {
+        product: is_bean
+        for product, is_bean in sync_db_session.execute(
             text(
                 "SELECT product_code, is_bean_equivalent FROM pl_origin_flow_monthly "
                 "WHERE ingest_batch_id = :b"
             ),
             {"b": batch_id},
-        ).all()
-    )
+        )
+    }
     assert flags == {"FEVES": True, "MASSE": False}
 
 

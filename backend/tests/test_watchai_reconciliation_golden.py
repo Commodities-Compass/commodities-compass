@@ -229,7 +229,8 @@ def test_quality_report_records_the_known_source_defects(
 
     # On `main` the absent money values were NULL; on `refonte-da-v2` they are 0.
     # Either way the sentinel counter is the one that always carries the signal.
-    assert report["declarations_sentinel_valcaf"] > 0
+    sentinel = report["declarations_sentinel_valcaf"]
+    assert isinstance(sentinel, int) and sentinel > 0
     absent = report["entities_absent_from_mappings"]
     assert isinstance(absent, dict)
     assert absent["exporters"], "expected exporters absent from Entity_Mappings.xlsx"

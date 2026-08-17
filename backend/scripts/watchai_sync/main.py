@@ -244,8 +244,7 @@ def _print_summary(summary: db_writer.BatchSummary, dry_run: bool) -> None:
         return
 
     print("  restatement  : HISTORY MOVED vs the previous batch")
-    for dataset, changes in summary.restatement.items():
-        rows = changes if isinstance(changes, list) else []
+    for dataset, rows in summary.restatement.items():
         print(f"    {dataset}: {len(rows)} month(s) changed")
         for change in rows[:12]:
             print(

@@ -230,7 +230,7 @@ def test_purchases_sum_exporter_aliases_sharing_a_month() -> None:
 
     assert len(batch.purchases) == 2
     cargill = batch.purchases[batch.purchases["exporter_name"] == "CARGILL"]
-    assert float(cargill["net_weight_kg"].iloc[0]) == 3_500.0
+    assert cargill["net_weight_kg"].tolist() == [3_500.0]
     # And the natural key really is unique afterwards.
     assert not batch.purchases.duplicated(["period_date", "exporter_name"]).any()
 

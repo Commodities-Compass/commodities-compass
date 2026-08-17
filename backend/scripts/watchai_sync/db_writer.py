@@ -37,6 +37,14 @@ logger = logging.getLogger(__name__)
 
 EntityIndex = dict[tuple[str, str], uuid.UUID]
 
+# One month whose total moved: {"period": "2026-03-01", "previous": …,
+# "current": …, "delta": …}. Typed as a mapping to object because it is a JSON
+# blob, but the *shape* around it is precise so consumers can index it.
+RestatementChange = dict[str, object]
+# dataset label ("exports_tonnes" | "purchases_tonnes" | "grindings_tonnes")
+# → the months that moved.
+Restatement = dict[str, list[RestatementChange]]
+
 # The natural key of one cube cell. Kept as a module constant so the INSERT, the
 # uniqueness assert and the table constraint cannot drift apart.
 _CUBE_KEY = (
@@ -55,7 +63,7 @@ class BatchSummary:
     batch_id: uuid.UUID
     row_counts: dict[str, int]
     cube_rows: int
-    restatement: dict[str, object] | None
+    restatement: Restatement | None
     previous_batch_id: uuid.UUID | None
     source_changes: dict[str, list[str]] = field(default_factory=dict)
 
@@ -509,7 +517,7 @@ def diff_restatement(
     session: Session,
     new_batch_id: uuid.UUID,
     previous_batch_id: uuid.UUID | None,
-) -> dict[str, object] | None:
+) -> Restatement | None:
     """Report every month whose totals moved against the current batch.
 
     Returns ``None`` on the first-ever load (nothing to compare) and ``{}`` when
@@ -524,7 +532,7 @@ def diff_restatement(
     if previous_batch_id is None:
         return None
 
-    moved: dict[str, object] = {}
+    moved: Restatement = {}
     for label, sql in _RESTATEMENT_QUERIES.items():
         rows = session.execute(
             text(sql),
@@ -632,7 +640,7 @@ def current_batch_id(session: Session) -> uuid.UUID | None:
 def promote_batch(
     session: Session,
     batch_id: uuid.UUID,
-    restatement: dict[str, object] | None,
+    restatement: Restatement | None,
 ) -> None:
     """Make this batch the served one, recording the restatement alongside.
 

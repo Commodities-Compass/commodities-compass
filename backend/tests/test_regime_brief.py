@@ -44,9 +44,26 @@ _RATIONALE = "ABSTAIN HEDGE->MONITOR: judge contradicts at conf=3 (< flip bar 4)
 def _data(language: str = "fr") -> BriefData:
     return BriefData(
         session_date=date_cls(2026, 8, 17),
+        target_date=date_cls(2026, 8, 18),
         contract_id=uuid.uuid4(),
         contract_code="CAU26",
         language=language,
+        technicals_snapshot=(
+            "Date close : 2026-08-17\n"
+            "  CLOSE=8,000.00 | HIGH=8,060.00 | LOW=7,930.00\n"
+            "  VOLUME=10311 | OI=42000 | IV=0.45\n"
+            "  STOCK_US=233,799.00 | STOCK_EU=29,128.80 | COM_NET=-20476"
+        ),
+        watch_lines=(
+            "> À SURVEILLER AUJOURD'HUI :",
+            "        • Baissier si le cours casse le SUPPORT 1 (7850).",
+        ),
+        ytd_score=86.68,
+        farmgate=None,
+        press_sentiment="Prudence constructive.",
+        meteo_summary="Conditions normales sur les six zones.",
+        meteo_impact="2/10; pluies conformes.",
+        meteo_trajectory="Campagne — petite saison sèche : santé moyenne 4.8/5.",
         regime=RegimeCall(
             decision="OPEN", regime="bull", specialist="bull", prob_up=0.6123
         ),
@@ -163,23 +180,57 @@ class TestFilenames:
 
 
 class TestRendering:
+    def test_carries_all_six_sections(self) -> None:
+        """The brief is the whole of Compass — the podcast maps onto each section.
+
+        Ship a thinner brief and the prompt breaks: it looks for the YTD at
+        point 2, section II at point 4, the stocks at point 7 and the TO WATCH
+        alerts at point 8.
+        """
+        brief = render_brief(_data(), _narrative())
+
+        for header in (
+            "I — SIGNAL",
+            "II — LECTURE ÉDITORIALE",
+            "III — ÉCO & REVUE DE PRESSE",
+            "IV — WEATHER WATCH",
+            "V — PHOTO TECHNIQUE",
+            "VI — RECOMMANDATIONS OPÉRATIONNELLES",
+        ):
+            assert header in brief, f"section manquante : {header}"
+
     def test_figures_come_from_the_data_not_the_prose(self) -> None:
         """facts/voice split: the template owns every number."""
         brief = render_brief(_data(), _narrative())
 
-        assert "8 000" in brief  # close, rendered by the template
-        assert "+100" in brief  # change vs previous close
-        assert "+1.27 %" in brief  # percent change, computed not retyped
-        assert "RSI 14j : 53" in brief  # RSI (1 decimal, value-agnostic)
-        assert "7 850" in brief and "8 150" in brief  # S1 / R1
-        assert "10 311" in brief and "42 000" in brief  # volume / OI
+        assert "CLOSE=8,000.00" in brief
+        assert "STOCK_US=233,799.00" in brief  # stocks — podcast point 7
+        assert "COM_NET=-20476" in brief
+        assert "SUPPORT 1 (7850)" in brief  # TO WATCH — podcast point 8
+
+    def test_ytd_is_present_for_the_podcast(self) -> None:
+        """Point 2 of the prompt cites the YTD verbatim."""
+        brief = render_brief(_data(), _narrative())
+
+        assert "+86.68%" in brief
 
     def test_published_signal_is_the_fused_call(self) -> None:
         """MONITOR (judge) must show, not OPEN (regime's raw base call)."""
         brief = render_brief(_data(), _narrative())
 
         assert "MONITOR" in brief
-        assert "Conviction : 3/5" in brief
+        # Confidence carries its rationale — the prompt rewords that sentence.
+        assert "3/5 — Une normalisation" in brief
+
+    def test_editorial_section_names_no_mechanism(self) -> None:
+        """Section II is the only track-specific part, and it stays business-facing."""
+        brief = render_brief(_data(), _narrative())
+
+        assert "Régime de marché identifié : tendance haussière établie" in brief
+        # CONTRADICT → the arbitration wording, never the raw stance token.
+        assert "s'oppose à la position technique" in brief
+        assert "CONTRADICT" not in brief
+        assert "bull" not in brief
 
     def test_narrative_sections_are_present(self) -> None:
         brief = render_brief(_data(), _narrative())
@@ -197,6 +248,7 @@ class TestRendering:
     def test_english_brief_uses_english_labels(self) -> None:
         brief = render_brief(_data("en"), _narrative())
 
-        assert "TODAY'S SIGNAL" in brief
-        assert "MARKET" in brief
-        assert "SIGNAL DU JOUR" not in brief
+        assert "II — EDITORIAL READ" in brief
+        assert "III — ECO & PRESS REVIEW" in brief
+        assert "Market regime identified: established uptrend" in brief
+        assert "LECTURE ÉDITORIALE" not in brief

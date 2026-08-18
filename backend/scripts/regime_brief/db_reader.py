@@ -19,6 +19,15 @@ from typing import Optional
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from scripts._shared.brief_common import (
+    compute_ytd_score,
+    read_meteo,
+    read_press,
+    read_seasonal_trajectory,
+    read_technicals,
+)
+from scripts._shared.farmgate_brief import read_farmgate
+
 logger = logging.getLogger(__name__)
 
 
@@ -71,15 +80,33 @@ class Technicals:
 
 @dataclass(frozen=True)
 class BriefData:
+    """Everything one brief needs, in one language.
+
+    The brief is the whole of Compass, not just the algorithm's call — so this
+    carries the market-wide inputs (press, weather, campaign trajectory,
+    technicals, guaranteed farmgate price, YTD) alongside the two decision
+    layers. Only the editorial section is track-specific; every field below is
+    read by the same shared readers the other tracks use.
+    """
+
     session_date: date_cls
+    target_date: date_cls
     contract_id: uuid.UUID
     contract_code: str
     language: str
     regime: RegimeCall
     judge: JudgeCall
     technicals: Technicals
+    technicals_snapshot: str
+    watch_lines: tuple[str, ...]
+    ytd_score: Optional[float]
+    farmgate: object | None
     press_summary: str
     press_impact: str
+    press_sentiment: str
+    meteo_summary: str
+    meteo_impact: str
+    meteo_trajectory: str
     weather_body: str
 
 
@@ -192,26 +219,20 @@ def _fetch_technicals(
     )
 
 
-def _fetch_press(
-    session: Session, session_date: date_cls, language: str
-) -> tuple[str, str]:
-    row = session.execute(
-        text(
-            """
-            SELECT summary, COALESCE(impact_synthesis, '') AS impact
-            FROM pl_fundamental_article
-            WHERE date = :d AND language = :l AND is_active = true
-            ORDER BY created_at DESC
-            LIMIT 1
-            """
-        ),
-        {"d": session_date, "l": language},
-    ).fetchone()
-    if row is None or not row.summary:
+def _require(value: str, *, what: str, session_date: date_cls, language: str) -> str:
+    """Turn a shared reader's empty string into a loud failure.
+
+    The shared readers degrade to "" because other consumers treat those
+    sections as optional context. For this brief they are not optional: a brief
+    published without its press review or weather is a silently amputated
+    product, and the podcast prompt expects both sections to exist.
+    """
+    if not value.strip():
         raise BriefDataMissingError(
-            f"No active {language} press article at {session_date}"
+            f"No {language} {what} at {session_date} — the brief cannot be "
+            "published without it"
         )
-    return str(row.summary), str(row.impact)
+    return value
 
 
 def _fetch_weather(session: Session, session_date: date_cls, language: str) -> str:
@@ -244,6 +265,47 @@ def _fetch_contract_code(session: Session, contract_id: uuid.UUID) -> str:
     return str(row.code)
 
 
+def _next_session(session: Session, session_date: date_cls) -> date_cls:
+    """The session this brief decides for — the row date's next trading day."""
+    from scripts.db import get_next_session_date
+
+    return get_next_session_date(session_date)
+
+
+def _build_watch_lines(technicals: Technicals, language: str) -> tuple[str, ...]:
+    """The "TO WATCH" block — pivot levels the podcast reads out as prose.
+
+    Deterministic, straight from pl_derived_indicators: these are the numbers a
+    listener acts on, so they are never written by a model.
+    """
+    if technicals.s1 is None and technicals.r1 is None:
+        return ()
+
+    def _level(value: Decimal) -> str:
+        # Pivots are DECIMAL(15,6) in DB; a level read aloud as
+        # "seven thousand eight hundred fifty point zero zero zero zero zero
+        # zero" is unusable. Two decimals, as the brief has always shown them.
+        return f"{float(value):,.2f}".replace(",", " ")
+
+    header = "> À SURVEILLER AUJOURD'HUI :" if language != "en" else "> TO WATCH TODAY:"
+    lines = [header]
+    if technicals.s1 is not None:
+        level = _level(technicals.s1)
+        lines.append(
+            f"        • Baissier si le cours casse le SUPPORT 1 ({level})."
+            if language != "en"
+            else f"        • Bearish if CLOSE breaks below SUPPORT 1 ({level})."
+        )
+    if technicals.r1 is not None:
+        level = _level(technicals.r1)
+        lines.append(
+            f"        • Haussier si le cours franchit la RÉSISTANCE 1 ({level})."
+            if language != "en"
+            else f"        • Bullish if CLOSE clears RESISTANCE 1 ({level})."
+        )
+    return tuple(lines)
+
+
 def read_brief_data(
     session: Session,
     *,
@@ -259,19 +321,49 @@ def read_brief_data(
     regime, contract_id = _fetch_regime(session, session_date, algorithm_version_id)
     judge = _fetch_judge(session, session_date)
     technicals = _fetch_technicals(session, session_date, contract_id)
-    press_summary, press_impact = _fetch_press(session, session_date, language)
     weather_body = _fetch_weather(session, session_date, language)
     contract_code = _fetch_contract_code(session, contract_id)
 
+    # Market-wide inputs — the same readers every track uses. They describe the
+    # market, not a decision, so they are shared rather than reimplemented per
+    # track (scripts/_shared/brief_common.py).
+    press_summary, press_impact, press_sentiment = read_press(
+        session, session_date, language
+    )
+    press_summary = _require(
+        press_summary, what="press review", session_date=session_date, language=language
+    )
+    meteo_summary, meteo_impact = read_meteo(session, session_date, language)
+    _require(
+        meteo_summary or meteo_impact,
+        what="weather bulletin",
+        session_date=session_date,
+        language=language,
+    )
+    meteo_trajectory = read_seasonal_trajectory(session, session_date, language)
+    technicals_snapshot = read_technicals(session, session_date, contract_id, language)
+    farmgate = read_farmgate(session, session_date)
+    ytd_score = compute_ytd_score(session, session_date, algorithm_version_id)
+    watch_lines = _build_watch_lines(technicals, language)
+
     return BriefData(
         session_date=session_date,
+        target_date=_next_session(session, session_date),
         contract_id=contract_id,
         contract_code=contract_code,
         language=language,
         regime=regime,
         judge=judge,
         technicals=technicals,
+        technicals_snapshot=technicals_snapshot,
+        watch_lines=watch_lines,
+        ytd_score=ytd_score,
+        farmgate=farmgate,
         press_summary=press_summary,
         press_impact=press_impact,
+        press_sentiment=press_sentiment,
+        meteo_summary=meteo_summary,
+        meteo_impact=meteo_impact,
+        meteo_trajectory=meteo_trajectory,
         weather_body=weather_body,
     )

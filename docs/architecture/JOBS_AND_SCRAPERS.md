@@ -21,7 +21,7 @@ Time UTC | Job                                   | Track       | Type
 19:05    | cc-cftc-scraper                       | shared      | Phase A (COM NET US)
 19:05    | cc-press-review-agent                 | both        | Phase B (eve-gated)
 19:10    | cc-barchart-stocks-eu-scraper         | shared      | Phase A (stock_eu)
-19:15    | cc-compute-indicators                 | shared      | Phase A (engine)
+19:15    | cc-compute-indicators                 | shared      | Phase A (engine) + jauges (--stage all)
 19:18    | cc-ensemble-compute                   | ENSEMBLE    | Phase B (eve-gated, ML decision)
 19:20    | cc-daily-analysis                     | LEGACY      | Phase B (eve-gated, LLM)
 19:25    | cc-ensemble-explainer                 | ENSEMBLE    | Phase B (eve-gated, LLM)
@@ -66,13 +66,16 @@ On-demand| cc-ensemble-bootstrap-artifacts       | ENSEMBLE     | Manual (no sch
 | **cc-publication-calendar-watchdog** | `0 16 * * 1-5` | shared | `ref_publication_calendar` query | Sentry capture (no DB write) | ✅ Actif |
 | **cc-press-review-agent** | `5 19 * * *` | both | 6 news sources + Google News RSS | `pl_fundamental_article`, `pl_article_segment`, `pl_sentiment_feature` | ✅ Actif (P2b daily-gated) |
 | **cc-meteo-agent** | `0 19 * * *` | both | Open-Meteo API | `pl_weather_observation`, `pl_seasonal_score` | ✅ Actif (P2b daily-gated) |
-| **cc-compute-indicators** | `15 19 * * 1-5` | shared | `pl_contract_data_daily` | `pl_derived_indicators`, `pl_indicator_daily` (numerics) | ✅ Actif |
+| **cc-compute-indicators** | `15 19 * * 1-5` | shared | `pl_contract_data_daily` | `pl_derived_indicators`, `pl_indicator_daily` (numerics), **`pl_dashboard_gauge`** | ✅ Actif — `--stage all` depuis 2026-08. L'étage `gauges` est algo-indépendant et relançable seul (`--stage gauges`) |
 | **cc-ensemble-compute** | `18 19 * * *` (eve-gated) | ENSEMBLE | `pl_derived_indicators`, `pl_article_segment`, `pl_external_indicator`, `pl_cot_eu_weekly`, `pl_model_artifact` | `pl_specialist_prediction` (14), `pl_orchestrator_decision`, `pl_indicator_daily` (ensemble row partielle) | ✅ Actif |
 | **cc-ensemble-explainer** | `25 19 * * *` | ENSEMBLE | `pl_orchestrator_decision`, `pl_specialist_prediction`, `pl_fundamental_article`, `pl_weather_observation`, `pl_contract_data_daily` | UPDATE `pl_indicator_daily` ensemble row (narrative legacy-style via DBAnalysisEngine auto-align) | ✅ Actif (P2b daily-gated, thin wrapper sur le moteur legacy depuis 2026-05-27) |
 | **cc-daily-analysis** | `20 19 * * *` | LEGACY | `pl_contract_data_daily`, `pl_derived_indicators`, `pl_indicator_daily`, `pl_fundamental_article`, `pl_weather_observation` | UPDATE `pl_indicator_daily` legacy row (LLM) | ✅ Actif (P2b daily-gated, `--algorithm-version legacy`) |
 | **cc-compass-brief** | `30 19 * * *` | LEGACY | `pl_indicator_daily` (active row), `pl_contract_data_daily` last 2 dates, `pl_fundamental_article`, `pl_weather_observation` | Drive: `YYYYMMDD-CompassBrief.txt` | ✅ Actif (P2b daily-gated) |
 | **cc-compass-brief-ensemble** | `35 19 * * *` | ENSEMBLE | Ensemble row + orchestrator + 14 specialists + press + meteo + technicals | Drive: `YYYYMMDD-CompassBrief-Ensemble.txt` | 🆕 P4 (2026-05) |
 | **cc-ensemble-bootstrap-artifacts** | (manual) | ENSEMBLE | R&D frozen artifact pack | `pl_model_artifact` BYTEA rows | ✅ Actif (no scheduler) |
+| **cc-regime-shadow** | `50 19 * * *` (eve-gated) | REGIME+JUDGE | `v_contract_data_chained` (self-computed features), `pl_model_artifact`, `pl_fundamental_article` (en), `pl_weather_observation` (en) | `pl_regime_shadow`, `pl_judge_shadow`, **adapter row** dans `pl_indicator_daily` | 🆕 2026-08 — **INERTE** (`serving_rank` NULL) |
+| **cc-regime-brief** | `55 19 * * *` | REGIME+JUDGE | `pl_regime_shadow`, `pl_judge_shadow`, presse, météo, technicals, farmgate, YTD | UPDATE `pl_indicator_daily` (narration native fr+en) + Drive `YYYYMMDD-CompassBrief-Regime{,-EN}.txt` | 🆕 2026-08 — **INERTE** |
+| **cc-regime-bootstrap-artifacts** | (manual) | REGIME | R&D frozen regime pack | `pl_model_artifact` BYTEA rows | ✅ Actif (no scheduler) |
 | **cc-intraday-monitor** | `*/15 8-16 * * 1-5` | shared | Barchart core-api (httpx, delayed ~15 min) + `pl_derived_indicators` (S1/R1) + `ref_alert_rule` | `pl_contract_data_intraday` (append) + `aud_alert_event` + Telegram sendMessage | 🆕 2026-07 (shadow ALERT_CHANNEL=console) |
 
 ---
@@ -502,6 +505,8 @@ Voir détail dans [PIPELINE_ENSEMBLE.md](./PIPELINE_ENSEMBLE.md) §7.
 | `cc-daily-analysis` | ⚠️ Legacy brief incomplet (decision/eco missing). Ensemble brief intact. |
 | `cc-ensemble-explainer` | ⚠️ Ensemble brief sans narrative (decision OK mais eco/conclusion NULL → brief affichera "(pas de conclusion narrative)"). Legacy brief intact. |
 | `cc-press-review-agent` ou `cc-meteo-agent` | ⚠️ Les 2 briefs auront une section press/meteo vide. |
+| `cc-regime-shadow` | ⚠️ Aucun impact utilisateur tant que `serving_rank` de regime est NULL. Post-bascule : ❌ pas de décision du jour, et `cc-regime-brief` fail-loud (pas d'adapter row à enrichir). |
+| `cc-regime-brief` | ⚠️ Aucun impact tant qu'inerte. Post-bascule : section Recommandation vide (aucun fallback inter-algo) + pas de brief Drive → pas d'audio. |
 | `cc-eca` / `cc-nca` | ⚠️ Pas d'impact court terme (les briefs ne lisent pas encore supply_demand_observation). Watchdog alertera après 21j. |
 
 ---

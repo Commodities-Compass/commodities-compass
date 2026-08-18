@@ -15,6 +15,7 @@ recovery path is manual — fix root cause, re-run ``judge-shadow-compute
 from __future__ import annotations
 
 import logging
+import os
 from datetime import date as date_cls
 
 from judge.config import BRIEF_WINDOW, HISTORY_WINDOW  # type: ignore
@@ -27,7 +28,8 @@ from scripts.db import get_next_session_date, get_previous_session_date
 from scripts.judge_shadow.brief_builder import build_brief_from_db
 from scripts.judge_shadow.db_writer import write_judge_shadow
 from scripts.judge_shadow.history_store import DBJudgeHistoryStore
-from scripts.judge_shadow.llm_openai import OpenAIJudgeLLM
+from scripts.judge_shadow.compass_judge import decide as compass_decide
+from scripts.judge_shadow.llm_openai import DEFAULT_MODEL_ID, OpenAIJudgeLLM
 from scripts.judge_shadow.regime_reader import (
     RegimeShadowRow,
     load_regime_for,
@@ -37,6 +39,17 @@ from scripts.judge_shadow.regime_reader import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Which prompt authors the overlay. "compass_v0_3" is the Compass-owned event
+# detector (scripts/judge_shadow/compass_prompt.py); "vendor_v0_2" is the R&D
+# pack's own.
+#
+# Defaults to the vendor prompt on purpose. v0.3 is built and wired, but it
+# cannot be evaluated yet: the press review reached the judge a session late on
+# the one shock in the window (COCOBOD's 2026/27 forecast cut, 31 Jul), so every
+# prompt in the comparison was scored on an input that did not contain the news.
+# Flip it once the upstream selection is fixed, not before.
+JUDGE_PROMPT = os.environ.get("JUDGE_PROMPT", "vendor_v0_2")
 
 # Judge is meant to work with a window of daily briefs — cap the window at
 # BRIEF_WINDOW (=3) and pull the last N trading days.
@@ -132,14 +145,22 @@ def run_for_session(
     if llm is None:
         llm = OpenAIJudgeLLM()
 
-    # v0.2 fine-tune: replay the judge's own recent decisions so it can
-    # reconcile against realised price moves (kills the "chase" pattern).
-    # Empty list on first-ever run — the pack's renderer degrades gracefully.
-    history = DBJudgeHistoryStore(session).load_recent_decisions(
-        data_date.isoformat(), _HISTORY
-    )
-
-    outcome = judge_decide(window, llm, base_override=base_call, history=history)
+    if JUDGE_PROMPT == "compass_v0_3":
+        # Compass v0.3 — event detection. No own-history block: v0.3 damps the
+        # chase by refusing to read a continuation as an event, which is the
+        # cause rather than the symptom, so replaying its past calls would only
+        # re-introduce the confidence second-guessing that lost 2026-07-31.
+        outcome = compass_decide(
+            window, llm, base_override=base_call, model_id=DEFAULT_MODEL_ID
+        )
+    else:
+        # v0.2 fine-tune: replay the judge's own recent decisions so it can
+        # reconcile against realised price moves. Kept reachable so a v0.3
+        # regression can be answered by flipping one setting, not a revert.
+        history = DBJudgeHistoryStore(session).load_recent_decisions(
+            data_date.isoformat(), _HISTORY
+        )
+        outcome = judge_decide(window, llm, base_override=base_call, history=history)
 
     logger.info(
         "  %s: base=%-7s -> final=%-7s (changed=%s) judge=%s/%s conf=%d",

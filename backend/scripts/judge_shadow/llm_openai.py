@@ -78,3 +78,44 @@ class OpenAIJudgeLLM:
             prompt_version=rendered.get("prompt_version", ""),
             model_id=self._model_id,
         )
+
+    def judge_raw(self, rendered: dict[str, str], *, session_date: str) -> str:
+        """Same call, raw JSON back — the seam the Compass v0.3 judge needs.
+
+        ``judge()`` hands the payload straight to the vendor's
+        ``verdict_from_dict``, whose schema is v0.1/v0.2's. v0.3 has a different
+        contract (event + 3-state verdict, no 1-5 confidence), so it parses the
+        payload itself in ``compass_prompt.parse``. Splitting here keeps ONE
+        place that knows about OpenAI — the retry policy, the token budget, the
+        empty-content fail-loud — rather than a second adapter drifting from it.
+        """
+        start = time.monotonic()
+        response = self._client.chat.completions.create(
+            model=self._model_id,
+            max_completion_tokens=8192,
+            reasoning_effort="medium",
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "developer", "content": rendered["system"]},
+                {"role": "user", "content": rendered["user"]},
+            ],
+        )
+        choice = response.choices[0]
+        raw = (choice.message.content or "").strip()
+        usage = response.usage
+        logger.info(
+            "judge/v0.3(%s): %din/%dout, %dms, model=%s, finish=%s",
+            session_date,
+            usage.prompt_tokens if usage else 0,
+            usage.completion_tokens if usage else 0,
+            int((time.monotonic() - start) * 1000),
+            self._model_id,
+            choice.finish_reason,
+        )
+        if not raw:
+            raise RuntimeError(
+                f"judge LLM returned empty content for session {session_date} "
+                f"(finish_reason={choice.finish_reason}, model={self._model_id}, "
+                f"tokens_out={usage.completion_tokens if usage else 0})"
+            )
+        return raw

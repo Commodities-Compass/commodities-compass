@@ -38,6 +38,10 @@ CHROME_TICKER = "read:chrome:ticker"
 # --- Features (ensemble / premium panels) ------------------------------------
 FEATURE_ENSEMBLE_DIAGNOSTICS = "read:feature:ensemble_diagnostics"
 FEATURE_SPECIALIST_VOTES = "read:feature:specialist_votes"  # consensus X/14
+# Campaign-6 replacement for the two above: routed regime + model probability +
+# what the macro overlay did with the call. Same "Conviction" row of the matrix,
+# so it ships to the same tiers — see _CONVICTION.
+FEATURE_JUDGE_OVERLAY = "read:feature:judge_overlay"
 FEATURE_MACRO_PANEL = "read:feature:macro_panel"  # FX/DXY + ENSO
 FEATURE_POSITIONING = "read:feature:positioning"  # COT + stocks + grindings
 FEATURE_FARMGATE = "read:feature:farmgate"  # prix garantis CIV/Ghana
@@ -110,6 +114,7 @@ FEATURE_KEYS: frozenset[str] = frozenset(
     {
         FEATURE_ENSEMBLE_DIAGNOSTICS,
         FEATURE_SPECIALIST_VOTES,
+        FEATURE_JUDGE_OVERLAY,
         FEATURE_MACRO_PANEL,
         FEATURE_POSITIONING,
         FEATURE_FARMGATE,
@@ -153,7 +158,23 @@ SIGNAL_PLUS = "signal_plus"
 ORIGIN_DESK = "origin_desk"
 
 # Convenience bundles matching multi-key matrix rows.
-_CONVICTION = frozenset({FEATURE_SPECIALIST_VOTES, FEATURE_ENSEMBLE_DIAGNOSTICS})
+#
+# "Conviction" is a commercial row, not an implementation: it promises the client
+# an explanation of how convinced the system is. It happens to be backed by three
+# keys during the ensemble → regime+judge overlap, because both surfaces exist
+# and both must be entitled — the ensemble one until its jobs are descheduled,
+# the judge one from the moment regime is served. Composing the row this way is
+# what makes the transition a no-op commercially: the six tiers that bought
+# Conviction keep it across the flip without a single template edit. When the
+# ensemble endpoints go, this set shrinks to FEATURE_JUDGE_OVERLAY alone and no
+# tier changes.
+_CONVICTION = frozenset(
+    {
+        FEATURE_SPECIALIST_VOTES,
+        FEATURE_ENSEMBLE_DIAGNOSTICS,
+        FEATURE_JUDGE_OVERLAY,
+    }
+)
 _TECHNIQUE_FX = frozenset({SECTION_MARKET, FEATURE_MACRO_PANEL})
 
 # Coop Essentiel — a real dashboard on one seat (decision of 2026-08-17, which

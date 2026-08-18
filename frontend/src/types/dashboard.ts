@@ -230,6 +230,46 @@ export interface EnsembleDiagnosticsResponse {
   prior_monitor: number | null;
 }
 
+// ---------------------------------------------------------------------------
+// Judge diagnostics — the regime+judge conviction surface (Campaign 6).
+//
+// Successor of EnsembleDiagnosticsResponse. `rationale` (the fuse trace) is
+// deliberately NOT part of the contract: it is judge-only audit material and
+// the backend never serves it.
+// ---------------------------------------------------------------------------
+
+export interface JudgeEvidence {
+  [key: string]: unknown;
+}
+
+export interface JudgeDiagnosticsResponse {
+  date: string;
+  algorithm_version: string;
+  /** bull | bear | transition | highvol | oversold | overbought */
+  regime: string;
+  specialist: string;
+  /** Model probability of an up session, 0-1. */
+  prob_up: number;
+  base_decision: 'OPEN' | 'HEDGE' | 'MONITOR';
+  /** Layer 3 — null when the macro overlay did not run for the session. */
+  judge_direction: string | null;
+  judge_stance: 'CONFIRM' | 'CONTRADICT' | 'NEUTRAL' | null;
+  judge_confidence: number | null;
+  is_anomaly: boolean | null;
+  changed: boolean | null;
+  final_decision: 'OPEN' | 'HEDGE' | 'MONITOR';
+  drift_summary: string | null;
+  key_risk: string | null;
+  disconfirming_case: string | null;
+  evidence: JudgeEvidence[];
+  weather_delta: number | null;
+  n_days_window: number | null;
+  /** Published confidence (1-5) and its sentence, in the row's language. */
+  confidence: number | null;
+  confidence_rationale: string | null;
+  running_acc_5d: number | null;
+}
+
 export interface AudioResponse {
   url: string;
   title: string;

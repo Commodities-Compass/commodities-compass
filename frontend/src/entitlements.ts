@@ -14,6 +14,9 @@ export const ENT = {
   CHROME_TICKER: 'read:chrome:ticker',
   FEATURE_ENSEMBLE_DIAGNOSTICS: 'read:feature:ensemble_diagnostics',
   FEATURE_SPECIALIST_VOTES: 'read:feature:specialist_votes',
+  // Campaign-6 successor of the two above — same "Conviction" row of the offer
+  // matrix, so it ships to the same tiers.
+  FEATURE_JUDGE_OVERLAY: 'read:feature:judge_overlay',
   FEATURE_MACRO_PANEL: 'read:feature:macro_panel',
   FEATURE_POSITIONING: 'read:feature:positioning',
   FEATURE_FARMGATE: 'read:feature:farmgate',

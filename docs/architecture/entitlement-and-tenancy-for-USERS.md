@@ -66,6 +66,7 @@ Finite, opaque, hierarchical. Naming: `read:<domain>:<name>` (scope-style, keeps
 |---|---|
 | `read:feature:ensemble_diagnostics` | `/dashboard/ensemble-diagnostics` |
 | `read:feature:specialist_votes` | `/dashboard/specialist-votes` |
+| `read:feature:judge_overlay` | `/dashboard/judge-diagnostics` |
 | `read:feature:macro_panel` | `/dashboard/macro-panel` |
 | `read:feature:positioning` | `/dashboard/positioning` |
 | `read:feature:farmgate` | `/dashboard/farmgate-price` |
@@ -90,7 +91,7 @@ Named bundles that expand into per-key grants at provisioning time. The **stored
 | `read:decision:physical_sale` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `read:decision:hedge` (initiation on CE) | init | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `read:section:signal` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| conviction (`ensemble_diagnostics`+`specialist_votes`) | — | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| conviction (`ensemble_diagnostics`+`specialist_votes`+`judge_overlay`) | — | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `read:section:podcast` | ✅ | ✅ | ✅ | ✅ | ✅ | opt² | opt² |
 | `read:feature:farmgate` (prix garantis) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `read:section:weather` (full / **:summary**) | sum | full | sum | full | full | full | full |

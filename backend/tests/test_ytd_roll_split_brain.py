@@ -34,8 +34,8 @@ from app.services.dashboard_service import (
     YTD_EVAL_HORIZON_DAYS,
     _score_day,
     calculate_ytd_performance,
+    compute_running_accuracy,
 )
-from app.services.ensemble_diagnostics_service import _compute_running_accuracy
 from app.utils.contract_resolver import (
     ENSEMBLE_VERSION_NAME,
     LEGACY_VERSION_NAME,
@@ -192,7 +192,7 @@ async def test_running_acc_survives_roll_via_shared_helper(
 ) -> None:
     await _seed_roll_split_brain(db_session)
 
-    acc = await _compute_running_accuracy(db_session, _SESSIONS[-1], window=5)
+    acc = await compute_running_accuracy(db_session, _SESSIONS[-1], window=5)
 
     # With the shared decision-aware helper, all 8 evaluable days score on
     # CAU26. The last 5 (i=3..7) are 2 losses + 3 wins → 0.6. Pre-fix, the

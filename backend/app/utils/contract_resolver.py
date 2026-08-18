@@ -37,9 +37,12 @@ _cache: TTLCache[str, uuid.UUID | str | tuple[uuid.UUID, str]] = TTLCache(
 )
 _cache_lock = asyncio.Lock()
 
-# Algorithm version names used by the date-aware resolver.
+# Algorithm version names used by the date-aware resolver. These name rows in
+# pl_algorithm_version; which one is SERVED is decided by serving_rank, never
+# here (see app/utils/serving_chain.py).
 ENSEMBLE_VERSION_NAME = "ensemble_v1_softgate_wrapper"
 LEGACY_VERSION_NAME = "legacy"
+REGIME_VERSION_NAME = "regime"
 
 
 async def _cached_lookup(

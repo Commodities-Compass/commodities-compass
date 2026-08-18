@@ -147,3 +147,8 @@ docs/presentations/
 docs/**/*.html
 !docs/brand/**/*.html
 backend/vendor/**/*.html
+
+# git worktrees live under .claude/ but are separate checkouts — never commit them.
+# They may hold gitignored artefacts (see .claude/rules/gitignored-artifacts-repatriation.md):
+# audit before removing, never `git worktree remove` blind.
+.claude/worktrees/

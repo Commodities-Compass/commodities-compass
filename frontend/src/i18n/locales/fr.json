@@ -33,7 +33,9 @@
     "horizon_short_ensemble": "~4 J",
     "horizon_short_legacy": "J+1",
     "why_this_decision": "Pourquoi cette décision",
-    "best_session_label": "Meilleure session"
+    "best_session_label": "Meilleure session",
+    "conviction_regime_title": "Lecture du signal",
+    "algo_regime": "Powered by Compass Regime + Macro"
   },
   "signal": {
     "decision": {
@@ -71,7 +73,36 @@
     "explanation": {
       "with_confidence": "{{consensus}} sur la position {{decision}} — {{n}} lectures engagées, confiance {{confidence}} ({{score}}/5).{{macroClause}}",
       "without_confidence": "{{consensus}} sur la position {{decision}} — {{n}} lectures engagées.{{macroClause}}"
-    }
+    },
+    "regime": {
+      "bull": "Haussier",
+      "bear": "Baissier",
+      "transition": "Sans direction",
+      "highvol": "Volatilité élevée",
+      "oversold": "Survente",
+      "overbought": "Surachat"
+    },
+    "stance": {
+      "confirm": "Confirmée",
+      "contradict": "Contestée",
+      "neutral": "Neutre",
+      "revised": "Révisée",
+      "absent": "Non rendue"
+    },
+    "judge_overlay_confirm": "La lecture macro confirme.",
+    "judge_overlay_contradict": "La lecture macro s'y oppose.",
+    "judge_overlay_neutral": "La lecture macro reste neutre.",
+    "judge_overlay_revised": "La lecture macro a fait évoluer la position.",
+    "judge_rationale_fallback": "Lecture technique et macro alignées sur la séance.",
+    "judge_explanation": {
+      "with_confidence": "Marché {{regime}} — position {{decision}}, confiance {{confidence}} ({{score}}/5).{{overlayClause}}",
+      "without_confidence": "Marché {{regime}} — position {{decision}}.{{overlayClause}}"
+    },
+    "judge_regime_label": "Régime",
+    "judge_arbitration_label": "Arbitrage macro",
+    "judge_macro_suffix": "lecture macro",
+    "judge_specialist_caption": "modèle dédié au régime",
+    "judge_hit_rate_caption": "{{pct}} % sur les 5 dernières séances évaluées"
   },
   "news": {
     "empty_state": "Aucune revue de presse pour cette date.",

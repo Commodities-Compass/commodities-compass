@@ -27,6 +27,7 @@ from scripts._shared.brief_common import (
     read_technicals,
 )
 from scripts._shared.farmgate_brief import read_farmgate
+from scripts.regime_brief.config import ALGORITHM_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -343,7 +344,9 @@ def read_brief_data(
     meteo_trajectory = read_seasonal_trajectory(session, session_date, language)
     technicals_snapshot = read_technicals(session, session_date, contract_id, language)
     farmgate = read_farmgate(session, session_date)
-    ytd_score = compute_ytd_score(session, session_date, algorithm_version_id)
+    ytd_score = compute_ytd_score(
+        session, session_date, algorithm_version_id, ALGORITHM_NAME
+    )
     watch_lines = _build_watch_lines(technicals, language)
 
     return BriefData(

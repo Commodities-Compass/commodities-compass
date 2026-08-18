@@ -24,9 +24,17 @@ Three layers, one nightly job for the first three:
 | **projection** | Fuses L2+L3 into the shape the dashboard reads. | `pl_indicator_daily` (regime version) |
 
 **Horizon: J+1.** The regime specialists predict the next trading session. This
-differs from the ensemble (J+4-J+5) and it propagates: `YTD_EVAL_HORIZON_DAYS`,
-the brief's "decision horizon" line, and the podcast prompts all say next
-session.
+differs from the ensemble (J+4-J+5) and it propagates: the brief's "decision
+horizon" line, the podcast prompts, and — since it is the number a client reads —
+**the scoring itself**.
+
+`eval_horizon_for(algorithm_name)` (`app/services/dashboard_service.py`) maps an
+algorithm to the horizon it is scored on: 1 for `regime`, 4 everywhere else. The
+YTD headline, the brief's YTD line and the recent-hit-rate tile all go through
+it, so the figure and the label above it describe the same thing. Before this,
+`YTD_EVAL_HORIZON_DAYS = 4` — tuned on ensemble v1.0.0 — was applied to every
+algorithm, which would have printed a four-session score directly under
+"Horizon de décision : prochaine séance".
 
 > The judge has **no horizon of its own** — it judges the call it is handed, so
 > it inherits regime's. The `J+4` string in `vendor/judge_v0.1/judge/scoring.py`
@@ -141,7 +149,34 @@ past is worse than a failed run.
 its own algorithm. Backfill the adapter rows over regime's existing shadow
 sessions before the flip, or the first run after it fails loudly.
 
-## 6. The brief
+## 6. The conviction panel — `/judge-diagnostics`
+
+The "Conviction" row of the commercial matrix is sold on **6 of the 7 tiers**
+(all but Coop Essentiel). It was backed by `/ensemble-diagnostics` +
+`/specialist-votes`, both ensemble-specific. Deleting them without a replacement
+would remove a billed capability from almost the whole catalogue — silently, as
+a 403.
+
+`GET /v1/dashboard/judge-diagnostics` is that replacement. Same row, different
+machinery: where the ensemble reported a vote count over 14 specialists, this
+reports the routed regime, the model's probability, and what the overlay did
+with the call. Gated by `read:feature:judge_overlay`, which joins `_CONVICTION`
+alongside the two ensemble keys — so the six tiers keep the row across the flip
+with no template edit. Migration `s4j5u6d7g8e9` grants it to every account that
+already holds the ensemble key (append-only INSERT; the ensemble keys are left
+alone, they are the rollback path).
+
+It 404s unless the **served** algorithm is `regime`, so it stays silent for the
+entire shadow period even though regime writes rows every night — a conviction
+panel describing a decision nobody is shown would contradict the signal on
+screen. `SignalHero` renders whichever breakdown matches `source_algorithm`;
+both are hidden when neither does.
+
+**`rationale` is not in the payload.** A test asserts it is absent from the whole
+serialised response, not merely as a missing key — a future refactor could just
+as easily leak it inside `evidence` or a concatenated summary.
+
+## 7. The brief
 
 `cc-regime-brief` merges what would otherwise be two jobs (an explainer writing
 the narrative, a generator rendering the file). The prose is written **once per
@@ -173,7 +208,7 @@ A contract test asserts every anchor the prompt navigates exists in the rendered
 brief — rename a header on one side and NotebookLM silently skips that part of
 the podcast, with no error anywhere.
 
-## 7. Files
+## 8. Files
 
 ```
 app/utils/serving_chain.py              the chain: get_serving_chain, resolve_serving_version
@@ -183,11 +218,13 @@ scripts/regime_shadow/                  L1+L2, judge orchestration, indicator_ad
 scripts/judge_shadow/                   L3 (brief_builder, runner, llm_openai)
 scripts/regime_brief/                   config, db_reader, narrator, db_writer, brief_generator, main
 scripts/_shared/brief_common.py         press / weather / campaign / technicals / YTD — shared
+app/services/judge_diagnostics_service.py   the conviction panel (regime + overlay)
+frontend/src/utils/judge-explanation.ts     its business-language rendering
 vendor/regime_v1.0.0/                   frozen R&D pack (read-only)
 vendor/judge_v0.1/                      frozen R&D pack (read-only)
 ```
 
-## 8. What is deliberately NOT done
+## 9. What is deliberately NOT done
 
 - **regime has no `serving_rank`** — nothing is served. This is the flip.
 - **`compute_enabled` / `is_active` untouched for regime and judge.** Setting

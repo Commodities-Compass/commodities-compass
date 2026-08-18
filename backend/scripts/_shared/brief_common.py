@@ -201,6 +201,7 @@ def compute_ytd_score(
     session: Session,
     reference_date: date,
     algorithm_version_id: Any,
+    algorithm_name: str | None = None,
 ) -> float | None:
     """Year-to-date score of ONE algorithm's own decisions.
 
@@ -219,10 +220,15 @@ def compute_ytd_score(
     date would fan out to two rows and the horizon-indexed walk would pair
     mismatched sessions.
 
+    The horizon comes from ``algorithm_name``: an algorithm is scored on the
+    horizon it predicts, and the brief prints that horizon two lines above the
+    figure — a J+4 score under a "prochaine séance" label would read as a
+    measurement of something the track never claimed.
+
     Returns None when nothing is scorable: 0.0 is a real score and would be
     read aloud as a flat year.
     """
-    from app.services.dashboard_service import YTD_EVAL_HORIZON_DAYS, _score_day
+    from app.services.dashboard_service import _score_day, eval_horizon_for
 
     start = date(reference_date.year, 1, 1)
     rows = session.execute(
@@ -252,7 +258,7 @@ def compute_ytd_score(
         {"start": start, "end_date": reference_date, "aid": str(algorithm_version_id)},
     ).all()
 
-    horizon = YTD_EVAL_HORIZON_DAYS
+    horizon = eval_horizon_for(algorithm_name)
     scores: list[float] = []
     for i in range(len(rows) - horizon):
         current, future = rows[i], rows[i + horizon]

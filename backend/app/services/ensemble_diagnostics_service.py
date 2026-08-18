@@ -24,11 +24,7 @@ from app.models.pipeline import (
     PlOrchestratorDecision,
     PlSpecialistPrediction,
 )
-from app.services.dashboard_service import (
-    YTD_EVAL_HORIZON_DAYS,
-    _decision_aware_front_month_series,
-    _score_day,
-)
+from app.services.dashboard_service import compute_running_accuracy
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +64,9 @@ async def get_ensemble_diagnostics(
     if row is None:
         return None
 
-    computed_acc = await _compute_running_accuracy(db, target_date, contract_id)
+    computed_acc = await compute_running_accuracy(
+        db, target_date, algorithm_name=algo_name
+    )
 
     # Pull the human-readable confidence + per-pillar rationale that
     # cc-ensemble-explainer writes onto the ensemble row of pl_indicator_daily.
@@ -122,61 +120,6 @@ async def get_ensemble_diagnostics(
         "prior_hedge": _to_float(row.prior_hedge),
         "prior_monitor": _to_float(row.prior_monitor),
     }
-
-
-async def _compute_running_accuracy(
-    db: AsyncSession,
-    target_date: date_cls,
-    contract_id: Optional[uuid.UUID] = None,
-    *,
-    window: int = 5,
-    horizon: int = YTD_EVAL_HORIZON_DAYS,
-) -> Optional[float]:
-    """Compass running accuracy over the last ``window`` evaluable decisions.
-
-    A decision made at T is evaluable on T+horizon. We pick the ``window``
-    most recent decisions D such that D + horizon ≤ target_date, score each
-    with the same formula as the YTD metric, then return the share of
-    positive scores. Roll-safe cross-contract series via the shared
-    ``_decision_aware_front_month_series`` — same helper the YTD walk uses, so
-    an OI crossover to a not-yet-rolled contract can't silently drop days here
-    either (pre-fix this used a raw OI-only front-month and degraded to the
-    R&D bootstrap value for post-roll dates).
-
-    Returns None if fewer than ``window`` evaluable decisions exist in the
-    last ~30 sessions (caller falls back to the upstream R&D value).
-    """
-    # Roll-safe series + the language='fr' pin both live in the shared
-    # ``_decision_aware_front_month_series`` (dashboard_service): the EN row
-    # copies the language-agnostic decision, so pinning fr there keeps the
-    # horizon-indexed running-accuracy (which gates the Compass wrapper) from
-    # doubling once EN content exists.
-    # ~45 calendar days ≈ ~30 trading sessions, plenty to cover horizon + window
-    start_date = date_cls.fromordinal(target_date.toordinal() - 45)
-    rows = await _decision_aware_front_month_series(db, start_date, target_date)
-    if len(rows) <= horizon:
-        return None
-
-    scored: list[float] = []
-    for i in range(len(rows) - horizon):
-        current = rows[i]
-        future = rows[i + horizon]
-        if not current.decision or current.close is None or future.close is None:
-            continue
-        s = _score_day(
-            current.decision.strip().upper(),
-            float(current.close),
-            float(future.close),
-        )
-        if s is not None:
-            scored.append(s)
-
-    if len(scored) < window:
-        return None
-
-    last_window = scored[-window:]
-    wins = sum(1 for s in last_window if s > 0)
-    return wins / window
 
 
 async def get_specialist_votes(

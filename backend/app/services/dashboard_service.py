@@ -9,7 +9,8 @@ All queries read from pl_* tables (contract-centric).
 import logging
 import re
 from datetime import date, timedelta
-from typing import Any, Dict, List, Optional, Sequence
+from types import MappingProxyType
+from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 import uuid
 
@@ -50,6 +51,29 @@ logger = logging.getLogger(__name__)
 # (forward_return_6d), but the price signal is most informative at J+4 in
 # practice — mean reversion dilutes the signal beyond.
 YTD_EVAL_HORIZON_DAYS = 4
+
+# An algorithm is scored on the horizon it actually predicts. Regime decides for
+# the NEXT session, so scoring it at J+4 measures four days of drift it never
+# claimed — and the brief prints "horizon prochaine séance" right next to the
+# figure, which would make the label and the number disagree.
+#
+# Kept as a literal map rather than a `pl_algorithm_config` row: two entries do
+# not justify a DB round trip on the YTD hot path, and the ensemble's own 4 has
+# always been a constant here. Move it to config-as-data when a third horizon
+# appears.
+_EVAL_HORIZON_BY_ALGORITHM: Mapping[str, int] = MappingProxyType({"regime": 1})
+
+
+def eval_horizon_for(algorithm_name: Optional[str]) -> int:
+    """Trading-day horizon on which ``algorithm_name`` is scored.
+
+    Falls back to the ensemble/legacy default for any unknown name — a new
+    algorithm is scored like its predecessors until someone says otherwise,
+    which is visible in the figure rather than crashing the dashboard.
+    """
+    if not algorithm_name:
+        return YTD_EVAL_HORIZON_DAYS
+    return _EVAL_HORIZON_BY_ALGORITHM.get(algorithm_name, YTD_EVAL_HORIZON_DAYS)
 
 
 def _score_day(decision: str, close_t: float, close_t_plus_h: float) -> Optional[float]:
@@ -298,30 +322,42 @@ async def _decision_aware_front_month_series(
 
 
 async def calculate_ytd_performance(
-    db: AsyncSession, reference_date: Optional[date] = None
+    db: AsyncSession,
+    reference_date: Optional[date] = None,
+    *,
+    algorithm_name: Optional[str] = None,
 ) -> float:
     """Calculate YTD performance by replicating the CONCLUSION scoring server-side.
 
     Date-aware decision source — uses the SAME decision that the system would
-    have shipped live each day:
-      * For dates with an ensemble row: ensemble's ``decision`` (which mirrors
-        the orchestrator's ``decision_wrapped`` — i.e. post-Compass override).
-      * For older dates: legacy decision.
+    have shipped live each day: for each date, the first link of the serving
+    chain that carries a row.
 
     Cross-contract & roll-safe via ``_decision_aware_front_month_series``: for
     each date it scores the highest-OI contract *that carries a decision*, so
     YTD spans contract rolls without silently dropping days when OHLCV OI rolls
     ahead of the contract the decisions are written on.
+
+    ``algorithm_name`` selects the scoring horizon (see ``eval_horizon_for``).
+    Callers that already resolved the served algorithm pass it; when omitted the
+    head of the serving chain decides, since that is the algorithm the headline
+    figure is describing.
     """
     if reference_date is None:
         reference_date = date.today()
+
+    if algorithm_name is None:
+        from app.utils.serving_chain import get_serving_chain
+
+        chain = await get_serving_chain(db)
+        algorithm_name = chain[0] if chain else None
 
     start_of_year = get_year_start_date(reference_date)
     rows = await _decision_aware_front_month_series(db, start_of_year, reference_date)
 
     scores: list[float] = []
     unscorable: list[str] = []
-    horizon = YTD_EVAL_HORIZON_DAYS
+    horizon = eval_horizon_for(algorithm_name)
     # Skip the last `horizon` rows — they have no T+horizon close yet (decision
     # too recent to evaluate against a future price). That's expected, not an
     # anomaly, so they're excluded from the range rather than flagged below.
@@ -371,6 +407,58 @@ async def calculate_ytd_performance(
         len(scores),
     )
     return ytd_performance
+
+
+async def compute_running_accuracy(
+    db: AsyncSession,
+    target_date: date,
+    *,
+    algorithm_name: Optional[str] = None,
+    window: int = 5,
+) -> Optional[float]:
+    """Share of winning decisions over the last ``window`` evaluable sessions.
+
+    A decision made at T is evaluable at T+horizon, where the horizon is the one
+    the algorithm actually predicts (``eval_horizon_for``). We take the ``window``
+    most recent evaluable decisions, score each with the YTD formula, and return
+    the share of positive scores — so the "recent hit rate" tile and the YTD
+    headline are computed by the same rules and cannot drift apart.
+
+    Roll-safe through the shared ``_decision_aware_front_month_series``, the same
+    helper the YTD walk uses: an OI crossover to a not-yet-rolled contract cannot
+    silently drop days here either.
+
+    Returns None when fewer than ``window`` decisions are evaluable in the
+    trailing ~30 sessions — the caller shows "—" rather than a figure computed
+    on two days.
+    """
+    horizon = eval_horizon_for(algorithm_name)
+    # ~45 calendar days ≈ ~30 trading sessions: covers horizon + window with room
+    # for holidays, without walking the whole year.
+    start_date = date.fromordinal(target_date.toordinal() - 45)
+    rows = await _decision_aware_front_month_series(db, start_date, target_date)
+    if len(rows) <= horizon:
+        return None
+
+    scored: list[float] = []
+    for i in range(len(rows) - horizon):
+        current = rows[i]
+        future = rows[i + horizon]
+        if not current.decision or current.close is None or future.close is None:
+            continue
+        s = _score_day(
+            current.decision.strip().upper(),
+            float(current.close),
+            float(future.close),
+        )
+        if s is not None:
+            scored.append(s)
+
+    if len(scored) < window:
+        return None
+
+    last_window = scored[-window:]
+    return sum(1 for s in last_window if s > 0) / window
 
 
 # ---------------------------------------------------------------------------

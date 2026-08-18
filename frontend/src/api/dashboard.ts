@@ -13,6 +13,7 @@ import type {
   MacroPanelResponse,
   PositioningResponse,
   EnsembleDiagnosticsResponse,
+  JudgeDiagnosticsResponse,
 } from '@/types/dashboard';
 
 export type { PositionStatusResponse };
@@ -151,6 +152,19 @@ export const dashboardApi = {
     const params = targetDate ? { target_date: targetDate } : {};
     const response = await apiClient.get<EnsembleDiagnosticsResponse>(
       '/dashboard/ensemble-diagnostics',
+      { params }
+    );
+    return response.data;
+  },
+
+  getJudgeDiagnostics: async (
+    targetDate?: string
+  ): Promise<JudgeDiagnosticsResponse> => {
+    const params = targetDate ? { target_date: targetDate } : {};
+    // Language rides on the Accept-Language header set by the client
+    // interceptor — the served row's rationale is language-specific.
+    const response = await apiClient.get<JudgeDiagnosticsResponse>(
+      '/dashboard/judge-diagnostics',
       { params }
     );
     return response.data;

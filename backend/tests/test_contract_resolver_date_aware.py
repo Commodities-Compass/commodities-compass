@@ -28,6 +28,7 @@ from app.utils.contract_resolver import (
     _cache,
     get_algorithm_version_for_date,
 )
+from app.utils.serving_chain import reset_cache as reset_serving_cache
 
 
 async def _seed_ref_chain(db: AsyncSession, code: str = "CAK26") -> uuid.UUID:
@@ -51,16 +52,31 @@ async def _seed_ref_chain(db: AsyncSession, code: str = "CAK26") -> uuid.UUID:
     return contract.id
 
 
+# The preference order used to be hardcoded in the resolver. It now lives in
+# pl_algorithm_version.serving_rank, so the fixtures must configure it — same
+# behaviour under test, different configuration mechanism.
+_DEFAULT_RANKS = {ENSEMBLE_VERSION_NAME: 1, LEGACY_VERSION_NAME: 2}
+
+
 async def _seed_version(
-    db: AsyncSession, name: str, is_active: bool = False
+    db: AsyncSession,
+    name: str,
+    is_active: bool = False,
+    serving_rank: int | None = -1,
 ) -> uuid.UUID:
-    """Seed a pl_algorithm_version row."""
+    """Seed a pl_algorithm_version row.
+
+    ``serving_rank=-1`` (default) means "use the canonical chain position for
+    this name"; pass an explicit int or None to override.
+    """
+    rank = _DEFAULT_RANKS.get(name) if serving_rank == -1 else serving_rank
     v = PlAlgorithmVersion(
         name=name,
         version="1.0.0",
         horizon="short_term",
         is_active=is_active,
         compute_enabled=True,
+        serving_rank=rank,
         description=f"Test {name}",
     )
     db.add(v)
@@ -101,8 +117,9 @@ async def _seed_indicator_row(
 
 @pytest.fixture(autouse=True)
 def _clear_cache() -> None:
-    """Reset the resolver cache between tests so order doesn't matter."""
+    """Reset both resolver caches between tests so order doesn't matter."""
     _cache.clear()
+    reset_serving_cache()
 
 
 @pytest.mark.integration

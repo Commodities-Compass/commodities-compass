@@ -52,7 +52,7 @@ from app.core.config import settings
 from app.core.sentry import init_sentry
 from app.engine.db_writer import write_pipeline_results
 from app.engine.pipeline import IndicatorPipeline
-from app.engine.types import AlgorithmConfig, LEGACY_V1
+from app.engine.types import AlgorithmConfig, AlgorithmConfigMissingError
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ logger = logging.getLogger(__name__)
 def load_algorithm_config(
     session: Session, version_name: str, version: str | None = None
 ) -> AlgorithmConfig:
-    """Load algorithm config from DB. Falls back to hardcoded LEGACY_V1."""
+    """Load algorithm config from DB. Fail-loud when absent or incompatible."""
     if version:
         result = session.execute(
             text("""
@@ -85,12 +85,17 @@ def load_algorithm_config(
         )
     params = {row[0]: row[1] for row in result}
     if not params:
-        logger.warning(
-            "No active algorithm config found for '%s' version=%s, using hardcoded LEGACY_V1",
-            version_name,
-            version,
+        # Fail loud. The old behaviour returned the hardcoded LEGACY_V1, which
+        # meant an ML/LLM version reaching here silently produced power-formula
+        # decisions written under ITS version id (pipeline-error-handling.md:
+        # a producer never degrades). LEGACY_V1 remains available as a fixture
+        # for tests, never as a production fallback.
+        raise AlgorithmConfigMissingError(
+            f"No active config rows in v_algorithm_config_current for "
+            f"'{version_name}' version={version or 'active'}. Refusing to fall "
+            f"back to LEGACY_V1 — that would store power-formula decisions "
+            f"under this version id."
         )
-        return LEGACY_V1
     label = f"{version_name}_v{version}" if version else version_name
     return AlgorithmConfig.from_db_rows(label, params)
 
@@ -120,14 +125,22 @@ def load_algorithm_version_id(
 def load_compute_enabled_versions(
     session: Session,
 ) -> list[tuple[uuid.UUID, str, str]]:
-    """Load all algorithm versions with compute_enabled=True.
+    """Power-formula versions this engine must compute.
+
+    Filters on ``algorithm_kind`` as well as ``compute_enabled``. The kind is
+    the structural guard: this engine only knows how to evaluate the power
+    formula, so an ML or LLM version flagged ``compute_enabled`` is simply not
+    returned instead of crashing the nightly job (missing coefficients) or —
+    when it has no config rows at all — silently writing power-formula
+    decisions under its version id.
 
     Returns list of (id, name, version) tuples.
     """
     result = session.execute(
         text(
             "SELECT id, name, version FROM pl_algorithm_version "
-            "WHERE compute_enabled = true ORDER BY name, version"
+            "WHERE compute_enabled = true AND algorithm_kind = 'power_formula' "
+            "ORDER BY name, version"
         )
     )
     return [(row[0], row[1], row[2]) for row in result]

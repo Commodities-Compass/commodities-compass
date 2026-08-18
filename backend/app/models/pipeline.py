@@ -208,14 +208,64 @@ class PlAlgorithmVersion(Base):
     horizon: Mapped[str] = mapped_column(
         VARCHAR(50), nullable=False, default="short_term"
     )
+    # --- compute layer -----------------------------------------------------
+    # `is_active` marks the single "current" power-formula version; the engine
+    # resolves it that way (app/engine/runner.py). `compute_enabled` selects
+    # which power-formula variants `compute-indicators --all-versions` runs.
+    # NEITHER decides what the dashboard serves — see `serving_rank`.
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     compute_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
+
+    # Which engine can execute this version. Structural, not a toggle: the
+    # indicator engine filters on `power_formula`, so flagging an ML/LLM
+    # version `compute_enabled` is inert instead of crashing the nightly job
+    # (or silently writing power-formula decisions under its version id).
+    algorithm_kind: Mapped[str] = mapped_column(
+        VARCHAR(30),
+        nullable=False,
+        default="power_formula",
+        server_default="power_formula",
+    )
+
+    # --- serving layer -----------------------------------------------------
+    # Dashboard preference order. NULL = never served. 1 = preferred, then 2…
+    # The resolver walks the chain and returns the first version that has a
+    # pl_indicator_daily row for the requested date.
+    #
+    # The rank designates a NAME, not this row: within a name the resolver
+    # still picks the newest version carrying a row (that is what lets a
+    # go-forward-only version serve recent dates while its predecessor keeps
+    # the historical ones). At most one row per name may be ranked — enforced
+    # by the partial unique indexes uq_algorithm_serving_rank / _name.
+    serving_rank: Mapped[Optional[int]] = mapped_column(INTEGER, nullable=True)
+
     description: Mapped[Optional[str]] = mapped_column(TEXT)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
 
-    __table_args__ = (UniqueConstraint("name", "version", name="uq_algorithm_version"),)
+    __table_args__ = (
+        UniqueConstraint("name", "version", name="uq_algorithm_version"),
+        CheckConstraint(
+            "algorithm_kind IN ('power_formula', 'ml_ensemble', 'ml_regime', "
+            "'llm_overlay')",
+            name="ck_algorithm_kind",
+        ),
+        # One version per rank, and one ranked version per name — the rank
+        # designates the name (see serving_rank above).
+        Index(
+            "uq_algorithm_serving_rank",
+            "serving_rank",
+            unique=True,
+            postgresql_where=text("serving_rank IS NOT NULL"),
+        ),
+        Index(
+            "uq_algorithm_serving_name",
+            "name",
+            unique=True,
+            postgresql_where=text("serving_rank IS NOT NULL"),
+        ),
+    )
 
 
 class PlAlgorithmConfig(Base):

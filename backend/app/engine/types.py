@@ -10,6 +10,50 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
+class AlgorithmConfigError(RuntimeError):
+    """Base for algorithm-config loading failures."""
+
+
+class AlgorithmConfigMissingError(AlgorithmConfigError):
+    """The version has no config rows at all.
+
+    Never fall back to ``LEGACY_V1`` here: that would compute power-formula
+    decisions and store them under a version id that is not a power-formula
+    algorithm — silent corruption, far worse than a failed job.
+    """
+
+
+class AlgorithmConfigIncompatibleError(AlgorithmConfigError):
+    """The version has config rows, but not the power-formula coefficients."""
+
+
+# Parameters the power formula cannot be built without. `momentum_threshold`
+# and `smoothing_window` are excluded on purpose — they have defaults.
+POWER_FORMULA_PARAMS: frozenset[str] = frozenset(
+    {
+        "k",
+        "a",
+        "b",
+        "c",
+        "d",
+        "e",
+        "f",
+        "g",
+        "h",
+        "i",
+        "j",
+        "l",
+        "m",
+        "n",
+        "o",
+        "p",
+        "q",
+        "open_threshold",
+        "hedge_threshold",
+    }
+)
+
+
 @dataclass(frozen=True)
 class AlgorithmConfig:
     """Power formula parameters loaded from pl_algorithm_config.
@@ -65,7 +109,21 @@ class AlgorithmConfig:
 
     @staticmethod
     def from_db_rows(version_name: str, params: dict[str, str]) -> AlgorithmConfig:
-        """Build from pl_algorithm_config rows (parameter_name → value)."""
+        """Build from pl_algorithm_config rows (parameter_name → value).
+
+        Raises ``AlgorithmConfigIncompatibleError`` when the version does not
+        carry the power-formula coefficients — an ML/LLM version routed here by
+        mistake used to die on a bare ``KeyError: 'k'``, which named neither the
+        version nor the reason.
+        """
+        missing = sorted(POWER_FORMULA_PARAMS - params.keys())
+        if missing:
+            raise AlgorithmConfigIncompatibleError(
+                f"Algorithm version {version_name!r} is missing power-formula "
+                f"parameters {missing}. This version is not a power_formula "
+                f"algorithm — check pl_algorithm_version.algorithm_kind. The "
+                f"indicator engine must never compute a non-power-formula version."
+            )
         return AlgorithmConfig(
             version_name=version_name,
             k=float(params["k"]),

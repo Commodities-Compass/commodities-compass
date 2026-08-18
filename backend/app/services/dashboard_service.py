@@ -155,7 +155,7 @@ async def get_position_from_technicals(
         else:
             contract_id = await get_active_contract_id(db)
     if algo_id is None:
-        algo_id = await get_active_algorithm_version_id(db)
+        algo_id = await _default_serving_algo_id(db, target_date, contract_id)
 
     query = select(PlIndicatorDaily.decision).where(
         and_(
@@ -175,6 +175,38 @@ async def get_position_from_technicals(
 # ---------------------------------------------------------------------------
 # 2. YTD Performance
 # ---------------------------------------------------------------------------
+
+
+async def _default_serving_algo_id(
+    db: AsyncSession,
+    target_date: Optional[date],
+    contract_id: Optional[uuid.UUID] = None,
+) -> uuid.UUID:
+    """Algorithm id to use when the caller did not pin one.
+
+    The endpoints always pass the version resolved by ``_resolve_algo_for_date``;
+    this is the default for direct callers (scripts, tests, ad-hoc queries). It
+    resolves through the serving chain so those callers see the same algorithm
+    as the dashboard instead of whatever carries ``is_active`` — that flag
+    belongs to the compute layer.
+
+    Degrades to the historical ``is_active`` lookup when no chain is configured,
+    so a mis-seeded environment still answers instead of 500-ing.
+    """
+    from app.utils.serving_chain import NoServingVersionError, resolve_serving_version
+
+    resolution_date = target_date or date.today()
+    try:
+        version_id, _ = await resolve_serving_version(
+            db, resolution_date, contract_id=contract_id
+        )
+        return version_id
+    except NoServingVersionError:
+        logger.warning(
+            "No serving chain configured — falling back to the is_active "
+            "algorithm version. Seed pl_algorithm_version.serving_rank."
+        )
+        return await get_active_algorithm_version_id(db)
 
 
 async def _decision_aware_front_month_series(
@@ -199,17 +231,15 @@ async def _decision_aware_front_month_series(
     """
     from sqlalchemy import text as sa_text
 
-    from app.utils.contract_resolver import (
-        ENSEMBLE_VERSION_NAME,
-        LEGACY_VERSION_NAME,
-        _get_version_id_by_name,
-    )
+    from app.utils.serving_chain import get_serving_chain
 
-    ensemble_id = await _get_version_id_by_name(db, ENSEMBLE_VERSION_NAME)
-    legacy_id = await _get_version_id_by_name(db, LEGACY_VERSION_NAME)
-    if ensemble_id is None and legacy_id is None:
-        # Fall back to the historical "active" lookup as a defensive default.
-        legacy_id = await get_active_algorithm_version_id(db)
+    chain = await get_serving_chain(db)
+    if not chain:
+        # Nothing is ranked: no algorithm is served, so no decision can be
+        # scored. Return an empty series rather than inventing a fallback —
+        # a silently mis-scored YTD is worse than a visibly empty one.
+        logger.error("Serving chain is empty — YTD series cannot be built")
+        return []
 
     query = sa_text("""
         WITH front AS (
@@ -223,34 +253,44 @@ async def _decision_aware_front_month_series(
                    WHERE date >= :start AND date <= :end_date
                      AND close IS NOT NULL) dd
         )
-        SELECT f.date, cd.close,
-               COALESCE(ens.decision, leg.decision) AS decision
+        SELECT f.date, cd.close, d.decision
         FROM front f
         JOIN pl_contract_data_daily cd
               ON cd.date = f.date AND cd.contract_id = f.contract_id
-        LEFT JOIN pl_indicator_daily ens
-               ON ens.date = f.date AND ens.contract_id = f.contract_id
-              AND ens.algorithm_version_id = :ensemble_id
-              AND ens.language = 'fr'
-        LEFT JOIN pl_indicator_daily leg
-               ON leg.date = f.date AND leg.contract_id = f.contract_id
-              AND leg.algorithm_version_id = :legacy_id
-              AND leg.language = 'fr'
+        LEFT JOIN LATERAL (
+            -- The serving chain, resolved per date: first ranked name that has
+            -- a row wins; within a name, the newest version wins. Identical
+            -- rule to resolve_serving_version(), so the YTD scores exactly the
+            -- decisions the dashboard showed.
+            SELECT i.decision
+            FROM pl_indicator_daily i
+            JOIN pl_algorithm_version av ON av.id = i.algorithm_version_id
+            WHERE i.date = f.date
+              AND i.contract_id = f.contract_id
+              AND i.language = 'fr'
+              AND av.name = ANY(:names)
+            ORDER BY array_position(:names, av.name), av.created_at DESC
+            LIMIT 1
+        ) d ON TRUE
         ORDER BY f.date ASC
     """)
-    # The `scored` CTE pins ens/leg to language='fr' (DEFAULT_LANGUAGE): the
-    # `decision` is language-agnostic (the EN row copies it), so without the
-    # filter each (date, contract) fans out to 2 rows once EN content exists →
-    # the horizon-indexed scoring loop in the callers pairs mismatched sessions
-    # and the YTD / running-acc figures drift.
+    # Two invariants hold this query together (.claude/rules/timeseries-uniqueness):
+    #  * LIMIT 1 in the LATERAL → exactly one decision per (date, contract), so
+    #    the horizon-indexed scoring loop in the callers can never pair
+    #    mismatched sessions;
+    #  * language='fr' pin → the decision is language-agnostic (the EN row
+    #    copies it), so without it every date would fan out to 2 rows once EN
+    #    content exists and the YTD / running-acc figures would drift.
+    # Joining on av.name (not a pinned version id) also means a go-forward-only
+    # version keeps serving recent dates while its predecessor keeps the
+    # historical ones — matching what the dashboard resolver does.
 
     result = await db.execute(
         query,
         {
             "start": start_date,
             "end_date": end_date,
-            "ensemble_id": str(ensemble_id) if ensemble_id is not None else None,
-            "legacy_id": str(legacy_id) if legacy_id is not None else None,
+            "names": list(chain),
         },
     )
     return result.all()
@@ -361,7 +401,7 @@ async def get_indicators_with_ranges(
         else:
             contract_id = await get_active_contract_id(db)
     if algo_id is None:
-        algo_id = await get_active_algorithm_version_id(db)
+        algo_id = await _default_serving_algo_id(db, target_date, contract_id)
 
     # Step 1: try the resolved (contract, algo, date) — that's the most
     # specific match and preserves macroeco_score from that algo's LLM run.
@@ -536,7 +576,7 @@ async def get_latest_recommendations(
         else:
             contract_id = await get_active_contract_id(db)
     if algo_id is None:
-        algo_id = await get_active_algorithm_version_id(db)
+        algo_id = await _default_serving_algo_id(db, target_date, contract_id)
 
     # Language filter is inherited by all four fallback steps below: the
     # fallback relaxes contract/algo, but NEVER language — we must never serve

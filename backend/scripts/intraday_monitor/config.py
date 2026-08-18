@@ -34,8 +34,9 @@ USER_AGENT = (
     "Chrome/120.0.0.0 Safari/537.36"
 )
 
-# Ensemble-preferred decision lookup (message context only).
-ENSEMBLE_VERSION_NAME = "ensemble_v1_softgate_wrapper"
+# NB: the decision lookup used to pin a preferred algorithm name here. It now
+# follows pl_algorithm_version.serving_rank (see db_writer.load_signal_decision)
+# so the alert can never name a signal the dashboard is not showing.
 
 
 def get_alert_channel() -> str:

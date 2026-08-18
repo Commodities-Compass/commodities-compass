@@ -18,6 +18,7 @@ place.
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import date as date_cls
 from typing import Optional
 
@@ -142,23 +143,27 @@ class PriorBaseCallMissingError(RuntimeError):
 
 
 def _fetch_algo_base_call(
-    session: Session, data_date: date_cls
+    session: Session,
+    data_date: date_cls,
+    algorithm_version_id: uuid.UUID | str,
 ) -> tuple[Decision, float, str]:
     """Return ``(decision, confidence_0_5, direction_label)`` for a prior brief.
 
     Populates the prior briefs' base_decision/confidence in the judge's window
-    (the prompt shows the algorithm's call at each historical brief). Today's
-    brief is overridden by ``base_override=regime`` in ``run_shadow``, so this
+    (the prompt shows the base algorithm's call at each historical brief).
+    Today's brief is overridden by ``base_override`` in ``run_shadow``, so this
     only concerns the priors.
 
-    Sources the SERVED algorithm via ``pl_algorithm_version.serving_rank`` — no
-    algorithm name is hardcoded here any more. The regime adapter row fills
-    exactly these columns, so once regime is the served algorithm its own prior
-    calls feed the window, with no reference to any previous algorithm.
+    Scoped to the algorithm the judge is overlaying — its OWN history, never
+    another algorithm's. It used to hardcode the ensemble name, which meant the
+    judge reasoned over a predecessor's calls; and resolving "whatever is
+    currently served" would reintroduce the same coupling for as long as the
+    new algorithm runs in shadow. The adapter row fills exactly these columns,
+    so the base algorithm always has its own priors available.
 
-    Raises ``PriorBaseCallMissingError`` when the date has no served decision:
-    the recovery path is to backfill the adapter rows, never to invent a
-    neutral call.
+    Raises ``PriorBaseCallMissingError`` when the date has no decision for that
+    algorithm: the recovery path is to backfill the adapter rows, never to
+    invent a neutral call.
     """
     row = session.execute(
         text(
@@ -167,21 +172,21 @@ def _fetch_algo_base_call(
                    COALESCE(i.confidence, 0) AS confidence,
                    COALESCE(i.direction, '') AS direction
             FROM pl_indicator_daily i
-            JOIN pl_algorithm_version v ON v.id = i.algorithm_version_id
             WHERE i.date = :d
-              AND v.serving_rank IS NOT NULL
+              AND i.algorithm_version_id = :a
               AND i.decision IS NOT NULL
-            ORDER BY v.serving_rank, i.created_at DESC
+            ORDER BY i.created_at DESC
             LIMIT 1
             """
         ),
-        {"d": data_date},
+        {"d": data_date, "a": str(algorithm_version_id)},
     ).fetchone()
     if row is None:
         raise PriorBaseCallMissingError(
-            f"No served decision at {data_date} for the judge's prior-brief "
-            f"window. Backfill the adapter rows for that session — the window "
-            f"must never be padded with a fabricated neutral call."
+            f"No decision at {data_date} for algorithm {algorithm_version_id} "
+            f"in the judge's prior-brief window. Backfill the adapter rows for "
+            f"that session — the window must never be padded with a fabricated "
+            f"neutral call."
         )
     try:
         decision = Decision(row.decision)
@@ -198,6 +203,7 @@ def build_brief_from_db(
     data_date: date_cls,
     target_date: date_cls,
     include_algo_base: bool = True,
+    algorithm_version_id: uuid.UUID | str | None = None,
 ) -> Brief:
     """Compose a ``Brief`` from DB rows keyed on ``data_date``.
 
@@ -228,7 +234,14 @@ def build_brief_from_db(
     weather: WeatherRead = _parse_weather(weather_text)
 
     if include_algo_base:
-        base_dec, base_conf, base_dir = _fetch_algo_base_call(session, data_date)
+        if algorithm_version_id is None:
+            raise PriorBaseCallMissingError(
+                "include_algo_base=True requires algorithm_version_id — the "
+                "judge's window must be scoped to the algorithm it overlays"
+            )
+        base_dec, base_conf, base_dir = _fetch_algo_base_call(
+            session, data_date, algorithm_version_id
+        )
     else:
         base_dec, base_conf, base_dir = (Decision.MONITOR, 0.0, "")
 

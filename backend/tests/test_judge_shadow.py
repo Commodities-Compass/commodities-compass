@@ -64,6 +64,10 @@ Short-term cautious to mildly bullish on supply anxiety.
 _WEATHER_TEXT = "Impact: 2/10; Justification: Only San-Pedro slightly degraded, all other zones normal."
 
 
+# The judge's window is scoped to the algorithm it overlays.
+_ALGO_ID = "11111111-1111-1111-1111-111111111111"
+
+
 def _mock_session_for_brief(
     *,
     press: str | None = _PRESS_TEXT,
@@ -102,6 +106,7 @@ class TestBriefBuilder:
             data_date=date(2026, 7, 31),
             target_date=date(2026, 8, 3),
             include_algo_base=True,
+            algorithm_version_id=_ALGO_ID,
         )
         assert isinstance(brief, Brief)
         assert brief.session_date == "2026-08-03"
@@ -138,6 +143,7 @@ class TestBriefBuilder:
                 data_date=date(2026, 7, 31),
                 target_date=date(2026, 8, 3),
                 include_algo_base=True,
+                algorithm_version_id=_ALGO_ID,
             )
 
     def test_include_algo_base_false_uses_placeholders(self) -> None:
@@ -181,6 +187,7 @@ class TestBriefBuilder:
             session,
             data_date=date(2026, 7, 31),
             target_date=date(2026, 8, 3),
+            algorithm_version_id=_ALGO_ID,
         )
         assert brief.weather.impact_10 == pytest.approx(2.0), (
             "Impact prefix must be prepended so R&D parser matches — else "
@@ -195,6 +202,7 @@ class TestBriefBuilder:
             session,
             data_date=date(2026, 7, 31),
             target_date=date(2026, 8, 3),
+            algorithm_version_id=_ALGO_ID,
         )
         assert brief.weather.impact_10 == pytest.approx(4.0)
 

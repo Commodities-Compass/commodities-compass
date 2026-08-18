@@ -53,7 +53,9 @@ def _prior_data_dates(session: Session, data_date: date_cls, n: int) -> list[dat
     return list(reversed(dates))
 
 
-def _build_window(session: Session, data_date: date_cls) -> list[Brief]:
+def _build_window(
+    session: Session, data_date: date_cls, algorithm_version_id=None
+) -> list[Brief]:
     """Build the ``BRIEF_WINDOW`` briefs ending on ``data_date`` (oldest-first).
 
     Today's Brief has ``include_algo_base=False`` because ``run_shadow`` /
@@ -68,7 +70,11 @@ def _build_window(session: Session, data_date: date_cls) -> list[Brief]:
         include_base = i < len(dates) - 1  # False only for the today brief
         window.append(
             build_brief_from_db(
-                session, data_date=d, target_date=target, include_algo_base=include_base
+                session,
+                data_date=d,
+                target_date=target,
+                include_algo_base=include_base,
+                algorithm_version_id=algorithm_version_id,
             )
         )
     return window
@@ -115,7 +121,7 @@ def run_for_session(
             (data_date - regime.source_date).days,
         )
 
-    window = _build_window(session, data_date)
+    window = _build_window(session, data_date, algorithm_version_id=aid)
     base_call = _regime_base_call(regime)
 
     if llm is None:

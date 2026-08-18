@@ -40,7 +40,9 @@ SESSION = date_cls(2026, 8, 17)
 FUSE_TRACE = "ABSTAIN HEDGE->MONITOR: judge contradicts at conf=3"
 
 
-async def _seed_contract(db: AsyncSession, code: str = "CAU26") -> uuid.UUID:
+async def _seed_contract(
+    db: AsyncSession, code: str = "CAU26", *, active: bool = False
+) -> uuid.UUID:
     exchange = RefExchange(code=f"ICE-{code}", name="ICE", timezone="UTC")
     db.add(exchange)
     await db.flush()
@@ -53,7 +55,7 @@ async def _seed_contract(db: AsyncSession, code: str = "CAU26") -> uuid.UUID:
         commodity_id=commodity.id,
         code=code,
         contract_month=code[-3:],
-        is_active=False,
+        is_active=active,
     )
     db.add(contract)
     await db.flush()
@@ -409,7 +411,7 @@ async def test_endpoint_is_silent_while_regime_is_not_served(
     conviction panel describing a decision nobody is shown would contradict the
     signal on screen.
     """
-    contract_id = await _seed_contract(db_session, "CAX26")
+    contract_id = await _seed_contract(db_session, "CAX26", active=True)
     regime_id = await _seed_version(db_session, "regime")
     await _seed_regime(db_session, contract_id, regime_id)
 
@@ -424,7 +426,8 @@ async def test_endpoint_is_silent_while_regime_is_not_served(
     db_session.add(ensemble)
     await db_session.flush()
 
-    r = await client.get(
-        "/v1/dashboard/judge-diagnostics", params={"target_date": SESSION.isoformat()}
-    )
-    assert r.status_code == 404
+    # No ``target_date``: passing one routes through the trading-calendar
+    # resolver, which needs a seeded calendar and answers 503 without one. The
+    # guard under test is the served-algorithm check, not date resolution.
+    r = await client.get("/v1/dashboard/judge-diagnostics")
+    assert r.status_code == 404, r.text

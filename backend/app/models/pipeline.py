@@ -490,10 +490,17 @@ class PlJudgeShadow(Base):
     stance + evidence), the deterministic drift signal (weather series across
     the brief window), and the fused final decision. Pure observation log for
     the shadow-eval (README §6 "Shadow-eval spec" — intervention confusion
-    matrix + calibration curve after >=30 sessions). NEVER read by the
-    dashboard; NEVER touches pl_indicator_daily.decision. ``realized_return`` /
-    ``production_score`` stay NULL until the J+4-J+5 horizon closes, then are
-    backfilled by the scoring pass (symmetric with pl_regime_shadow).
+    matrix + calibration curve after >=30 sessions). Read by
+    ``/dashboard/judge-diagnostics`` once regime is served; never writes
+    pl_indicator_daily itself — the adapter row does that.
+
+    ``realized_return`` / ``production_score`` stay NULL until the **J+1**
+    horizon closes, then are backfilled by the scoring pass (symmetric with
+    pl_regime_shadow). The judge has no horizon of its own: it judges the call
+    it is handed, so it inherits regime's. The "J+4 in production" line in
+    ``vendor/judge_v0.1/judge/scoring.py`` is a leftover from when the judge sat
+    above the ensemble — a docstring, not behaviour, and vendor packs are never
+    patched in place (raise it on the next judge drop).
     """
 
     __tablename__ = "pl_judge_shadow"

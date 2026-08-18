@@ -52,11 +52,21 @@ class TestNormalizeLanguage:
 
 
 class TestCandidateSuffixes:
-    def test_english_is_ensemble_only_and_ordered(self):
-        # EN ignores the version param — it always prefers ensemble-EN, then a
-        # bare -EN, and never an FR ('' / '-Ensemble') suffix.
+    def test_english_follows_the_served_version(self):
+        # EN used to hardcode the ensemble track, so every version served
+        # ensemble audio. With a third track that would ship the wrong brief:
+        # the suffix now follows the version, with a bare -EN as last resort
+        # and never an FR ('' / '-Ensemble') suffix.
         assert _candidate_suffixes("ensemble", "en") == ["-Ensemble-EN", "-EN"]
-        assert _candidate_suffixes("legacy", "en") == ["-Ensemble-EN", "-EN"]
+        assert _candidate_suffixes("regime", "en") == ["-Regime-EN", "-EN"]
+        # legacy's version suffix is empty, so both candidates collapse to one.
+        assert _candidate_suffixes("legacy", "en") == ["-EN"]
+
+    def test_english_never_falls_back_to_a_french_file(self):
+        for version in ("legacy", "ensemble", "regime"):
+            assert "" not in _candidate_suffixes(version, "en")
+            assert "-Ensemble" not in _candidate_suffixes(version, "en")
+            assert "-Regime" not in _candidate_suffixes(version, "en")
 
     def test_french_is_exact_per_version(self):
         assert _candidate_suffixes("ensemble", "fr") == ["-Ensemble"]

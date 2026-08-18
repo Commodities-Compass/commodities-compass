@@ -291,8 +291,21 @@ def write_llm_call(
     latency_ms: float,
     pipeline_run_id: uuid.UUID | None = None,
     dry_run: bool = False,
+    prompt: str | None = None,
 ) -> None:
-    """Insert an LLM call audit record into aud_llm_call."""
+    """Insert an LLM call audit record into aud_llm_call.
+
+    ``prompt`` is the RENDERED user prompt — sources included. It was left NULL
+    until 2026-08-18, which made the agent's output unauditable and, worse,
+    unreplayable: on 2026-07-31 COCOBOD cut its 2026/27 forecast by ~16%, the
+    brief for that date never mentioned it, and there is now no way to know
+    whether the fetcher missed the item or the summariser dropped it — the
+    sources are gone. Storing the prompt is what turns a future prompt change
+    from "it reads better" into "here is the day it would have caught".
+
+    It is a few tens of kB per call. That is the price of being able to prove a
+    change did not regress.
+    """
     if dry_run:
         log.info(
             "[DRY RUN] [%s] Would log LLM call: %s, %.0fms",
@@ -310,6 +323,7 @@ def write_llm_call(
         input_tokens=usage.get("input_tokens"),
         output_tokens=usage.get("output_tokens"),
         latency_ms=int(latency_ms),
+        prompt=prompt,
     )
     session.add(call)
     session.flush()

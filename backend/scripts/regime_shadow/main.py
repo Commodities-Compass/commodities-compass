@@ -40,6 +40,10 @@ from scripts._shared.sentry import bootstrap_scraper
 from scripts.db import get_session, phase_b_should_skip
 from scripts.regime_shadow.db_writer import write_regime_shadow
 from scripts.regime_shadow.feature_engine import build_selfcomputed_features
+from scripts.regime_shadow.indicator_adapter import (
+    AdapterSourceMissingError,
+    write_adapter_row,
+)
 from scripts.regime_shadow.panel_loader import slice_panel
 from scripts.regime_shadow.pipeline_loader import load_regime_pipeline_from_db
 
@@ -119,6 +123,7 @@ def main() -> int:
 
     written = 0
     judge_written = 0
+    adapter_written = 0
     with get_session() as session:
         aid = _resolve_version_id(session)
         pipe = load_regime_pipeline_from_db(session, algorithm_version_id=aid)
@@ -183,12 +188,34 @@ def main() -> int:
         elif args.no_judge:
             logger.info("--no-judge set, skipping Layer-3 overlay")
 
+        # --- Adapter row: project the decision into pl_indicator_daily -------
+        # Written AFTER both layers are committed, from what is actually in the
+        # DB — so it reflects the stored truth rather than in-memory state, and
+        # can be replayed on its own for a backfill.
+        #
+        # This exposes nothing: the dashboard serves whatever carries a
+        # serving_rank, and regime has none. The row exists so the two systems
+        # can be compared in place, for as long as needed, before any flip.
+        if not args.dry_run:
+            for d in dates:
+                try:
+                    adapter_written += write_adapter_row(
+                        session, session_date=d, algorithm_version_id=aid
+                    )
+                except AdapterSourceMissingError as exc:
+                    # The regime write above succeeded, so this should be
+                    # unreachable — surface it rather than swallow it.
+                    logger.error("adapter row skipped for %s: %s", d, exc)
+            session.commit()
+            logger.info("wrote %d adapter row(s)", adapter_written)
+
     sentry_sdk.set_context(
         "regime_shadow",
         {
             "n_dates": len(dates),
             "regime_written": written,
             "judge_written": judge_written,
+            "adapter_written": adapter_written,
             "dry_run": args.dry_run,
             "no_judge": args.no_judge,
         },

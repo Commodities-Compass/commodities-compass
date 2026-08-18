@@ -388,7 +388,8 @@ async def get_indicators_with_ranges(
     """Get all technical gauges with their colour ranges for a given date.
 
     Reads ``pl_dashboard_gauge`` — the algorithm-independent gauge table fed by
-    ``cc-compute-gauges``. Previously this read ``pl_indicator_daily.*_norm``,
+    ``cc-compute-indicators --stage gauges``. Previously this read
+    ``pl_indicator_daily.*_norm``,
     i.e. whichever ALGORITHM wrote that row, which forced a three-step fallback
     cascade (resolved algo → any algo on this contract → any contract) purely to
     survive the fact that only one algorithm ever filled the norms. All of that
@@ -427,9 +428,9 @@ async def get_indicators_with_ranges(
 
     # No gauge row for this (date, contract). Legitimate before the backfill
     # covers a date, so degrade to an empty grid rather than 500 — but say so,
-    # since after the backfill it means cc-compute-gauges has not run.
+    # since after the backfill it means the gauge stage has not run.
     logger.warning(
-        "No pl_dashboard_gauge row for date=%s contract=%s — has cc-compute-gauges run?",
+        "No pl_dashboard_gauge row for date=%s contract=%s — has the gauge stage run?",
         target_date,
         contract_id,
     )

@@ -380,7 +380,8 @@ class PlDashboardGauge(Base):
     algorithm writing them stopped — which is exactly what a bascule does.
 
     They are a property of the market, not of a decision, so they get their own
-    table and their own job (``cc-compute-gauges``). Nothing here depends on
+    table, filled by the gauge stage of ``cc-compute-indicators``
+    (``--stage gauges``). Nothing here depends on
     pl_algorithm_version.
 
     THREE STAGES ARE STORED, because the displayed value is the third one and
@@ -392,7 +393,7 @@ class PlDashboardGauge(Base):
 
     ``norm_value`` is what the gauge plots. Reproducing all three stages exactly
     is why the job imports the engine's own functions instead of reimplementing
-    them — see scripts/compute_gauges.
+    them — see app/engine/gauges.py.
 
     NO COLOR ZONE IS STORED. The RED/ORANGE/GREEN split comes from ``test_range``,
     which is mutable config: freezing a zone at write time would pin a stale

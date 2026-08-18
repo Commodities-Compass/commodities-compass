@@ -36,15 +36,8 @@ locals {
       schedule = "0 19 * * *"
     }
     compute-indicators = {
-      description = "Compute technical indicators for all enabled algorithm versions"
+      description = "Technical indicators (per version) + dashboard gauges (algorithm-independent)"
       schedule    = "15 19 * * 1-5"
-    }
-    compute-gauges = {
-      # Reads pl_derived_indicators (written at 19:15) and feeds
-      # pl_dashboard_gauge. Weekday-only like Phase A: the gauges are keyed to
-      # the session date, so there is nothing to compute on a non-trading day.
-      description = "Compute the dashboard technical gauges (algorithm-independent)"
-      schedule    = "20 19 * * 1-5"
     }
     daily-analysis = {
       description = "Run trading analysis with LLM scoring, keyed to last completed session (P2b calendar-aware)"

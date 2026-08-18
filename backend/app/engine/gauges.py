@@ -1,14 +1,20 @@
-"""Gauge computation — raw → 5d SMA → rolling 252d z-score.
+"""Dashboard gauges — raw → 5d SMA → rolling 252d z-score, then persisted.
 
-The displayed gauge value is the z-score of the SMOOTHED score, not of the raw
+Lives in the engine because the engine already computes these exact two stages
+for its own composite: deriving them in a separate job duplicated the work and,
+worse, created a second implementation free to drift. Here the gauge stage
+calls the same ``compute_raw_scores`` / ``rolling_zscore`` the composite uses,
+so the two cannot diverge.
+
+The displayed gauge is the z-score of the SMOOTHED score, not of the raw
 indicator. Getting that wrong is invisible: the numbers stay plausible, they
-just no longer match the ``test_range`` calibration, so the colours silently
-drift. That is why this module **imports the engine's own functions** rather
-than reimplementing the two stages — the only way the values stay identical to
-what ``pl_indicator_daily.*_norm`` has always held.
+just stop matching the ``test_range`` calibration and the colours silently
+drift.
 
-Everything here is deliberately independent of ``pl_algorithm_version``: the
-gauges describe the market, not a decision.
+Despite living in the engine, the gauge stage is deliberately independent of
+``pl_algorithm_version``: it reads no algorithm, writes no algorithm-keyed row,
+and runs once per session rather than once per version. The gauges describe the
+market, not a decision — which is why they survive an algorithm change.
 """
 
 from __future__ import annotations
@@ -18,10 +24,12 @@ import math
 
 import pandas as pd
 from sqlalchemy import text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.engine.normalization import rolling_zscore
 from app.engine.smoothing import compute_raw_scores
+from app.models.pipeline import PlDashboardGauge
 
 logger = logging.getLogger(__name__)
 
@@ -163,3 +171,31 @@ def to_gauge_rows(frame: pd.DataFrame) -> list[dict]:
                 }
             )
     return rows
+
+
+# Rows per statement. The full backfill is ~5 indicators × ~2700 sessions;
+# chunking keeps the parameter count well under the driver limit.
+_CHUNK_SIZE = 1000
+
+
+def upsert_gauges(session: Session, rows: list[dict]) -> int:
+    """Write gauge rows, returning how many were sent."""
+    if not rows:
+        logger.warning("No gauge rows to write")
+        return 0
+
+    written = 0
+    for start in range(0, len(rows), _CHUNK_SIZE):
+        chunk = rows[start : start + _CHUNK_SIZE]
+        stmt = pg_insert(PlDashboardGauge).values(chunk)
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_dashboard_gauge",
+            set_={
+                "raw_value": stmt.excluded.raw_value,
+                "score_value": stmt.excluded.score_value,
+                "norm_value": stmt.excluded.norm_value,
+            },
+        )
+        session.execute(stmt)
+        written += len(chunk)
+    return written

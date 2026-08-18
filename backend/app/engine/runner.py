@@ -600,6 +600,28 @@ def main() -> None:
         help="Run even on non-trading days (for backfills/debugging)",
     )
     parser.add_argument(
+        "--stage",
+        choices=("all", "indicators", "gauges"),
+        default="all",
+        help=(
+            "Which half to run. 'indicators' = derived indicators + the "
+            "per-version decision rows. 'gauges' = the algorithm-independent "
+            "dashboard gauges only. 'all' (default, what the nightly cron runs) "
+            "does both. The gauge stage reuses this run's smoothing/z-score "
+            "computation instead of re-deriving it in a second job."
+        ),
+    )
+    parser.add_argument(
+        "--gauge-days",
+        type=int,
+        default=None,
+        help=(
+            "Limit the gauge WRITE window to the last N sessions. The rolling "
+            "windows are still computed over the full history — narrowing the "
+            "input instead would produce wrong z-scores."
+        ),
+    )
+    parser.add_argument(
         "--derived-only",
         action="store_true",
         help=(
@@ -650,8 +672,13 @@ def main() -> None:
             for code, count in contracts.items():
                 logger.info("  %s: %d rows", code, count)
 
-        # Resolve which versions to run
-        if args.all_versions:
+        # Resolve which versions to run. Skipped for --stage gauges: the gauge
+        # stage reads no algorithm, so requiring a resolvable version there
+        # would reintroduce the coupling this split exists to remove.
+        versions: list[tuple[uuid.UUID, str, str]] = []
+        if args.stage == "gauges":
+            pass
+        elif args.all_versions:
             versions = load_compute_enabled_versions(session)
             if not versions:
                 logger.error("No algorithm versions with compute_enabled=True found")
@@ -676,8 +703,59 @@ def main() -> None:
                 (algo_version_id, args.algorithm, args.algorithm_version or "active")
             ]
 
-        for vid, name, ver in versions:
-            _run_for_version(session, df, vid, name, ver, args)
+        if args.stage in ("all", "indicators"):
+            for vid, name, ver in versions:
+                _run_for_version(session, df, vid, name, ver, args)
+
+        if args.stage in ("all", "gauges"):
+            _run_gauge_stage(session, args)
+
+
+def _run_gauge_stage(session: Session, args: argparse.Namespace) -> None:
+    """Compute and persist the dashboard gauges for the whole chain.
+
+    Independent of every algorithm: it reads pl_derived_indicators over the
+    canonical front-month chain and writes pl_dashboard_gauge. Nothing here
+    touches pl_algorithm_version, which is what lets the gauges survive an
+    algorithm change.
+    """
+    from app.engine.gauges import (
+        GAUGE_SPECS,
+        compute_gauge_frame,
+        load_derived_chain,
+        to_gauge_rows,
+        upsert_gauges,
+    )
+
+    chain = load_derived_chain(session)
+    logger.info(
+        "gauges: %d sessions [%s..%s]",
+        len(chain),
+        chain["date"].min().date(),
+        chain["date"].max().date(),
+    )
+
+    # The rolling windows need the WHOLE history to be correct; only the write
+    # window is narrowed. Trimming the input instead would silently produce
+    # wrong z-scores for the first ~252 rows of the slice.
+    frame = compute_gauge_frame(chain)
+    if args.gauge_days:
+        frame = frame.tail(args.gauge_days)
+        logger.info("gauges: limiting write window to %d sessions", len(frame))
+
+    rows = to_gauge_rows(frame)
+    logger.info(
+        "gauges: %d rows over %d sessions x %d indicators",
+        len(rows),
+        len(frame),
+        len(GAUGE_SPECS),
+    )
+    if args.dry_run:
+        logger.info("[DRY RUN] gauges computed, nothing written")
+        return
+    written = upsert_gauges(session, rows)
+    session.commit()
+    logger.info("gauges: wrote %d rows", written)
 
 
 if __name__ == "__main__":

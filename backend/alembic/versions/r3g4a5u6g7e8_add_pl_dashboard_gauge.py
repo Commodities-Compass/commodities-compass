@@ -10,7 +10,7 @@ ALGORITHM happened to write that row. They would therefore vanish the moment
 that algorithm stopped writing, which is precisely what a bascule does.
 
 The gauges describe the market, not a decision. This table gives them their own
-home, fed by their own job (``cc-compute-gauges``), with no dependency on
+home, fed by the gauge stage of ``cc-compute-indicators``, with no dependency on
 pl_algorithm_version.
 
 Three stages are stored (raw → 5d-SMA score → 252d z-score): the third is what

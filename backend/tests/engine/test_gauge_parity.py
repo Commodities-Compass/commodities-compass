@@ -19,10 +19,7 @@ import pytest
 
 from app.engine.pipeline import IndicatorPipeline
 from app.engine.types import LEGACY_V1
-from scripts.compute_gauges.computer import (
-    GAUGE_SPECS,
-    compute_gauge_frame,
-)
+from app.engine.gauges import GAUGE_SPECS, compute_gauge_frame
 
 # Matches the engine defaults the gauges were calibrated against.
 _TOLERANCE = 1e-9
@@ -105,10 +102,7 @@ def test_skipping_the_smoothing_stage_would_be_detected() -> None:
     """
     from app.engine.normalization import rolling_zscore
 
-    from scripts.compute_gauges.computer import (
-        GAUGE_NORM_WINDOW,
-        GAUGE_OUTLIER_CAP,
-    )
+    from app.engine.gauges import GAUGE_NORM_WINDOW, GAUGE_OUTLIER_CAP
 
     market = _make_market_data()
     engine = _engine_result(market)

@@ -36,6 +36,7 @@ from app.schemas.dashboard import (
     MacroPanelResponse,
     PositioningResponse,
     EnsembleDiagnosticsResponse,
+    JudgeDiagnosticsResponse,
     SpecialistVotesResponse,
     SpecialistVote,
 )
@@ -71,7 +72,8 @@ from app.services.ensemble_diagnostics_service import (
     get_ensemble_diagnostics,
     get_specialist_votes,
 )
-from app.utils.contract_resolver import ENSEMBLE_VERSION_NAME
+from app.services.judge_diagnostics_service import get_judge_diagnostics
+from app.utils.contract_resolver import ENSEMBLE_VERSION_NAME, REGIME_VERSION_NAME
 from app.services.weather_service import (
     get_current_campaign,
     get_harmattan_status,
@@ -226,7 +228,9 @@ async def get_position_status(
         position = await get_position_from_technicals(
             db, business_date, contract_id=contract_id, algo_id=algo_id
         )
-        ytd_performance = await calculate_ytd_performance(db, business_date)
+        ytd_performance = await calculate_ytd_performance(
+            db, business_date, algorithm_name=algo_name
+        )
 
         # Use business_date for response, or current date if not provided
         response_date = business_date or datetime.now(timezone.utc).date()
@@ -1122,6 +1126,71 @@ async def get_specialist_votes_endpoint(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error getting specialist votes: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get(
+    "/judge-diagnostics",
+    response_model=JudgeDiagnosticsResponse,
+    dependencies=[Depends(require_any_entitlement(ent.FEATURE_JUDGE_OVERLAY))],
+)
+@limiter.limit("60/minute")
+async def get_judge_diagnostics_endpoint(
+    request: Request,
+    target_date: Optional[str] = Query(
+        default=None, description="Date for judge diagnostics (YYYY-MM-DD format)"
+    ),
+    language: Optional[str] = Query(
+        default=None,
+        description="Content language ('fr' | 'en'). Falls back to Accept-Language, else 'fr'.",
+    ),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> JudgeDiagnosticsResponse:
+    """Regime call + macro overlay for a served regime date.
+
+    404 on any date the regime track does not serve — the frontend hides the
+    conviction block, the same way it does for an ensemble date with no
+    orchestrator row. The date check is on the SERVED algorithm, so this
+    endpoint stays silent for as long as regime carries no ``serving_rank``.
+    """
+    try:
+        business_date = None
+        if target_date:
+            business_date = await _parse_and_validate_date(target_date, db)
+        resolution_date = business_date or datetime.now(timezone.utc).date()
+
+        contract_id = await _resolve_contract_for_request(db, business_date)
+        algo_id, algo_name = await _resolve_algo_for_date(
+            db, business_date, contract_id
+        )
+        if algo_name != REGIME_VERSION_NAME:
+            raise HTTPException(
+                status_code=404,
+                detail="No judge diagnostics available for this date",
+            )
+
+        lang = resolve_language(language, request.headers.get("accept-language"))
+        data = await get_judge_diagnostics(
+            db,
+            resolution_date,
+            contract_id=contract_id,
+            algo_id=algo_id,
+            algo_name=algo_name,
+            language=str(lang),
+        )
+        if data is None:
+            raise HTTPException(
+                status_code=404,
+                detail="No regime row found for this date",
+            )
+        return JudgeDiagnosticsResponse(**data)
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error getting judge diagnostics: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

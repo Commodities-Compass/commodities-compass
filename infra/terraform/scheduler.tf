@@ -36,7 +36,7 @@ locals {
       schedule = "0 19 * * *"
     }
     compute-indicators = {
-      description = "Compute technical indicators for all enabled algorithm versions"
+      description = "Technical indicators (per version) + dashboard gauges (algorithm-independent)"
       schedule    = "15 19 * * 1-5"
     }
     daily-analysis = {
@@ -177,6 +177,12 @@ locals {
     #
     # F-graduation (post-eval, ≥30 sessions): brief-ensemble will move
     # downstream of this job to read regime + judge overlay. Rescheduling only.
+    regime-brief = {
+      # 5 min after cc-regime-shadow: the adapter row must exist before the
+      # narrative can be attached to it (the writer fails loudly otherwise).
+      description = "Regime+judge narrative + Drive brief (fr + en)"
+      schedule    = "55 19 * * *"
+    }
     regime-shadow = {
       description = "C6 regime + judge (Layer-3 overlay): inert shadow decisions → pl_regime_shadow + pl_judge_shadow"
       schedule    = "50 19 * * *"

@@ -9,15 +9,17 @@ All queries read from pl_* tables (contract-centric).
 import logging
 import re
 from datetime import date, timedelta
-from typing import Any, Dict, List, Optional, Sequence
+from types import MappingProxyType
+from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 import uuid
 
-from sqlalchemy import and_, desc, select
+from sqlalchemy import and_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.pipeline import (
     PlArticleSegment,
+    PlDashboardGauge,
     PlCotEuWeekly,
     PlFundamentalArticle,
     PlIndicatorDaily,
@@ -49,6 +51,29 @@ logger = logging.getLogger(__name__)
 # (forward_return_6d), but the price signal is most informative at J+4 in
 # practice — mean reversion dilutes the signal beyond.
 YTD_EVAL_HORIZON_DAYS = 4
+
+# An algorithm is scored on the horizon it actually predicts. Regime decides for
+# the NEXT session, so scoring it at J+4 measures four days of drift it never
+# claimed — and the brief prints "horizon prochaine séance" right next to the
+# figure, which would make the label and the number disagree.
+#
+# Kept as a literal map rather than a `pl_algorithm_config` row: two entries do
+# not justify a DB round trip on the YTD hot path, and the ensemble's own 4 has
+# always been a constant here. Move it to config-as-data when a third horizon
+# appears.
+_EVAL_HORIZON_BY_ALGORITHM: Mapping[str, int] = MappingProxyType({"regime": 1})
+
+
+def eval_horizon_for(algorithm_name: Optional[str]) -> int:
+    """Trading-day horizon on which ``algorithm_name`` is scored.
+
+    Falls back to the ensemble/legacy default for any unknown name — a new
+    algorithm is scored like its predecessors until someone says otherwise,
+    which is visible in the figure rather than crashing the dashboard.
+    """
+    if not algorithm_name:
+        return YTD_EVAL_HORIZON_DAYS
+    return _EVAL_HORIZON_BY_ALGORITHM.get(algorithm_name, YTD_EVAL_HORIZON_DAYS)
 
 
 def _score_day(decision: str, close_t: float, close_t_plus_h: float) -> Optional[float]:
@@ -155,7 +180,7 @@ async def get_position_from_technicals(
         else:
             contract_id = await get_active_contract_id(db)
     if algo_id is None:
-        algo_id = await get_active_algorithm_version_id(db)
+        algo_id = await _default_serving_algo_id(db, target_date, contract_id)
 
     query = select(PlIndicatorDaily.decision).where(
         and_(
@@ -175,6 +200,38 @@ async def get_position_from_technicals(
 # ---------------------------------------------------------------------------
 # 2. YTD Performance
 # ---------------------------------------------------------------------------
+
+
+async def _default_serving_algo_id(
+    db: AsyncSession,
+    target_date: Optional[date],
+    contract_id: Optional[uuid.UUID] = None,
+) -> uuid.UUID:
+    """Algorithm id to use when the caller did not pin one.
+
+    The endpoints always pass the version resolved by ``_resolve_algo_for_date``;
+    this is the default for direct callers (scripts, tests, ad-hoc queries). It
+    resolves through the serving chain so those callers see the same algorithm
+    as the dashboard instead of whatever carries ``is_active`` — that flag
+    belongs to the compute layer.
+
+    Degrades to the historical ``is_active`` lookup when no chain is configured,
+    so a mis-seeded environment still answers instead of 500-ing.
+    """
+    from app.utils.serving_chain import NoServingVersionError, resolve_serving_version
+
+    resolution_date = target_date or date.today()
+    try:
+        version_id, _ = await resolve_serving_version(
+            db, resolution_date, contract_id=contract_id
+        )
+        return version_id
+    except NoServingVersionError:
+        logger.warning(
+            "No serving chain configured — falling back to the is_active "
+            "algorithm version. Seed pl_algorithm_version.serving_rank."
+        )
+        return await get_active_algorithm_version_id(db)
 
 
 async def _decision_aware_front_month_series(
@@ -199,17 +256,15 @@ async def _decision_aware_front_month_series(
     """
     from sqlalchemy import text as sa_text
 
-    from app.utils.contract_resolver import (
-        ENSEMBLE_VERSION_NAME,
-        LEGACY_VERSION_NAME,
-        _get_version_id_by_name,
-    )
+    from app.utils.serving_chain import get_serving_chain
 
-    ensemble_id = await _get_version_id_by_name(db, ENSEMBLE_VERSION_NAME)
-    legacy_id = await _get_version_id_by_name(db, LEGACY_VERSION_NAME)
-    if ensemble_id is None and legacy_id is None:
-        # Fall back to the historical "active" lookup as a defensive default.
-        legacy_id = await get_active_algorithm_version_id(db)
+    chain = await get_serving_chain(db)
+    if not chain:
+        # Nothing is ranked: no algorithm is served, so no decision can be
+        # scored. Return an empty series rather than inventing a fallback —
+        # a silently mis-scored YTD is worse than a visibly empty one.
+        logger.error("Serving chain is empty — YTD series cannot be built")
+        return []
 
     query = sa_text("""
         WITH front AS (
@@ -223,64 +278,86 @@ async def _decision_aware_front_month_series(
                    WHERE date >= :start AND date <= :end_date
                      AND close IS NOT NULL) dd
         )
-        SELECT f.date, cd.close,
-               COALESCE(ens.decision, leg.decision) AS decision
+        SELECT f.date, cd.close, d.decision
         FROM front f
         JOIN pl_contract_data_daily cd
               ON cd.date = f.date AND cd.contract_id = f.contract_id
-        LEFT JOIN pl_indicator_daily ens
-               ON ens.date = f.date AND ens.contract_id = f.contract_id
-              AND ens.algorithm_version_id = :ensemble_id
-              AND ens.language = 'fr'
-        LEFT JOIN pl_indicator_daily leg
-               ON leg.date = f.date AND leg.contract_id = f.contract_id
-              AND leg.algorithm_version_id = :legacy_id
-              AND leg.language = 'fr'
+        LEFT JOIN LATERAL (
+            -- The serving chain, resolved per date: first ranked name that has
+            -- a row wins; within a name, the newest version wins. Identical
+            -- rule to resolve_serving_version(), so the YTD scores exactly the
+            -- decisions the dashboard showed.
+            SELECT i.decision
+            FROM pl_indicator_daily i
+            JOIN pl_algorithm_version av ON av.id = i.algorithm_version_id
+            WHERE i.date = f.date
+              AND i.contract_id = f.contract_id
+              AND i.language = 'fr'
+              AND av.name = ANY(:names)
+            ORDER BY array_position(:names, av.name), av.created_at DESC
+            LIMIT 1
+        ) d ON TRUE
         ORDER BY f.date ASC
     """)
-    # The `scored` CTE pins ens/leg to language='fr' (DEFAULT_LANGUAGE): the
-    # `decision` is language-agnostic (the EN row copies it), so without the
-    # filter each (date, contract) fans out to 2 rows once EN content exists →
-    # the horizon-indexed scoring loop in the callers pairs mismatched sessions
-    # and the YTD / running-acc figures drift.
+    # Two invariants hold this query together (.claude/rules/timeseries-uniqueness):
+    #  * LIMIT 1 in the LATERAL → exactly one decision per (date, contract), so
+    #    the horizon-indexed scoring loop in the callers can never pair
+    #    mismatched sessions;
+    #  * language='fr' pin → the decision is language-agnostic (the EN row
+    #    copies it), so without it every date would fan out to 2 rows once EN
+    #    content exists and the YTD / running-acc figures would drift.
+    # Joining on av.name (not a pinned version id) also means a go-forward-only
+    # version keeps serving recent dates while its predecessor keeps the
+    # historical ones — matching what the dashboard resolver does.
 
     result = await db.execute(
         query,
         {
             "start": start_date,
             "end_date": end_date,
-            "ensemble_id": str(ensemble_id) if ensemble_id is not None else None,
-            "legacy_id": str(legacy_id) if legacy_id is not None else None,
+            "names": list(chain),
         },
     )
     return result.all()
 
 
 async def calculate_ytd_performance(
-    db: AsyncSession, reference_date: Optional[date] = None
+    db: AsyncSession,
+    reference_date: Optional[date] = None,
+    *,
+    algorithm_name: Optional[str] = None,
 ) -> float:
     """Calculate YTD performance by replicating the CONCLUSION scoring server-side.
 
     Date-aware decision source — uses the SAME decision that the system would
-    have shipped live each day:
-      * For dates with an ensemble row: ensemble's ``decision`` (which mirrors
-        the orchestrator's ``decision_wrapped`` — i.e. post-Compass override).
-      * For older dates: legacy decision.
+    have shipped live each day: for each date, the first link of the serving
+    chain that carries a row.
 
     Cross-contract & roll-safe via ``_decision_aware_front_month_series``: for
     each date it scores the highest-OI contract *that carries a decision*, so
     YTD spans contract rolls without silently dropping days when OHLCV OI rolls
     ahead of the contract the decisions are written on.
+
+    ``algorithm_name`` selects the scoring horizon (see ``eval_horizon_for``).
+    Callers that already resolved the served algorithm pass it; when omitted the
+    head of the serving chain decides, since that is the algorithm the headline
+    figure is describing.
     """
     if reference_date is None:
         reference_date = date.today()
+
+    if algorithm_name is None:
+        from app.utils.serving_chain import get_serving_chain
+
+        chain = await get_serving_chain(db)
+        algorithm_name = chain[0] if chain else None
 
     start_of_year = get_year_start_date(reference_date)
     rows = await _decision_aware_front_month_series(db, start_of_year, reference_date)
 
     scores: list[float] = []
     unscorable: list[str] = []
-    horizon = YTD_EVAL_HORIZON_DAYS
+    horizon = eval_horizon_for(algorithm_name)
     # Skip the last `horizon` rows — they have no T+horizon close yet (decision
     # too recent to evaluate against a future price). That's expected, not an
     # anomaly, so they're excluded from the range rather than flagged below.
@@ -332,6 +409,58 @@ async def calculate_ytd_performance(
     return ytd_performance
 
 
+async def compute_running_accuracy(
+    db: AsyncSession,
+    target_date: date,
+    *,
+    algorithm_name: Optional[str] = None,
+    window: int = 5,
+) -> Optional[float]:
+    """Share of winning decisions over the last ``window`` evaluable sessions.
+
+    A decision made at T is evaluable at T+horizon, where the horizon is the one
+    the algorithm actually predicts (``eval_horizon_for``). We take the ``window``
+    most recent evaluable decisions, score each with the YTD formula, and return
+    the share of positive scores — so the "recent hit rate" tile and the YTD
+    headline are computed by the same rules and cannot drift apart.
+
+    Roll-safe through the shared ``_decision_aware_front_month_series``, the same
+    helper the YTD walk uses: an OI crossover to a not-yet-rolled contract cannot
+    silently drop days here either.
+
+    Returns None when fewer than ``window`` decisions are evaluable in the
+    trailing ~30 sessions — the caller shows "—" rather than a figure computed
+    on two days.
+    """
+    horizon = eval_horizon_for(algorithm_name)
+    # ~45 calendar days ≈ ~30 trading sessions: covers horizon + window with room
+    # for holidays, without walking the whole year.
+    start_date = date.fromordinal(target_date.toordinal() - 45)
+    rows = await _decision_aware_front_month_series(db, start_date, target_date)
+    if len(rows) <= horizon:
+        return None
+
+    scored: list[float] = []
+    for i in range(len(rows) - horizon):
+        current = rows[i]
+        future = rows[i + horizon]
+        if not current.decision or current.close is None or future.close is None:
+            continue
+        s = _score_day(
+            current.decision.strip().upper(),
+            float(current.close),
+            float(future.close),
+        )
+        if s is not None:
+            scored.append(s)
+
+    if len(scored) < window:
+        return None
+
+    last_window = scored[-window:]
+    return sum(1 for s in last_window if s > 0) / window
+
+
 # ---------------------------------------------------------------------------
 # 3. Indicators grid (gauges)
 # ---------------------------------------------------------------------------
@@ -344,15 +473,21 @@ async def get_indicators_with_ranges(
     contract_id: Optional[uuid.UUID] = None,
     algo_id: Optional[uuid.UUID] = None,
 ) -> Dict[str, Dict[str, Any]]:
-    """Get all indicators with their ranges for a given date.
+    """Get all technical gauges with their colour ranges for a given date.
 
-    Fallback when the resolved algo row has NULL norms (e.g. ensemble dates
-    where cc-ensemble-compute writes a row with diagnostics + decision but no
-    z-scores — the norms are owned by cc-compute-indicators which only fills
-    the legacy row). Without this, indicators-grid 404s the moment the
-    date-aware resolver picks ensemble for a recent date. We pick the first
-    row across (contract, algo) that has a non-null rsi_norm.
+    Reads ``pl_dashboard_gauge`` — the algorithm-independent gauge table fed by
+    ``cc-compute-indicators --stage gauges``. Previously this read
+    ``pl_indicator_daily.*_norm``,
+    i.e. whichever ALGORITHM wrote that row, which forced a three-step fallback
+    cascade (resolved algo → any algo on this contract → any contract) purely to
+    survive the fact that only one algorithm ever filled the norms. All of that
+    is gone: the gauges no longer belong to an algorithm.
+
+    ``algo_id`` is accepted for call-signature compatibility and deliberately
+    unused — no caller should have to know an algorithm to read a gauge.
     """
+    _ = algo_id  # gauges are algorithm-independent by construction
+
     if contract_id is None:
         if target_date:
             contract_id = await resolve_contract_for_date(db, target_date)
@@ -360,67 +495,70 @@ async def get_indicators_with_ranges(
                 return {}
         else:
             contract_id = await get_active_contract_id(db)
-    if algo_id is None:
-        algo_id = await get_active_algorithm_version_id(db)
 
-    # Step 1: try the resolved (contract, algo, date) — that's the most
-    # specific match and preserves macroeco_score from that algo's LLM run.
-    query = select(PlIndicatorDaily).where(
-        and_(
-            PlIndicatorDaily.contract_id == contract_id,
-            PlIndicatorDaily.algorithm_version_id == algo_id,
-            PlIndicatorDaily.rsi_norm.is_not(None),
-        )
+    gauge_query = select(PlDashboardGauge).where(
+        PlDashboardGauge.contract_id == contract_id
     )
     if target_date:
-        query = query.where(PlIndicatorDaily.date == target_date)
-    query = query.order_by(desc(PlIndicatorDaily.date)).limit(1)
-    indicator = (await db.execute(query)).scalars().first()
-
-    # Step 2: same date + contract, ANY algo with non-null norms (typically
-    # falls back to legacy which is where compute-indicators writes norms).
-    if indicator is None and target_date:
-        fallback = (
-            select(PlIndicatorDaily)
-            .where(
-                and_(
-                    PlIndicatorDaily.contract_id == contract_id,
-                    PlIndicatorDaily.date == target_date,
-                    PlIndicatorDaily.rsi_norm.is_not(None),
-                )
-            )
-            .order_by(desc(PlIndicatorDaily.date))
-            .limit(1)
+        gauge_query = gauge_query.where(PlDashboardGauge.date == target_date)
+    else:
+        # Latest available session for this contract.
+        latest = select(func.max(PlDashboardGauge.date)).where(
+            PlDashboardGauge.contract_id == contract_id
         )
-        indicator = (await db.execute(fallback)).scalars().first()
-
-    # Step 3: cross-contract fallback (handles contract roll edges).
-    if indicator is None and target_date:
-        fallback = (
-            select(PlIndicatorDaily)
-            .where(
-                and_(
-                    PlIndicatorDaily.date == target_date,
-                    PlIndicatorDaily.rsi_norm.is_not(None),
-                )
-            )
-            .order_by(desc(PlIndicatorDaily.date))
-            .limit(1)
+        gauge_query = gauge_query.where(
+            PlDashboardGauge.date == latest.scalar_subquery()
         )
-        indicator = (await db.execute(fallback)).scalars().first()
+    gauge_rows = (await db.execute(gauge_query)).scalars().all()
 
-    if indicator is None:
-        return {}
+    if gauge_rows:
+        return await _build_indicators_from_gauges(gauge_rows, db)
 
-    return await _build_indicators_dict(
-        macroeco=indicator.macroeco_score,
-        rsi=indicator.rsi_norm,
-        macd=indicator.macd_norm,
-        stoch_k=indicator.stoch_k_norm,
-        atr=indicator.atr_norm,
-        vol_oi=indicator.vol_oi_norm,
-        db=db,
+    # No gauge row for this (date, contract). Legitimate before the backfill
+    # covers a date, so degrade to an empty grid rather than 500 — but say so,
+    # since after the backfill it means the gauge stage has not run.
+    logger.warning(
+        "No pl_dashboard_gauge row for date=%s contract=%s — has the gauge stage run?",
+        target_date,
+        contract_id,
     )
+    return {}
+
+
+# pl_dashboard_gauge.indicator_name → the keyword _build_indicators_dict expects.
+# The names on the left match test_range.indicator, so the colour join stays a
+# plain equality on the way out.
+_GAUGE_NAME_TO_KWARG = {
+    "RSI": "rsi",
+    "MACD": "macd",
+    "%K": "stoch_k",
+    "ATR": "atr",
+    "VOL_OI": "vol_oi",
+}
+
+
+async def _build_indicators_from_gauges(
+    gauge_rows: Sequence[Any], db: AsyncSession
+) -> Dict[str, Dict[str, Any]]:
+    """Adapt pl_dashboard_gauge rows to the unchanged grid response shape.
+
+    ``macroeco`` is passed as None on purpose: it was never a technical gauge —
+    it is the LLM macro bonus, it is not in the frontend's INDICATOR_KEYS, and
+    it is rendered nowhere. ``_build_indicators_dict`` skips None values, so it
+    simply stops appearing in the payload.
+    """
+    values: Dict[str, Any] = {kwarg: None for kwarg in _GAUGE_NAME_TO_KWARG.values()}
+    for row in gauge_rows:
+        kwarg = _GAUGE_NAME_TO_KWARG.get(row.indicator_name)
+        if kwarg is None:
+            logger.warning(
+                "Unknown gauge indicator_name %r — not in the served grid",
+                row.indicator_name,
+            )
+            continue
+        values[kwarg] = row.norm_value
+
+    return await _build_indicators_dict(macroeco=None, db=db, **values)
 
 
 async def _build_indicators_dict(
@@ -489,18 +627,6 @@ async def _build_indicators_dict(
 # Heuristic to detect the cc-ensemble-compute debug-string conclusion until the
 # Phase 8 refactor of cc-daily-analysis writes a real ensemble-aligned narrative.
 # Format observed: "C5 ensemble decision=OPEN (soft-gate=OPEN, wrapper_fired=[...], ...)"
-_ENSEMBLE_DEBUG_PREFIX = "C5 ensemble decision="
-
-
-def _is_usable_narrative(text: Optional[str]) -> bool:
-    """True when the conclusion looks like a real LLM narrative (not the
-    ensemble compute debug string).
-    """
-    if not text:
-        return False
-    return not text.strip().startswith(_ENSEMBLE_DEBUG_PREFIX)
-
-
 async def get_latest_recommendations(
     db: AsyncSession,
     target_date: Optional[date] = None,
@@ -509,24 +635,21 @@ async def get_latest_recommendations(
     algo_id: Optional[uuid.UUID] = None,
     language: str = "fr",
 ) -> tuple[List[str], Optional[str], Optional[date]]:
-    """Get the latest recommendations from pl_indicator_daily.conclusion.
+    """Narrative for the SERVED algorithm — one row, no cross-algorithm fallback.
 
-    Fallback chain (each step relaxes a filter, narrative quality > strict source):
-      1. (contract_id, algo_id, date)
-      2. (any contract, algo_id, date)             — transition days
-      3. (contract_id, any algo with conclusion, date) — ensemble dates
-         where ensemble decision has no LLM conclusion yet
-      4. (any contract, any algo with conclusion, date)
+    This used to walk a four-step cascade that progressively relaxed the
+    contract filter and then the ALGORITHM filter, so a date whose served row
+    had no narrative silently borrowed one from another algorithm. That was a
+    workaround for a specific era: the decision came from the ensemble while
+    only the legacy job authored prose.
 
-    The narrative text is still authored by the legacy cc-daily-analysis job,
-    so on ensemble dates the conclusion comes from the legacy row while the
-    decision was produced by ensemble. The endpoint exposes
-    ``source_algorithm`` so the frontend can disclose this dissonance.
+    It is now forbidden. The served algorithm owns its narrative end to end; a
+    row from any other algorithm — including one still sitting in the table
+    from a retired pipeline — must never surface next to a decision it did not
+    produce. If the served row has no narrative, the section is empty and the
+    producing job failed loudly upstream. That is the intended outcome.
 
-    A row whose conclusion is the cc-ensemble-compute debug string (see
-    ``_is_usable_narrative``) is treated as "no narrative" for fallback
-    purposes — Phase 8 will replace that debug string with a real
-    ensemble-aligned LLM narrative.
+    Returns ``([], None, None)`` when nothing is available.
     """
     if contract_id is None:
         if target_date:
@@ -536,18 +659,11 @@ async def get_latest_recommendations(
         else:
             contract_id = await get_active_contract_id(db)
     if algo_id is None:
-        algo_id = await get_active_algorithm_version_id(db)
+        algo_id = await _default_serving_algo_id(db, target_date, contract_id)
 
-    # Language filter is inherited by all four fallback steps below: the
-    # fallback relaxes contract/algo, but NEVER language — we must never serve
-    # one language's narrative under another language's label.
-    base_select = select(PlIndicatorDaily.conclusion, PlIndicatorDaily.date).where(
-        PlIndicatorDaily.language == language
-    )
-
-    # Step 1: contract + algo + (date)
-    query = base_select.where(
+    query = select(PlIndicatorDaily.conclusion, PlIndicatorDaily.date).where(
         and_(
+            PlIndicatorDaily.language == language,
             PlIndicatorDaily.contract_id == contract_id,
             PlIndicatorDaily.algorithm_version_id == algo_id,
             PlIndicatorDaily.conclusion.isnot(None),
@@ -557,58 +673,15 @@ async def get_latest_recommendations(
         query = query.where(PlIndicatorDaily.date == target_date)
     query = query.order_by(desc(PlIndicatorDaily.date)).limit(1)
     row = (await db.execute(query)).one_or_none()
-    if row is not None and not _is_usable_narrative(row.conclusion):
-        row = None
-
-    # Step 2: relax contract filter (any contract, this algo, this date)
-    if (not row or not row.conclusion) and target_date:
-        q = (
-            base_select.where(
-                and_(
-                    PlIndicatorDaily.date == target_date,
-                    PlIndicatorDaily.algorithm_version_id == algo_id,
-                    PlIndicatorDaily.conclusion.isnot(None),
-                )
-            )
-            .order_by(desc(PlIndicatorDaily.date))
-            .limit(1)
-        )
-        row = (await db.execute(q)).one_or_none()
-        if row is not None and not _is_usable_narrative(row.conclusion):
-            row = None
-
-    # Step 3: relax algo filter (this contract, ANY algo with usable narrative, this date)
-    if (not row or not row.conclusion) and target_date:
-        q = (
-            base_select.where(
-                and_(
-                    PlIndicatorDaily.date == target_date,
-                    PlIndicatorDaily.contract_id == contract_id,
-                    PlIndicatorDaily.conclusion.isnot(None),
-                    PlIndicatorDaily.conclusion.notlike(f"{_ENSEMBLE_DEBUG_PREFIX}%"),
-                )
-            )
-            .order_by(desc(PlIndicatorDaily.date))
-            .limit(1)
-        )
-        row = (await db.execute(q)).one_or_none()
-
-    # Step 4: fully relaxed (any contract, any algo with usable narrative, this date)
-    if (not row or not row.conclusion) and target_date:
-        q = (
-            base_select.where(
-                and_(
-                    PlIndicatorDaily.date == target_date,
-                    PlIndicatorDaily.conclusion.isnot(None),
-                    PlIndicatorDaily.conclusion.notlike(f"{_ENSEMBLE_DEBUG_PREFIX}%"),
-                )
-            )
-            .order_by(desc(PlIndicatorDaily.date))
-            .limit(1)
-        )
-        row = (await db.execute(q)).one_or_none()
 
     if not row or not row.conclusion:
+        logger.warning(
+            "No narrative for the served algorithm at date=%s contract=%s "
+            "language=%s — section will be empty (no cross-algorithm fallback)",
+            target_date,
+            contract_id,
+            language,
+        )
         return [], None, None
 
     recommendations = parse_recommendations_text(row.conclusion)

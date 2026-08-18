@@ -243,6 +243,7 @@ def main() -> int:
                         result.usage,
                         result.latency_ms,
                         dry_run=args.dry_run,
+                        prompt=user_prompt,
                     )
 
                     # Theme sentiments — additive, non-blocking. FR RUN ONLY.

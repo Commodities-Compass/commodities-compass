@@ -6,6 +6,7 @@
 
 - **[PIPELINE_LEGACY.md](./PIPELINE_LEGACY.md)** — LLM-as-decision-maker track (`cc-daily-analysis` → `cc-compass-brief`), T+1 horizon, ~18 months in prod.
 - **[PIPELINE_ENSEMBLE.md](./PIPELINE_ENSEMBLE.md)** — Campaign 5 ML track (14 specialists + Bayesian soft-gate + Compass wrapper + explainer + ensemble brief), J+4–J+5 horizon. The dashboard already serves this.
+- **[PIPELINE_REGIME_JUDGE.md](./PIPELINE_REGIME_JUDGE.md)** — Campaign 6 track (regime router + condition specialists + LLM macro overlay + adapter row + FR/EN brief), J+1 horizon. **Built and running nightly, serving nothing** — `pl_algorithm_version.serving_rank` is NULL for `regime`. Also documents the serving chain, the algorithm-independent gauges, and the removal of every cross-algorithm fallback.
 - **[JOBS_AND_SCRAPERS.md](./JOBS_AND_SCRAPERS.md)** — exhaustive catalog of all 19 Cloud Run Jobs + 16 schedulers + dependency graph + shared-vs-specific tables. Read for the UTC timeline.
 - **[ENSEMBLE_BRIDGE_FROM_LEGACY.md](./ENSEMBLE_BRIDGE_FROM_LEGACY.md)** — how the ensemble row coexists with / overrides legacy.
 

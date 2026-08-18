@@ -34,13 +34,14 @@ from app.services.dashboard_service import (
     YTD_EVAL_HORIZON_DAYS,
     _score_day,
     calculate_ytd_performance,
+    compute_running_accuracy,
 )
-from app.services.ensemble_diagnostics_service import _compute_running_accuracy
 from app.utils.contract_resolver import (
     ENSEMBLE_VERSION_NAME,
     LEGACY_VERSION_NAME,
     _cache,
 )
+from app.utils.serving_chain import reset_cache as reset_serving_cache
 
 # 12 weekday sessions in Jan 2026 (Jan 1 is a holiday, start Mon Jan 5).
 _SESSIONS = [date_cls(2026, 1, d) for d in (5, 6, 7, 8, 9, 12, 13, 14, 15, 16, 19, 20)]
@@ -55,6 +56,7 @@ _CROSSOVER_IDX = 5
 @pytest.fixture(autouse=True)
 def _clear_cache() -> None:
     _cache.clear()
+    reset_serving_cache()
 
 
 async def _contract(
@@ -82,9 +84,19 @@ async def _contract(
     return c.id
 
 
+# Serving order now comes from the DB (pl_algorithm_version.serving_rank)
+# instead of hardcoded constants — the fixtures must configure the same chain
+# the production seed migration installs: ensemble preferred, legacy fallback.
+_RANKS = {ENSEMBLE_VERSION_NAME: 1, LEGACY_VERSION_NAME: 2}
+
+
 async def _version(db: AsyncSession, name: str, *, active: bool) -> uuid.UUID:
     v = PlAlgorithmVersion(
-        name=name, version="1.0.0", horizon="short_term", is_active=active
+        name=name,
+        version="1.0.0",
+        horizon="short_term",
+        is_active=active,
+        serving_rank=_RANKS.get(name),
     )
     db.add(v)
     await db.flush()
@@ -137,6 +149,7 @@ async def _seed_roll_split_brain(db: AsyncSession) -> None:
             )
     await db.flush()
     _cache.clear()
+    reset_serving_cache()
 
 
 def _expected_ytd(closes: list[float], decision: str) -> float:
@@ -179,7 +192,7 @@ async def test_running_acc_survives_roll_via_shared_helper(
 ) -> None:
     await _seed_roll_split_brain(db_session)
 
-    acc = await _compute_running_accuracy(db_session, _SESSIONS[-1], window=5)
+    acc = await compute_running_accuracy(db_session, _SESSIONS[-1], window=5)
 
     # With the shared decision-aware helper, all 8 evaluable days score on
     # CAU26. The last 5 (i=3..7) are 2 losses + 3 wins → 0.6. Pre-fix, the

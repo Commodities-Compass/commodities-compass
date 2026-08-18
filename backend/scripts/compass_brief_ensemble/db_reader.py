@@ -24,6 +24,18 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.services.dashboard_service import YTD_EVAL_HORIZON_DAYS, _score_day
+from scripts._shared.brief_common import (
+    read_meteo as _read_meteo,
+)
+from scripts._shared.brief_common import (
+    read_press as _read_press,
+)
+from scripts._shared.brief_common import (
+    read_seasonal_trajectory as _read_seasonal_trajectory,
+)
+from scripts._shared.brief_common import (
+    read_technicals as _read_technicals,
+)
 from scripts._shared.farmgate_brief import read_farmgate
 from scripts.compass_brief_ensemble.config import ALGORITHM_NAME, ALGORITHM_VERSION
 
@@ -35,13 +47,6 @@ logger = logging.getLogger(__name__)
 # maps it to a native English season name (West-African bimodal cocoa calendar)
 # so the trajectory line read aloud in the Ghana podcast is fully English. An
 # unknown slug degrades to the de-underscored form (never a KeyError).
-_SEASON_NAME_EN = {
-    "saison_seche": "dry season",
-    "transition_pluies": "rains transition",
-    "grande_saison_pluies": "main rainy season",
-    "petite_saison_seche": "short dry season",
-    "petite_saison_pluies": "short rainy season",
-}
 
 
 class EnsembleBriefDataMissingError(RuntimeError):
@@ -410,167 +415,6 @@ def _read_persistence_days(
         else:
             break
     return max(persistence, 1)
-
-
-def _read_press(
-    session: Session, target_date: date, language: str
-) -> tuple[str, str, str]:
-    # Press prose is generated natively per language (US-3c) — read the row for
-    # the requested language, not the FR row translated.
-    row = session.execute(
-        text(
-            """
-            SELECT summary, impact_synthesis, COALESCE(sentiment, '')
-            FROM pl_fundamental_article
-            WHERE is_active = true AND date <= :date AND language = :language
-            ORDER BY date DESC LIMIT 1
-            """
-        ),
-        {"date": target_date, "language": language},
-    ).fetchone()
-    if row is None:
-        return "", "", ""
-    return (row[0] or "", row[1] or "", row[2] or "")
-
-
-def _read_meteo(session: Session, target_date: date, language: str) -> tuple[str, str]:
-    # Weather bulletin is generated natively per language (US-3c) — read the
-    # row for the requested language.
-    row = session.execute(
-        text(
-            """
-            SELECT summary, impact_assessment
-            FROM pl_weather_observation
-            WHERE date <= :date AND language = :language
-            ORDER BY date DESC LIMIT 1
-            """
-        ),
-        {"date": target_date, "language": language},
-    ).fetchone()
-    if row is None:
-        return "", ""
-    return (row[0] or "", row[1] or "")
-
-
-def _read_seasonal_trajectory(
-    session: Session, target_date: date, language: str = "fr"
-) -> str:
-    """Compact campaign-trajectory line (cumulative seasonal health).
-
-    Reads the in-progress season of the current campaign from pl_seasonal_score
-    (same data as the dashboard CampaignBlock) — the long-term view the daily
-    observation lacks. Returns "" between seasons or before the first backfill.
-
-    ``pl_seasonal_score`` has no language dimension (scores are numeric,
-    location-keyed); only the surrounding prose is rendered per language. The
-    ``months_covered LIKE '%(en cours)%'`` filter matches a stored FR data
-    marker, not display text — it stays FR regardless of output language.
-    """
-    rows = session.execute(
-        text(
-            """
-            SELECT location_name, score, days_heavy_rain, season_name
-            FROM pl_seasonal_score
-            WHERE campaign = (SELECT MAX(campaign) FROM pl_seasonal_score)
-              AND months_covered LIKE '%(en cours)%'
-            ORDER BY location_name
-            """
-        )
-    ).fetchall()
-    if not rows:
-        return ""
-    raw_season = rows[0][3]
-    if language == "en":
-        season = _SEASON_NAME_EN.get(raw_season, raw_season.replace("_", " "))
-    else:
-        season = raw_season.replace("_", " ")
-    avg = sum(float(r[1]) for r in rows) / len(rows)
-    heavy = sum(int(r[2] or 0) for r in rows)
-    worst = min(rows, key=lambda r: float(r[1]))
-    if language == "en":
-        return (
-            f"Campaign trajectory — {season}: average health {avg:.1f}/5 "
-            f"({len(rows)} zones), {heavy} zone-days of heavy rain cumulated, "
-            f"weakest: {worst[0]} ({float(worst[1]):.1f}/5)."
-        )
-    return (
-        f"Trajectoire campagne — {season} : santé moyenne {avg:.1f}/5 "
-        f"({len(rows)} zones), {heavy} jour-zones de pluie intense cumulés, "
-        f"plus faible : {worst[0]} ({float(worst[1]):.1f}/5)."
-    )
-
-
-def _read_technicals(
-    session: Session, target_date: date, contract_id: Any, language: str = "fr"
-) -> str:
-    row = session.execute(
-        text(
-            """
-            SELECT date, close, high, low, volume, oi, implied_volatility
-            FROM pl_contract_data_daily
-            WHERE contract_id = :contract AND date <= :date
-            ORDER BY date DESC LIMIT 1
-            """
-        ),
-        {"date": target_date, "contract": contract_id},
-    ).fetchone()
-    if row is None:
-        return (
-            "(no technicals data)"
-            if language == "en"
-            else "(pas de données technicals)"
-        )
-
-    # stocks + CFTC net live in dedicated tables since 2026-05-27;
-    # forward-fill the latest weekly observation on/before the row date.
-    stock_us = session.execute(
-        text(
-            """
-            SELECT value_tonnes FROM pl_stock_observation
-            WHERE region = 'us' AND contract_market = 'cocoa' AND report_date <= :d
-            ORDER BY report_date DESC LIMIT 1
-            """
-        ),
-        {"d": row[0]},
-    ).scalar_one_or_none()
-    # value_tonnes (not value_native): EU native unit is 60 kg bags, so reading
-    # value_native printed bags next to STOCK_US tonnes — ~16.7x overstated and
-    # non-comparable. Tonnes keeps both sides in the same unit.
-    stock_eu = session.execute(
-        text(
-            """
-            SELECT value_tonnes FROM pl_stock_observation
-            WHERE region = 'eu' AND contract_market = 'cocoa' AND report_date <= :d
-            ORDER BY report_date DESC LIMIT 1
-            """
-        ),
-        {"d": row[0]},
-    ).scalar_one_or_none()
-    com_net = session.execute(
-        text(
-            """
-            SELECT prod_merc_net FROM pl_cot_us_weekly
-            WHERE contract_market = 'cocoa' AND release_date <= :d
-            ORDER BY release_date DESC LIMIT 1
-            """
-        ),
-        {"d": row[0]},
-    ).scalar_one_or_none()
-
-    def _fmt(value, unit: str = "", precision: int = 2):
-        if value is None:
-            return "n/a"
-        if isinstance(value, Decimal):
-            return f"{float(value):,.{precision}f}{unit}"
-        return f"{value}{unit}"
-
-    date_label = "Session close" if language == "en" else "Date close"
-    return (
-        f"{date_label} : {row[0]}\n"
-        f"  CLOSE={_fmt(row[1])} | HIGH={_fmt(row[2])} | LOW={_fmt(row[3])}\n"
-        f"  VOLUME={_fmt(row[4], '', 0)} | OI={_fmt(row[5], '', 0)} | IV={_fmt(row[6])}\n"
-        f"  STOCK_US={_fmt(stock_us)} | STOCK_EU={_fmt(stock_eu)} | COM_NET={_fmt(com_net)}"
-    )
 
 
 def read_brief_data(

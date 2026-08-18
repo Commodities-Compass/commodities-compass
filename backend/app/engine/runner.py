@@ -52,7 +52,7 @@ from app.core.config import settings
 from app.core.sentry import init_sentry
 from app.engine.db_writer import write_pipeline_results
 from app.engine.pipeline import IndicatorPipeline
-from app.engine.types import AlgorithmConfig, LEGACY_V1
+from app.engine.types import AlgorithmConfig, AlgorithmConfigMissingError
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ logger = logging.getLogger(__name__)
 def load_algorithm_config(
     session: Session, version_name: str, version: str | None = None
 ) -> AlgorithmConfig:
-    """Load algorithm config from DB. Falls back to hardcoded LEGACY_V1."""
+    """Load algorithm config from DB. Fail-loud when absent or incompatible."""
     if version:
         result = session.execute(
             text("""
@@ -85,12 +85,17 @@ def load_algorithm_config(
         )
     params = {row[0]: row[1] for row in result}
     if not params:
-        logger.warning(
-            "No active algorithm config found for '%s' version=%s, using hardcoded LEGACY_V1",
-            version_name,
-            version,
+        # Fail loud. The old behaviour returned the hardcoded LEGACY_V1, which
+        # meant an ML/LLM version reaching here silently produced power-formula
+        # decisions written under ITS version id (pipeline-error-handling.md:
+        # a producer never degrades). LEGACY_V1 remains available as a fixture
+        # for tests, never as a production fallback.
+        raise AlgorithmConfigMissingError(
+            f"No active config rows in v_algorithm_config_current for "
+            f"'{version_name}' version={version or 'active'}. Refusing to fall "
+            f"back to LEGACY_V1 — that would store power-formula decisions "
+            f"under this version id."
         )
-        return LEGACY_V1
     label = f"{version_name}_v{version}" if version else version_name
     return AlgorithmConfig.from_db_rows(label, params)
 
@@ -120,14 +125,22 @@ def load_algorithm_version_id(
 def load_compute_enabled_versions(
     session: Session,
 ) -> list[tuple[uuid.UUID, str, str]]:
-    """Load all algorithm versions with compute_enabled=True.
+    """Power-formula versions this engine must compute.
+
+    Filters on ``algorithm_kind`` as well as ``compute_enabled``. The kind is
+    the structural guard: this engine only knows how to evaluate the power
+    formula, so an ML or LLM version flagged ``compute_enabled`` is simply not
+    returned instead of crashing the nightly job (missing coefficients) or —
+    when it has no config rows at all — silently writing power-formula
+    decisions under its version id.
 
     Returns list of (id, name, version) tuples.
     """
     result = session.execute(
         text(
             "SELECT id, name, version FROM pl_algorithm_version "
-            "WHERE compute_enabled = true ORDER BY name, version"
+            "WHERE compute_enabled = true AND algorithm_kind = 'power_formula' "
+            "ORDER BY name, version"
         )
     )
     return [(row[0], row[1], row[2]) for row in result]
@@ -587,6 +600,28 @@ def main() -> None:
         help="Run even on non-trading days (for backfills/debugging)",
     )
     parser.add_argument(
+        "--stage",
+        choices=("all", "indicators", "gauges"),
+        default="all",
+        help=(
+            "Which half to run. 'indicators' = derived indicators + the "
+            "per-version decision rows. 'gauges' = the algorithm-independent "
+            "dashboard gauges only. 'all' (default, what the nightly cron runs) "
+            "does both. The gauge stage reuses this run's smoothing/z-score "
+            "computation instead of re-deriving it in a second job."
+        ),
+    )
+    parser.add_argument(
+        "--gauge-days",
+        type=int,
+        default=None,
+        help=(
+            "Limit the gauge WRITE window to the last N sessions. The rolling "
+            "windows are still computed over the full history — narrowing the "
+            "input instead would produce wrong z-scores."
+        ),
+    )
+    parser.add_argument(
         "--derived-only",
         action="store_true",
         help=(
@@ -637,8 +672,13 @@ def main() -> None:
             for code, count in contracts.items():
                 logger.info("  %s: %d rows", code, count)
 
-        # Resolve which versions to run
-        if args.all_versions:
+        # Resolve which versions to run. Skipped for --stage gauges: the gauge
+        # stage reads no algorithm, so requiring a resolvable version there
+        # would reintroduce the coupling this split exists to remove.
+        versions: list[tuple[uuid.UUID, str, str]] = []
+        if args.stage == "gauges":
+            pass
+        elif args.all_versions:
             versions = load_compute_enabled_versions(session)
             if not versions:
                 logger.error("No algorithm versions with compute_enabled=True found")
@@ -663,8 +703,59 @@ def main() -> None:
                 (algo_version_id, args.algorithm, args.algorithm_version or "active")
             ]
 
-        for vid, name, ver in versions:
-            _run_for_version(session, df, vid, name, ver, args)
+        if args.stage in ("all", "indicators"):
+            for vid, name, ver in versions:
+                _run_for_version(session, df, vid, name, ver, args)
+
+        if args.stage in ("all", "gauges"):
+            _run_gauge_stage(session, args)
+
+
+def _run_gauge_stage(session: Session, args: argparse.Namespace) -> None:
+    """Compute and persist the dashboard gauges for the whole chain.
+
+    Independent of every algorithm: it reads pl_derived_indicators over the
+    canonical front-month chain and writes pl_dashboard_gauge. Nothing here
+    touches pl_algorithm_version, which is what lets the gauges survive an
+    algorithm change.
+    """
+    from app.engine.gauges import (
+        GAUGE_SPECS,
+        compute_gauge_frame,
+        load_derived_chain,
+        to_gauge_rows,
+        upsert_gauges,
+    )
+
+    chain = load_derived_chain(session)
+    logger.info(
+        "gauges: %d sessions [%s..%s]",
+        len(chain),
+        chain["date"].min().date(),
+        chain["date"].max().date(),
+    )
+
+    # The rolling windows need the WHOLE history to be correct; only the write
+    # window is narrowed. Trimming the input instead would silently produce
+    # wrong z-scores for the first ~252 rows of the slice.
+    frame = compute_gauge_frame(chain)
+    if args.gauge_days:
+        frame = frame.tail(args.gauge_days)
+        logger.info("gauges: limiting write window to %d sessions", len(frame))
+
+    rows = to_gauge_rows(frame)
+    logger.info(
+        "gauges: %d rows over %d sessions x %d indicators",
+        len(rows),
+        len(frame),
+        len(GAUGE_SPECS),
+    )
+    if args.dry_run:
+        logger.info("[DRY RUN] gauges computed, nothing written")
+        return
+    written = upsert_gauges(session, rows)
+    session.commit()
+    logger.info("gauges: wrote %d rows", written)
 
 
 if __name__ == "__main__":

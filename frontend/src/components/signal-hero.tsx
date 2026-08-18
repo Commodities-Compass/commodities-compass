@@ -1,22 +1,39 @@
 import { Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { usePositionStatus, useRecommendations, useEnsembleDiagnostics, useNonTradingDays } from '@/hooks/useDashboard';
+import {
+  usePositionStatus,
+  useRecommendations,
+  useEnsembleDiagnostics,
+  useJudgeDiagnostics,
+  useNonTradingDays,
+} from '@/hooks/useDashboard';
 import Eyebrow from '@/components/editorial/Eyebrow';
 import { buildEnsembleExplanation } from '@/utils/ensemble-explanation';
+import {
+  buildJudgeExplanation,
+  regimeLabel,
+  stanceLabel,
+} from '@/utils/judge-explanation';
 import { addTradingDays } from '@/utils/date-utils';
 import { formatDate } from '@/utils/format-locale';
 import { useLanguage } from '@/hooks/useLanguage';
 import type { Language } from '@/contexts/LanguageContext';
 import type { TFunction } from 'i18next';
-import type { EnsembleDiagnosticsResponse } from '@/types/dashboard';
+import type {
+  EnsembleDiagnosticsResponse,
+  JudgeDiagnosticsResponse,
+} from '@/types/dashboard';
 
 function algoBadgeLabel(t: TFunction, name?: string | null): string | null {
   if (!name) return null;
   if (name === 'ensemble_v1_softgate_wrapper') return t('dashboard.algo_ensemble');
+  if (name === 'regime') return t('dashboard.algo_regime');
   if (name === 'legacy') return t('dashboard.algo_legacy');
   return `Powered by ${name}`;
 }
 
+// Only the ensemble looks four sessions out. Regime — like legacy — decides for
+// the next one, which is also what `eval_horizon_for` scores it on server-side.
 function horizonShortLabel(t: TFunction, name?: string | null): string {
   if (name === 'ensemble_v1_softgate_wrapper') return t('dashboard.horizon_short_ensemble');
   return t('dashboard.horizon_short_legacy');
@@ -156,6 +173,109 @@ function ConvictionBreakdown({
   ];
 
   return (
+    <ConvictionTiles
+      title={t('dashboard.conviction_breakdown_title')}
+      tiles={tiles}
+    />
+  );
+}
+
+/* ===================================================================
+ * Regime + judge conviction breakdown — the Campaign-6 sidebar.
+ *
+ * Same three-tile shape as the ensemble one, different subject:
+ *   1. Régime         — the market regime the router detected
+ *   2. Confiance      — published confidence 1-5 + its sentence
+ *   3. Arbitrage macro— what the overlay did with the technical call
+ *
+ * Engine vocabulary (router, specialist, prob_up, fuse) is never rendered —
+ * same editorial rule as the brief. `rationale` is not even in the payload.
+ * =================================================================== */
+function RegimeConvictionBreakdown({
+  diag,
+  signalColor,
+}: {
+  diag: JudgeDiagnosticsResponse;
+  signalColor: string;
+}) {
+  const { t } = useTranslation();
+  const stance = stanceLabel(t, diag.judge_stance, diag.changed);
+  const hitRate = diag.running_acc_5d;
+
+  const tiles: ConvictionTile[] = [
+    {
+      key: 'regime',
+      eyebrow: t('signal.judge_regime_label'),
+      big: regimeLabel(t, diag.regime),
+      italic: true,
+      color: 'var(--ink)',
+      // The measured hit rate replaces the ensemble's "n specialists engaged":
+      // it says how the read has actually been doing, not how many models spoke.
+      caption:
+        hitRate != null
+          ? t('signal.judge_hit_rate_caption', {
+              pct: Math.round(hitRate * 100),
+            })
+          : t('signal.judge_specialist_caption'),
+      wraps: false,
+    },
+    {
+      key: 'confidence',
+      eyebrow: t('dashboard.conviction_confidence_label'),
+      big: diag.confidence != null ? `${diag.confidence} / 5` : '—',
+      italic: false,
+      color: signalColor,
+      caption:
+        diag.confidence_rationale && diag.confidence_rationale.trim().length > 0
+          ? diag.confidence_rationale
+          : t('dashboard.rationale_unavailable'),
+      wraps: true,
+    },
+    {
+      key: 'arbitration',
+      eyebrow: t('signal.judge_arbitration_label'),
+      big: stance.label,
+      italic: true,
+      color: stance.color,
+      caption: t('signal.judge_macro_suffix'),
+      wraps: false,
+    },
+  ];
+
+  return (
+    <ConvictionTiles
+      title={t('dashboard.conviction_regime_title')}
+      tiles={tiles}
+    />
+  );
+}
+
+interface ConvictionTile {
+  key: string;
+  eyebrow: string;
+  big: string;
+  italic: boolean;
+  color: string;
+  caption: string;
+  /** Captions that are sentences wrap onto 3 lines; kickers stay single-line. */
+  wraps: boolean;
+}
+
+/**
+ * The shared three-column magazine sidebar.
+ *
+ * Extracted so the ensemble and regime breakdowns cannot drift apart visually:
+ * they are the same commercial row of the offer, and a client moving from one
+ * track to the other should not notice the layout changed underneath.
+ */
+function ConvictionTiles({
+  title,
+  tiles,
+}: {
+  title: string;
+  tiles: ConvictionTile[];
+}) {
+  return (
     <div style={{ marginTop: 28, marginBottom: 16 }}>
       <Eyebrow
         as="div"
@@ -164,7 +284,7 @@ function ConvictionBreakdown({
         tracking="0.24em"
         style={{ marginBottom: 12 }}
       >
-        {t('dashboard.conviction_breakdown_title')}
+        {title}
       </Eyebrow>
 
       <div
@@ -336,6 +456,7 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
   const { data: pos, isLoading: posLoading, error: posErr } = usePositionStatus(targetDate);
   const { data: recs, isLoading: recsLoading } = useRecommendations(targetDate);
   const { data: diag } = useEnsembleDiagnostics(targetDate);
+  const { data: judge } = useJudgeDiagnostics(targetDate);
   // Non-trading days for the current year — used to compute the exact close
   // date evaluated at T+horizon (skip weekends AND exchange holidays).
   const sessionYear = (() => {
@@ -346,10 +467,18 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
   })();
   const { data: nonTradingDaysData } = useNonTradingDays(sessionYear);
   const nonTradingDays = new Set(nonTradingDaysData?.dates ?? []);
+  // Each track renders its own breakdown, and only when the served algorithm
+  // matches: a panel describing one algorithm next to another one's decision is
+  // the cross-algorithm borrowing the pipeline no longer tolerates. Both are
+  // false on a date neither serves, and the block simply does not render.
   const ensembleAligned =
     pos?.source_algorithm === 'ensemble_v1_softgate_wrapper' && Boolean(diag);
-  const explanationSentences =
-    ensembleAligned && diag ? buildEnsembleExplanation(diag, t) : null;
+  const regimeAligned = pos?.source_algorithm === 'regime' && Boolean(judge);
+  const explanationSentences = ensembleAligned && diag
+    ? buildEnsembleExplanation(diag, t)
+    : regimeAligned && judge
+      ? buildJudgeExplanation(judge, t)
+      : null;
 
   if (posLoading || recsLoading) {
     return (
@@ -473,9 +602,12 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
             </p>
           )}
 
-          {/* Conviction breakdown — only on ensemble dates */}
+          {/* Conviction breakdown — whichever track is actually served */}
           {ensembleAligned && diag && (
             <ConvictionBreakdown diag={diag} signalColor={meta.color} />
+          )}
+          {regimeAligned && judge && (
+            <RegimeConvictionBreakdown diag={judge} signalColor={meta.color} />
           )}
 
           <p

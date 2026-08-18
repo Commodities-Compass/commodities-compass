@@ -1,0 +1,254 @@
+"""cc-regime-brief — native prose per language, one algorithm, no fallbacks.
+
+The brief is the only place in the regime pipeline that writes prose, and it
+writes it twice: into the .txt read aloud by NotebookLM, and onto the served
+row the dashboard reads. Those two must be the same text — a split between what
+is read and what is displayed is invisible until a client notices.
+
+The properties pinned here:
+
+  * ``rationale`` never reaches the prompt (it is a policy trace, not prose);
+  * a narrative that names the machinery is refused, not published;
+  * the filenames carry the ``-Regime`` suffix, so the overlapping tracks
+    cannot overwrite each other on Drive;
+  * every missing input raises — no silent section, no other algorithm.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import date as date_cls
+from decimal import Decimal
+from unittest.mock import MagicMock
+
+import pytest
+
+from scripts.regime_brief.brief_generator import render_brief
+from scripts.regime_brief.config import filename_for
+from scripts.regime_brief.db_reader import (
+    BriefData,
+    JudgeCall,
+    RegimeCall,
+    Technicals,
+)
+from scripts.regime_brief.narrator import (
+    Narrative,
+    NarrationError,
+    _build_prompt,
+    narrate,
+)
+
+_RATIONALE = "ABSTAIN HEDGE->MONITOR: judge contradicts at conf=3 (< flip bar 4)."
+
+
+def _data(language: str = "fr") -> BriefData:
+    return BriefData(
+        session_date=date_cls(2026, 8, 17),
+        target_date=date_cls(2026, 8, 18),
+        contract_id=uuid.uuid4(),
+        contract_code="CAU26",
+        language=language,
+        technicals_snapshot=(
+            "Date close : 2026-08-17\n"
+            "  CLOSE=8,000.00 | HIGH=8,060.00 | LOW=7,930.00\n"
+            "  VOLUME=10311 | OI=42000 | IV=0.45\n"
+            "  STOCK_US=233,799.00 | STOCK_EU=29,128.80 | COM_NET=-20476"
+        ),
+        watch_lines=(
+            "> À SURVEILLER AUJOURD'HUI :",
+            "        • Baissier si le cours casse le SUPPORT 1 (7850).",
+        ),
+        ytd_score=86.68,
+        farmgate=None,
+        press_sentiment="Prudence constructive.",
+        meteo_summary="Conditions normales sur les six zones.",
+        meteo_impact="2/10; pluies conformes.",
+        meteo_trajectory="Campagne — petite saison sèche : santé moyenne 4.8/5.",
+        regime=RegimeCall(
+            decision="OPEN", regime="bull", specialist="bull", prob_up=0.6123
+        ),
+        judge=JudgeCall(
+            final_decision="MONITOR",
+            direction="UP",
+            stance="CONTRADICT",
+            confidence=3,
+            is_anomaly=False,
+            changed=True,
+            drift_summary="Weather stress eased while arrivals accelerated.",
+            key_risk="A collapse in processing margins.",
+            disconfirming_case="Smooth Ivorian port arrivals would undo this.",
+            evidence=("port arrivals reached 1.996 million tonnes",),
+        ),
+        technicals=Technicals(
+            close=Decimal("8000"),
+            close_prev=Decimal("7900"),
+            volume=10311,
+            oi=42000,
+            rsi_14d=Decimal("53.05"),
+            s1=Decimal("7850"),
+            r1=Decimal("8150"),
+        ),
+        press_summary="Les arrivages ivoiriens accélèrent.",
+        press_impact="Biais haussier modéré.",
+        weather_body="Impact: 2/10; pluies conformes aux normales.",
+    )
+
+
+def _narrative() -> Narrative:
+    return Narrative(
+        conclusion="Le marché reste porté.\nLes arrivages pèsent peu à ce stade.",
+        eco="Le contexte fondamental reste équilibré.",
+        confidence_rationale="Une normalisation logistique invaliderait la lecture.",
+    )
+
+
+class TestPromptHygiene:
+    def test_rationale_never_reaches_the_prompt(self) -> None:
+        """The policy trace stays in pl_judge_shadow, for audit and replay only."""
+        prompt = _build_prompt(_data())
+
+        assert _RATIONALE not in prompt
+        assert "ABSTAIN" not in prompt
+        assert "flip bar" not in prompt
+
+    def test_judge_material_does_reach_the_prompt(self) -> None:
+        """What IS editorial must be handed over — drift, risk, counter-case, quotes."""
+        prompt = _build_prompt(_data())
+
+        assert "Weather stress eased" in prompt
+        assert "collapse in processing margins" in prompt
+        assert "Smooth Ivorian port arrivals" in prompt
+        assert "1.996 million tonnes" in prompt
+
+    def test_each_language_gets_its_own_native_prompt(self) -> None:
+        """Native composition, not translation of a single source text."""
+        assert "Tu es l'analyste" in _build_prompt(_data("fr"))
+        assert "You are the Compass CC desk analyst" in _build_prompt(_data("en"))
+
+
+class TestNarratorGuards:
+    def _client(self, payload: str) -> MagicMock:
+        client = MagicMock()
+        client.call.return_value = MagicMock(
+            raw_text=payload, model="o4-mini", output_tokens=120
+        )
+        return client
+
+    def test_machinery_mention_is_refused(self) -> None:
+        """A brief is read aloud — one word about a model breaks the product."""
+        client = self._client(
+            '{"conclusion": "Le modèle anticipe une hausse.",'
+            ' "eco": "Contexte porteur.",'
+            ' "confidence_rationale": "Un repli invaliderait."}'
+        )
+
+        with pytest.raises(NarrationError, match="machinery"):
+            narrate(_data(), client)
+
+    def test_partial_narrative_is_refused(self) -> None:
+        client = self._client(
+            '{"conclusion": "Une lecture.", "eco": "", "confidence_rationale": "x"}'
+        )
+
+        with pytest.raises(NarrationError, match="missing"):
+            narrate(_data(), client)
+
+    def test_clean_narrative_is_accepted(self) -> None:
+        client = self._client(
+            '{"conclusion": "Le marché reste porté.",'
+            ' "eco": "Fondamentaux équilibrés.",'
+            ' "confidence_rationale": "Une normalisation invaliderait."}'
+        )
+
+        narrative = narrate(_data(), client)
+
+        assert narrative.conclusion == "Le marché reste porté."
+        assert narrative.eco == "Fondamentaux équilibrés."
+
+
+class TestFilenames:
+    def test_regime_suffix_prevents_drive_collision(self) -> None:
+        """The legacy brief is `{date}-CompassBrief.txt` and upload overwrites."""
+        assert filename_for("20260817", "fr") == "20260817-CompassBrief-Regime.txt"
+        assert filename_for("20260817", "en") == "20260817-CompassBrief-Regime-EN.txt"
+
+    def test_never_collides_with_the_legacy_or_ensemble_stems(self) -> None:
+        for language in ("fr", "en"):
+            name = filename_for("20260817", language)
+            assert name != "20260817-CompassBrief.txt"
+            assert "Ensemble" not in name
+
+
+class TestRendering:
+    def test_carries_all_six_sections(self) -> None:
+        """The brief is the whole of Compass — the podcast maps onto each section.
+
+        Ship a thinner brief and the prompt breaks: it looks for the YTD at
+        point 2, section II at point 4, the stocks at point 7 and the TO WATCH
+        alerts at point 8.
+        """
+        brief = render_brief(_data(), _narrative())
+
+        for header in (
+            "I — SIGNAL",
+            "II — LECTURE ÉDITORIALE",
+            "III — ÉCO & REVUE DE PRESSE",
+            "IV — WEATHER WATCH",
+            "V — PHOTO TECHNIQUE",
+            "VI — RECOMMANDATIONS OPÉRATIONNELLES",
+        ):
+            assert header in brief, f"section manquante : {header}"
+
+    def test_figures_come_from_the_data_not_the_prose(self) -> None:
+        """facts/voice split: the template owns every number."""
+        brief = render_brief(_data(), _narrative())
+
+        assert "CLOSE=8,000.00" in brief
+        assert "STOCK_US=233,799.00" in brief  # stocks — podcast point 7
+        assert "COM_NET=-20476" in brief
+        assert "SUPPORT 1 (7850)" in brief  # TO WATCH — podcast point 8
+
+    def test_ytd_is_present_for_the_podcast(self) -> None:
+        """Point 2 of the prompt cites the YTD verbatim."""
+        brief = render_brief(_data(), _narrative())
+
+        assert "+86.68%" in brief
+
+    def test_published_signal_is_the_fused_call(self) -> None:
+        """MONITOR (judge) must show, not OPEN (regime's raw base call)."""
+        brief = render_brief(_data(), _narrative())
+
+        assert "MONITOR" in brief
+        # Confidence carries its rationale — the prompt rewords that sentence.
+        assert "3/5 — Une normalisation" in brief
+
+    def test_editorial_section_names_no_mechanism(self) -> None:
+        """Section II is the only track-specific part, and it stays business-facing."""
+        brief = render_brief(_data(), _narrative())
+
+        assert "Régime de marché identifié : tendance haussière établie" in brief
+        # CONTRADICT → the arbitration wording, never the raw stance token.
+        assert "s'oppose à la position technique" in brief
+        assert "CONTRADICT" not in brief
+        assert "bull" not in brief
+
+    def test_narrative_sections_are_present(self) -> None:
+        brief = render_brief(_data(), _narrative())
+
+        assert "Le marché reste porté." in brief
+        assert "Le contexte fondamental reste équilibré." in brief
+        assert "Une normalisation logistique invaliderait la lecture." in brief
+
+    def test_rationale_never_reaches_the_published_text(self) -> None:
+        brief = render_brief(_data(), _narrative())
+
+        assert "ABSTAIN" not in brief
+        assert "flip bar" not in brief
+
+    def test_english_brief_uses_english_labels(self) -> None:
+        brief = render_brief(_data("en"), _narrative())
+
+        assert "II — EDITORIAL READ" in brief
+        assert "III — ECO & PRESS REVIEW" in brief
+        assert "Market regime identified: established uptrend" in brief
+        assert "LECTURE ÉDITORIALE" not in brief

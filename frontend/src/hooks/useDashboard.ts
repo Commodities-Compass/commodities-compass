@@ -13,6 +13,7 @@ import type {
   MacroPanelResponse,
   PositioningResponse,
   EnsembleDiagnosticsResponse,
+  JudgeDiagnosticsResponse,
 } from '@/types/dashboard';
 import axios from 'axios';
 import { useLanguage } from '@/hooks/useLanguage';
@@ -155,6 +156,23 @@ export const useEnsembleDiagnostics = (targetDate?: string) => {
     queryKey: ['ensemble-diagnostics', targetDate],
     queryFn: () => dashboardApi.getEnsembleDiagnostics(targetDate),
     enabled,
+    retry: shouldRetry404,
+    ...DAILY_QUERY_OPTIONS,
+  });
+};
+
+// Judge overlay — the regime+judge conviction panel. Returns 404 on every date
+// the regime track does not serve, which is every date until the serving_rank
+// flip; the 404 is the signal to hide the block, so it must not be retried.
+//
+// `language` is in the query key even though it travels as a header: the
+// published confidence sentence is composed natively per edition, and without
+// it a language switch would keep serving the other edition's cached prose.
+export const useJudgeDiagnostics = (targetDate?: string) => {
+  const { language } = useLanguage();
+  return useQuery<JudgeDiagnosticsResponse>({
+    queryKey: ['judge-diagnostics', targetDate, language],
+    queryFn: () => dashboardApi.getJudgeDiagnostics(targetDate),
     retry: shouldRetry404,
     ...DAILY_QUERY_OPTIONS,
   });

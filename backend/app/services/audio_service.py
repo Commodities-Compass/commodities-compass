@@ -28,6 +28,7 @@ _MISS_CACHE_TTL = 300  # 5 min — file may not be uploaded yet (pipeline timing
 _VERSION_FILENAME_SUFFIX = {
     "legacy": "",
     "ensemble": "-Ensemble",
+    "regime": "-Regime",
 }
 
 # Content language → filename suffix. FR (default) has no suffix; the English
@@ -66,14 +67,18 @@ def _candidate_suffixes(version: str, language: str) -> list[str]:
     load-bearing guarantee: we degrade to no-audio rather than serve one
     language's audio under another language's label (i18n decisions D3/D4).
 
-      * EN — ensemble-only per US-4 scope. Prefer the ensemble-EN track, keep a
-        bare `-EN` as a forward-compatible second choice if a legacy-EN audio is
-        ever produced. Never falls back to an FR ('-Ensemble' / '') file.
-      * FR — exact per-version resolution, unchanged: one candidate, no
-        cross-version fallback (the two tracks stay independent).
+      * EN — follows the VERSION being served (`-Regime-EN`, `-Ensemble-EN`),
+        with a bare `-EN` as a last resort. It used to hardcode the ensemble
+        track, which silently made every version serve ensemble audio; with a
+        third track that would have shipped the wrong brief. Never falls back to
+        an FR ('' / '-Ensemble') file.
+      * FR — exact per-version resolution: one candidate, no cross-version
+        fallback (the tracks stay independent).
     """
     if language == "en":
-        return ["-Ensemble-EN", "-EN"]
+        candidates = [f"{_VERSION_FILENAME_SUFFIX[version]}-EN", "-EN"]
+        # legacy has an empty version suffix, so both entries collapse to '-EN'.
+        return list(dict.fromkeys(candidates))
     return [_VERSION_FILENAME_SUFFIX[version]]
 
 

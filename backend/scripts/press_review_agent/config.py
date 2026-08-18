@@ -44,6 +44,22 @@ NEWS_SOURCES = [
         "url": "https://www.icco.org/news/",
         "selectors": ["article", "h3 a", "div.entry-content"],
     },
+    # --- Regulators, first-hand ------------------------------------------
+    # A regulator's own announcement is the highest-value item in a session, and
+    # it is the one we were reading late: on 2026-07-31 COCOBOD cut its 2026/27
+    # production forecast by ~16% (front-month +9.75% the next session) and the
+    # brief for that date carried no trace of it — the fact reached us on 08-03,
+    # through a secondary outlet. Polling the source directly removes one hop.
+    #
+    # The Ivorian counterpart (Conseil du Cafe-Cacao) is deliberately NOT here:
+    # conseilcafecacao.ci serves an incomplete TLS chain, and adding it would
+    # mean disabling certificate verification for the whole fetcher. Its
+    # communiques are relayed by Abidjan.net, which is already a source.
+    {
+        "name": "COCOBOD News",
+        "url": "https://cocobod.gh/news",
+        "selectors": ["article", "h2 a", "h3 a", "div.entry-content"],
+    },
     # --- Chocolat / Consumer demand (httpx) ---
     {
         "name": "Confectionery News Cocoa",
@@ -313,6 +329,23 @@ Your output must be a valid JSON object (no markdown wrapping) with exactly 4 fi
     synthesize from all available sources including headlines.
   On a thin news day, MARCHE alone with brief sentiment is acceptable.
 
+  IMPORTANT — HIÉRARCHIE À L'INTÉRIEUR D'UNE SECTION. Les sections sont classées,
+  mais les faits d'une même section ne se valent pas. Dans cet ordre :
+    1. Une ANNONCE OFFICIELLE datée d'un régulateur, d'un gouvernement, d'une bourse
+       ou d'une interprofession (COCOBOD, Conseil du Café-Cacao, ICCO, ICE), ou une
+       RÉVISION DE PRÉVISION CHIFFRÉE par un organisme ou un analyste nommé.
+    2. Un fait nouveau et chiffré sur les flux physiques, la logistique portuaire,
+       le climat immédiat, les broyages, la demande.
+    3. Le récurrent et le contextuel.
+  Une annonce de niveau 1 doit apparaître DÈS LES PREMIÈRES LIGNES de sa section,
+  avec l'acteur, le chiffre et la date — même si elle tient en une phrase. Ne la
+  laisse jamais se faire écraser par du niveau 3.
+  Exemples de niveau 3, à ne jamais mettre en avant à la place d'un niveau 1 :
+  un prix bord-champ maintenu inchangé, une distribution de plants, un programme
+  de replantation, « les arrivages continuent de ralentir » répété d'un jour sur
+  l'autre. Ces éléments restent utiles en contexte, jamais en tête.
+
+
   IMPORTANT — Sources include both full-content articles and headline-only items (marked
   "Headlines du jour"). You may reference headlines in the resume as context ("la presse
   rapporte que...") but do NOT invent details beyond the headline title.
@@ -430,6 +463,23 @@ Your output must be a valid JSON object (no markdown wrapping) with exactly 4 fi
   * MARKET SENTIMENT: Short-term vs medium-term outlook, key risks, positioning signals —
     synthesize from all available sources including headlines.
   On a thin news day, MARKET alone with brief sentiment is acceptable.
+
+  IMPORTANT — RANKING WITHIN A SECTION. Sections are ordered, but facts inside one
+  section are not equal. In this order:
+    1. A dated OFFICIAL ANNOUNCEMENT by a regulator, a government, an exchange or a
+       trade body (COCOBOD, Conseil du Cafe-Cacao, ICCO, ICE), or a QUANTIFIED
+       FORECAST REVISION by a named institution or analyst.
+    2. A new, quantified fact on physical flows, port logistics, immediate weather,
+       grindings, demand.
+    3. Recurring background and context.
+  A level-1 announcement must appear IN THE OPENING LINES of its section, with the
+  actor, the figure and the date — even when it is one sentence long. Never let it
+  be crowded out by level 3.
+  Level-3 examples, never to be surfaced in place of a level 1: a farmgate price
+  left unchanged, a seedling distribution, a replanting programme, "arrivals
+  continue to slow" restated day after day. They belong in the context, never at
+  the top.
+
 
   IMPORTANT — Sources include both full-content articles and headline-only items (marked
   "Headlines du jour"). You may reference headlines in the resume as context ("the press

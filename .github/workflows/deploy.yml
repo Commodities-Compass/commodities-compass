@@ -222,7 +222,10 @@ jobs:
           # stays unserved until VITE_FEATURE_LANG_SWITCHER is flipped ON.
           deploy_job cc-press-review-agent   1Gi  "press-review,--language,both"
           deploy_job cc-meteo-agent          1Gi  "meteo-agent,--language,both"
-          deploy_job cc-compute-indicators   1Gi  "compute-indicators,--all-contracts,--all-versions"
+          # --stage all: the per-version decision rows AND the algorithm-independent
+          # dashboard gauges, which reuse this run's smoothing/z-score pass.
+          # Either half is relaunchable alone with --stage indicators|gauges.
+          deploy_job cc-compute-indicators   1Gi  "compute-indicators,--all-contracts,--all-versions,--stage,all"
           # Pinned to "legacy" so daily-analysis NEVER overwrites the
           # C5 ensemble's pl_indicator_daily row, even when the ensemble
           # version is the one with is_active=TRUE. See
@@ -265,6 +268,11 @@ jobs:
           # `poetry run judge-shadow-compute --session-date T`.
           deploy_job cc-regime-bootstrap-artifacts   1Gi  "regime-bootstrap-artifacts"
           deploy_job cc-regime-shadow                1Gi  "regime-shadow-compute"
+          # Narrative + Drive brief for the regime+judge system. Merges what
+          # would otherwise be two jobs (explainer + brief): the prose is
+          # written once per language and lands in both the .txt and the served
+          # row, so the dashboard and the brief cannot disagree.
+          deploy_job cc-regime-brief                 1Gi  "regime-brief,--language,both"
           # Quarterly fundamentals (P3 user story). Gated on
           # ref_publication_calendar so the daily cron is cheap when no
           # publication is pending.

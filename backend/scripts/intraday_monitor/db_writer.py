@@ -13,7 +13,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -26,7 +26,7 @@ from app.models import (
     PlIndicatorDaily,
     RefAlertRule,
 )
-from scripts.intraday_monitor.config import ENSEMBLE_VERSION_NAME, SOURCE_LABEL
+from scripts.intraday_monitor.config import SOURCE_LABEL
 from scripts.intraday_monitor.engine import Firing, RuleSpec
 
 logger = logging.getLogger(__name__)
@@ -131,13 +131,37 @@ def load_prev_price(
 def load_signal_decision(
     session: Session, contract_id: uuid.UUID, levels_date: date
 ) -> str | None:
-    """Today's displayed decision (ensemble-preferred, fr row) — message
-    context only; None degrades gracefully (consumer-side)."""
+    """Today's displayed decision (fr row) — message context only.
+
+    Follows the same serving chain as the dashboard
+    (``pl_algorithm_version.serving_rank``) so the Telegram alert never names a
+    signal different from the one on screen. The rank designates a NAME, so the
+    order is by the name's rank, then newest version within it. Unranked names
+    sort last and are only reached when nothing served has a row.
+
+    None degrades gracefully — this is a consumer, the alert just omits the
+    signal name.
+    """
+    # name → rank, so a ranked name's older version still outranks a shadow.
+    ranked_names = (
+        select(
+            PlAlgorithmVersion.name.label("name"),
+            func.min(PlAlgorithmVersion.serving_rank).label("rank"),
+        )
+        .where(PlAlgorithmVersion.serving_rank.isnot(None))
+        .group_by(PlAlgorithmVersion.name)
+        .subquery()
+    )
     decision = session.execute(
         select(PlIndicatorDaily.decision)
         .join(
             PlAlgorithmVersion,
             PlAlgorithmVersion.id == PlIndicatorDaily.algorithm_version_id,
+        )
+        .join(
+            ranked_names,
+            ranked_names.c.name == PlAlgorithmVersion.name,
+            isouter=True,
         )
         .where(
             PlIndicatorDaily.contract_id == contract_id,
@@ -145,7 +169,7 @@ def load_signal_decision(
             PlIndicatorDaily.language == "fr",
         )
         .order_by(
-            (PlAlgorithmVersion.name == ENSEMBLE_VERSION_NAME).desc(),
+            ranked_names.c.rank.asc().nullslast(),
             PlAlgorithmVersion.created_at.desc(),
         )
         .limit(1)

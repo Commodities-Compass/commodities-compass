@@ -30,6 +30,7 @@ from judge.schema import (  # type: ignore
 
 from scripts.judge_shadow.brief_builder import (
     BriefDataMissingError,
+    PriorBaseCallMissingError,
     build_brief_from_db,
 )
 from scripts.judge_shadow.db_writer import write_judge_shadow
@@ -61,6 +62,10 @@ Short-term cautious to mildly bullish on supply anxiety.
 """
 
 _WEATHER_TEXT = "Impact: 2/10; Justification: Only San-Pedro slightly degraded, all other zones normal."
+
+
+# The judge's window is scoped to the algorithm it overlays.
+_ALGO_ID = "11111111-1111-1111-1111-111111111111"
 
 
 def _mock_session_for_brief(
@@ -101,6 +106,7 @@ class TestBriefBuilder:
             data_date=date(2026, 7, 31),
             target_date=date(2026, 8, 3),
             include_algo_base=True,
+            algorithm_version_id=_ALGO_ID,
         )
         assert isinstance(brief, Brief)
         assert brief.session_date == "2026-08-03"
@@ -121,6 +127,24 @@ class TestBriefBuilder:
         # Prior brief keeps its own base_decision from the algo call.
         assert brief.base_decision == Decision.HEDGE
         assert brief.base_confidence == pytest.approx(2.0)
+
+    def test_missing_prior_base_call_raises_instead_of_faking_neutral(self) -> None:
+        """A prior brief with no served decision must stop the run.
+
+        The previous behaviour returned (MONITOR, 0.0, "") and fed the LLM a
+        day the algorithm never actually called neutral — a fabricated history
+        the judge then reasoned over. Recovery is to backfill the adapter rows,
+        never to invent the call.
+        """
+        session = _mock_session_for_brief(algo=None)
+        with pytest.raises(PriorBaseCallMissingError):
+            build_brief_from_db(
+                session,
+                data_date=date(2026, 7, 31),
+                target_date=date(2026, 8, 3),
+                include_algo_base=True,
+                algorithm_version_id=_ALGO_ID,
+            )
 
     def test_include_algo_base_false_uses_placeholders(self) -> None:
         session = _mock_session_for_brief()
@@ -163,6 +187,7 @@ class TestBriefBuilder:
             session,
             data_date=date(2026, 7, 31),
             target_date=date(2026, 8, 3),
+            algorithm_version_id=_ALGO_ID,
         )
         assert brief.weather.impact_10 == pytest.approx(2.0), (
             "Impact prefix must be prepended so R&D parser matches — else "
@@ -177,6 +202,7 @@ class TestBriefBuilder:
             session,
             data_date=date(2026, 7, 31),
             target_date=date(2026, 8, 3),
+            algorithm_version_id=_ALGO_ID,
         )
         assert brief.weather.impact_10 == pytest.approx(4.0)
 

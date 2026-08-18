@@ -550,6 +550,64 @@ class EnsembleDiagnosticsResponse(BaseModel):
     prior_monitor: Optional[float] = Field(None)
 
 
+class JudgeEvidence(BaseModel):
+    """One piece of evidence the macro overlay leaned on.
+
+    Free-shaped by construction — the LLM leg decides which fields are relevant
+    to the quote it is citing — so the model stays permissive rather than
+    rejecting a payload for an extra key.
+    """
+
+    model_config = {"extra": "allow"}
+
+
+class JudgeDiagnosticsResponse(BaseModel):
+    """Regime call + macro overlay for a served regime date.
+
+    The Campaign-6 replacement for ``EnsembleDiagnosticsResponse``: same
+    "Conviction" row of the commercial matrix, different machinery. 404 on dates
+    with no regime row.
+
+    ``rationale`` (the fuse trace) is deliberately absent — it is audit-only.
+    """
+
+    date: str = Field(..., description="Date in YYYY-MM-DD format")
+    algorithm_version: str = Field(..., description="regime")
+
+    # --- Layer 1+2 — the technical call ---
+    regime: str = Field(..., description="Market regime routed at decide-time")
+    specialist: str = Field(..., description="Frozen model that answered")
+    prob_up: float = Field(..., description="Model probability of an up session")
+    base_decision: str = Field(..., description="OPEN | HEDGE | MONITOR before overlay")
+
+    # --- Layer 3 — the macro overlay (NULL when the LLM leg is absent) ---
+    judge_direction: Optional[str] = Field(None, description="UP | DOWN | NEUTRAL")
+    judge_stance: Optional[str] = Field(None, description="CONFIRM | ABSTAIN | FLIP")
+    judge_confidence: Optional[int] = Field(None, description="Judge confidence 1-5")
+    is_anomaly: Optional[bool] = Field(None)
+    changed: Optional[bool] = Field(
+        None, description="True when the overlay moved the final decision"
+    )
+    final_decision: str = Field(..., description="Decision actually served")
+    drift_summary: Optional[str] = Field(None)
+    key_risk: Optional[str] = Field(None)
+    disconfirming_case: Optional[str] = Field(None)
+    evidence: list[JudgeEvidence] = Field(default_factory=list)
+    weather_delta: Optional[float] = Field(None)
+    n_days_window: Optional[int] = Field(None)
+
+    # --- served narrative (per language) ---
+    confidence: Optional[int] = Field(None, description="Published confidence 1-5")
+    confidence_rationale: Optional[str] = Field(
+        None, description="Sentence supporting the confidence, in the row's language"
+    )
+
+    # --- measured, at the horizon this algorithm predicts ---
+    running_acc_5d: Optional[float] = Field(
+        None, description="Share of winning decisions over the last 5 evaluable days"
+    )
+
+
 class AudioResponse(BaseModel):
     """Response schema for audio endpoint."""
 

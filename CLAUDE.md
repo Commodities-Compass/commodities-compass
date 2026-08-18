@@ -10,6 +10,7 @@ These describe the **business logic + data flows** without code details:
 
 - **[docs/architecture/PIPELINE_LEGACY.md](docs/architecture/PIPELINE_LEGACY.md)** — pipeline `cc-daily-analysis` + `cc-compass-brief` (LLM-as-decision-maker, T+1 horizon, operational since 18 months)
 - **[docs/architecture/PIPELINE_ENSEMBLE.md](docs/architecture/PIPELINE_ENSEMBLE.md)** — pipeline ensemble v1.0.0 : 14 ML specialists + soft-gate Bayésien + Compass wrapper + ensemble-explainer + compass-brief-ensemble (J+4-J+5 horizon, dashboard already serves this)
+- **[docs/architecture/PIPELINE_REGIME_JUDGE.md](docs/architecture/PIPELINE_REGIME_JUDGE.md)** — pipeline Campagne 6 : routeur de régime + spécialistes (L1+L2) + overlay macro judge (L3) + adapter row + brief FR/EN. **Construit, tourne chaque nuit, ne sert RIEN** — `serving_rank` NULL. Contient aussi la chaîne de service, le découplage des jauges et la purge des fallbacks inter-algo.
 - **[docs/architecture/JOBS_AND_SCRAPERS.md](docs/architecture/JOBS_AND_SCRAPERS.md)** — exhaustive catalog of all 20 Cloud Run Jobs + 17 schedulers + dependency graph + shared vs specific data tables
 
 **Flow deep-dives** ([docs/architecture/flows/](docs/architecture/flows/)) — failure-prone cross-cutting paths, esp. anything roll-related: [contract-roll](docs/architecture/flows/contract-roll.md) · [date-semantics](docs/architecture/flows/date-semantics.md) · [algo-contract-resolution](docs/architecture/flows/algo-contract-resolution.md) (the recurring roll-bug path — active-contract vs front-month-by-date) · [daily-pipeline](docs/architecture/flows/daily-pipeline.md) · [dual-track-brief](docs/architecture/flows/dual-track-brief.md). Known doc/comment drift is tracked in [docs/architecture/REMEDIATION_BACKLOG.md](docs/architecture/REMEDIATION_BACKLOG.md).
@@ -17,6 +18,14 @@ These describe the **business logic + data flows** without code details:
 ## Project Overview
 
 Commodities Compass is a Business Intelligence application for commodities trading, providing real-time market insights, technical analysis, and trading signals for cocoa (ICE contracts). This is a monorepo with a FastAPI backend and React frontend, using Auth0 for authentication and PostgreSQL (GCP Cloud SQL) for data storage. Deployed on GCP Cloud Run with 20 automated Cloud Run Jobs (scrapers, agents, compute engine, briefs, intraday alerts). Dashboard reads from `pl_*` tables. Google Sheets is no longer used as a data source — all data flows through PostgreSQL. Google Drive is still used for audio (NotebookLM) and brief uploads.
+
+**Three tracks exist — two serve, one is built and inert.**
+
+⚠️ **REGIME + JUDGE (Campaign 6) — built, running nightly, serving NOTHING.** The full
+pipeline is in place (decision → adapter row → native FR/EN narrative → Drive brief),
+but `pl_algorithm_version.serving_rank` is NULL for `regime`, so the dashboard still
+serves ensemble. Nothing flips until that column is set. See
+[docs/architecture/PIPELINE_REGIME_JUDGE.md](docs/architecture/PIPELINE_REGIME_JUDGE.md).
 
 **Two production tracks coexist** :
 - **LEGACY** : `cc-daily-analysis` (LLM) → `pl_indicator_daily` row `legacy` → `cc-compass-brief` → `YYYYMMDD-CompassBrief.txt` → NotebookLM audio (legacy filename)
@@ -47,6 +56,8 @@ Commodities Compass is a Business Intelligence application for commodities tradi
 - `poetry install` - Install Python dependencies
 - `poetry run alembic upgrade head` - Run database migrations
 - `poetry run pytest` - Run backend tests
+- `poetry run compute-indicators --all-contracts --stage gauges` - Recompute ONLY the dashboard gauges (`pl_dashboard_gauge`), no algorithm touched. `--stage indicators` runs only the per-version half; `--stage all` (default, what the cron runs) does both. `--gauge-days N` limits the WRITE window — the rolling 252d windows are always computed over the full history.
+- `poetry run regime-brief --language both` - Regime+judge narrative (native per language) + Drive brief. Writes `conclusion`/`eco`/`confidence_rationale` onto the served row AND uploads `YYYYMMDD-CompassBrief-Regime{,-EN}.txt`.
 - `poetry run compute-indicators --all-contracts --dry-run` - Compute indicators (dry run)
 - `poetry run compute-indicators --all-contracts` - Compute indicators, write only new rows (incremental, default)
 - `poetry run compute-indicators --all-contracts --full` - Recompute and upsert all rows (for version switches, backfills)
@@ -615,6 +626,8 @@ P2b — the pipeline is split into two phases:
 19:05  cc-cftc-scraper                → pl_contract_data_daily (COM NET US)
 19:10  cc-barchart-stocks-eu-scraper  → pl_contract_data_daily (stock_eu_bags60kg)
 19:15  cc-compute-indicators          → pl_derived_indicators + pl_indicator_daily
+                                        + pl_dashboard_gauge (--stage all: the
+                                        gauge half is algorithm-independent)
 22:10  cc-ice-cot-eu-scraper          → pl_cot_eu_weekly (ICE EU COT positioning)
 
 # Phase B — daily cron, agent-gated on eve-of-trading-day, keyed to T+next:
@@ -625,6 +638,11 @@ P2b — the pipeline is split into two phases:
 19:25  cc-ensemble-explainer          → invokes DBAnalysisEngine (auto-align) → UPDATE ENSEMBLE row at date=T
 19:30  cc-compass-brief               → Drive: YYYYMMDD-CompassBrief.txt (legacy)
 19:35  cc-compass-brief-ensemble      → Drive: YYYYMMDD-CompassBrief-Ensemble.txt
+19:50  cc-regime-shadow               → pl_regime_shadow + pl_judge_shadow
+                                        + adapter row in pl_indicator_daily
+                                        (INERT — regime has no serving_rank)
+19:55  cc-regime-brief --language both → narrative onto the regime row
+                                        + Drive: YYYYMMDD-CompassBrief-Regime{,-EN}.txt
 
 # Publication gate — every 30 min, evening → 09:30 UTC next morning:
 20:00-09:30  cc-publish-session      → pl_session_release (atomic dashboard flip once data+audio ready)

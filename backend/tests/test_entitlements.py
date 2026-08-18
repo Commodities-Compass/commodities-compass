@@ -61,6 +61,38 @@ def test_tier_catalogue_matches_matrix() -> None:
 
 
 @pytest.mark.unit
+def test_judge_overlay_ships_to_every_tier_that_bought_conviction() -> None:
+    """The Campaign-6 conviction surface must not be a billed regression.
+
+    ``/ensemble-diagnostics`` + ``/specialist-votes`` back the "Conviction" row
+    of the matrix, sold on 6 of the 7 tiers. Replacing them with
+    ``/judge-diagnostics`` without granting the new key would remove a paid
+    capability from everything but the entry tier — silently, since the endpoint
+    would simply 403.
+
+    Coop Essentiel never bought the row and must stay out.
+    """
+    conviction_tiers = [
+        ent.COOP_PREMIUM,
+        ent.EXPORT_ESSENTIEL,
+        ent.EXPORT_PREMIUM,
+        ent.EXPORT_PRO,
+        ent.SIGNAL_PLUS,
+        ent.ORIGIN_DESK,
+    ]
+    for tier in conviction_tiers:
+        keys = ent.expand_tier(tier)
+        assert ent.FEATURE_JUDGE_OVERLAY in keys, tier
+        # The ensemble pair stays until its jobs are descheduled — it is the
+        # rollback path, and both surfaces must be entitled during the overlap.
+        assert ent.FEATURE_ENSEMBLE_DIAGNOSTICS in keys, tier
+        assert ent.FEATURE_SPECIALIST_VOTES in keys, tier
+
+    assert ent.FEATURE_JUDGE_OVERLAY not in ent.expand_tier(ent.COOP_ESSENTIEL)
+    assert ent.FEATURE_JUDGE_OVERLAY in ent.ALL_ENTITLEMENT_KEYS
+
+
+@pytest.mark.unit
 def test_coop_essentiel_holds_a_reduced_ticker_by_composition() -> None:
     """The band is chrome; the cells inside it are sold rows.
 

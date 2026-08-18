@@ -33,7 +33,9 @@
     "horizon_short_ensemble": "~4 D",
     "horizon_short_legacy": "D+1",
     "why_this_decision": "Why this call",
-    "best_session_label": "Best session"
+    "best_session_label": "Best session",
+    "conviction_regime_title": "Signal breakdown",
+    "algo_regime": "Powered by Compass Regime + Macro"
   },
   "signal": {
     "decision": {
@@ -71,7 +73,36 @@
     "explanation": {
       "with_confidence": "{{consensus}} on the {{decision}} call — {{n}} readings engaged, {{confidence}} confidence ({{score}}/5).{{macroClause}}",
       "without_confidence": "{{consensus}} on the {{decision}} call — {{n}} readings engaged.{{macroClause}}"
-    }
+    },
+    "regime": {
+      "bull": "Bullish",
+      "bear": "Bearish",
+      "transition": "No clear direction",
+      "highvol": "Elevated volatility",
+      "oversold": "Oversold",
+      "overbought": "Overbought"
+    },
+    "stance": {
+      "confirm": "Confirmed",
+      "contradict": "Challenged",
+      "neutral": "Neutral",
+      "revised": "Revised",
+      "absent": "Not delivered"
+    },
+    "judge_overlay_confirm": "The macro read confirms it.",
+    "judge_overlay_contradict": "The macro read pushes against it.",
+    "judge_overlay_neutral": "The macro read stays neutral.",
+    "judge_overlay_revised": "The macro read moved the position.",
+    "judge_rationale_fallback": "Technical and macro reads aligned on the session.",
+    "judge_explanation": {
+      "with_confidence": "{{regime}} market — {{decision}} position, {{confidence}} confidence ({{score}}/5).{{overlayClause}}",
+      "without_confidence": "{{regime}} market — {{decision}} position.{{overlayClause}}"
+    },
+    "judge_regime_label": "Regime",
+    "judge_arbitration_label": "Macro call",
+    "judge_macro_suffix": "macro read",
+    "judge_specialist_caption": "model dedicated to the regime",
+    "judge_hit_rate_caption": "{{pct}}% over the last 5 evaluated sessions"
   },
   "news": {
     "empty_state": "No press review for this date.",

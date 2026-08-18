@@ -65,6 +65,10 @@ SYNC_TABLES = [
     "pl_specialist_prediction",
     # Campaign 6 regime shadow — FK to pl_algorithm_version + ref_contract (both above)
     "pl_regime_shadow",
+    # Campaign 6 judge overlay (Layer 3). Same FKs. Must come AFTER
+    # pl_regime_shadow — the shadow-eval reads the two together, and analysing
+    # the judge locally is impossible without it.
+    "pl_judge_shadow",
     # Serving / ops state (standalone — no FK to sync tables)
     "pl_session_release",
     "pl_official_farmgate_price",

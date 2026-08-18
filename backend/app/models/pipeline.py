@@ -208,14 +208,64 @@ class PlAlgorithmVersion(Base):
     horizon: Mapped[str] = mapped_column(
         VARCHAR(50), nullable=False, default="short_term"
     )
+    # --- compute layer -----------------------------------------------------
+    # `is_active` marks the single "current" power-formula version; the engine
+    # resolves it that way (app/engine/runner.py). `compute_enabled` selects
+    # which power-formula variants `compute-indicators --all-versions` runs.
+    # NEITHER decides what the dashboard serves — see `serving_rank`.
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     compute_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
+
+    # Which engine can execute this version. Structural, not a toggle: the
+    # indicator engine filters on `power_formula`, so flagging an ML/LLM
+    # version `compute_enabled` is inert instead of crashing the nightly job
+    # (or silently writing power-formula decisions under its version id).
+    algorithm_kind: Mapped[str] = mapped_column(
+        VARCHAR(30),
+        nullable=False,
+        default="power_formula",
+        server_default="power_formula",
+    )
+
+    # --- serving layer -----------------------------------------------------
+    # Dashboard preference order. NULL = never served. 1 = preferred, then 2…
+    # The resolver walks the chain and returns the first version that has a
+    # pl_indicator_daily row for the requested date.
+    #
+    # The rank designates a NAME, not this row: within a name the resolver
+    # still picks the newest version carrying a row (that is what lets a
+    # go-forward-only version serve recent dates while its predecessor keeps
+    # the historical ones). At most one row per name may be ranked — enforced
+    # by the partial unique indexes uq_algorithm_serving_rank / _name.
+    serving_rank: Mapped[Optional[int]] = mapped_column(INTEGER, nullable=True)
+
     description: Mapped[Optional[str]] = mapped_column(TEXT)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
 
-    __table_args__ = (UniqueConstraint("name", "version", name="uq_algorithm_version"),)
+    __table_args__ = (
+        UniqueConstraint("name", "version", name="uq_algorithm_version"),
+        CheckConstraint(
+            "algorithm_kind IN ('power_formula', 'ml_ensemble', 'ml_regime', "
+            "'llm_overlay')",
+            name="ck_algorithm_kind",
+        ),
+        # One version per rank, and one ranked version per name — the rank
+        # designates the name (see serving_rank above).
+        Index(
+            "uq_algorithm_serving_rank",
+            "serving_rank",
+            unique=True,
+            postgresql_where=text("serving_rank IS NOT NULL"),
+        ),
+        Index(
+            "uq_algorithm_serving_name",
+            "name",
+            unique=True,
+            postgresql_where=text("serving_rank IS NOT NULL"),
+        ),
+    )
 
 
 class PlAlgorithmConfig(Base):
@@ -321,6 +371,66 @@ class PlIndicatorDaily(Base):
     )
 
 
+class PlDashboardGauge(Base):
+    """Technical gauges served by /indicators-grid — decoupled from any algorithm.
+
+    The five technical gauges (RSI / MACD / %K / ATR / VOL-OI) used to be read
+    from ``pl_indicator_daily.*_norm``, i.e. from whichever ALGORITHM happened to
+    write that row. That coupling meant the gauges would vanish the moment the
+    algorithm writing them stopped — which is exactly what a bascule does.
+
+    They are a property of the market, not of a decision, so they get their own
+    table, filled by the gauge stage of ``cc-compute-indicators``
+    (``--stage gauges``). Nothing here depends on
+    pl_algorithm_version.
+
+    THREE STAGES ARE STORED, because the displayed value is the third one and
+    the first two are what make a discrepancy auditable without recomputing:
+
+        raw_value   ← pl_derived_indicators (rsi_14d, macd, stochastic_k_14, …)
+        score_value ← 5-day SMA of raw_value            (engine: smoothing.py)
+        norm_value  ← rolling 252d z-score, clipped ±10 (engine: normalization.py)
+
+    ``norm_value`` is what the gauge plots. Reproducing all three stages exactly
+    is why the job imports the engine's own functions instead of reimplementing
+    them — see app/engine/gauges.py.
+
+    NO COLOR ZONE IS STORED. The RED/ORANGE/GREEN split comes from ``test_range``,
+    which is mutable config: freezing a zone at write time would pin a stale
+    calibration and force a backfill every time a threshold is retuned. The zone
+    is resolved at read time (5 indicators × ~3 rows — a trivial join).
+    """
+
+    __tablename__ = "pl_dashboard_gauge"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    date: Mapped[date] = mapped_column(DATE, nullable=False)
+    contract_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("ref_contract.id"), nullable=False
+    )
+    # Matches test_range.indicator so the read-time join is a plain equality:
+    # 'RSI' | 'MACD' | '%K' | 'ATR' | 'VOL_OI'.
+    indicator_name: Mapped[str] = mapped_column(VARCHAR(50), nullable=False)
+
+    raw_value: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
+    score_value: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
+    norm_value: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
+
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint(
+            "date", "contract_id", "indicator_name", name="uq_dashboard_gauge"
+        ),
+        Index("ix_dashboard_gauge_date", "date"),
+    )
+
+
 class PlRegimeShadow(Base):
     """Shadow-mode regime decisions (Campaign 6 algo ships INERT — never served).
 
@@ -380,10 +490,17 @@ class PlJudgeShadow(Base):
     stance + evidence), the deterministic drift signal (weather series across
     the brief window), and the fused final decision. Pure observation log for
     the shadow-eval (README §6 "Shadow-eval spec" — intervention confusion
-    matrix + calibration curve after >=30 sessions). NEVER read by the
-    dashboard; NEVER touches pl_indicator_daily.decision. ``realized_return`` /
-    ``production_score`` stay NULL until the J+4-J+5 horizon closes, then are
-    backfilled by the scoring pass (symmetric with pl_regime_shadow).
+    matrix + calibration curve after >=30 sessions). Read by
+    ``/dashboard/judge-diagnostics`` once regime is served; never writes
+    pl_indicator_daily itself — the adapter row does that.
+
+    ``realized_return`` / ``production_score`` stay NULL until the **J+1**
+    horizon closes, then are backfilled by the scoring pass (symmetric with
+    pl_regime_shadow). The judge has no horizon of its own: it judges the call
+    it is handed, so it inherits regime's. The "J+4 in production" line in
+    ``vendor/judge_v0.1/judge/scoring.py`` is a leftover from when the judge sat
+    above the ensemble — a docstring, not behaviour, and vendor packs are never
+    patched in place (raise it on the next judge drop).
     """
 
     __tablename__ = "pl_judge_shadow"

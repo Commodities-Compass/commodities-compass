@@ -90,7 +90,12 @@ def load_regime_for(
 
 
 def resolve_algorithm_version_id(session: Session) -> str:
-    """Resolve the ``judge`` v0.1 algorithm_version_id (seeded via migration)."""
+    """Resolve the ``judge`` v0.1 algorithm_version_id (seeded via migration).
+
+    This is the judge's PROVENANCE id — what its own rows are tagged with. It is
+    NOT the algorithm the judge overlays; use ``resolve_base_algorithm_version_id``
+    for anything that reads the underlying calls.
+    """
     row = session.execute(
         text(
             "SELECT id FROM pl_algorithm_version WHERE name = 'judge' AND version = '0.1'"
@@ -100,6 +105,26 @@ def resolve_algorithm_version_id(session: Session) -> str:
         raise RuntimeError(
             "pl_algorithm_version 'judge'@'0.1' not found — apply migration "
             "m8b9c0d1e2f3_seed_judge_algorithm_version first."
+        )
+    return str(row[0])
+
+
+def resolve_base_algorithm_version_id(session: Session) -> str:
+    """Resolve the algorithm the judge overlays — ``regime`` v1.0.0.
+
+    The judge's prior-brief window must read the decisions of the algorithm it
+    is judging, not its own: the judge never writes ``pl_indicator_daily``, so
+    scoping that lookup to the judge's own version can only ever find nothing.
+    """
+    row = session.execute(
+        text(
+            "SELECT id FROM pl_algorithm_version WHERE name = 'regime' AND version = '1.0.0'"
+        ),
+    ).fetchone()
+    if row is None:
+        raise RuntimeError(
+            "pl_algorithm_version 'regime'@'1.0.0' not found — apply migration "
+            "k6f7g8h9i0j1_seed_regime_algorithm_version first."
         )
     return str(row[0])
 

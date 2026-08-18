@@ -32,6 +32,7 @@ from scripts.judge_shadow.regime_reader import (
     RegimeShadowRow,
     load_regime_for,
     resolve_algorithm_version_id,
+    resolve_base_algorithm_version_id,
     resolve_front_month_contract_id,
 )
 
@@ -60,8 +61,8 @@ def _build_window(
 
     Today's Brief has ``include_algo_base=False`` because ``run_shadow`` /
     ``decide(base_override=...)`` will overwrite the base call with regime.
-    Priors populate their own base_decision from the ensemble row (contextual
-    for the prompt; not gating).
+    Priors populate their own base_decision from the OVERLAID algorithm's rows —
+    regime, never the judge's own version, which writes no decision at all.
     """
     window: list[Brief] = []
     dates = _prior_data_dates(session, data_date, _WINDOW)
@@ -104,7 +105,11 @@ def run_for_session(
     dry_run: bool = False,
 ) -> int:
     """Compute + write the judge overlay for one session. Returns rows written."""
+    # Two distinct ids, and conflating them is a silent dead end: `aid` tags the
+    # judge's OWN rows (provenance), `base_aid` is the algorithm being overlaid
+    # and the only one that carries decisions to read back.
     aid = resolve_algorithm_version_id(session)
+    base_aid = resolve_base_algorithm_version_id(session)
     contract_id = resolve_front_month_contract_id(session, data_date)
     if contract_id is None:
         raise RuntimeError(
@@ -121,7 +126,7 @@ def run_for_session(
             (data_date - regime.source_date).days,
         )
 
-    window = _build_window(session, data_date, algorithm_version_id=aid)
+    window = _build_window(session, data_date, algorithm_version_id=base_aid)
     base_call = _regime_base_call(regime)
 
     if llm is None:

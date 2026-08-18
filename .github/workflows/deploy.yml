@@ -223,6 +223,10 @@ jobs:
           deploy_job cc-press-review-agent   1Gi  "press-review,--language,both"
           deploy_job cc-meteo-agent          1Gi  "meteo-agent,--language,both"
           deploy_job cc-compute-indicators   1Gi  "compute-indicators,--all-contracts,--all-versions"
+          # Technical gauges (RSI/MACD/%K/ATR/VOL-OI) for the dashboard.
+          # Deliberately its own job, reading no algorithm table: the gauges
+          # describe the market, so they must survive an algorithm change.
+          deploy_job cc-compute-gauges       1Gi  "compute-gauges"
           # Pinned to "legacy" so daily-analysis NEVER overwrites the
           # C5 ensemble's pl_indicator_daily row, even when the ensemble
           # version is the one with is_active=TRUE. See

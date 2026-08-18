@@ -13,11 +13,12 @@ from typing import Any, Dict, List, Optional, Sequence
 
 import uuid
 
-from sqlalchemy import and_, desc, select
+from sqlalchemy import and_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.pipeline import (
     PlArticleSegment,
+    PlDashboardGauge,
     PlCotEuWeekly,
     PlFundamentalArticle,
     PlIndicatorDaily,
@@ -384,15 +385,20 @@ async def get_indicators_with_ranges(
     contract_id: Optional[uuid.UUID] = None,
     algo_id: Optional[uuid.UUID] = None,
 ) -> Dict[str, Dict[str, Any]]:
-    """Get all indicators with their ranges for a given date.
+    """Get all technical gauges with their colour ranges for a given date.
 
-    Fallback when the resolved algo row has NULL norms (e.g. ensemble dates
-    where cc-ensemble-compute writes a row with diagnostics + decision but no
-    z-scores — the norms are owned by cc-compute-indicators which only fills
-    the legacy row). Without this, indicators-grid 404s the moment the
-    date-aware resolver picks ensemble for a recent date. We pick the first
-    row across (contract, algo) that has a non-null rsi_norm.
+    Reads ``pl_dashboard_gauge`` — the algorithm-independent gauge table fed by
+    ``cc-compute-gauges``. Previously this read ``pl_indicator_daily.*_norm``,
+    i.e. whichever ALGORITHM wrote that row, which forced a three-step fallback
+    cascade (resolved algo → any algo on this contract → any contract) purely to
+    survive the fact that only one algorithm ever filled the norms. All of that
+    is gone: the gauges no longer belong to an algorithm.
+
+    ``algo_id`` is accepted for call-signature compatibility and deliberately
+    unused — no caller should have to know an algorithm to read a gauge.
     """
+    _ = algo_id  # gauges are algorithm-independent by construction
+
     if contract_id is None:
         if target_date:
             contract_id = await resolve_contract_for_date(db, target_date)
@@ -400,67 +406,70 @@ async def get_indicators_with_ranges(
                 return {}
         else:
             contract_id = await get_active_contract_id(db)
-    if algo_id is None:
-        algo_id = await _default_serving_algo_id(db, target_date, contract_id)
 
-    # Step 1: try the resolved (contract, algo, date) — that's the most
-    # specific match and preserves macroeco_score from that algo's LLM run.
-    query = select(PlIndicatorDaily).where(
-        and_(
-            PlIndicatorDaily.contract_id == contract_id,
-            PlIndicatorDaily.algorithm_version_id == algo_id,
-            PlIndicatorDaily.rsi_norm.is_not(None),
-        )
+    gauge_query = select(PlDashboardGauge).where(
+        PlDashboardGauge.contract_id == contract_id
     )
     if target_date:
-        query = query.where(PlIndicatorDaily.date == target_date)
-    query = query.order_by(desc(PlIndicatorDaily.date)).limit(1)
-    indicator = (await db.execute(query)).scalars().first()
-
-    # Step 2: same date + contract, ANY algo with non-null norms (typically
-    # falls back to legacy which is where compute-indicators writes norms).
-    if indicator is None and target_date:
-        fallback = (
-            select(PlIndicatorDaily)
-            .where(
-                and_(
-                    PlIndicatorDaily.contract_id == contract_id,
-                    PlIndicatorDaily.date == target_date,
-                    PlIndicatorDaily.rsi_norm.is_not(None),
-                )
-            )
-            .order_by(desc(PlIndicatorDaily.date))
-            .limit(1)
+        gauge_query = gauge_query.where(PlDashboardGauge.date == target_date)
+    else:
+        # Latest available session for this contract.
+        latest = select(func.max(PlDashboardGauge.date)).where(
+            PlDashboardGauge.contract_id == contract_id
         )
-        indicator = (await db.execute(fallback)).scalars().first()
-
-    # Step 3: cross-contract fallback (handles contract roll edges).
-    if indicator is None and target_date:
-        fallback = (
-            select(PlIndicatorDaily)
-            .where(
-                and_(
-                    PlIndicatorDaily.date == target_date,
-                    PlIndicatorDaily.rsi_norm.is_not(None),
-                )
-            )
-            .order_by(desc(PlIndicatorDaily.date))
-            .limit(1)
+        gauge_query = gauge_query.where(
+            PlDashboardGauge.date == latest.scalar_subquery()
         )
-        indicator = (await db.execute(fallback)).scalars().first()
+    gauge_rows = (await db.execute(gauge_query)).scalars().all()
 
-    if indicator is None:
-        return {}
+    if gauge_rows:
+        return await _build_indicators_from_gauges(gauge_rows, db)
 
-    return await _build_indicators_dict(
-        macroeco=indicator.macroeco_score,
-        rsi=indicator.rsi_norm,
-        macd=indicator.macd_norm,
-        stoch_k=indicator.stoch_k_norm,
-        atr=indicator.atr_norm,
-        vol_oi=indicator.vol_oi_norm,
-        db=db,
+    # No gauge row for this (date, contract). Legitimate before the backfill
+    # covers a date, so degrade to an empty grid rather than 500 — but say so,
+    # since after the backfill it means cc-compute-gauges has not run.
+    logger.warning(
+        "No pl_dashboard_gauge row for date=%s contract=%s — has cc-compute-gauges run?",
+        target_date,
+        contract_id,
     )
+    return {}
+
+
+# pl_dashboard_gauge.indicator_name → the keyword _build_indicators_dict expects.
+# The names on the left match test_range.indicator, so the colour join stays a
+# plain equality on the way out.
+_GAUGE_NAME_TO_KWARG = {
+    "RSI": "rsi",
+    "MACD": "macd",
+    "%K": "stoch_k",
+    "ATR": "atr",
+    "VOL_OI": "vol_oi",
+}
+
+
+async def _build_indicators_from_gauges(
+    gauge_rows: Sequence[Any], db: AsyncSession
+) -> Dict[str, Dict[str, Any]]:
+    """Adapt pl_dashboard_gauge rows to the unchanged grid response shape.
+
+    ``macroeco`` is passed as None on purpose: it was never a technical gauge —
+    it is the LLM macro bonus, it is not in the frontend's INDICATOR_KEYS, and
+    it is rendered nowhere. ``_build_indicators_dict`` skips None values, so it
+    simply stops appearing in the payload.
+    """
+    values: Dict[str, Any] = {kwarg: None for kwarg in _GAUGE_NAME_TO_KWARG.values()}
+    for row in gauge_rows:
+        kwarg = _GAUGE_NAME_TO_KWARG.get(row.indicator_name)
+        if kwarg is None:
+            logger.warning(
+                "Unknown gauge indicator_name %r — not in the served grid",
+                row.indicator_name,
+            )
+            continue
+        values[kwarg] = row.norm_value
+
+    return await _build_indicators_dict(macroeco=None, db=db, **values)
 
 
 async def _build_indicators_dict(

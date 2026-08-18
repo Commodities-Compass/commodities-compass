@@ -371,6 +371,65 @@ class PlIndicatorDaily(Base):
     )
 
 
+class PlDashboardGauge(Base):
+    """Technical gauges served by /indicators-grid — decoupled from any algorithm.
+
+    The five technical gauges (RSI / MACD / %K / ATR / VOL-OI) used to be read
+    from ``pl_indicator_daily.*_norm``, i.e. from whichever ALGORITHM happened to
+    write that row. That coupling meant the gauges would vanish the moment the
+    algorithm writing them stopped — which is exactly what a bascule does.
+
+    They are a property of the market, not of a decision, so they get their own
+    table and their own job (``cc-compute-gauges``). Nothing here depends on
+    pl_algorithm_version.
+
+    THREE STAGES ARE STORED, because the displayed value is the third one and
+    the first two are what make a discrepancy auditable without recomputing:
+
+        raw_value   ← pl_derived_indicators (rsi_14d, macd, stochastic_k_14, …)
+        score_value ← 5-day SMA of raw_value            (engine: smoothing.py)
+        norm_value  ← rolling 252d z-score, clipped ±10 (engine: normalization.py)
+
+    ``norm_value`` is what the gauge plots. Reproducing all three stages exactly
+    is why the job imports the engine's own functions instead of reimplementing
+    them — see scripts/compute_gauges.
+
+    NO COLOR ZONE IS STORED. The RED/ORANGE/GREEN split comes from ``test_range``,
+    which is mutable config: freezing a zone at write time would pin a stale
+    calibration and force a backfill every time a threshold is retuned. The zone
+    is resolved at read time (5 indicators × ~3 rows — a trivial join).
+    """
+
+    __tablename__ = "pl_dashboard_gauge"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    date: Mapped[date] = mapped_column(DATE, nullable=False)
+    contract_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("ref_contract.id"), nullable=False
+    )
+    # Matches test_range.indicator so the read-time join is a plain equality:
+    # 'RSI' | 'MACD' | '%K' | 'ATR' | 'VOL_OI'.
+    indicator_name: Mapped[str] = mapped_column(VARCHAR(50), nullable=False)
+
+    raw_value: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
+    score_value: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
+    norm_value: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(15, 6))
+
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint(
+            "date", "contract_id", "indicator_name", name="uq_dashboard_gauge"
+        ),
+        Index("ix_dashboard_gauge_date", "date"),
+    )
+
+
 class PlRegimeShadow(Base):
     """Shadow-mode regime decisions (Campaign 6 algo ships INERT — never served).
 

@@ -538,18 +538,6 @@ async def _build_indicators_dict(
 # Heuristic to detect the cc-ensemble-compute debug-string conclusion until the
 # Phase 8 refactor of cc-daily-analysis writes a real ensemble-aligned narrative.
 # Format observed: "C5 ensemble decision=OPEN (soft-gate=OPEN, wrapper_fired=[...], ...)"
-_ENSEMBLE_DEBUG_PREFIX = "C5 ensemble decision="
-
-
-def _is_usable_narrative(text: Optional[str]) -> bool:
-    """True when the conclusion looks like a real LLM narrative (not the
-    ensemble compute debug string).
-    """
-    if not text:
-        return False
-    return not text.strip().startswith(_ENSEMBLE_DEBUG_PREFIX)
-
-
 async def get_latest_recommendations(
     db: AsyncSession,
     target_date: Optional[date] = None,
@@ -558,24 +546,21 @@ async def get_latest_recommendations(
     algo_id: Optional[uuid.UUID] = None,
     language: str = "fr",
 ) -> tuple[List[str], Optional[str], Optional[date]]:
-    """Get the latest recommendations from pl_indicator_daily.conclusion.
+    """Narrative for the SERVED algorithm — one row, no cross-algorithm fallback.
 
-    Fallback chain (each step relaxes a filter, narrative quality > strict source):
-      1. (contract_id, algo_id, date)
-      2. (any contract, algo_id, date)             — transition days
-      3. (contract_id, any algo with conclusion, date) — ensemble dates
-         where ensemble decision has no LLM conclusion yet
-      4. (any contract, any algo with conclusion, date)
+    This used to walk a four-step cascade that progressively relaxed the
+    contract filter and then the ALGORITHM filter, so a date whose served row
+    had no narrative silently borrowed one from another algorithm. That was a
+    workaround for a specific era: the decision came from the ensemble while
+    only the legacy job authored prose.
 
-    The narrative text is still authored by the legacy cc-daily-analysis job,
-    so on ensemble dates the conclusion comes from the legacy row while the
-    decision was produced by ensemble. The endpoint exposes
-    ``source_algorithm`` so the frontend can disclose this dissonance.
+    It is now forbidden. The served algorithm owns its narrative end to end; a
+    row from any other algorithm — including one still sitting in the table
+    from a retired pipeline — must never surface next to a decision it did not
+    produce. If the served row has no narrative, the section is empty and the
+    producing job failed loudly upstream. That is the intended outcome.
 
-    A row whose conclusion is the cc-ensemble-compute debug string (see
-    ``_is_usable_narrative``) is treated as "no narrative" for fallback
-    purposes — Phase 8 will replace that debug string with a real
-    ensemble-aligned LLM narrative.
+    Returns ``([], None, None)`` when nothing is available.
     """
     if contract_id is None:
         if target_date:
@@ -587,16 +572,9 @@ async def get_latest_recommendations(
     if algo_id is None:
         algo_id = await _default_serving_algo_id(db, target_date, contract_id)
 
-    # Language filter is inherited by all four fallback steps below: the
-    # fallback relaxes contract/algo, but NEVER language — we must never serve
-    # one language's narrative under another language's label.
-    base_select = select(PlIndicatorDaily.conclusion, PlIndicatorDaily.date).where(
-        PlIndicatorDaily.language == language
-    )
-
-    # Step 1: contract + algo + (date)
-    query = base_select.where(
+    query = select(PlIndicatorDaily.conclusion, PlIndicatorDaily.date).where(
         and_(
+            PlIndicatorDaily.language == language,
             PlIndicatorDaily.contract_id == contract_id,
             PlIndicatorDaily.algorithm_version_id == algo_id,
             PlIndicatorDaily.conclusion.isnot(None),
@@ -606,58 +584,15 @@ async def get_latest_recommendations(
         query = query.where(PlIndicatorDaily.date == target_date)
     query = query.order_by(desc(PlIndicatorDaily.date)).limit(1)
     row = (await db.execute(query)).one_or_none()
-    if row is not None and not _is_usable_narrative(row.conclusion):
-        row = None
-
-    # Step 2: relax contract filter (any contract, this algo, this date)
-    if (not row or not row.conclusion) and target_date:
-        q = (
-            base_select.where(
-                and_(
-                    PlIndicatorDaily.date == target_date,
-                    PlIndicatorDaily.algorithm_version_id == algo_id,
-                    PlIndicatorDaily.conclusion.isnot(None),
-                )
-            )
-            .order_by(desc(PlIndicatorDaily.date))
-            .limit(1)
-        )
-        row = (await db.execute(q)).one_or_none()
-        if row is not None and not _is_usable_narrative(row.conclusion):
-            row = None
-
-    # Step 3: relax algo filter (this contract, ANY algo with usable narrative, this date)
-    if (not row or not row.conclusion) and target_date:
-        q = (
-            base_select.where(
-                and_(
-                    PlIndicatorDaily.date == target_date,
-                    PlIndicatorDaily.contract_id == contract_id,
-                    PlIndicatorDaily.conclusion.isnot(None),
-                    PlIndicatorDaily.conclusion.notlike(f"{_ENSEMBLE_DEBUG_PREFIX}%"),
-                )
-            )
-            .order_by(desc(PlIndicatorDaily.date))
-            .limit(1)
-        )
-        row = (await db.execute(q)).one_or_none()
-
-    # Step 4: fully relaxed (any contract, any algo with usable narrative, this date)
-    if (not row or not row.conclusion) and target_date:
-        q = (
-            base_select.where(
-                and_(
-                    PlIndicatorDaily.date == target_date,
-                    PlIndicatorDaily.conclusion.isnot(None),
-                    PlIndicatorDaily.conclusion.notlike(f"{_ENSEMBLE_DEBUG_PREFIX}%"),
-                )
-            )
-            .order_by(desc(PlIndicatorDaily.date))
-            .limit(1)
-        )
-        row = (await db.execute(q)).one_or_none()
 
     if not row or not row.conclusion:
+        logger.warning(
+            "No narrative for the served algorithm at date=%s contract=%s "
+            "language=%s — section will be empty (no cross-algorithm fallback)",
+            target_date,
+            contract_id,
+            language,
+        )
         return [], None, None
 
     recommendations = parse_recommendations_text(row.conclusion)

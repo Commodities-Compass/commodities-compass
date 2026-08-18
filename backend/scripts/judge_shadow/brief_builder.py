@@ -131,38 +131,64 @@ def _fetch_technicals(
     )
 
 
+class PriorBaseCallMissingError(RuntimeError):
+    """No served decision for a prior date in the judge's window.
+
+    Fail-loud on purpose. The previous behaviour returned
+    ``(MONITOR, 0.0, "")`` when the row was absent, which fed the LLM a
+    fabricated "the algorithm was neutral that day" — an invented history is
+    worse than no run at all.
+    """
+
+
 def _fetch_algo_base_call(
     session: Session, data_date: date_cls
 ) -> tuple[Decision, float, str]:
     """Return ``(decision, confidence_0_5, direction_label)`` for a prior brief.
 
-    Used to populate prior briefs' base_decision/confidence in the window (the
-    LLM prompt shows the algo's call at each historical brief). Today's brief
-    is overridden by ``base_override=regime`` in ``run_shadow``, so this only
-    matters for the priors. Sources the ensemble row today (the live production
-    algo); post-eval the swap to regime is a one-line change.
+    Populates the prior briefs' base_decision/confidence in the judge's window
+    (the prompt shows the algorithm's call at each historical brief). Today's
+    brief is overridden by ``base_override=regime`` in ``run_shadow``, so this
+    only concerns the priors.
+
+    Sources the SERVED algorithm via ``pl_algorithm_version.serving_rank`` — no
+    algorithm name is hardcoded here any more. The regime adapter row fills
+    exactly these columns, so once regime is the served algorithm its own prior
+    calls feed the window, with no reference to any previous algorithm.
+
+    Raises ``PriorBaseCallMissingError`` when the date has no served decision:
+    the recovery path is to backfill the adapter rows, never to invent a
+    neutral call.
     """
     row = session.execute(
         text(
             """
-            SELECT UPPER(COALESCE(i.decision, 'MONITOR')) AS decision,
-                   COALESCE(i.confidence, 0)              AS confidence,
-                   COALESCE(i.direction, '')              AS direction
+            SELECT UPPER(i.decision) AS decision,
+                   COALESCE(i.confidence, 0) AS confidence,
+                   COALESCE(i.direction, '') AS direction
             FROM pl_indicator_daily i
             JOIN pl_algorithm_version v ON v.id = i.algorithm_version_id
-            WHERE i.date = :d AND v.name = 'ensemble_v1_softgate_wrapper'
-            ORDER BY i.created_at DESC
+            WHERE i.date = :d
+              AND v.serving_rank IS NOT NULL
+              AND i.decision IS NOT NULL
+            ORDER BY v.serving_rank, i.created_at DESC
             LIMIT 1
             """
         ),
         {"d": data_date},
     ).fetchone()
     if row is None:
-        return (Decision.MONITOR, 0.0, "")
+        raise PriorBaseCallMissingError(
+            f"No served decision at {data_date} for the judge's prior-brief "
+            f"window. Backfill the adapter rows for that session — the window "
+            f"must never be padded with a fabricated neutral call."
+        )
     try:
         decision = Decision(row.decision)
-    except ValueError:
-        decision = Decision.MONITOR
+    except ValueError as exc:
+        raise PriorBaseCallMissingError(
+            f"Unrecognised decision {row.decision!r} at {data_date}"
+        ) from exc
     return (decision, float(row.confidence), str(row.direction))
 
 

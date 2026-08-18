@@ -11,23 +11,31 @@ is a derived view of it.
 
 **Writing this row exposes nothing.** What the dashboard serves is decided by
 ``pl_algorithm_version.serving_rank``, and regime has none. So the adapter row
-can be written and compared against the incumbent for weeks before anyone sees
-it — that is the shadow-parity mode the bascule needs.
+can be written and compared against the incumbent for as long as needed before
+any flip — that is the shadow-parity mode the bascule needs.
 
-Language handling — deliberately asymmetric:
+STRUCTURAL ONLY — no prose, in any language.
 
-  * BOTH rows (fr + en) carry the structured fields (decision, confidence,
-    direction). The fr row is not optional: the YTD series pins
-    ``language='fr'`` and would silently score nothing without it.
-  * ONLY the en row carries free text. The judge reasons and writes in English;
-    copying that prose under ``language='fr'`` would break the invariant the
-    whole codebase holds — never serve one language's narrative under another
-    language's label. The French narrative is produced downstream by the brief
-    generator, which translates as it composes.
+    decision / confidence / direction   ← written here
+    conclusion / eco / confidence_rationale ← written by cc-regime-brief
 
-Until then the French dashboard falls back to the legacy narrative through the
-existing 4-tier cascade in ``get_latest_recommendations`` — a known and
-accepted mismatch, not an accident.
+The narrative is not this module's job. ``cc-regime-brief --language both``
+receives the judge's English fields as raw material and *composes natively* in
+each language, writing the result back into the row for that language. One job,
+two languages, native prose in both — no translation step, no second LLM call.
+
+Two things are deliberately NOT propagated:
+
+  * ``pl_judge_shadow.rationale`` — it is the deterministic trace of
+    ``policy.fuse`` ("ABSTAIN HEDGE->MONITOR: judge contradicts at conf=3"),
+    not prose. It exists for the judge's own history replay and for audit. It
+    never reaches the brief and is never served.
+  * anything regime does not compute (z-scores, macro bonus) — those stay NULL,
+    never 0.0, which is a valid score (.claude/rules/pipeline-continuity.md).
+
+There is no cross-algorithm fallback anywhere in this path. If the projection
+is missing, the job fails loudly: from this algorithm on, the pipeline behaves
+as though no other algorithm exists.
 """
 
 from __future__ import annotations
@@ -41,28 +49,24 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_LANGUAGE = "fr"
-NARRATIVE_LANGUAGE = "en"
+# Both rows are written. The French one is not optional: the YTD series pins
+# ``language='fr'`` and would silently score an empty set without it.
+ADAPTER_LANGUAGES = ("fr", "en")
 
-# Every value column not listed here is left NULL on purpose. Regime computes
-# no z-scores and no macro bonus; NULL means "not computed" and stays
-# queryable, whereas 0.0 is a valid score and would silently corrupt anything
-# averaging these columns (.claude/rules/pipeline-continuity.md).
+# Only the structural columns. Everything else on pl_indicator_daily is either
+# owned by cc-regime-brief (the prose) or simply not computed by regime (NULL).
 _UPSERT = """
 INSERT INTO pl_indicator_daily (
     id, date, contract_id, algorithm_version_id, language,
-    decision, confidence, direction, eco, conclusion, confidence_rationale
+    decision, confidence, direction
 ) VALUES (
     gen_random_uuid(), :date, :contract_id, :algorithm_version_id, :language,
-    :decision, :confidence, :direction, :eco, :conclusion, :confidence_rationale
+    :decision, :confidence, :direction
 )
 ON CONFLICT ON CONSTRAINT uq_indicator_daily DO UPDATE SET
-    decision             = EXCLUDED.decision,
-    confidence           = EXCLUDED.confidence,
-    direction            = EXCLUDED.direction,
-    eco                  = EXCLUDED.eco,
-    conclusion           = EXCLUDED.conclusion,
-    confidence_rationale = EXCLUDED.confidence_rationale
+    decision   = EXCLUDED.decision,
+    confidence = EXCLUDED.confidence,
+    direction  = EXCLUDED.direction
 """
 
 _READ_REGIME = """
@@ -71,10 +75,9 @@ FROM pl_regime_shadow
 WHERE date = :date AND algorithm_version_id = :aid
 """
 
+# `rationale` is intentionally absent from this projection — see module docstring.
 _READ_JUDGE = """
-SELECT final_decision, judge_direction, judge_stance, judge_confidence,
-       is_anomaly, changed, rationale, drift_summary, disconfirming_case,
-       key_risk, evidence
+SELECT final_decision, judge_direction, judge_confidence
 FROM pl_judge_shadow
 WHERE date = :date
 ORDER BY created_at DESC
@@ -84,46 +87,6 @@ LIMIT 1
 
 class AdapterSourceMissingError(RuntimeError):
     """No regime row for the date — there is nothing to project."""
-
-
-def _compose_conclusion(regime_row, judge_row) -> str | None:
-    """Human-readable narrative, English, assembled from the two layers.
-
-    Mirrors the structure the legacy narrative uses so the frontend parser
-    (``parse_recommendations_text``: one item per line) keeps working.
-    """
-    if judge_row is None:
-        return None
-
-    lines: list[str] = []
-    if judge_row.rationale:
-        lines.append(judge_row.rationale.strip())
-
-    evidence = judge_row.evidence or []
-    for quote in evidence[:2]:
-        if isinstance(quote, str) and quote.strip():
-            lines.append(f"> {quote.strip()}")
-
-    lines.append(
-        f"Technical base: {regime_row.decision} "
-        f"(regime {regime_row.regime}, specialist {regime_row.specialist}, "
-        f"P(up)={float(regime_row.prob_up):.2f})."
-    )
-    if judge_row.changed:
-        lines.append(f"The macro overlay moved the call to {judge_row.final_decision}.")
-    return "\n".join(line for line in lines if line) or None
-
-
-def _compose_eco(judge_row) -> str | None:
-    """Macro paragraph — the drift summary plus the risk the judge named."""
-    if judge_row is None:
-        return None
-    parts = [
-        part.strip()
-        for part in (judge_row.drift_summary, judge_row.key_risk)
-        if part and part.strip()
-    ]
-    return " ".join(parts) or None
 
 
 def write_adapter_row(
@@ -165,13 +128,8 @@ def write_adapter_row(
     confidence = judge_row.judge_confidence if judge_row else None
     direction = judge_row.judge_direction if judge_row else None
 
-    conclusion = _compose_conclusion(regime_row, judge_row)
-    eco = _compose_eco(judge_row)
-    confidence_rationale = judge_row.disconfirming_case if judge_row else None
-
     written = 0
-    for language in (DEFAULT_LANGUAGE, NARRATIVE_LANGUAGE):
-        carries_text = language == NARRATIVE_LANGUAGE
+    for language in ADAPTER_LANGUAGES:
         session.execute(
             text(_UPSERT),
             {
@@ -182,17 +140,13 @@ def write_adapter_row(
                 "decision": decision,
                 "confidence": confidence,
                 "direction": direction,
-                "eco": eco if carries_text else None,
-                "conclusion": conclusion if carries_text else None,
-                "confidence_rationale": (
-                    confidence_rationale if carries_text else None
-                ),
             },
         )
         written += 1
 
     logger.info(
-        "adapter row %s: decision=%s confidence=%s (%d languages)",
+        "adapter row %s: decision=%s confidence=%s (%d languages, prose left to "
+        "cc-regime-brief)",
         session_date,
         decision,
         confidence,

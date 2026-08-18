@@ -172,10 +172,15 @@ async def test_french_row_carries_the_decision_for_the_ytd_walk(
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_english_prose_never_lands_on_the_french_row(
+async def test_the_adapter_writes_no_prose_in_any_language(
     db_session: AsyncSession,
 ) -> None:
-    """The invariant the whole codebase holds — no cross-language narrative."""
+    """Structural only. The prose belongs to cc-regime-brief, natively per language.
+
+    The adapter must not assemble a narrative from the judge's English fields:
+    machine-concatenated English is neither native French nor publishable
+    English, and storing it would make the brief's job ambiguous.
+    """
     contract = await _seed_contract(db_session)
     version = await _seed_version(db_session)
     await _seed_regime(db_session, contract, version)
@@ -184,18 +189,37 @@ async def test_english_prose_never_lands_on_the_french_row(
     await _run_adapter(db_session, version)
     rows = await _rows(db_session, version)
 
-    assert rows["fr"].conclusion is None
-    assert rows["fr"].eco is None
-    assert rows["fr"].confidence_rationale is None
+    for language in ("fr", "en"):
+        assert rows[language].conclusion is None
+        assert rows[language].eco is None
+        assert rows[language].confidence_rationale is None
 
-    assert rows["en"].conclusion is not None
-    assert "Macro drift contradicts" in rows["en"].conclusion
-    assert "quote one" in rows["en"].conclusion
-    assert "regime bull" in rows["en"].conclusion
-    assert rows["en"].eco is not None
-    assert "Rain deficit" in rows["en"].eco
-    assert "Harmattan" in rows["en"].eco
-    assert rows["en"].confidence_rationale == "A demand shock would invalidate this."
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_judge_rationale_is_never_propagated(db_session: AsyncSession) -> None:
+    """``rationale`` is the policy trace, for the judge's own replay and audit.
+
+    It reads "ABSTAIN HEDGE->MONITOR: judge contradicts at conf=3" — a
+    deterministic mechanism log, not editorial content. It must never reach the
+    served row, and never reach the brief prompt.
+    """
+    contract = await _seed_contract(db_session)
+    version = await _seed_version(db_session)
+    await _seed_regime(db_session, contract, version)
+    await _seed_judge(db_session, contract, version)
+
+    await _run_adapter(db_session, version)
+    rows = await _rows(db_session, version)
+
+    stored = " ".join(
+        str(value)
+        for row in rows.values()
+        for value in (row.conclusion, row.eco, row.confidence_rationale)
+        if value is not None
+    )
+    assert "Macro drift contradicts" not in stored
+    assert stored == ""
 
 
 @pytest.mark.integration

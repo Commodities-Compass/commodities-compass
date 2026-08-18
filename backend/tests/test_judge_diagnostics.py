@@ -375,10 +375,32 @@ async def test_malformed_evidence_entries_are_dropped(
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture
+def authenticated():
+    """Stand in for a logged-in user for the duration of one test.
+
+    The shared ``client`` fixture only overrides the DB dependency, so an
+    endpoint test that does not set this hits real Auth0 verification and gets a
+    401. It passed locally purely because another module had left an override in
+    place — order-dependent, and CI ran it in a different order.
+    """
+    from app.core.auth import get_current_user
+    from app.main import app
+
+    app.dependency_overrides[get_current_user] = lambda: {
+        "sub": "auth0|judge-diagnostics-test",
+        "email": "t@example.com",
+        "name": "T",
+        "permissions": [],
+    }
+    yield
+    app.dependency_overrides.pop(get_current_user, None)
+
+
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_endpoint_is_silent_while_regime_is_not_served(
-    client, db_session: AsyncSession
+    client, db_session: AsyncSession, authenticated
 ) -> None:
     """Before the flip, the panel must not appear.
 

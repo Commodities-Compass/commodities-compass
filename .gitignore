@@ -134,6 +134,9 @@ output/
 mockup/
 
 # Local-only docs subdirs (kept on disk, not in repo)
+# Exception: the original R&D delivery packs under docs/algorithms/ ARE tracked
+# (force-added). They are the only copy of what R&D shipped — the vendored code
+# in backend/vendor/ is a derivative. Everything else here stays local by design.
 docs/algorithms/
 docs/user-stories/
 docs/feature-proposals/

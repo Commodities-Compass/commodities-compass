@@ -115,7 +115,7 @@ export default function MarketAnalysis({
   return (
     <div className={className}>
       <section style={{ padding: '32px 0 24px' }}>
-        <SectionHeader numeral="II" title="Market Analysis" />
+        <SectionHeader numeral="II" title={t('sections.market_analysis')} />
 
         {panels.length > 0 && <StrataRail panels={panels} />}
 

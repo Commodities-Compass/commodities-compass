@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { JudgeDiagnosticsResponse } from '@/types/dashboard';
 import i18n from '@/i18n';
 import {
+  buildInvalidationNote,
   buildJudgeExplanation,
   confidenceLabel,
   regimeLabel,
@@ -13,6 +14,7 @@ import {
 const t = i18n.getFixedT('fr');
 const tEn = i18n.getFixedT('en');
 const build = (d: JudgeDiagnosticsResponse) => buildJudgeExplanation(d, t);
+const note = (d: JudgeDiagnosticsResponse) => buildInvalidationNote(d, t);
 
 // Deliberately partial: each test overrides what it reads. Widening through
 // `unknown` states this is a fixture, not a claim that the shape is complete.
@@ -46,65 +48,71 @@ function makeDiag(
 }
 
 describe('buildJudgeExplanation', () => {
-  it('produces 2 non-empty sentences', () => {
-    const r = build(makeDiag({}));
-    expect(r).toHaveLength(2);
-    expect(r[0]).toBeTruthy();
-    expect(r[1]).toBeTruthy();
+  it('produces exactly one sentence for the score panel', () => {
+    // Deliberately one: the panel is 320px wide and the second sentence used to
+    // be 300+ characters of editorial prose, which rendered as six italic lines
+    // and swamped the score card. That prose now has its own full-width row
+    // under the Conviction tiles.
+    const diag = makeDiag({});
+    const r = build(diag);
+    expect(typeof r).toBe('string');
+    expect(r).toBeTruthy();
+    expect(r).not.toContain(diag.confidence_rationale);
   });
 
   it('leads with the detected regime, in business language', () => {
     const r = build(makeDiag({ regime: 'bull' }));
-    expect(r[0]).toMatch(/Haussier/i);
+    expect(r).toMatch(/Haussier/i);
     // Never the engine tag.
-    expect(r[0]).not.toMatch(/\bbull\b/);
+    expect(r).not.toMatch(/\bbull\b/);
   });
 
   it('uses the OPEN/HEDGE/MONITOR FR labels of the FINAL decision', () => {
     // The overlay can move the call — the sentence must describe what is
     // served, not the technical call it started from.
     expect(
-      build(makeDiag({ base_decision: 'HEDGE', final_decision: 'MONITOR' }))[0],
+      build(makeDiag({ base_decision: 'HEDGE', final_decision: 'MONITOR' })),
     ).toMatch(/attentiste/);
-    expect(build(makeDiag({ final_decision: 'OPEN' }))[0]).toMatch(/acheteuse/);
-    expect(build(makeDiag({ final_decision: 'HEDGE' }))[0]).toMatch(/défensive/);
+    expect(build(makeDiag({ final_decision: 'OPEN' }))).toMatch(/acheteuse/);
+    expect(build(makeDiag({ final_decision: 'HEDGE' }))).toMatch(/défensive/);
   });
 
   it('mentions the published confidence when available', () => {
     const r = build(makeDiag({ confidence: 4 }));
-    expect(r[0]).toContain('4/5');
-    expect(r[0].toLowerCase()).toContain('confiance');
+    expect(r).toContain('4/5');
+    expect(r.toLowerCase()).toContain('confiance');
   });
 
   it('omits the confidence clause when the brief has not run', () => {
     const r = build(makeDiag({ confidence: null }));
-    expect(r[0]).not.toContain('/5');
+    expect(r).not.toContain('/5');
   });
 
   it('reports the macro stance when the overlay spoke', () => {
-    expect(build(makeDiag({ judge_stance: 'CONFIRM' }))[0]).toMatch(/confirme/i);
-    expect(build(makeDiag({ judge_stance: 'CONTRADICT' }))[0]).toMatch(
+    expect(build(makeDiag({ judge_stance: 'CONFIRM' }))).toMatch(/confirme/i);
+    expect(build(makeDiag({ judge_stance: 'CONTRADICT' }))).toMatch(
       /oppose/i,
     );
-    expect(build(makeDiag({ judge_stance: 'NEUTRAL' }))[0]).toMatch(/neutre/i);
+    expect(build(makeDiag({ judge_stance: 'NEUTRAL' }))).toMatch(/neutre/i);
   });
 
   it('says the position moved when the overlay revised it', () => {
     const r = build(makeDiag({ judge_stance: 'CONTRADICT', changed: true }));
-    expect(r[0]).toMatch(/évoluer/i);
+    expect(r).toMatch(/évoluer/i);
   });
 
   it('says NOTHING about the macro read when the overlay did not run', () => {
     // Fabricating "the macro read stays neutral" for a session where the LLM
     // leg never ran is the invented-history failure the pipeline refuses.
     const r = build(makeDiag({ judge_stance: null, changed: null }));
-    expect(r[0]).not.toMatch(/macro/i);
+    expect(r).not.toMatch(/macro/i);
   });
 
-  it('carries the natively-written rationale as sentence 2', () => {
+  it('keeps the rationale OUT of the panel sentence', () => {
     const rationale = 'Technique alignée, macro sans opposition.';
-    const r = build(makeDiag({ confidence_rationale: rationale }));
-    expect(r[1]).toBe(rationale);
+    expect(build(makeDiag({ confidence_rationale: rationale }))).not.toContain(
+      rationale,
+    );
   });
 
   it('never renders a raw judge field — they are written in English', () => {
@@ -120,30 +128,24 @@ describe('buildJudgeExplanation', () => {
       drift_summary: 'Weather stress eased while arrivals accelerated.',
       disconfirming_case: 'Smooth Ivorian port arrivals would undo this.',
     };
-    const joined = build(
-      makeDiag({ ...englishNotes, confidence_rationale: 'Lecture française.' }),
-    ).join(' ');
+    const diag = makeDiag({
+      ...englishNotes,
+      confidence_rationale: 'Lecture française.',
+    });
+    const rendered = `${build(diag)} ${note(diag)}`;
 
-    for (const note of Object.values(englishNotes)) {
-      expect(joined).not.toContain(note);
+    for (const englishNote of Object.values(englishNotes)) {
+      expect(rendered).not.toContain(englishNote);
     }
   });
 
-  it('falls back to a generic sentence 2 when the brief wrote no rationale', () => {
-    const r = build(makeDiag({ confidence_rationale: null }));
-    expect(r[1]).toBeTruthy();
-    expect(r[1]).toMatch(/align/i);
-  });
-
   it('never quotes the machinery, and never the fuse trace', () => {
-    const r = build(
-      makeDiag({
-        judge_stance: 'CONTRADICT',
-        changed: true,
-        confidence_rationale: 'Macro contre, technique pour.',
-      }),
-    );
-    const joined = r.join(' ').toLowerCase();
+    const diag = makeDiag({
+      judge_stance: 'CONTRADICT',
+      changed: true,
+      confidence_rationale: 'Macro contre, technique pour.',
+    });
+    const joined = `${build(diag)} ${note(diag)}`.toLowerCase();
     for (const tok of [
       'router',
       'routeur',
@@ -183,6 +185,19 @@ describe('regimeLabel', () => {
   it('shows an unknown tag de-underscored rather than blank', () => {
     // A silent blank would read as "no regime detected" — a different claim.
     expect(regimeLabel(t, 'some_new_regime')).toBe('some new regime');
+  });
+});
+
+describe('buildInvalidationNote', () => {
+  it('carries the natively-written rationale verbatim', () => {
+    const rationale = 'Technique alignée, macro sans opposition.';
+    expect(note(makeDiag({ confidence_rationale: rationale }))).toBe(rationale);
+  });
+
+  it('falls back to a generic sentence when the brief wrote no rationale', () => {
+    const r = note(makeDiag({ confidence_rationale: null }));
+    expect(r).toBeTruthy();
+    expect(r).toMatch(/align/i);
   });
 });
 

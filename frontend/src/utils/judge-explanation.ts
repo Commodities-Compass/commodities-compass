@@ -84,11 +84,20 @@ export function stanceLabel(
   return { label: t('signal.stance.neutral'), color: 'var(--ink-mid)' };
 }
 
+/**
+ * The one-sentence summary for the score panel.
+ *
+ * Used to return two sentences, the second being `confidence_rationale`. That
+ * sentence is 300+ characters of editorial prose and the panel is 320px wide, so
+ * it rendered as six italic lines and unbalanced the whole hero. It now has its
+ * own full-width row under the Conviction tiles — see `signal.invalidation_label`
+ * in SignalHero — where the same text takes two lines and reads as what it is:
+ * the caption of the reading, not a second summary.
+ */
 export function buildJudgeExplanation(
   diag: JudgeDiagnosticsResponse,
   t: TFunction,
-): string[] {
-  const sentences: string[] = [];
+): string {
   const decision = t(`signal.decision.${decisionKey(diag.final_decision)}`);
   const regime = regimeLabel(t, diag.regime);
 
@@ -103,44 +112,40 @@ export function buildJudgeExplanation(
         : ` ${t(`signal.judge_overlay_${diag.judge_stance.toLowerCase()}`)}`;
 
   if (diag.confidence != null) {
-    sentences.push(
-      t('signal.judge_explanation.with_confidence', {
-        regime,
-        decision,
-        confidence: t(`signal.confidence.${confidenceKey(diag.confidence)}`),
-        score: diag.confidence,
-        overlayClause,
-      }),
-    );
-  } else {
-    sentences.push(
-      t('signal.judge_explanation.without_confidence', {
-        regime,
-        decision,
-        overlayClause,
-      }),
-    );
+    return t('signal.judge_explanation.with_confidence', {
+      regime,
+      decision,
+      confidence: t(`signal.confidence.${confidenceKey(diag.confidence)}`),
+      score: diag.confidence,
+      overlayClause,
+    });
   }
+  return t('signal.judge_explanation.without_confidence', {
+    regime,
+    decision,
+    overlayClause,
+  });
+}
 
-  // Sentence 2 is `confidence_rationale`, and it must stay that way: it is the
-  // only sentence in the payload written NATIVELY per language by
-  // cc-regime-brief.
-  //
-  // `key_risk` briefly sat here instead, to stop the Conviction tile and this
-  // panel from printing the same words twice. It fixed the duplication and
-  // introduced a worse defect: the judge writes its working notes in ENGLISH by
-  // design — the brief is what turns them into French — so the French dashboard
-  // rendered an English sentence mid-panel. Any raw judge field (`key_risk`,
-  // `drift_summary`, `disconfirming_case`, `evidence`) carries the same hazard
-  // and none of them may be displayed verbatim.
-  //
-  // The duplication is resolved on the other side: the tile now captions the
-  // score with its qualitative band (see `confidenceLabel`), not with this
-  // sentence.
+/**
+ * What would invalidate the published reading — the full-width row under the
+ * Conviction tiles.
+ *
+ * Always `confidence_rationale`: it is the only sentence in the payload written
+ * NATIVELY per language by cc-regime-brief.
+ *
+ * `key_risk` briefly held this slot, to stop the Conviction tile and the score
+ * panel from printing the same words twice. It fixed the duplication and
+ * introduced a worse defect: the judge writes its working notes in ENGLISH by
+ * design — the brief is what turns them into French — so the French dashboard
+ * rendered an English sentence mid-panel. Any raw judge field (`key_risk`,
+ * `drift_summary`, `disconfirming_case`, `evidence`) carries the same hazard and
+ * none of them may be displayed verbatim.
+ */
+export function buildInvalidationNote(
+  diag: JudgeDiagnosticsResponse,
+  t: TFunction,
+): string {
   const rationale = (diag.confidence_rationale ?? '').trim();
-  sentences.push(
-    rationale.length > 0 ? rationale : t('signal.judge_rationale_fallback'),
-  );
-
-  return sentences;
+  return rationale.length > 0 ? rationale : t('signal.judge_rationale_fallback');
 }

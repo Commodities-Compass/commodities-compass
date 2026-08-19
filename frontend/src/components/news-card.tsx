@@ -144,7 +144,7 @@ export default function NewsCard({ targetDate, className }: NewsCardProps) {
   if (isLoading) {
     return (
       <section className={className} style={{ padding: '24px 0' }}>
-        <SectionHeader numeral="IV" title="Press Review" />
+        <SectionHeader numeral="IV" title={t('sections.press_review')} />
         <div className="flex items-center justify-center py-16" style={{ color: 'var(--ink-light)' }}>
           <Loader2 className="h-5 w-5 animate-spin mr-2" />
           <span className="text-sm">{t('loading.news_review')}</span>
@@ -156,7 +156,7 @@ export default function NewsCard({ targetDate, className }: NewsCardProps) {
   if (error || !news) {
     return (
       <section className={className} style={{ padding: '24px 0' }}>
-        <SectionHeader numeral="IV" title="Press Review" />
+        <SectionHeader numeral="IV" title={t('sections.press_review')} />
         <p style={{ color: 'var(--ink-light)', textAlign: 'center', fontSize: 14 }}>
           {t('news.empty_state')}
         </p>
@@ -170,7 +170,7 @@ export default function NewsCard({ targetDate, className }: NewsCardProps) {
 
   return (
     <section className={className} style={{ padding: '24px 0' }}>
-      <SectionHeader numeral="IV" title="Press Review" />
+      <SectionHeader numeral="IV" title={t('sections.press_review')} />
 
       {/* Horizon disclaimer — forward-looking risk/sentiment, distinct from the
           current-conditions Weather section (avoids the "drought vs normal" read). */}

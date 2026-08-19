@@ -26,7 +26,7 @@ export default function WeatherUpdateCard({
   if (isLoading) {
     return (
       <section className={className} style={{ padding: '24px 0' }}>
-        <SectionHeader numeral="V" title="Weather Intelligence" />
+        <SectionHeader numeral="V" title={t('sections.weather')} />
         <div className="flex items-center justify-center py-12" style={{ color: 'var(--ink-light)' }}>
           <Loader2 className="h-5 w-5 animate-spin mr-2" />
           <span className="text-sm">{t('loading.weather_report')}</span>
@@ -38,7 +38,7 @@ export default function WeatherUpdateCard({
   if (error || !data) {
     return (
       <section className={className} style={{ padding: '24px 0' }}>
-        <SectionHeader numeral="V" title="Weather Intelligence" />
+        <SectionHeader numeral="V" title={t('sections.weather')} />
         <p style={{ color: 'var(--ink-light)', textAlign: 'center', fontSize: 14 }}>
           {t('weather.empty_state')}
         </p>
@@ -52,7 +52,7 @@ export default function WeatherUpdateCard({
 
   return (
     <section className={className} style={{ padding: '24px 0' }}>
-      <SectionHeader numeral="V" title="Weather Intelligence" />
+      <SectionHeader numeral="V" title={t('sections.weather')} />
 
       {summary && (
         <Eyebrow as="div" tone="subtle" tracking="0.2em" style={{ marginBottom: 12 }}>

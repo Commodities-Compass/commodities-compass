@@ -8,6 +8,7 @@ import {
 } from '@/hooks/useDashboard';
 import Eyebrow from '@/components/editorial/Eyebrow';
 import {
+  buildInvalidationNote,
   buildJudgeExplanation,
   confidenceLabel,
   regimeLabel,
@@ -168,6 +169,8 @@ function RegimeConvictionBreakdown({
     <ConvictionTiles
       title={t('dashboard.conviction_regime_title')}
       tiles={tiles}
+      footerLabel={t('signal.invalidation_label')}
+      footerText={buildInvalidationNote(diag, t)}
     />
   );
 }
@@ -193,9 +196,14 @@ interface ConvictionTile {
 function ConvictionTiles({
   title,
   tiles,
+  footerLabel,
+  footerText,
 }: {
   title: string;
   tiles: ConvictionTile[];
+  /** Full-width caption under the grid — see `buildInvalidationNote`. */
+  footerLabel?: string;
+  footerText?: string;
 }) {
   return (
     <div style={{ marginTop: 28, marginBottom: 16 }}>
@@ -276,6 +284,34 @@ function ConvictionTiles({
           );
         })}
       </div>
+
+      {footerText && (
+        <div
+          style={{
+            borderBottom: '1px solid var(--rule)',
+            padding: '12px 16px 14px',
+          }}
+        >
+          {footerLabel && (
+            <Eyebrow as="div" tone="subtle" size={9} tracking="0.2em">
+              {footerLabel}
+            </Eyebrow>
+          )}
+          <p
+            style={{
+              fontFamily: 'var(--font-editorial)',
+              fontStyle: 'italic',
+              fontSize: 14,
+              lineHeight: 1.5,
+              color: 'var(--ink-dark)',
+              margin: '6px 0 0',
+              maxWidth: '68ch',
+            }}
+          >
+            {footerText}
+          </p>
+        </div>
+      )}
 
       <style>{`
         /* Stack to a single column under ~720px so the rationale stays
@@ -393,7 +429,10 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
   // no longer tolerates. False on a date regime does not serve, and the block
   // simply does not render.
   const regimeAligned = pos?.source_algorithm === 'regime' && Boolean(judge);
-  const explanationSentences =
+  // One sentence. The "what would invalidate this" prose moved to a full-width
+  // row under the Conviction tiles — 300+ characters in a 320px panel rendered
+  // as six italic lines and swamped the score card.
+  const explanation =
     regimeAligned && judge ? buildJudgeExplanation(judge, t) : null;
 
   if (posLoading || recsLoading) {
@@ -612,7 +651,7 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
                   nonTradingDays={nonTradingDays}
                 />
 
-                {explanationSentences && (
+                {explanation && (
                   <div style={{ marginTop: 14 }}>
                     <Eyebrow
                       as="div"
@@ -623,22 +662,19 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
                     >
                       {t('dashboard.why_this_decision')}
                     </Eyebrow>
-                    {explanationSentences.map((s, i) => (
-                      <p
-                        key={i}
-                        style={{
-                          fontFamily: 'var(--font-editorial)',
-                          fontStyle: 'italic',
-                          fontSize: 12,
-                          lineHeight: 1.55,
-                          color: 'var(--ink-dark)',
-                          margin: i === 0 ? '0 0 6px' : '0',
-                          textAlign: 'left',
-                        }}
-                      >
-                        {s}
-                      </p>
-                    ))}
+                    <p
+                      style={{
+                        fontFamily: 'var(--font-editorial)',
+                        fontStyle: 'italic',
+                        fontSize: 12,
+                        lineHeight: 1.55,
+                        color: 'var(--ink-dark)',
+                        margin: 0,
+                        textAlign: 'left',
+                      }}
+                    >
+                      {explanation}
+                    </p>
                   </div>
                 )}
               </>

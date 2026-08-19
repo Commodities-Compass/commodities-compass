@@ -197,7 +197,9 @@ function ChartTooltip({ active, payload }: { active?: boolean; payload?: Array<{
 }
 
 export default function PriceChart({
-  title = 'Price History & Signal Overlay',
+  // No literal default: the section title is editorial copy and belongs in the
+  // catalog, so it can only be resolved once `t` exists (see `heading` below).
+  title,
   selectedMetric = 'close',
   onMetricChange,
   targetDate,
@@ -249,7 +251,7 @@ export default function PriceChart({
           color: var(--ink) !important;
         }
       `}</style>
-      <SectionHeader numeral="III" title={title} />
+      <SectionHeader numeral="III" title={title ?? t('sections.price_chart')} />
 
       {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-5">

@@ -226,13 +226,9 @@ jobs:
           # dashboard gauges, which reuse this run's smoothing/z-score pass.
           # Either half is relaunchable alone with --stage indicators|gauges.
           deploy_job cc-compute-indicators   1Gi  "compute-indicators,--all-contracts,--all-versions,--stage,all"
-          # Pinned to "legacy" so daily-analysis NEVER overwrites the
-          # C5 ensemble's pl_indicator_daily row, even when the ensemble
-          # version is the one with is_active=TRUE. See
-          # docs/user-stories/P2-daily-analysis-version-flag.md.
-          # --language both → fr row (UPDATE) then en row (Option-A copy of fr).
-          deploy_job cc-daily-analysis       1Gi  "daily-analysis,--algorithm-version,legacy,--language,both"
-          deploy_job cc-compass-brief        1Gi  "compass-brief"
+          # cc-daily-analysis and cc-compass-brief — REMOVED 2026-08-18 with the
+          # regime+judge bascule. Their Cloud Run jobs are deleted on the next
+          # deploy; the pl_indicator_daily rows they wrote stay as audit trail.
           # External-data scrapers for Campaign 5 ensemble (ENSO monthly, FX daily).
           # Write to pl_external_indicator (commodity-agnostic). See
           # docs/user-stories/P1-scraper-{enso,fx}.md.
@@ -244,14 +240,9 @@ jobs:
           # Stock EU updates pl_contract_data_daily.stock_eu_bags60kg.
           deploy_job cc-ice-cot-eu-scraper   512Mi "ice-cot-eu-scraper"
           deploy_job cc-barchart-stocks-eu-scraper 512Mi "barchart-stocks-eu-scraper"
-          # Campaign 5 ensemble: daily soft-gate + Compass wrapper decision.
-          # Reads pl_contract_data_daily / pl_derived_indicators / pl_article_segment,
-          # writes 14 specialist_prediction + 1 orchestrator_decision + 1 indicator_daily.
-          # Shadow mode v1.0.0: dashboard ignores via is_active=FALSE (migration m7h8i9j0k1l2).
-          # Bootstrap job (cc-ensemble-bootstrap-artifacts) is deployed without a scheduler
-          # — trigger manually via gcloud when R&D ships a new frozen artefact pack.
-          deploy_job cc-ensemble-bootstrap-artifacts 1Gi  "ensemble-bootstrap-artifacts"
-          deploy_job cc-ensemble-compute             1Gi  "ensemble-compute"
+          # Campaign 5 ensemble — REMOVED 2026-08-18. The soft-gate, the Compass
+          # wrapper and the artefact bootstrap are gone with the vendored pack.
+          # pl_orchestrator_decision / pl_specialist_prediction keep their rows.
           # Campaign 6 regime + judge — INERT shadow, bundled in one Cloud Run job.
           # cc-regime-shadow computes the regime (Layer-1+2) decision, writes
           # pl_regime_shadow, then invokes the judge macro overlay (Layer-3, o4-mini
@@ -286,19 +277,9 @@ jobs:
           # Roll watchdog: nudge the operator when the liquidity front-month
           # leads the calendar for ≥3 consecutive sessions (time to roll-contract).
           deploy_job cc-roll-watchdog                 512Mi "roll-watchdog"
-          # Dual-track brief — ensemble side. cc-ensemble-explainer enriches the
-          # ensemble row of pl_indicator_daily with LLM narrative (eco/confidence/
-          # direction/conclusion). cc-compass-brief-ensemble assembles the new
-          # 7-section brief and uploads to Drive with `-Ensemble` suffix. Both
-          # run independently of the legacy track (cc-daily-analysis + cc-compass-brief
-          # which remain active for the legacy brief on the same dates).
-          # See docs/runbooks/brief-dual-track.md.
-          # --language both → fr ensemble narrative then en (Option-A copy).
-          deploy_job cc-ensemble-explainer       1Gi  "ensemble-explainer,--language,both"
-          # --language both → fr brief (-Ensemble.txt) then en brief
-          # (-Ensemble-EN.txt) in one execution. EN edition is ensemble-only
-          # (US-4 scope); no legacy-EN brief. +1 manual NotebookLM step/day.
-          deploy_job cc-compass-brief-ensemble   1Gi  "compass-brief-ensemble,--language,both"
+          # Dual-track brief — REMOVED 2026-08-18. cc-ensemble-explainer and
+          # cc-compass-brief-ensemble were the ensemble half; cc-regime-brief is
+          # the single track now.
           # Dashboard publication gate. Runs every 30 min across the evening→
           # next-morning window; stamps pl_session_release once a session's data
           # is complete + its NotebookLM audio is present (morning fallback so a

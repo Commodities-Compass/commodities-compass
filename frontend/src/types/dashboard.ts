@@ -197,40 +197,6 @@ export interface PositioningResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Ensemble diagnostics — consumed by SignalHero (Conviction Breakdown).
-// ---------------------------------------------------------------------------
-
-export interface EnsembleDiagnosticsResponse {
-  date: string;
-  algorithm_version: string;
-  soft_gate_decision: 'OPEN' | 'HEDGE' | 'MONITOR';
-  net_score: number;
-  weights_sum: number;
-  n_committed_specialists: number;
-  decision_wrapped: 'OPEN' | 'HEDGE' | 'MONITOR';
-  wrapper_active: boolean;
-  fired_running_acc: boolean;
-  fired_trend: boolean;
-  fired_dispersion: boolean;
-  fired_three_way: boolean;
-  /** LLM confidence (1-5), derived from the brief's rubric. */
-  confidence: number | null;
-  /** Short rationale listing pillars SOUTIEN / NEUTRE / NUANCE. */
-  confidence_rationale: string | null;
-  running_acc_5d: number | null;
-  realized_return_5d: number | null;
-  winter_vote_signed: number | null;
-  spring_vote_signed: number | null;
-  macro_direction: number | null;
-  macro_surprise: number | null;
-  macro_half_life_days: number | null;
-  anomaly_score_z: number | null;
-  prior_open: number | null;
-  prior_hedge: number | null;
-  prior_monitor: number | null;
-}
-
-// ---------------------------------------------------------------------------
 // Judge diagnostics — the regime+judge conviction surface (Campaign 6).
 //
 // Successor of EnsembleDiagnosticsResponse. `rationale` (the fuse trace) is

@@ -11,7 +11,7 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaInMemoryUpload
 
-from scripts.compass_brief.config import SCOPES_DRIVE
+from scripts._shared.drive_config import SCOPES_DRIVE
 
 logger = logging.getLogger(__name__)
 

@@ -64,13 +64,12 @@ def test_tier_catalogue_matches_matrix() -> None:
 def test_judge_overlay_ships_to_every_tier_that_bought_conviction() -> None:
     """The Campaign-6 conviction surface must not be a billed regression.
 
-    ``/ensemble-diagnostics`` + ``/specialist-votes`` back the "Conviction" row
-    of the matrix, sold on 6 of the 7 tiers. Replacing them with
-    ``/judge-diagnostics`` without granting the new key would remove a paid
-    capability from everything but the entry tier — silently, since the endpoint
-    would simply 403.
+    The Conviction row is sold on 6 of the 7 tiers. It was backed by two
+        ensemble keys until 2026-08-18 and is backed by ``judge_overlay`` alone since
+        — with no tier template touched. Any refactor that drops the key from a tier
+        that bought the row is a billed regression, and it fails here.
 
-    Coop Essentiel never bought the row and must stay out.
+        Coop Essentiel never bought the row and must stay out.
     """
     conviction_tiers = [
         ent.COOP_PREMIUM,
@@ -83,10 +82,6 @@ def test_judge_overlay_ships_to_every_tier_that_bought_conviction() -> None:
     for tier in conviction_tiers:
         keys = ent.expand_tier(tier)
         assert ent.FEATURE_JUDGE_OVERLAY in keys, tier
-        # The ensemble pair stays until its jobs are descheduled — it is the
-        # rollback path, and both surfaces must be entitled during the overlap.
-        assert ent.FEATURE_ENSEMBLE_DIAGNOSTICS in keys, tier
-        assert ent.FEATURE_SPECIALIST_VOTES in keys, tier
 
     assert ent.FEATURE_JUDGE_OVERLAY not in ent.expand_tier(ent.COOP_ESSENTIEL)
     assert ent.FEATURE_JUDGE_OVERLAY in ent.ALL_ENTITLEMENT_KEYS

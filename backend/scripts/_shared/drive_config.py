@@ -1,20 +1,28 @@
-"""Configuration for the Compass Brief generator.
+"""Google Drive credentials + target folder, shared by every brief generator.
 
-Reads market data from PostgreSQL and uploads a structured text brief
-to Google Drive for NotebookLM audio podcast generation.
+Extracted from ``compass_brief/config.py`` when the legacy and ensemble briefs
+were retired: the Drive plumbing outlived the tracks that introduced it, and
+leaving it under a deleted module would have taken ``cc-regime-brief`` down with
+them.
+
+One folder, one service account, several tracks — what distinguishes the briefs
+is the FILENAME, which each generator owns in its own config.
 """
+
+from __future__ import annotations
 
 import os
 
-# Google API scopes (Drive only — Sheets removed)
+# Drive only. The Sheets scope went away with the Sheets formula engine, but the
+# credentials env var still carries its historical name.
 SCOPES_DRIVE = ["https://www.googleapis.com/auth/drive"]
 
-# Environment variable names
 CREDENTIALS_ENV_VAR = "GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON"
 DRIVE_BRIEFS_FOLDER_ENV_VAR = "GOOGLE_DRIVE_BRIEFS_FOLDER_ID"
 
 
 def get_credentials_json() -> str:
+    """Service-account JSON, or fail loud with the variable to set."""
     value = os.environ.get(CREDENTIALS_ENV_VAR, "")
     if not value:
         raise RuntimeError(f"Missing environment variable: {CREDENTIALS_ENV_VAR}")
@@ -22,6 +30,7 @@ def get_credentials_json() -> str:
 
 
 def get_drive_briefs_folder_id() -> str:
+    """Target folder id, or fail loud with how to create it."""
     value = os.environ.get(DRIVE_BRIEFS_FOLDER_ENV_VAR, "")
     if not value:
         raise RuntimeError(

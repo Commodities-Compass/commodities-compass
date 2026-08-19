@@ -39,20 +39,11 @@ locals {
       description = "Technical indicators (per version) + dashboard gauges (algorithm-independent)"
       schedule    = "15 19 * * 1-5"
     }
-    daily-analysis = {
-      description = "Run trading analysis with LLM scoring, keyed to last completed session (P2b calendar-aware)"
-      # P2b: daily cron — agent gates on is_eve_of_trading_day(). Reads AND
-      # writes the LLM decision at data_date = last completed session T
-      # (resolve_phase_b_dates). Backfill: --session-date T.
-      schedule = "20 19 * * *"
-    }
-    compass-brief = {
-      description = "Generate brief for last completed session + upload to Drive (P2b calendar-aware)"
-      # P2b: daily cron. Filename keyed on data_date (= session T) so the audio
-      # fetch path on the dashboard (which looks up by session date) finds the
-      # right brief on Mon morning after a Sun-eve generation.
-      schedule = "30 19 * * *"
-    }
+    # daily-analysis — REMOVED at the regime+judge bascule (2026-08-18).
+    # The LLM decision on the legacy row. regime+judge decides now; the Cloud Run
+    # job stays deployed for a manual backfill, it simply is not triggered.
+    # compass-brief — REMOVED at the regime+judge bascule (2026-08-18).
+    # Legacy Drive brief. cc-regime-brief writes the served narrative.
     # External-data scrapers for Campaign 5 ensemble.
     enso-scraper = {
       description = "Scrape NOAA PSL ENSO indices (ONI + Niño 3.4)"
@@ -84,18 +75,10 @@ locals {
       # business days, native unit is "60 Kg Bag" (no conversion).
       schedule = "10 19 * * 1-5"
     }
-    ensemble-compute = {
-      description = "C5 ensemble: soft-gate + Compass wrapper daily decision (shadow mode v1.0.0)"
-      # 19:18 UTC daily, agent-gated on eve-of-trading-day (P2b). Captures
-      # weekend macro news (Sun eve fires for Mon session, reading the fresh
-      # pl_article_segment that press-review just wrote at 19:05 with
-      # article_date = previous_session). Sandwiched between
-      # cc-press-review-agent (19:05) and cc-daily-analysis (19:20) so the
-      # MacroSignal sees the latest articles, and daily-analysis sees the
-      # ensemble row this job writes. Skips cleanly when tomorrow is not
-      # a trading day (Fri/Sat eve).
-      schedule = "18 19 * * *"
-    }
+    # ensemble-compute — REMOVED at the regime+judge bascule (2026-08-18).
+    # C5 soft-gate + wrapper. Its rows stop here, which is what closes the
+    # rollback window: reverting serving_rank still works, but ensemble has no
+    # fresh row past this date.
     # NB: cc-ensemble-bootstrap-artifacts is deployed without a scheduler.
     # Triggered manually via gcloud when R&D ships a new frozen artefact pack.
     # Quarterly fundamentals (low-frequency, calendar-gated).
@@ -132,14 +115,10 @@ locals {
     # cc-compass-brief-ensemble uploads the new 7-section brief to Drive at 19:35,
     # after the explainer has written. Both run daily with the
     # is_eve_of_trading_day() gate (skip = exit 0 = Sentry success).
-    ensemble-explainer = {
-      description = "Ensemble brief LLM commentator (enriches ensemble row with eco/confidence/direction/conclusion)"
-      schedule    = "25 19 * * *"
-    }
-    compass-brief-ensemble = {
-      description = "Ensemble brief generator + Drive upload (7-section, J+4 horizon)"
-      schedule    = "35 19 * * *"
-    }
+    # ensemble-explainer — REMOVED at the regime+judge bascule (2026-08-18).
+    # Enriched the ensemble row with eco/confidence/conclusion.
+    # compass-brief-ensemble — REMOVED at the regime+judge bascule (2026-08-18).
+    # The dual-track ensemble brief. One track now.
     publish-session = {
       description = "Dashboard publication gate — release the newest ready session (data + audio)"
       # Every 30 min across the evening→next-morning window: hours 20-23 (after

@@ -3,12 +3,10 @@ import { useTranslation } from 'react-i18next';
 import {
   usePositionStatus,
   useRecommendations,
-  useEnsembleDiagnostics,
   useJudgeDiagnostics,
   useNonTradingDays,
 } from '@/hooks/useDashboard';
 import Eyebrow from '@/components/editorial/Eyebrow';
-import { buildEnsembleExplanation } from '@/utils/ensemble-explanation';
 import {
   buildJudgeExplanation,
   regimeLabel,
@@ -19,16 +17,11 @@ import { formatDate } from '@/utils/format-locale';
 import { useLanguage } from '@/hooks/useLanguage';
 import type { Language } from '@/contexts/LanguageContext';
 import type { TFunction } from 'i18next';
-import type {
-  EnsembleDiagnosticsResponse,
-  JudgeDiagnosticsResponse,
-} from '@/types/dashboard';
+import type { JudgeDiagnosticsResponse } from '@/types/dashboard';
 
 function algoBadgeLabel(t: TFunction, name?: string | null): string | null {
   if (!name) return null;
-  if (name === 'ensemble_v1_softgate_wrapper') return t('dashboard.algo_ensemble');
   if (name === 'regime') return t('dashboard.algo_regime');
-  if (name === 'legacy') return t('dashboard.algo_legacy');
   return `Powered by ${name}`;
 }
 
@@ -44,27 +37,6 @@ function formatLongDate(iso: string | null, language: Language): string {
   const d = new Date(iso + 'T00:00:00');
   if (Number.isNaN(d.getTime())) return iso;
   return formatDate(d, language, 'd MMMM yyyy');
-}
-
-function macroWord(
-  t: TFunction,
-  direction: number | null | undefined,
-): {
-  label: string;
-  arrow: string;
-  color: string;
-} {
-  if (direction == null)
-    return { label: t('signal.macro.undefined'), arrow: '·', color: 'var(--ink-light)' };
-  if (direction > 0)
-    return { label: t('signal.macro.positive'), arrow: '↑', color: 'var(--color-signal-open)' };
-  if (direction < 0)
-    return {
-      label: t('signal.macro.negative'),
-      arrow: '↓',
-      color: 'var(--color-signal-hedge)',
-    };
-  return { label: t('signal.macro.neutral'), arrow: '→', color: 'var(--ink-mid)' };
 }
 
 interface SignalHeroProps {
@@ -116,68 +88,6 @@ function yearOf(iso?: string | null): number | null {
   if (Number.isNaN(d.getTime())) return null;
   const y = d.getFullYear();
   return Number.isFinite(y) ? y : null;
-}
-
-/* ===================================================================
- * Conviction breakdown — left "by the numbers" magazine sidebar.
- *
- * Three KPI tiles, in this order:
- *   1. Consensus  — n_committed_specialists / 14
- *   2. Confiance  — LLM confidence 1-5 + rationale
- *   3. Contexte   — macro direction (porteur / défavorable / neutre)
- *
- * Engine internals (net_score, wrapper, soft-gate, detectors) intentionally
- * hidden — they're audit-only and live in the brief redaction.
- * =================================================================== */
-function ConvictionBreakdown({
-  diag,
-  signalColor,
-}: {
-  diag: EnsembleDiagnosticsResponse;
-  signalColor: string;
-}) {
-  const { t } = useTranslation();
-  const macro = macroWord(t, diag.macro_direction);
-
-  const tiles = [
-    {
-      key: 'consensus',
-      eyebrow: t('dashboard.conviction_consensus_label'),
-      big: `${diag.n_committed_specialists} / 14`,
-      italic: false,
-      color: 'var(--ink)',
-      caption: t('dashboard.specialists_engaged'),
-      wraps: false,
-    },
-    {
-      key: 'confidence',
-      eyebrow: t('dashboard.conviction_confidence_label'),
-      big: diag.confidence != null ? `${diag.confidence} / 5` : '—',
-      italic: false,
-      color: signalColor,
-      caption:
-        diag.confidence_rationale && diag.confidence_rationale.trim().length > 0
-          ? diag.confidence_rationale
-          : t('dashboard.rationale_unavailable'),
-      wraps: true,
-    },
-    {
-      key: 'context',
-      eyebrow: t('dashboard.conviction_context_label'),
-      big: macro.label,
-      italic: true,
-      color: macro.color,
-      caption: `${macro.arrow} ${t('dashboard.macro_suffix')}`,
-      wraps: false,
-    },
-  ];
-
-  return (
-    <ConvictionTiles
-      title={t('dashboard.conviction_breakdown_title')}
-      tiles={tiles}
-    />
-  );
 }
 
 /* ===================================================================
@@ -455,7 +365,6 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
   const { language } = useLanguage();
   const { data: pos, isLoading: posLoading, error: posErr } = usePositionStatus(targetDate);
   const { data: recs, isLoading: recsLoading } = useRecommendations(targetDate);
-  const { data: diag } = useEnsembleDiagnostics(targetDate);
   const { data: judge } = useJudgeDiagnostics(targetDate);
   // Non-trading days for the current year — used to compute the exact close
   // date evaluated at T+horizon (skip weekends AND exchange holidays).
@@ -467,18 +376,13 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
   })();
   const { data: nonTradingDaysData } = useNonTradingDays(sessionYear);
   const nonTradingDays = new Set(nonTradingDaysData?.dates ?? []);
-  // Each track renders its own breakdown, and only when the served algorithm
-  // matches: a panel describing one algorithm next to another one's decision is
-  // the cross-algorithm borrowing the pipeline no longer tolerates. Both are
-  // false on a date neither serves, and the block simply does not render.
-  const ensembleAligned =
-    pos?.source_algorithm === 'ensemble_v1_softgate_wrapper' && Boolean(diag);
+  // Only when the served algorithm matches: a panel describing one algorithm
+  // next to another one's decision is the cross-algorithm borrowing the pipeline
+  // no longer tolerates. False on a date regime does not serve, and the block
+  // simply does not render.
   const regimeAligned = pos?.source_algorithm === 'regime' && Boolean(judge);
-  const explanationSentences = ensembleAligned && diag
-    ? buildEnsembleExplanation(diag, t)
-    : regimeAligned && judge
-      ? buildJudgeExplanation(judge, t)
-      : null;
+  const explanationSentences =
+    regimeAligned && judge ? buildJudgeExplanation(judge, t) : null;
 
   if (posLoading || recsLoading) {
     return (
@@ -602,10 +506,7 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
             </p>
           )}
 
-          {/* Conviction breakdown — whichever track is actually served */}
-          {ensembleAligned && diag && (
-            <ConvictionBreakdown diag={diag} signalColor={meta.color} />
-          )}
+          {/* Conviction breakdown — only on a served regime date */}
           {regimeAligned && judge && (
             <RegimeConvictionBreakdown diag={judge} signalColor={meta.color} />
           )}
@@ -683,7 +584,7 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
               {meta.kicker}
             </div>
 
-            {ensembleAligned && diag ? (
+            {regimeAligned && judge ? (
               <>
                 <ScorePanelHorizon
                   sourceAlgorithm={pos.source_algorithm}

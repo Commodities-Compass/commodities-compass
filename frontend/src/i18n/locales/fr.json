@@ -18,17 +18,10 @@
     "price_chart": "Chargement du graphique..."
   },
   "dashboard": {
-    "algo_ensemble": "Powered by Ensemble v1",
-    "algo_legacy": "Powered by Legacy v1.0.1",
     "lead_analysis": "Lead Analysis",
     "desk_name": "Compass Intelligence Desk",
-    "conviction_consensus_label": "Consensus",
-    "specialists_engaged": "spécialistes engagés",
     "conviction_confidence_label": "Confiance",
     "rationale_unavailable": "rationale non disponible",
-    "conviction_context_label": "Contexte",
-    "macro_suffix": "macro",
-    "conviction_breakdown_title": "Conviction breakdown",
     "horizon_label": "Horizon de projection",
     "horizon_short_ensemble": "~4 J",
     "horizon_short_legacy": "J+1",
@@ -53,12 +46,6 @@
     "horizon_ensemble_label": "4 jours boursiers",
     "horizon_ensemble_label_approx": "~4 jours boursiers",
     "horizon_legacy_label": "Session suivante · J+1",
-    "consensus": {
-      "large": "large consensus",
-      "solid": "consensus solide",
-      "partial": "consensus partiel",
-      "weak": "consensus fragile"
-    },
     "confidence": {
       "very_high": "très forte",
       "high": "forte",
@@ -66,10 +53,6 @@
       "measured": "mesurée",
       "low": "faible"
     },
-    "ensemble_macro_positive": "Contexte macro porteur.",
-    "ensemble_macro_negative": "Contexte macro défavorable.",
-    "ensemble_macro_neutral": "Contexte macro neutre.",
-    "convergence_fallback": "Convergence des signaux techniques et fondamentaux sur la lecture du jour.",
     "explanation": {
       "with_confidence": "{{consensus}} sur la position {{decision}} — {{n}} lectures engagées, confiance {{confidence}} ({{score}}/5).{{macroClause}}",
       "without_confidence": "{{consensus}} sur la position {{decision}} — {{n}} lectures engagées.{{macroClause}}"
@@ -117,7 +100,6 @@
     "tab_recommendation": "Recommandation",
     "tab_supply": "Supply & Momentum",
     "tab_technical": "Technical Outlook",
-    "narrative_mismatch_warning": "Décision algo ensemble · Narrative legacy",
     "watchlist_title": "À surveiller",
     "chart_period_aria": "Période du graphique",
     "grp_technicals": "Technique",

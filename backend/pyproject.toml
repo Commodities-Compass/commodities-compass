@@ -6,7 +6,7 @@ authors = ["Your Name <email@example.com>"]
 packages = [{include = "app"}]
 
 [tool.poetry.dependencies]
-# Pinned <3.13 to satisfy the vendored campaign5_ensemble package (numpy 1.26.4
+# Pinned <3.13 by the vendored regime/judge packs (numpy 1.26.4
 # + arch + hmmlearn lock the upper bound; revisit when R&D bumps numpy 2).
 python = ">=3.11,<3.13"
 # Core
@@ -63,10 +63,13 @@ openai = "^2.0.0"
 google-genai = "^1.0.0"
 cachetools = "^7.0.5"
 
-# Campaign 5 ensemble — vendored R&D delivery. Frozen at v1.0.0 (TRAINING_CUTOFF
+# Campaign 5 ensemble — REMOVED 2026-08-18 with the regime+judge bascule. The
+# numpy/pandas/sklearn pins below outlive it: the regime and judge packs declare
+# the same versions, and pl_model_artifact still holds C5 artifacts that a future
+# forensic replay would need to unpickle. Do not relax them casually.
+# (was: vendored R&D delivery, frozen at v1.0.0 with TRAINING_CUTOFF
 # 2026-04-30). Path dep: re-extract tarball + bump path on each new R&D release.
 # Key name "ensemble" must match the R&D package's pyproject `name`.
-ensemble = {path = "vendor/campaign5_ensemble_v1.0.0", develop = false}
 pyarrow = "^24.0.0"
 pdfplumber = "^0.11.9"
 openpyxl = "^3.1"
@@ -88,8 +91,6 @@ ice-stocks-scraper = "scripts.ice_stocks_scraper.main:main"
 cftc-scraper = "scripts.cftc_scraper.main:main"
 press-review = "scripts.press_review_agent.main:main"
 press-review-golden = "scripts.press_review_agent.golden_check:main"
-daily-analysis = "scripts.daily_analysis.main:main"
-compass-brief = "scripts.compass_brief.main:main"
 meteo-agent = "scripts.meteo_agent.main:main"
 enso-scraper = "scripts.enso_scraper.main:main"
 enso-scraper-backfill = "scripts.enso_scraper.backfill:main"
@@ -107,10 +108,6 @@ publication-calendar-watchdog = "scripts.publication_calendar_watchdog.main:main
 roll-watchdog = "scripts.roll_watchdog.main:main"
 intraday-monitor = "scripts.intraday_monitor.main:main"
 publish-session = "scripts.publish_session.main:main"
-ensemble-explainer = "scripts.ensemble_explainer.main:main"
-compass-brief-ensemble = "scripts.compass_brief_ensemble.main:main"
-ensemble-bootstrap-artifacts = "scripts.ensemble_bootstrap.main:main"
-ensemble-compute = "scripts.ensemble_compute.main:main"
 regime-bootstrap-artifacts = "scripts.regime_shadow.bootstrap:main"
 regime-shadow-compute = "scripts.regime_shadow.main:main"
 judge-shadow-compute = "scripts.judge_shadow.main:main"

@@ -1,5 +1,18 @@
 # Daily Pipeline — Flow
 
+> ⚠️ **Written 2026-06-18, before the regime+judge flip (2026-08-19).** The
+> *paths* traced here — date semantics, roll handling, gating, failure
+> propagation — still hold; they are what the audit was about. But the jobs it
+> names on the decision leg (`cc-ensemble-compute`, `cc-ensemble-explainer`,
+> `cc-daily-analysis`, `cc-compass-brief`, `cc-compass-brief-ensemble`) were
+> **deleted**. Read them as "whatever occupies that slot": today it is
+> `cc-regime-shadow` (19:50) then `cc-regime-brief` (19:55). This banner is
+> deliberate — rewriting a dated audit at the present tense would destroy the
+> record of what it actually found. Current state:
+> [PIPELINE_REGIME_JUDGE.md](../PIPELINE_REGIME_JUDGE.md) ·
+> [JOBS_AND_SCRAPERS.md](../JOBS_AND_SCRAPERS.md).
+
+
 > **Scope**: the end-to-end nightly data flow. *When* each job fires (cron + gate), *what* it reads/writes, *how* failures propagate, and the fail-loud contract that governs the whole chain. This is the operational companion to [JOBS_AND_SCRAPERS.md](../JOBS_AND_SCRAPERS.md) (per-job catalog), [PIPELINE_LEGACY.md](../../archive/pipelines/PIPELINE_LEGACY.md), and [PIPELINE_ENSEMBLE.md](../../archive/pipelines/PIPELINE_ENSEMBLE.md) (business logic).
 
 > **Source of truth**: cron schedules are defined in [`infra/terraform/scheduler.tf`](../../../infra/terraform/scheduler.tf) (`local.cron_jobs` map). Gate logic lives in [`backend/scripts/db.py`](../../../backend/scripts/db.py) (`is_eve_of_trading_day`, `get_next_session_date`, `get_previous_session_date`). All times **UTC**.

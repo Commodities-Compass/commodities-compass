@@ -1,6 +1,6 @@
 # North Star — Directional Alignment Check
 
-> Full MCD design: [The_North_Star.md](../../The_North_Star.md) — validated 2026-02-25.
+> Full MCD design: [The_North_Star.md](../../The-North-Star.md) — validated 2026-02-25.
 > Implementation is incremental. This rule is NOT about enforcing the full 43-table MCD now.
 > It IS about catching work that actively contradicts the long-term architectural direction.
 

@@ -21,7 +21,7 @@ Free, no auth. CSV format — see `parser.py`.
 ## Cron
 
 `30 18 * * 1-5` — 18:30 UTC business days (ECB publishes ~16:00 CET, before
-`cc-ensemble-compute` runs at 19:18 UTC).
+`cc-regime-shadow` runs at 19:18 UTC).
 
 ## Derived values
 

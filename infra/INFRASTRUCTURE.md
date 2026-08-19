@@ -195,9 +195,17 @@ Timezone: UTC. Pipeline starts ~1.5h after ICE Europe close (17:30 London).
 | `cc-cftc-scraper` | `0 19 * * 1-5` | 1 |
 | `cc-press-review-agent` | `0 19 * * 1-5` | 1 — agents (parallel) |
 | `cc-meteo-agent` | `0 19 * * 1-5` | 1 |
-| `cc-compute-indicators` | `15 19 * * 1-5` | 2 — compute (needs scraper data) |
-| `cc-daily-analysis` | `20 19 * * 1-5` | 3 — analysis (needs indicators) |
-| `cc-compass-brief` | `30 19 * * 1-5` | 4 — brief (needs everything) |
+| `cc-compute-indicators` | `15 19 * * 1-5` | 2 — compute (gauges + derived indicators) |
+| `cc-roll-watchdog` | `45 19 * * 1-5` | 2 |
+| `cc-regime-shadow` | `50 19 * * *` | 3 — the served decision (regime + judge + adapter row) |
+| `cc-regime-brief` | `55 19 * * *` | 4 — narrative + Drive brief (needs everything) |
+| `cc-publish-session` | `*/30 20-23,0-9 * * *` | 5 — atomic dashboard flip |
+
+> This table is an **excerpt**, not the inventory — 18 schedulers exist. The
+> authority is [`infra/terraform/scheduler.tf`](./terraform/scheduler.tf)
+> (`local.cron_jobs`); the annotated catalogue is
+> [JOBS_AND_SCRAPERS.md](../docs/architecture/JOBS_AND_SCRAPERS.md). `cc-daily-analysis`
+> and `cc-compass-brief` were **removed 2026-08-19** with the legacy track.
 
 HTTP targets invoke Cloud Run Jobs execution API. OAuth token via `cc-cloud-run-jobs` SA (requires `run.developer` role).
 

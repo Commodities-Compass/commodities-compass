@@ -112,8 +112,8 @@ commodities-compass/
 │   │   ├── cftc_scraper/      # Weekly CFTC COT scraper (httpx)
 │   │   ├── press_review_agent/  # Daily press review agent (LLM)
 │   │   ├── meteo_agent/         # Daily weather analysis agent (LLM)
-│   │   ├── daily_analysis/      # Daily AI analysis pipeline (LLM)
-│   │   └── compass_brief/       # Daily brief generator (Drive upload)
+│   │   ├── regime_shadow/      # Served decision (regime + judge + adapter row)
+│   │   └── regime_brief/       # Narrative FR/EN + Drive brief upload
 │   ├── alembic/           # Database migrations
 │   └── pyproject.toml     # Python dependencies and config
 ├── frontend/              # React frontend
@@ -238,8 +238,8 @@ All scrapers:
 The core AI analysis engine, replacing the Make.com DAILY BOT AI scenario. Reads market data, calls OpenAI twice, writes trading decisions back to Google Sheets.
 
 - **Schedule**: `20 19 * * 1-5` (7:20 PM UTC, weekdays)
-- **Location**: `backend/scripts/daily_analysis/`
-- **CLI**: `poetry run daily-analysis --sheet production [--dry-run] [--date YYYY-MM-DD] [--force]`
+- **Location**: `backend/scripts/regime_shadow/` + `backend/scripts/regime_brief/`
+- **CLI**: `poetry run regime-shadow-compute [--session-date T] [--force]` then `poetry run regime-brief --language both`
 
 ### Pipeline Steps
 
@@ -283,7 +283,7 @@ All services are monitored via [Sentry](https://commodities-compass.sentry.io/) 
 Every event is tagged with `service` for filtering in the Sentry dashboard:
 
 ```
-frontend | fastapi | daily-import | barchart-scraper | ice-stocks-scraper | cftc-scraper | press-review-agent | meteo-agent | daily-analysis | compass-brief
+frontend | fastapi | barchart-scraper | ice-stocks-scraper | cftc-scraper | press-review-agent | meteo-agent | regime-shadow | regime-brief
 ```
 
 ### Environment Variables (Production)

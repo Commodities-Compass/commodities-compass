@@ -43,9 +43,10 @@ When a pipeline job fails:
 ```bash
 # Example: relaunch press review + downstream
 gcloud run jobs execute cc-press-review-agent --region=europe-west9 --project=cacaooo
-# Wait for completion, then:
-gcloud run jobs execute cc-daily-analysis --region=europe-west9 --project=cacaooo
-gcloud run jobs execute cc-compass-brief --region=europe-west9 --project=cacaooo
+# Wait for completion, then re-run the served decision (the judge reads the press
+# review, so a repaired press review can change the published call) and its prose:
+gcloud run jobs execute cc-regime-shadow --region=europe-west9 --project=cacaooo
+gcloud run jobs execute cc-regime-brief  --region=europe-west9 --project=cacaooo
 ```
 
 ## When to check

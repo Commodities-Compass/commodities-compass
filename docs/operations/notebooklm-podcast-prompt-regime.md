@@ -6,7 +6,7 @@
 > NotebookLM (and vice versa) so we keep a single, versioned canon.
 >
 > Regime+judge track. The ensemble counterpart
-> ([notebooklm-podcast-prompt.md](notebooklm-podcast-prompt.md)) stays in place
+> ([notebooklm-podcast-prompt-legacy.md](../archive/pipelines/notebooklm-podcast-prompt-legacy.md)) stays in place
 > until that track is retired, then this file replaces it.
 
 ## What changed vs the ensemble prompt

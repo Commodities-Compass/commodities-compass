@@ -100,7 +100,7 @@ Each v1 `create_*` builder is 3–6 lines of pandas plus 30+ of Plotly. v2 alrea
 
 Two reasons, the second load-bearing:
 
-1. We already run `cc-press-review-agent`, `cc-daily-analysis`, `cc-ensemble-explainer`, `cc-compass-brief`, `cc-compass-brief-ensemble`. A fourth parallel LLM path with its own JSON cache is duplication. Dropping it removes `PERPLEXITY_API_KEY` entirely.
+1. We already run `cc-press-review-agent`, `cc-regime-shadow` (whose L3 judge is itself an LLM leg) and `cc-regime-brief`. A further parallel LLM path with its own JSON cache is duplication. Dropping it removes `PERPLEXITY_API_KEY` entirely.
 2. **These sections encroach on Compass CC's product.** §8 of the WatchAI monthly report issues futures-hedging instructions (entry zones, hedge ratios, stops) from a generic LLM over a Perplexity dump, disconnected from any computed signal — and in the July 2026 edition, cached from a run two months earlier, contradicting its own tables by 20 % on volumes and 3× on the CAF gap. Two engines issuing hedging advice inside one bundle is a governance liability, not a feature to migrate.
 
 **Nothing from §7–§8 of the monthly report is ingested.** Compass takes only the computed data of §1–§6.

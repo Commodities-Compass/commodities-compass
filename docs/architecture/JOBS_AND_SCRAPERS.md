@@ -2,7 +2,11 @@
 
 > Inventaire complet des **jobs Cloud Run** et **schedulers** du pipeline Compass Cocoa. Pour chaque job : description, source, cron, output, quel(s) pipeline(s) le consomme, statut (actif / déprécié / out-of-scope), et tolérance de scraping. Document indépendant — peut être lu seul pour comprendre la photographie complète.
 
-> **Périmètre** : 19 jobs Cloud Run actifs aujourd'hui + 16 schedulers + 2 jobs candidats. Voir aussi [PIPELINE_LEGACY.md](../archive/pipelines/PIPELINE_LEGACY.md) et [PIPELINE_ENSEMBLE.md](../archive/pipelines/PIPELINE_ENSEMBLE.md) pour le contexte business.
+> **Périmètre** (vérifié contre GCP le 2026-08-19) : **19 jobs Cloud Run**, tous
+> déployés par `deploy.yml`, et **18 schedulers**. Le 19ᵉ job n'a pas de scheduler :
+> `cc-regime-bootstrap-artifacts`, utilitaire one-shot. Les 6 jobs legacy/ensemble
+> ont été supprimés le 2026-08-19 — contexte business dans
+> [docs/archive/pipelines/](../archive/pipelines/).
 
 ---
 
@@ -11,27 +15,37 @@
 ```
 Time UTC | Job                                   | Track       | Type
 ─────────┼───────────────────────────────────────┼─────────────┼──────────────────
+08:00-16:00 */15 | cc-intraday-monitor              | shared      | Alertes intraday (gate London)
 13:00    | cc-eca-grindings-scraper              | shared      | Calendar-gated quarterly
 14:00    | cc-nca-grindings-scraper              | shared      | Calendar-gated quarterly
 16:00    | cc-publication-calendar-watchdog      | shared      | Daily safety watchdog
 18:30    | cc-fx-scraper                         | shared      | Phase A (FX, ECB daily)
 19:00    | cc-barchart-scraper                   | shared      | Phase A (OHLCV+IV)
-19:00    | cc-meteo-agent                        | both        | Phase B (eve-gated)
+19:00    | cc-meteo-agent                        | REGIME      | Phase B (eve-gated)
 19:05    | cc-ice-stocks-scraper                 | shared      | Phase A (STOCK US)
 19:05    | cc-cftc-scraper                       | shared      | Phase A (COM NET US)
-19:05    | cc-press-review-agent                 | both        | Phase B (eve-gated)
+19:05    | cc-press-review-agent                 | REGIME      | Phase B (eve-gated)
 19:10    | cc-barchart-stocks-eu-scraper         | shared      | Phase A (stock_eu)
 19:15    | cc-compute-indicators                 | shared      | Phase A (engine) + jauges (--stage all)
-22:10    | cc-ice-cot-eu-scraper                 | ENSEMBLE-only| Phase A (weekly snapshot)
+19:45    | cc-roll-watchdog                      | shared      | Nudge roll (Sentry only)
+19:50    | cc-regime-shadow                      | REGIME      | Phase B — LA DÉCISION SERVIE
+19:55    | cc-regime-brief                       | REGIME      | Phase B — narratif + Drive
+22:10    | cc-ice-cot-eu-scraper                 | shared      | Phase A (weekly snapshot)
 ─────────┼───────────────────────────────────────┼─────────────┼──────────────────
-Monthly  | cc-enso-scraper                       | ENSEMBLE-only| 20 of month at 22:00 UTC
+20:00-09:30 */30 | cc-publish-session               | shared      | Gate de publication
+Monthly  | cc-enso-scraper                       | shared      | 20 of month at 22:00 UTC
 ```
 
 **Légende du Track** :
-- `shared` : alimente les 2 pipelines (legacy + ensemble)
-- `LEGACY` : exclusif au pipeline legacy
-- `ENSEMBLE` : exclusif au pipeline ensemble
-- `both` : Phase B agents qui écrivent pour les 2 tracks (le brief consume)
+- `shared` : données de marché, consommées par la décision, les jauges ou le dashboard
+- `REGIME` : la piste servie depuis le 2026-08-19 (regime + judge + brief)
+
+⚠️ Les mentions `ENSEMBLE-only` qui subsistent plus bas dans ce document datent de
+l'époque à deux pistes. Les scrapers ainsi étiquetés (`cc-ice-cot-eu-scraper`,
+`cc-enso-scraper`) **tournent toujours** : ils alimentent `pl_cot_eu_weekly` et
+`pl_external_indicator`, que le dashboard et le panneau macro lisent. Ce que
+l'étiquette voulait dire, c'est « pas consommé par le moteur legacy » — ce qui
+n'a plus d'objet.
 
 **Légende du Type** :
 - `Phase A` : Market close (weekdays, sur session T)
@@ -65,6 +79,8 @@ Monthly  | cc-enso-scraper                       | ENSEMBLE-only| 20 of month at
 | **cc-regime-brief** | `55 19 * * *` | REGIME+JUDGE | `pl_regime_shadow`, `pl_judge_shadow`, presse, météo, technicals, farmgate, YTD | UPDATE `pl_indicator_daily` (narration native fr+en) + Drive `YYYYMMDD-CompassBrief-Regime{,-EN}.txt` | ✅ **SERVI** — écrit la narration de la ligne servie |
 | **cc-regime-bootstrap-artifacts** | (manual) | REGIME | R&D frozen regime pack | `pl_model_artifact` BYTEA rows | ✅ Actif (no scheduler) |
 | **cc-intraday-monitor** | `*/15 8-16 * * 1-5` | shared | Barchart core-api (httpx, delayed ~15 min) + `pl_derived_indicators` (S1/R1) + `ref_alert_rule` | `pl_contract_data_intraday` (append) + `aud_alert_event` + Telegram sendMessage | 🆕 2026-07 (shadow ALERT_CHANNEL=console) |
+| **cc-roll-watchdog** | `45 19 * * 1-5` | shared | `v_contract_data_chained` (OI + volume) vs calendrier de roll | Sentry nudge (no DB write) | ✅ Actif |
+| **cc-publish-session** | `*/30 20-23,0-9 * * *` | shared | complétude `pl_indicator_daily` + présence audio Drive | `pl_session_release` (bascule atomique du dashboard) | ✅ Actif |
 
 ---
 
@@ -294,19 +310,22 @@ Monthly  | cc-enso-scraper                       | ENSEMBLE-only| 20 of month at
 dans [docs/archive/pipelines/](../archive/pipelines/). Remplacés par
 `cc-regime-shadow` (19:50) et `cc-regime-brief` (19:55).
 
-### 3.19 `cc-ensemble-bootstrap-artifacts`
+### 3.19 — `cc-ensemble-bootstrap-artifacts`, retiré le 2026-08-19
 
-> Code : [backend/scripts/ensemble_bootstrap/](../../backend/scripts/ensemble_bootstrap/)
+Semait 38 lignes BYTEA dans `pl_model_artifact` depuis le pack R&D gelé. Le job
+Cloud Run a été supprimé avec les cinq autres ; **les 38 artefacts restent en
+base**, c'est ce qui rend un replay possible. Voir
+[docs/archive/pipelines/](../archive/pipelines/#how-to-replay-one-of-them-now).
 
-**Track** : ENSEMBLE (utility)
+### 3.19 bis `cc-regime-bootstrap-artifacts`
 
-**Description** : seed 38 BYTEA rows dans `pl_model_artifact` depuis le frozen R&D pack (14 specialists + 5 long-run layers + 4 configs + 15 metadata). SHA-256 verified.
+> Code : [backend/scripts/regime_shadow/bootstrap.py](../../backend/scripts/regime_shadow/bootstrap.py)
 
-**Cron** : aucun (no scheduler) — déployé sans scheduler, triggered manuellement quand R&D ship une nouvelle version mensuelle.
+**Track** : REGIME (utility) — le seul job vivant sans scheduler.
 
-**Trigger manuel** : `gcloud run jobs execute cc-ensemble-bootstrap-artifacts --region europe-west9 --project cacaooo`.
+**Cron** : aucun. Déclenché à la main quand la R&D livre un nouveau pack.
 
-**Output** : 38 rows dans `pl_model_artifact`.
+**Trigger manuel** : `gcloud run jobs execute cc-regime-bootstrap-artifacts --region europe-west9 --project cacaooo`.
 
 ### 3.20 `cc-intraday-monitor` 🆕 (2026-07)
 
@@ -353,17 +372,10 @@ dans [docs/archive/pipelines/](../archive/pipelines/). Remplacés par
    │           │  indicators(19:15)│       pl_indicator_daily (z)   │
    │           └──────┬───────────┘                                  │
    │                  │                                              │
+   │                  │  NB : cc-compute-indicators alimente aussi   │
+   │                  │  pl_dashboard_gauge (algorithm-independent)  │
    │                  ▼                                              │
-   │           ┌──────────────────┐                                  │
-   │           │ cc-ensemble-     │────► pl_specialist_prediction   │
-   │           │  compute (19:18) │      pl_orchestrator_decision   │
-   │           │  reads:          │      pl_indicator_daily (ENS)   │
-   │           │  - pl_derived_*  │                                  │
-   │           │  - article_seg   │                                  │
-   │           │  - external_ind  │                                  │
-   │           │  - cot_eu_weekly │                                  │
-   │           │  - model_artifact│                                  │
-   │           └──────────────────┘                                  │
+   │           (les jauges du dashboard, indépendantes de l'algo)    │
    └────────────────────────────────────────────────────────────────┘
 
                           (independent — Phase B)
@@ -371,24 +383,38 @@ dans [docs/archive/pipelines/](../archive/pipelines/). Remplacés par
    │  cc-meteo-agent (19:00) ────────► pl_weather_observation     │
    │  cc-press-review-agent (19:05) ──► pl_fundamental_article    │
    │                                    pl_article_segment        │
-   │                                    (consumed by ensemble too)│
+   │                                    (lus par le judge L3)     │
    └──────────────────────────────────────────────────────────────┘
 
-                          (Phase B — LLM writers)
+                     (Phase B — la décision servie)
    ┌──────────────────────────────────────────────────────────────┐
-   │  --algorithm-version legacy             (LEGACY row LLM)      │
-   │                                                                │
-   │  cc-ensemble-explainer (19:25) ─UPDATE──► pl_indicator_daily │
-   │  reads orchestrator+specialists+press+    (ENSEMBLE row LLM)  │
-   │  meteo                                                         │
+   │  cc-regime-shadow (19:50) — une exécution, trois étapes :    │
+   │                                                              │
+   │   L1+L2 régime ──► pl_regime_shadow                          │
+   │     self-compute depuis les prix bruts,                      │
+   │     ne lit JAMAIS pl_derived_indicators                      │
+   │        │                                                     │
+   │        ▼                                                     │
+   │   L3 judge  ────► pl_judge_shadow                            │
+   │     lit press + meteo en base (o4-mini)                      │
+   │        │                                                     │
+   │        ▼                                                     │
+   │   adapter row ──► pl_indicator_daily  ◄── SERVI              │
+   │     structurel seulement (decision/confidence/direction)     │
    └──────────────────────────────────────────────────────────────┘
 
-                          (Phase B — Drive uploads)
+                     (Phase B — la prose, puis Drive)
    ┌──────────────────────────────────────────────────────────────┐
-   │  cc-compass-brief (19:30) ──reads is_active=true─► Drive     │
-   │                                                  (legacy.txt)│
-   │                                                                │
-   │                                              (-Ensemble.txt) │
+   │  cc-regime-brief --language both (19:55)                     │
+   │    ├─► UPDATE pl_indicator_daily (conclusion/eco/rationale)  │
+   │    └─► Drive  YYYYMMDD-CompassBrief-Regime{,-EN}.txt         │
+   │           natif par langue, jamais traduit                   │
+   └──────────────────────────────────────────────────────────────┘
+
+                     (publication — toutes les 30 min)
+   ┌──────────────────────────────────────────────────────────────┐
+   │  cc-publish-session (20:00→09:30) ──► pl_session_release     │
+   │    bascule atomique une fois données + audio prêts           │
    └──────────────────────────────────────────────────────────────┘
 
                           (separate non-Phase)
@@ -458,7 +484,18 @@ Tables et jobs présents dans la base mais plus utilisés en production :
 | Google Sheets ETL | Supprimé | Migration vers Postgres-only complète | Plus de scripts ETL Sheets |
 | Job Railway crons | Migré → Cloud Run | Plateforme changée | Aucun reste |
 
-⚠️ **Note importante** : les tables dépréciées existent toujours en DB et sont parfois lues en fallback par les lecteurs (cf. `compass_brief/db_reader.py` qui essaie d'abord `pl_fundamental_article` puis fallback `market_research`). À nettoyer dans une refonte future.
+⚠️ **Note importante** : les tables dépréciées existent toujours en DB. Le lecteur
+qui les interrogeait en fallback (`compass_brief/db_reader.py`) a disparu avec la
+suppression du 2026-08-19 ; `regime_brief` ne lit **que** les tables `pl_*`. Il
+reste à vérifier si un autre consommateur les touche encore avant de les dropper.
+
+⚠️ **Jobs retirés le 2026-08-19** — `cc-daily-analysis`, `cc-compass-brief`,
+`cc-compass-brief-ensemble`, `cc-ensemble-compute`, `cc-ensemble-explainer`,
+`cc-ensemble-bootstrap-artifacts`. Schedulers détruits le 18, jobs Cloud Run
+supprimés le 19. Leurs tables gardent chaque ligne. Les noms de jobs qui
+subsistent en §5 sont de la **provenance historique** (« qui a écrit cette
+table »), pas des producteurs actifs. Replay :
+[docs/archive/pipelines/](../archive/pipelines/#how-to-replay-one-of-them-now).
 
 ---
 
@@ -483,6 +520,6 @@ Tables et jobs présents dans la base mais plus utilisés en production :
 - [docs/archive/pipelines/brief-dual-track.md](../archive/pipelines/brief-dual-track.md) — opérations du dual-track
 - [docs/runbooks/pipeline-failure-recovery.md](../runbooks/pipeline-failure-recovery.md) — récupération en cas de panne
 - [docs/archive/pipelines/ensemble-failure-recovery.md](../archive/pipelines/ensemble-failure-recovery.md) — récupération ensemble spécifique
-- [docs/onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md](../onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md) — déploiement initial ensemble
-- [docs/onboarding/HEDI_DATA_MAP.md](../onboarding/HEDI_DATA_MAP.md) — détail features ensemble par specialist
+- [docs/onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md](../archive/onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md) — déploiement initial ensemble
+- [docs/onboarding/HEDI_DATA_MAP.md](../archive/onboarding/HEDI_DATA_MAP.md) — détail features ensemble par specialist
 - [CLAUDE.md](../../CLAUDE.md) — référence complète du projet (commandes, architecture, déploiement)

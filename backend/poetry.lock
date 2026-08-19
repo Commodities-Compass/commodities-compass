@@ -798,34 +798,6 @@ gmpy = ["gmpy"]
 gmpy2 = ["gmpy2"]
 
 [[package]]
-name = "ensemble"
-version = "1.0.0"
-description = "Campaign 5 production ensemble — 14 specialists + soft-gate Bayesian orchestrator + transition-protection wrapper"
-optional = false
-python-versions = ">=3.11,<3.13"
-groups = ["main"]
-files = []
-develop = false
-
-[package.dependencies]
-arch = ">=6.3"
-hmmlearn = ">=0.3"
-lightgbm = ">=4.1,<4.5"
-numpy = "1.26.4"
-optuna = ">=3.5"
-pandas = ">=2.1,<2.3"
-psycopg2-binary = ">=2.9"
-scikit-learn = ">=1.4,<1.6"
-scipy = ">=1.11,<1.13"
-
-[package.extras]
-testing = ["pytest (>=8.0)", "pytest-cov (>=4.1)"]
-
-[package.source]
-type = "directory"
-url = "vendor/campaign5_ensemble_v1.0.0"
-
-[[package]]
 name = "et-xmlfile"
 version = "2.0.0"
 description = "An implementation of lxml.xmlfile for the standard library"
@@ -3769,4 +3741,4 @@ test = ["pytest", "pytest-cov"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.13"
-content-hash = "cfedfa6009a376b8e44675321c3d83322b0763f5ac5e636ab68ea4c97103c0db"
+content-hash = "ca7c806f35231747c813056521409a19e01269b67674efd9b4b6cae972aba10d"

@@ -1,6 +1,6 @@
 # Daily Pipeline — Flow
 
-> **Scope**: the end-to-end nightly data flow. *When* each job fires (cron + gate), *what* it reads/writes, *how* failures propagate, and the fail-loud contract that governs the whole chain. This is the operational companion to [JOBS_AND_SCRAPERS.md](../JOBS_AND_SCRAPERS.md) (per-job catalog), [PIPELINE_LEGACY.md](../PIPELINE_LEGACY.md), and [PIPELINE_ENSEMBLE.md](../PIPELINE_ENSEMBLE.md) (business logic).
+> **Scope**: the end-to-end nightly data flow. *When* each job fires (cron + gate), *what* it reads/writes, *how* failures propagate, and the fail-loud contract that governs the whole chain. This is the operational companion to [JOBS_AND_SCRAPERS.md](../JOBS_AND_SCRAPERS.md) (per-job catalog), [PIPELINE_LEGACY.md](../../archive/pipelines/PIPELINE_LEGACY.md), and [PIPELINE_ENSEMBLE.md](../../archive/pipelines/PIPELINE_ENSEMBLE.md) (business logic).
 
 > **Source of truth**: cron schedules are defined in [`infra/terraform/scheduler.tf`](../../../infra/terraform/scheduler.tf) (`local.cron_jobs` map). Gate logic lives in [`backend/scripts/db.py`](../../../backend/scripts/db.py) (`is_eve_of_trading_day`, `get_next_session_date`, `get_previous_session_date`). All times **UTC**.
 
@@ -203,7 +203,7 @@ gcloud run jobs execute cc-press-review-agent --region=europe-west9 --project=ca
   --args="press-review,--session-date,2026-05-26,--force"
 ```
 
-Full diagnosis + per-scenario cascades: [pipeline-failure-recovery.md](../../runbooks/pipeline-failure-recovery.md). Ensemble-specific: [ensemble-failure-recovery.md](../../runbooks/ensemble-failure-recovery.md).
+Full diagnosis + per-scenario cascades: [pipeline-failure-recovery.md](../../runbooks/pipeline-failure-recovery.md).
 
 ---
 
@@ -232,10 +232,8 @@ All should show the same session date **T**. Then:
 ## 7 — See also
 
 - [JOBS_AND_SCRAPERS.md](../JOBS_AND_SCRAPERS.md) — per-job catalog (source, method, output table, known issues)
-- [PIPELINE_LEGACY.md](../PIPELINE_LEGACY.md) / [PIPELINE_ENSEMBLE.md](../PIPELINE_ENSEMBLE.md) — business logic of each track
+- [PIPELINE_LEGACY.md](../../archive/pipelines/PIPELINE_LEGACY.md) / [PIPELINE_ENSEMBLE.md](../../archive/pipelines/PIPELINE_ENSEMBLE.md) — business logic of each track
 - [pipeline-failure-recovery.md](../../runbooks/pipeline-failure-recovery.md) — step-by-step recovery runbook
-- [ensemble-failure-recovery.md](../../runbooks/ensemble-failure-recovery.md) — ensemble-specific recovery
-- [brief-dual-track.md](../../runbooks/brief-dual-track.md) — dual-track audio operations
 - [`.claude/rules/pipeline-error-handling.md`](../../../.claude/rules/pipeline-error-handling.md) — fail-loud rule
 - [`.claude/rules/pipeline-continuity.md`](../../../.claude/rules/pipeline-continuity.md) — computation-to-storage contract
 - [`infra/terraform/scheduler.tf`](../../../infra/terraform/scheduler.tf) — cron source of truth

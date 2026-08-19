@@ -2,7 +2,7 @@
 
 > Inventaire complet des **jobs Cloud Run** et **schedulers** du pipeline Compass Cocoa. Pour chaque job : description, source, cron, output, quel(s) pipeline(s) le consomme, statut (actif / déprécié / out-of-scope), et tolérance de scraping. Document indépendant — peut être lu seul pour comprendre la photographie complète.
 
-> **Périmètre** : 19 jobs Cloud Run actifs aujourd'hui + 16 schedulers + 2 jobs candidats. Voir aussi [PIPELINE_LEGACY.md](./PIPELINE_LEGACY.md) et [PIPELINE_ENSEMBLE.md](./PIPELINE_ENSEMBLE.md) pour le contexte business.
+> **Périmètre** : 19 jobs Cloud Run actifs aujourd'hui + 16 schedulers + 2 jobs candidats. Voir aussi [PIPELINE_LEGACY.md](../archive/pipelines/PIPELINE_LEGACY.md) et [PIPELINE_ENSEMBLE.md](../archive/pipelines/PIPELINE_ENSEMBLE.md) pour le contexte business.
 
 ---
 
@@ -22,15 +22,9 @@ Time UTC | Job                                   | Track       | Type
 19:05    | cc-press-review-agent                 | both        | Phase B (eve-gated)
 19:10    | cc-barchart-stocks-eu-scraper         | shared      | Phase A (stock_eu)
 19:15    | cc-compute-indicators                 | shared      | Phase A (engine) + jauges (--stage all)
-19:18    | cc-ensemble-compute                   | ENSEMBLE    | Phase B (eve-gated, ML decision)
-19:20    | cc-daily-analysis                     | LEGACY      | Phase B (eve-gated, LLM)
-19:25    | cc-ensemble-explainer                 | ENSEMBLE    | Phase B (eve-gated, LLM)
-19:30    | cc-compass-brief                      | LEGACY      | Phase B (eve-gated, Drive)
-19:35    | cc-compass-brief-ensemble             | ENSEMBLE    | Phase B (eve-gated, Drive)
 22:10    | cc-ice-cot-eu-scraper                 | ENSEMBLE-only| Phase A (weekly snapshot)
 ─────────┼───────────────────────────────────────┼─────────────┼──────────────────
 Monthly  | cc-enso-scraper                       | ENSEMBLE-only| 20 of month at 22:00 UTC
-On-demand| cc-ensemble-bootstrap-artifacts       | ENSEMBLE     | Manual (no scheduler)
 ```
 
 **Légende du Track** :
@@ -67,14 +61,8 @@ On-demand| cc-ensemble-bootstrap-artifacts       | ENSEMBLE     | Manual (no sch
 | **cc-press-review-agent** | `5 19 * * *` | both | 6 news sources + Google News RSS | `pl_fundamental_article`, `pl_article_segment`, `pl_sentiment_feature` | ✅ Actif (P2b daily-gated) |
 | **cc-meteo-agent** | `0 19 * * *` | both | Open-Meteo API | `pl_weather_observation`, `pl_seasonal_score` | ✅ Actif (P2b daily-gated) |
 | **cc-compute-indicators** | `15 19 * * 1-5` | shared | `pl_contract_data_daily` | `pl_derived_indicators`, `pl_indicator_daily` (numerics), **`pl_dashboard_gauge`** | ✅ Actif — `--stage all` depuis 2026-08. L'étage `gauges` est algo-indépendant et relançable seul (`--stage gauges`) |
-| **cc-ensemble-compute** | `18 19 * * *` (eve-gated) | ENSEMBLE | `pl_derived_indicators`, `pl_article_segment`, `pl_external_indicator`, `pl_cot_eu_weekly`, `pl_model_artifact` | `pl_specialist_prediction` (14), `pl_orchestrator_decision`, `pl_indicator_daily` (ensemble row partielle) | ✅ Actif |
-| **cc-ensemble-explainer** | `25 19 * * *` | ENSEMBLE | `pl_orchestrator_decision`, `pl_specialist_prediction`, `pl_fundamental_article`, `pl_weather_observation`, `pl_contract_data_daily` | UPDATE `pl_indicator_daily` ensemble row (narrative legacy-style via DBAnalysisEngine auto-align) | ✅ Actif (P2b daily-gated, thin wrapper sur le moteur legacy depuis 2026-05-27) |
-| **cc-daily-analysis** | `20 19 * * *` | LEGACY | `pl_contract_data_daily`, `pl_derived_indicators`, `pl_indicator_daily`, `pl_fundamental_article`, `pl_weather_observation` | UPDATE `pl_indicator_daily` legacy row (LLM) | ✅ Actif (P2b daily-gated, `--algorithm-version legacy`) |
-| **cc-compass-brief** | `30 19 * * *` | LEGACY | `pl_indicator_daily` (active row), `pl_contract_data_daily` last 2 dates, `pl_fundamental_article`, `pl_weather_observation` | Drive: `YYYYMMDD-CompassBrief.txt` | ✅ Actif (P2b daily-gated) |
-| **cc-compass-brief-ensemble** | `35 19 * * *` | ENSEMBLE | Ensemble row + orchestrator + 14 specialists + press + meteo + technicals | Drive: `YYYYMMDD-CompassBrief-Ensemble.txt` | 🆕 P4 (2026-05) |
-| **cc-ensemble-bootstrap-artifacts** | (manual) | ENSEMBLE | R&D frozen artifact pack | `pl_model_artifact` BYTEA rows | ✅ Actif (no scheduler) |
-| **cc-regime-shadow** | `50 19 * * *` (eve-gated) | REGIME+JUDGE | `v_contract_data_chained` (self-computed features), `pl_model_artifact`, `pl_fundamental_article` (en), `pl_weather_observation` (en) | `pl_regime_shadow`, `pl_judge_shadow`, **adapter row** dans `pl_indicator_daily` | 🆕 2026-08 — **INERTE** (`serving_rank` NULL) |
-| **cc-regime-brief** | `55 19 * * *` | REGIME+JUDGE | `pl_regime_shadow`, `pl_judge_shadow`, presse, météo, technicals, farmgate, YTD | UPDATE `pl_indicator_daily` (narration native fr+en) + Drive `YYYYMMDD-CompassBrief-Regime{,-EN}.txt` | 🆕 2026-08 — **INERTE** |
+| **cc-regime-shadow** | `50 19 * * *` (eve-gated) | REGIME+JUDGE | `v_contract_data_chained` (self-computed features), `pl_model_artifact`, `pl_fundamental_article` (en), `pl_weather_observation` (en) | `pl_regime_shadow`, `pl_judge_shadow`, **adapter row** dans `pl_indicator_daily` | ✅ **SERVI** (`serving_rank = 1` depuis 2026-08-19) |
+| **cc-regime-brief** | `55 19 * * *` | REGIME+JUDGE | `pl_regime_shadow`, `pl_judge_shadow`, presse, météo, technicals, farmgate, YTD | UPDATE `pl_indicator_daily` (narration native fr+en) + Drive `YYYYMMDD-CompassBrief-Regime{,-EN}.txt` | ✅ **SERVI** — écrit la narration de la ligne servie |
 | **cc-regime-bootstrap-artifacts** | (manual) | REGIME | R&D frozen regime pack | `pl_model_artifact` BYTEA rows | ✅ Actif (no scheduler) |
 | **cc-intraday-monitor** | `*/15 8-16 * * 1-5` | shared | Barchart core-api (httpx, delayed ~15 min) + `pl_derived_indicators` (S1/R1) + `ref_alert_rule` | `pl_contract_data_intraday` (append) + `aud_alert_event` + Telegram sendMessage | 🆕 2026-07 (shadow ALERT_CHANNEL=console) |
 
@@ -299,91 +287,12 @@ On-demand| cc-ensemble-bootstrap-artifacts       | ENSEMBLE     | Manual (no sch
 
 **Note importante** : tourne pour TOUTES les versions `compute_enabled=TRUE` (aujourd'hui : legacy v1.0.1 + ensemble v1.0.0). Donc remplit 2 rows par date dans `pl_indicator_daily`.
 
-### 3.14 `cc-ensemble-compute`
+### 3.14-3.18 — jobs retirés le 2026-08-19
 
-> Code : [backend/scripts/ensemble_compute/](../../backend/scripts/ensemble_compute/)
-
-**Track** : ENSEMBLE-only
-
-**Description** : pipeline ML qui charge 38 artifacts BYTEA depuis `pl_model_artifact`, infère 14 specialists, soft-gate Bayésien combine, Compass wrapper applique 4 détecteurs → décision finale.
-
-**Source** :
-- `v_contract_data_chained` VIEW (front-month-by-OI cross-contract pour GARCH lookback 600d)
-- `pl_derived_indicators` 600d
-- `pl_orchestrator_decision` lookback 10d + `pl_specialist_prediction` 10d (rolling)
-- `pl_article_segment` 90d (confidence ≥0.70) via MacroEventLayer
-- `pl_external_indicator` (ENSO + FX) + `pl_cot_eu_weekly`
-
-**Cron** : `18 19 * * *` (P2b daily, eve-of-trading gate ; 13min après cc-press-review-agent à 19:05 pour lire les `pl_article_segment` fraîchement écrits). Fire Mon-Thu eve + Sunday eve, skip Friday + Saturday eves. Sur Sunday eve, écrit la row pour `data_date = Friday` avec le MacroSignal incluant les news du weekend.
-
-**Output** :
-- 14× `pl_specialist_prediction` (specialist_name, pred, window_months)
-- 1× `pl_orchestrator_decision` (25+ diagnostics : soft_gate_decision, decision_wrapped, wrapper_active, 4 fired_*, running_acc_5d, anomaly_score_z, etc.)
-- 1× `pl_indicator_daily` ENSEMBLE row UPSERT (decision + conclusion auto-generated). `eco`, `confidence`, `direction` restent NULL — enrichies plus tard par `cc-ensemble-explainer`.
-
-**Note** : `pl_algorithm_version.compute_enabled` n'est PAS check dans le code — le job tourne quoi qu'il arrive.
-
-**Failure recovery** : [docs/runbooks/ensemble-failure-recovery.md](../runbooks/ensemble-failure-recovery.md).
-
-### 3.15 `cc-ensemble-explainer` (refactor 2026-05-27 : thin wrapper sur DBAnalysisEngine)
-
-> Code : [backend/scripts/ensemble_explainer/main.py](../../backend/scripts/ensemble_explainer/main.py) (≤200 lignes wrapper)
-
-**Track** : ENSEMBLE
-
-**Description** : invoque le pipeline legacy `DBAnalysisEngine.run()` **sans pinner `--algorithm-version`** → l'auto-align détecte la row ensemble dans `pl_orchestrator_decision`, utilise `CALL_2_PROMPT_ENSEMBLE` (qui injecte les 25 diagnostics structurés), et écrit la narrative legacy-style sur la row ensemble. Aucun prompt / parser / writer custom — réutilisation totale du code legacy. Pre-flight `EnsembleRowMissingError` fail-loud si cc-ensemble-compute n'a pas écrit la row.
-
-**Source** (via `DBAnalysisEngine.DBReader`) : `pl_orchestrator_decision` + 14× `pl_specialist_prediction` + `pl_fundamental_article` (date = data_date) + `pl_weather_observation` (date = data_date) + `pl_contract_data_daily` (last 2 sessions pour technicals today+yesterday).
-
-**Cron** : `25 19 * * *` (P2b daily-gated, après cc-ensemble-compute).
-
-**LLM** : 2× `gpt-4-turbo` (Call#1 macro/weather + Call#2 ensemble-aware decision). Format conclusion strict legacy `> ... • ... > A SURVEILLER AUJOURD'HUI: ...` × 3 alertes.
-
-**Output** : UPDATE `pl_indicator_daily` ENSEMBLE row → set `eco`, `macroeco_bonus`, `macroeco_score`, `final_indicator`, `decision` (= `decision_wrapped`, pinné), `confidence`, `direction`, `conclusion` long-form.
-
-**Cost** : ~$0.13/jour × 250/an ≈ $32.5/an. Trade-off vs version originale gpt-4o-mini ($0.001/jour) : la parité de format avec le frontend recommandation parser (3 tabs Recommandation / Supply / Technical) impose le verbose legacy.
-
-### 3.16 `cc-daily-analysis`
-
-> Code : [backend/scripts/daily_analysis/](../../backend/scripts/daily_analysis/)
-
-**Track** : LEGACY (pinned via `--algorithm-version legacy` flag dans deploy.yml)
-
-**Description** : pipeline historique LLM en 2 appels (Call #1 macro/weather + Call #2 decision). Écrit la row legacy de `pl_indicator_daily`.
-
-**Cron** : `20 19 * * *` (P2b daily-gated, après cc-ensemble-compute pour pouvoir lire ensemble diagnostics et auto-aligner si présent).
-
-**Output** : UPDATE `pl_indicator_daily` LEGACY row → set `decision`, `confidence`, `direction`, `conclusion`, `eco`, `macroeco_bonus`, `macroeco_score`, `final_indicator`.
-
-Voir détail dans [PIPELINE_LEGACY.md](./PIPELINE_LEGACY.md) §3.2-3.5.
-
-### 3.17 `cc-compass-brief`
-
-> Code : [backend/scripts/compass_brief/](../../backend/scripts/compass_brief/)
-
-**Track** : LEGACY (lit `pl_algorithm_version.is_active=true` JOIN → ressort la row legacy aujourd'hui)
-
-**Description** : assemble un .txt yesterday + today depuis `pl_indicator_daily` + `pl_contract_data_daily` + `pl_fundamental_article` + `pl_weather_observation`. Upload sur Drive.
-
-**Cron** : `30 19 * * *` (P2b daily-gated).
-
-**Output** : `YYYYMMDD-CompassBrief.txt` sur Google Drive folder `GOOGLE_DRIVE_BRIEFS_FOLDER_ID`. NotebookLM ingère → produit `YYYYMMDD-CompassAudio.{wav|m4a|mp4}` overnight.
-
-Voir détail dans [PIPELINE_LEGACY.md](./PIPELINE_LEGACY.md) §3.6.
-
-### 3.18 `cc-compass-brief-ensemble` 🆕 (P4)
-
-> Code : [backend/scripts/compass_brief_ensemble/](../../backend/scripts/compass_brief_ensemble/)
-
-**Track** : ENSEMBLE
-
-**Description** : assemble le brief ensemble en **7 sections** (signal + decomposition 14 specialists + macro radar + LLM eco + weather + technicals + recommandations). Lit la row ensemble enrichie par `cc-ensemble-explainer`.
-
-**Cron** : `35 19 * * *` (P2b daily-gated, après cc-ensemble-explainer).
-
-**Output** : `YYYYMMDD-CompassBrief-Ensemble.txt` sur Drive (même folder, filename discriminant). NotebookLM produit `YYYYMMDD-CompassAudio-Ensemble.{ext}`.
-
-Voir détail dans [PIPELINE_ENSEMBLE.md](./PIPELINE_ENSEMBLE.md) §7.
+`cc-ensemble-compute`, `cc-ensemble-explainer`, `cc-daily-analysis`,
+`cc-compass-brief`, `cc-compass-brief-ensemble`. Leurs fiches détaillées sont
+dans [docs/archive/pipelines/](../archive/pipelines/). Remplacés par
+`cc-regime-shadow` (19:50) et `cc-regime-brief` (19:55).
 
 ### 3.19 `cc-ensemble-bootstrap-artifacts`
 
@@ -467,7 +376,6 @@ Voir détail dans [PIPELINE_ENSEMBLE.md](./PIPELINE_ENSEMBLE.md) §7.
 
                           (Phase B — LLM writers)
    ┌──────────────────────────────────────────────────────────────┐
-   │  cc-daily-analysis (19:20)  ──UPDATE──► pl_indicator_daily   │
    │  --algorithm-version legacy             (LEGACY row LLM)      │
    │                                                                │
    │  cc-ensemble-explainer (19:25) ─UPDATE──► pl_indicator_daily │
@@ -480,7 +388,6 @@ Voir détail dans [PIPELINE_ENSEMBLE.md](./PIPELINE_ENSEMBLE.md) §7.
    │  cc-compass-brief (19:30) ──reads is_active=true─► Drive     │
    │                                                  (legacy.txt)│
    │                                                                │
-   │  cc-compass-brief-ensemble (19:35) ──reads ENSEMBLE row─►Drive│
    │                                              (-Ensemble.txt) │
    └──────────────────────────────────────────────────────────────┘
 
@@ -501,9 +408,6 @@ Voir détail dans [PIPELINE_ENSEMBLE.md](./PIPELINE_ENSEMBLE.md) §7.
 | `cc-barchart-scraper` | ❌ Tous les downstream (no OHLCV → compute-indicators fail → ensemble + daily-analysis fail → no brief) |
 | `cc-ice-stocks-scraper` ou `cc-cftc` | ⚠️ Tolerable — depuis 2026-05-27, ces tables sont indépendantes de l'OHLCV row. Pas de fail-loud. Le dashboard / brief continueront d'afficher la dernière obs en date (forward-fill on/before pattern) avec le `*_report_date` affiché côté frontend pour signaler la fraîcheur. |
 | `cc-compute-indicators` | ❌ ensemble + daily-analysis fail (no indicators) |
-| `cc-ensemble-compute` | ⚠️ cc-ensemble-explainer fail (no ensemble row), cc-compass-brief-ensemble fail. Legacy brief intact. |
-| `cc-daily-analysis` | ⚠️ Legacy brief incomplet (decision/eco missing). Ensemble brief intact. |
-| `cc-ensemble-explainer` | ⚠️ Ensemble brief sans narrative (decision OK mais eco/conclusion NULL → brief affichera "(pas de conclusion narrative)"). Legacy brief intact. |
 | `cc-press-review-agent` ou `cc-meteo-agent` | ⚠️ Les 2 briefs auront une section press/meteo vide. |
 | `cc-regime-shadow` | ⚠️ Aucun impact utilisateur tant que `serving_rank` de regime est NULL. Post-bascule : ❌ pas de décision du jour, et `cc-regime-brief` fail-loud (pas d'adapter row à enrichir). |
 | `cc-regime-brief` | ⚠️ Aucun impact tant qu'inerte. Post-bascule : section Recommandation vide (aucun fallback inter-algo) + pas de brief Drive → pas d'audio. |
@@ -574,11 +478,11 @@ Tables et jobs présents dans la base mais plus utilisés en production :
 
 ## 8 — Pour aller plus loin
 
-- [PIPELINE_LEGACY.md](./PIPELINE_LEGACY.md) — comment le pipeline LLM legacy produit son brief
-- [PIPELINE_ENSEMBLE.md](./PIPELINE_ENSEMBLE.md) — comment le pipeline ML ensemble produit le sien
-- [docs/runbooks/brief-dual-track.md](../runbooks/brief-dual-track.md) — opérations du dual-track
+- [PIPELINE_LEGACY.md](../archive/pipelines/PIPELINE_LEGACY.md) — comment le pipeline LLM legacy produit son brief
+- [PIPELINE_ENSEMBLE.md](../archive/pipelines/PIPELINE_ENSEMBLE.md) — comment le pipeline ML ensemble produit le sien
+- [docs/archive/pipelines/brief-dual-track.md](../archive/pipelines/brief-dual-track.md) — opérations du dual-track
 - [docs/runbooks/pipeline-failure-recovery.md](../runbooks/pipeline-failure-recovery.md) — récupération en cas de panne
-- [docs/runbooks/ensemble-failure-recovery.md](../runbooks/ensemble-failure-recovery.md) — récupération ensemble spécifique
+- [docs/archive/pipelines/ensemble-failure-recovery.md](../archive/pipelines/ensemble-failure-recovery.md) — récupération ensemble spécifique
 - [docs/onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md](../onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md) — déploiement initial ensemble
 - [docs/onboarding/HEDI_DATA_MAP.md](../onboarding/HEDI_DATA_MAP.md) — détail features ensemble par specialist
 - [CLAUDE.md](../../CLAUDE.md) — référence complète du projet (commandes, architecture, déploiement)

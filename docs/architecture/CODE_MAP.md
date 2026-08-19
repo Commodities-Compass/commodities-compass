@@ -4,14 +4,14 @@
 
 ## Companion docs (business + ops context)
 
-- **[PIPELINE_LEGACY.md](./PIPELINE_LEGACY.md)** — LLM-as-decision-maker track (`cc-daily-analysis` → `cc-compass-brief`), T+1 horizon, ~18 months in prod.
-- **[PIPELINE_ENSEMBLE.md](./PIPELINE_ENSEMBLE.md)** — Campaign 5 ML track (14 specialists + Bayesian soft-gate + Compass wrapper + explainer + ensemble brief), J+4–J+5 horizon. The dashboard already serves this.
+- **[PIPELINE_LEGACY.md](../archive/pipelines/PIPELINE_LEGACY.md)** — LLM-as-decision-maker track (`cc-daily-analysis` → `cc-compass-brief`), T+1 horizon, ~18 months in prod.
+- **[PIPELINE_ENSEMBLE.md](../archive/pipelines/PIPELINE_ENSEMBLE.md)** — Campaign 5 ML track (14 specialists + Bayesian soft-gate + Compass wrapper + explainer + ensemble brief), J+4–J+5 horizon. The dashboard already serves this.
 - **[PIPELINE_REGIME_JUDGE.md](./PIPELINE_REGIME_JUDGE.md)** — Campaign 6 track (regime router + condition specialists + LLM macro overlay + adapter row + FR/EN brief), J+1 horizon. **Built and running nightly, serving nothing** — `pl_algorithm_version.serving_rank` is NULL for `regime`. Also documents the serving chain, the algorithm-independent gauges, and the removal of every cross-algorithm fallback.
 - **[JOBS_AND_SCRAPERS.md](./JOBS_AND_SCRAPERS.md)** — exhaustive catalog of all 19 Cloud Run Jobs + 16 schedulers + dependency graph + shared-vs-specific tables. Read for the UTC timeline.
-- **[ENSEMBLE_BRIDGE_FROM_LEGACY.md](./ENSEMBLE_BRIDGE_FROM_LEGACY.md)** — how the ensemble row coexists with / overrides legacy.
+- **[ENSEMBLE_BRIDGE_FROM_LEGACY.md](../archive/pipelines/ENSEMBLE_BRIDGE_FROM_LEGACY.md)** — how the ensemble row coexists with / overrides legacy.
 
 > **Flow deep-dives** live in [`docs/architecture/flows/`](./flows/) — five cross-cutting traces produced by the 2026-06-18 backend audit (read these for the failure-prone paths):
-> [contract-roll](./flows/contract-roll.md) · [date-semantics](./flows/date-semantics.md) · [algo-contract-resolution](./flows/algo-contract-resolution.md) · [daily-pipeline](./flows/daily-pipeline.md) · [dual-track-brief](./flows/dual-track-brief.md).
+> [contract-roll](./flows/contract-roll.md) · [date-semantics](./flows/date-semantics.md) · [algo-contract-resolution](./flows/algo-contract-resolution.md) · [daily-pipeline](./flows/daily-pipeline.md).
 >
 > The per-subsystem `flows/<subsystem>.md` links in the rows below are marked **(planned)** — future per-subsystem deep-dives not yet written; until then the companion docs above + the `reads/writes/invariants` rows here are authoritative for those.
 
@@ -30,7 +30,7 @@ Production Python pipeline that replaced the Google Sheets formula engine: 14 in
 - **Entrypoints**: `runner.py` (CLI `poetry run compute-indicators [--all-contracts|--contract CAK26] [--dry-run|--full] [--algorithm legacy --algorithm-version 1.0.1]`), `pipeline.py` (orchestrator), `registry.py` (topo-sort), `composite.py`, `normalization.py`, `smoothing.py`, `db_writer.py`, `indicators/`, `types.py`. See `app/engine/README.md`.
 - **Reads**: `pl_contract_data_daily`, `ref_contract`, `pl_indicator_daily` (macroeco LEFT JOIN), `pl_algorithm_version`, `pl_algorithm_config`.
 - **Writes**: `pl_derived_indicators`, `pl_indicator_daily`, `pl_signal_component`.
-- **Docs**: `flows/indicator-engine.md` (planned) · [PIPELINE_LEGACY.md](./PIPELINE_LEGACY.md) · [PIPELINE_ENSEMBLE.md](./PIPELINE_ENSEMBLE.md).
+- **Docs**: `flows/indicator-engine.md` (planned) · [PIPELINE_LEGACY.md](../archive/pipelines/PIPELINE_LEGACY.md) · [PIPELINE_ENSEMBLE.md](../archive/pipelines/PIPELINE_ENSEMBLE.md).
 - **Key invariants**: rolling 252-day z-score over **session date** (never `display_date`) — replaces Sheets full-history look-ahead bug; two-pass momentum (base score with momentum=0 first); `pl_signal_component.raw_value`/`normalized_value` must trace to a computation, never literals (pipeline-continuity); config (16 coeff/exp pairs, k, thresholds) loaded from `pl_algorithm_config`, `LEGACY_V1` is fallback only; idempotent upsert on `(date, contract_id[, algorithm_version_id])`; warmups EMA26=26, MACDSignal=35, RSI=15, Stoch/ATR=14, Bollinger=20.
 
 ### 2. Models & migrations — `backend/app/models/` + `backend/alembic/versions/`
@@ -89,32 +89,23 @@ Phase-B LLM agents: press review (o4-mini, 6+ sources → French analysis + 4 th
 - **Entrypoints**: `poetry run press-review [--provider …|--session-date|--force|--dry-run]` (cron 19:05 UTC); `poetry run meteo-agent [--bootstrap-memory|--session-date|--force|--dry-run]` (cron 19:00 UTC). Both eve-gated.
 - **Reads**: `pl_contract_data_daily` (latest CLOSE), `ref_contract` (`is_active`), `pl_fundamental_article` (provider shadow filter), `pl_seasonal_score`, `pl_external_indicator` (ENSO regime block).
 - **Writes**: `pl_fundamental_article`, `pl_article_segment` (4 theme rows guaranteed), `pl_weather_observation`, `aud_llm_call`.
-- **Docs**: [PIPELINE_LEGACY.md](./PIPELINE_LEGACY.md) · [PIPELINE_ENSEMBLE.md](./PIPELINE_ENSEMBLE.md) · `flows/agents-fundamentals.md` (planned).
+- **Docs**: [PIPELINE_LEGACY.md](../archive/pipelines/PIPELINE_LEGACY.md) · [PIPELINE_ENSEMBLE.md](../archive/pipelines/PIPELINE_ENSEMBLE.md) · `flows/agents-fundamentals.md` (planned).
 - **Key invariants**: **P2b date semantics** — prompt frames `target_date` (upcoming session) but every DB row keyed to `data_date = get_previous_session_date(target_date)` (violation = empty dashboard sections the next morning); `is_active` controls provider shadowing (only `PRODUCTION_PROVIDER` shown); all 4 themes mandatory daily (neutral fallback + Sentry warning if missing); duplicate guards fail-loud unless `--force`; active contract from `ref_contract.is_active`, never env var.
 
-### 10. Daily analysis agent — `backend/scripts/daily_analysis/`
-LLM decision engine (legacy track): 2 sequential gpt-4-turbo calls (macro/weather → MACROECO_BONUS; technicals → DECISION/CONFIANCE) writing narrative + signals. Also the shared engine that ensemble-explainer wraps.
-- **Entrypoints**: `poetry run daily-analysis [--dry-run|--contract|--algorithm-version|--session-date]` (cron 19:20 UTC); engine `db_analysis_engine.py` (`DBAnalysisEngine.run()`).
-- **Reads**: `pl_contract_data_daily`, `pl_derived_indicators`, `pl_indicator_daily`, `pl_fundamental_article` (+`market_research` fallback), `pl_weather_observation` (+`weather_data` fallback), `pl_orchestrator_decision`, `pl_algorithm_version`, `ref_contract`, `pl_stock_observation`, `pl_cot_us_weekly`, `ref_trading_calendar`.
-- **Writes**: `pl_indicator_daily` (UPDATE narrative + decision), `pl_signal_component` (macroeco row), `aud_pipeline_run`, `aud_llm_call` (2 rows).
-- **Docs**: [PIPELINE_LEGACY.md](./PIPELINE_LEGACY.md) · `flows/daily-analysis.md` (planned).
-- **Key invariants**: single-transaction write atomicity (rollback → exit non-zero → Sentry); **auto-align on ensemble** — when an ensemble row exists and no `--algorithm-version` override, writes the ensemble row and **pins `decision` to `ensemble.decision_wrapped`** (force-corrects + warns if LLM disagrees); direction coherence normalized (OPEN→HAUSSIERE etc.); `macroeco_bonus` is an LLM scalar (never recomputed), `final_indicator` recomputed via `app.engine.composite`; P2b date keying; no partial output on error.
+### 10-12. Legacy + ensemble — RETIRÉS le 2026-08-19
 
-### 11. Ensemble compute (Campaign 5) — `backend/scripts/ensemble_compute/`
-Daily orchestration of 14 LightGBM+GARCH specialists via Bayesian soft-gate + `TransitionProtectionWrapper`, with Compass-side relaxation (`compass_wrapper.py`). Produces the wrapped ensemble decision.
-- **Entrypoints**: `poetry run ensemble-compute [--session-date|--historical|--dry-run]` (cron 19:18 UTC, eve-gated); vendored R&D in `backend/vendor/campaign5_ensemble_v1.0.0/` (read-only; `v1.0.1` also vendored).
-- **Reads**: `v_contract_data_chained` (OHLCV/indicators + trailing 10-row decision/specialist windows, chained across rolls), `pl_derived_indicators`, `pl_orchestrator_decision`, `pl_specialist_prediction`, `pl_article_segment` (90d macro signal), `pl_algorithm_version`, `pl_algorithm_config`, `pl_model_artifact`, `ref_contract`, `ref_trading_calendar`.
-- **Writes**: `pl_specialist_prediction` (14 rows), `pl_orchestrator_decision` (1 row, ~22 diagnostics), `pl_indicator_daily` (1 row UPSERT).
-- **Docs**: [PIPELINE_ENSEMBLE.md](./PIPELINE_ENSEMBLE.md) · `docs/runbooks/wrapper-levers-tuning.md` · `docs/runbooks/ensemble-failure-recovery.md`.
-- **Key invariants**: config-as-data (wrapper thresholds, macro-gate cap, regime-monitor all from `pl_algorithm_config`; optional levers default OFF when absent); **chained window** via `v_contract_data_chained` so `running_acc_5d` doesn't reset to NaN on a roll; forward-return scored on **soft-gate** decision, not wrapper output (self-reference loop broke live 2026-05-07); eve-gate incorporates weekend news (Sunday eve reads Friday-dated `pl_article_segment`); fail-loud on data gaps; NULL preferred over hardcoded 0.0 for missing diagnostics. **Shadow state**: `compute_enabled` must stay FALSE in prod until the job is deployed (else `KeyError 'k'`).
+`daily_analysis/`, `compass_brief/`, `compass_brief_ensemble/`, `ensemble_compute/`,
+`ensemble_explainer/`, `ensemble_bootstrap/` et le pack vendoré
+`campaign5_ensemble_v1.0.0` ont été supprimés avec la bascule vers regime+judge
+(−28 617 lignes). Leurs tables gardent toutes leurs lignes.
 
-### 12. Briefs (legacy + ensemble) + explainer — `backend/scripts/{compass_brief,compass_brief_ensemble,ensemble_explainer}/`
-Dual-track `.txt` brief generation for NotebookLM audio. Legacy brief = yesterday+today; ensemble brief (P4) = forward-looking + 14-specialist decomposition. Explainer enriches the ensemble `pl_indicator_daily` row with LLM narrative.
-- **Entrypoints**: `poetry run compass-brief [--session-date|--force]` (cron 19:30 UTC), `poetry run compass-brief-ensemble [--session-date|--dry-run]` (cron 19:35 UTC), `poetry run ensemble-explainer [--session-date|--dry-run|--force]` (cron 19:25 UTC — thin wrapper around `DBAnalysisEngine`).
-- **Reads**: `pl_indicator_daily` (active-algo join), `pl_orchestrator_decision`, `pl_specialist_prediction`, `pl_contract_data_daily`, `pl_derived_indicators`, `pl_fundamental_article` (+`market_research`), `pl_weather_observation` (+`weather_data`), `pl_stock_observation`, `pl_cot_us_weekly`, `pl_seasonal_score`, `pl_algorithm_version`, `ref_contract`, `v_contract_data_chained`.
-- **Writes**: briefs are read-only (output to Google Drive); **explainer** writes via `DBAnalysisEngine` (updates the ensemble `pl_indicator_daily` row: `eco`, `confidence`, `direction`, `conclusion`).
-- **Docs**: `docs/runbooks/brief-dual-track.md` · `brief-rollback-procedure.md` · `brief-ensemble-evolution.md`.
-- **Key invariants**: P2b date semantics (`test_date_semantics.py` enforces); roll-robust contract resolution (`v_contract_data_chained` / `resolve_active()`, no hardcoded codes); idempotent upload (same filename = update; `-Ensemble` suffix coexists in same Drive folder); fail-loud on missing ensemble row (`EnsembleBriefDataMissingError` / `EnsembleRowMissingError`); **forbidden-substring guard** — ensemble brief raises `UnsafeBriefContentError` if engine-revealing tokens (soft-gate, wrapper, running_acc…) leak into rendered text.
+Ce qui les a remplacés : `regime_shadow/` (L1+L2 + judge + adapter row) et
+`regime_brief/` (narratif FR/EN + Drive) — voir
+[PIPELINE_REGIME_JUDGE.md](./PIPELINE_REGIME_JUDGE.md).
+
+Deux modules ont survécu à la suppression parce que le brief regime en dépend et
+qu'ils n'avaient rien de spécifique à ces tracks : `_shared/llm_client.py` et
+`_shared/drive_uploader.py` + `_shared/drive_config.py`.
 
 ### 13. Shared CLI + DB helpers — `backend/scripts/_shared/` + `backend/scripts/{db.py,contract_resolver.py,roll_contract.py}`
 Dependency-injection layer for all ~19 jobs: Sentry bootstrap + cron monitor, argparse base, logging, single-attempt HTTP, sync DB sessions, **sync** contract resolution, trading-calendar helpers, shared stock-observation writer, publication-calendar queries.

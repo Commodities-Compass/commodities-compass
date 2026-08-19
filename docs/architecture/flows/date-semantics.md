@@ -5,7 +5,7 @@
 > consumer keeps them consistent. Read this before touching any scraper, agent,
 > dashboard date-resolution path, or the trading calendar.
 
-Related: [PIPELINE_LEGACY.md](../PIPELINE_LEGACY.md), [PIPELINE_ENSEMBLE.md](../PIPELINE_ENSEMBLE.md), [JOBS_AND_SCRAPERS.md](../JOBS_AND_SCRAPERS.md).
+Related: [PIPELINE_LEGACY.md](../../archive/pipelines/PIPELINE_LEGACY.md), [PIPELINE_ENSEMBLE.md](../../archive/pipelines/PIPELINE_ENSEMBLE.md), [JOBS_AND_SCRAPERS.md](../JOBS_AND_SCRAPERS.md).
 
 ---
 

@@ -10,8 +10,9 @@ no longer applies; their tables keep every row.
 
 > ⚠️ **There is no rollback.** Reverting `serving_rank` still executes, but
 > ensemble stopped writing on 2026-08-18: it would serve data frozen at that
-> date. Going back means re-running its jobs by hand — the Cloud Run jobs still
-> exist, pinned to the last image that carried their code.
+> date. Its Cloud Run jobs were deleted on 2026-08-19, so going back means
+> rebuilding from `git checkout b73005c` — see
+> [docs/archive/pipelines/](../archive/pipelines/#how-to-replay-one-of-them-now).
 
 ---
 

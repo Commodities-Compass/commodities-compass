@@ -10,13 +10,13 @@ These describe the **business logic + data flows** without code details:
 
 - **[docs/archive/pipelines/](docs/archive/pipelines/)** — LEGACY et ENSEMBLE, **retirés le 2026-08-19**. Leurs docs y sont conservées telles quelles : le présent y est faux, mais les lignes qu'ils ont écrites sont toujours en base et il faut pouvoir savoir ce qui les a produites.
 - **[docs/architecture/PIPELINE_REGIME_JUDGE.md](docs/architecture/PIPELINE_REGIME_JUDGE.md)** — **le pipeline servi** : routeur de régime + spécialistes (L1+L2) + overlay macro judge (L3) + adapter row + brief FR/EN. Contient aussi la chaîne de service (`serving_rank`), le découplage des jauges et la purge des fallbacks inter-algo.
-- **[docs/architecture/JOBS_AND_SCRAPERS.md](docs/architecture/JOBS_AND_SCRAPERS.md)** — exhaustive catalog of all 20 Cloud Run Jobs + 17 schedulers + dependency graph + shared vs specific data tables
+- **[docs/architecture/JOBS_AND_SCRAPERS.md](docs/architecture/JOBS_AND_SCRAPERS.md)** — exhaustive catalog of all 19 Cloud Run Jobs + 18 schedulers + dependency graph + shared vs specific data tables
 
 **Flow deep-dives** ([docs/architecture/flows/](docs/architecture/flows/)) — failure-prone cross-cutting paths, esp. anything roll-related: [contract-roll](docs/architecture/flows/contract-roll.md) · [date-semantics](docs/architecture/flows/date-semantics.md) · [algo-contract-resolution](docs/architecture/flows/algo-contract-resolution.md) (the recurring roll-bug path — active-contract vs front-month-by-date) · [daily-pipeline](docs/architecture/flows/daily-pipeline.md). Known doc/comment drift is tracked in [docs/architecture/REMEDIATION_BACKLOG.md](docs/architecture/REMEDIATION_BACKLOG.md).
 
 ## Project Overview
 
-Commodities Compass is a Business Intelligence application for commodities trading, providing real-time market insights, technical analysis, and trading signals for cocoa (ICE contracts). This is a monorepo with a FastAPI backend and React frontend, using Auth0 for authentication and PostgreSQL (GCP Cloud SQL) for data storage. Deployed on GCP Cloud Run with 20 automated Cloud Run Jobs (scrapers, agents, compute engine, briefs, intraday alerts). Dashboard reads from `pl_*` tables. Google Sheets is no longer used as a data source — all data flows through PostgreSQL. Google Drive is still used for audio (NotebookLM) and brief uploads.
+Commodities Compass is a Business Intelligence application for commodities trading, providing real-time market insights, technical analysis, and trading signals for cocoa (ICE contracts). This is a monorepo with a FastAPI backend and React frontend, using Auth0 for authentication and PostgreSQL (GCP Cloud SQL) for data storage. Deployed on GCP Cloud Run with 19 automated Cloud Run Jobs (scrapers, agents, compute engine, briefs, intraday alerts). Dashboard reads from `pl_*` tables. Google Sheets is no longer used as a data source — all data flows through PostgreSQL. Google Drive is still used for audio (NotebookLM) and brief uploads.
 
 **One track serves: REGIME + JUDGE (Campaign 6).** Since 2026-08-19.
 
@@ -44,8 +44,10 @@ is written in a present tense that no longer applies.
 
 ⚠️ **There is no rollback anymore.** Reverting `serving_rank` still executes, but
 ensemble stopped writing rows on 2026-08-18 — it would serve data frozen at that
-date. Going back means re-running its jobs by hand (the Cloud Run jobs still
-exist, pinned to the last image that carried their code).
+date. Its 6 Cloud Run jobs were **deleted on 2026-08-19** (they were pinned to an
+image the Artifact Registry 30-day policy was about to collect anyway). Going back
+means rebuilding from `git checkout b73005c` — procedure in
+[docs/archive/pipelines/](docs/archive/pipelines/#how-to-replay-one-of-them-now).
 
 ⚠️ **Nothing measures whether the switch was right.** `production_score` is NULL
 on every `pl_regime_shadow` / `pl_judge_shadow` row; the shadow-eval scoring pass
@@ -618,7 +620,7 @@ The `PositionStatus` component automatically fetches and plays the audio file:
 - **CI/CD**: `.github/workflows/deploy.yml` — push to `main` triggers CI (lint + test) → Deploy (backend + frontend + all Cloud Run Jobs).
 - **Backend**: `backend/Dockerfile` (Python 3.11-slim, no Playwright, ~200MB). Alembic migrations on startup via `start.sh`. Cloud Run: 512Mi, 1 CPU, max 2 instances, VPC connector for Cloud SQL.
 - **Frontend**: `frontend/Dockerfile` (Node 18-alpine, serve static). Auth0 vars baked at build time via `--build-arg` from GitHub vars. Cloud Run: 256Mi, 1 CPU, max 2 instances. CSP in `index.html` whitelists `*.com-compass.com`, `*.auth0.com`, `*.sentry.io`.
-- **Cloud Run Jobs**: `backend/Dockerfile.jobs` (with Playwright, ~1GB). All jobs deployed via deploy.yml (~20 catalogued + backfill/bootstrap utilities). `ENTRYPOINT ["poetry", "run"]`, command passed via job args. No retries (--max-retries=0). `cc-intraday-monitor` is httpx-only (512Mi, no Playwright).
+- **Cloud Run Jobs**: `backend/Dockerfile.jobs` (with Playwright, ~1GB). All 19 jobs deployed via deploy.yml — `deploy.yml` is the inventory: a job it does not list will drift, and one it lists is guaranteed to run today's image. `ENTRYPOINT ["poetry", "run"]`, command passed via job args. No retries (--max-retries=0). `cc-intraday-monitor` is httpx-only (512Mi, no Playwright).
 - **Cloud Scheduler**: cron jobs in `europe-west1` (scheduler doesn't support `europe-west9`). Triggers Cloud Run Job execution via HTTP + OAuth. Schedules span the day: FX 18:30 → evening pipeline 19:00-19:35 → publish-gate 20:00-09:30 → daytime fundamentals 13:00-16:00 → intraday alerts 08:00-16:00 (*/15) → monthly ENSO. No retries (retryCount=0).
 - **Secrets**: GCP Secret Manager (13 secrets). Non-sensitive env vars via GitHub Vars → deploy.yml `--set-env-vars`.
 - **Auth**: Workload Identity Federation (keyless GitHub → GCP auth). No SA key files in CI/CD.

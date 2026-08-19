@@ -36,6 +36,16 @@ function confidenceKey(score: number): string {
 }
 
 /**
+ * The qualitative band a 1-5 confidence falls in ("modérée", "forte"…).
+ *
+ * Exported so the Conviction tile can caption the score with what it means,
+ * rather than with the sentence the sidebar already carries.
+ */
+export function confidenceLabel(t: TFunction, score: number): string {
+  return t(`signal.confidence.${confidenceKey(score)}`);
+}
+
+/**
  * Business label for an internal regime tag.
  *
  * The engine tags (bull, highvol…) are vocabulary, not language. Deliberately
@@ -112,13 +122,25 @@ export function buildJudgeExplanation(
     );
   }
 
-  // The second sentence used to repeat `confidence_rationale` verbatim — which
-  // the Conviction tile already shows as the caption of the CONFIANCE score, two
-  // columns to the left. Same words twice on one screen reads as a bug, not as
-  // emphasis. The panel now carries what the tile cannot: the risk the judge
-  // itself flagged.
-  const risk = (diag.key_risk ?? '').trim();
-  sentences.push(risk.length > 0 ? risk : t('signal.judge_rationale_fallback'));
+  // Sentence 2 is `confidence_rationale`, and it must stay that way: it is the
+  // only sentence in the payload written NATIVELY per language by
+  // cc-regime-brief.
+  //
+  // `key_risk` briefly sat here instead, to stop the Conviction tile and this
+  // panel from printing the same words twice. It fixed the duplication and
+  // introduced a worse defect: the judge writes its working notes in ENGLISH by
+  // design — the brief is what turns them into French — so the French dashboard
+  // rendered an English sentence mid-panel. Any raw judge field (`key_risk`,
+  // `drift_summary`, `disconfirming_case`, `evidence`) carries the same hazard
+  // and none of them may be displayed verbatim.
+  //
+  // The duplication is resolved on the other side: the tile now captions the
+  // score with its qualitative band (see `confidenceLabel`), not with this
+  // sentence.
+  const rationale = (diag.confidence_rationale ?? '').trim();
+  sentences.push(
+    rationale.length > 0 ? rationale : t('signal.judge_rationale_fallback'),
+  );
 
   return sentences;
 }

@@ -9,6 +9,7 @@ import {
 import Eyebrow from '@/components/editorial/Eyebrow';
 import {
   buildJudgeExplanation,
+  confidenceLabel,
   regimeLabel,
   stanceLabel,
 } from '@/utils/judge-explanation';
@@ -44,22 +45,26 @@ interface SignalHeroProps {
   className?: string;
 }
 
+// Colour and kicker only. The headline moved to the catalog under
+// `signal.headline.*`: it is a 56px editorial sentence, and it was hardcoded in
+// English, so the French edition led with "Cocoa Bullish Continuation".
+//
+// The kicker stays here, in English, on purpose — "Buy Signal Active" is the
+// masthead's signal-triplet legend (see dashboard-layout.tsx), brand vocabulary
+// carried identically by both editions, like OPEN/MONITOR/HEDGE themselves.
 const SIGNAL_META = {
   OPEN: {
     color: 'var(--color-signal-open)',
-    headline: 'Bullish Continuation',
     kicker: 'Buy Signal Active',
     panelTint: 'rgba(16, 185, 129, 0.04)',
   },
   MONITOR: {
     color: 'var(--color-signal-monitor)',
-    headline: 'Watch & Wait',
     kicker: 'Neutral Bias',
     panelTint: 'rgba(245, 158, 11, 0.04)',
   },
   HEDGE: {
     color: 'var(--color-signal-hedge)',
-    headline: 'Bearish Pressure',
     kicker: 'Protect Positions',
     panelTint: 'rgba(239, 68, 68, 0.04)',
   },
@@ -135,11 +140,18 @@ function RegimeConvictionBreakdown({
       big: diag.confidence != null ? `${diag.confidence} / 5` : '—',
       italic: false,
       color: signalColor,
+      // The band the score falls in, not the sentence explaining it. The
+      // sentence (`confidence_rationale`) is the sidebar's second line, one
+      // column to the right — printing it in both places put the same words
+      // twice on one screen, and clamped to 3 lines it was truncated here
+      // anyway. A legend under a number is what the other two tiles do.
       caption:
-        diag.confidence_rationale && diag.confidence_rationale.trim().length > 0
-          ? diag.confidence_rationale
+        diag.confidence != null
+          ? t('signal.judge_confidence_caption', {
+              band: confidenceLabel(t, diag.confidence),
+            })
           : t('dashboard.rationale_unavailable'),
-      wraps: true,
+      wraps: false,
     },
     {
       key: 'arbitration',
@@ -483,7 +495,7 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
               marginBottom: 20,
             }}
           >
-            Signal {pos.position} — Cocoa {meta.headline}
+            {t(`signal.headline.${pos.position.toLowerCase()}`)}
             <span
               className="inline-block align-middle ml-2 px-3 py-0.5 rounded-sm uppercase"
               style={{

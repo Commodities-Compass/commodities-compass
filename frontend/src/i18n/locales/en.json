@@ -46,6 +46,11 @@
     "horizon_ensemble_label": "4 trading days",
     "horizon_ensemble_label_approx": "~4 trading days",
     "horizon_legacy_label": "Next session · D+1",
+    "headline": {
+      "open": "Signal OPEN — Cocoa Bullish Continuation",
+      "monitor": "Signal MONITOR — Cocoa Watch & Wait",
+      "hedge": "Signal HEDGE — Cocoa Bearish Pressure"
+    },
     "confidence": {
       "very_high": "very strong",
       "high": "strong",
@@ -85,6 +90,7 @@
     "judge_arbitration_label": "Macro call",
     "judge_macro_suffix": "macro read",
     "judge_specialist_caption": "model dedicated to the regime",
+    "judge_confidence_caption": "{{band}} conviction",
     "judge_hit_rate_caption": "{{pct}}% over the last 5 evaluated sessions"
   },
   "news": {

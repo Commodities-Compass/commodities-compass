@@ -50,13 +50,23 @@ class Settings(BaseSettings):
         "GOOGLE_DRIVE_AUDIO_FOLDER_ID", default="", cast=str
     )
 
-    # Brief version served by /v1/dashboard/audio + /v1/audio/info by default.
-    # Allowed: "legacy" (cc-compass-brief) | "ensemble" (cc-compass-brief-ensemble).
+    # Brief version behind the audio filename suffix, for /v1/dashboard/audio,
+    # /v1/audio/info AND the cc-publish-session release gate.
+    # Allowed: "regime" (-Regime) | "ensemble" (-Ensemble) | "legacy" (no suffix).
     # The frontend can override per-request via the `?version=` query param.
-    # Default "legacy" keeps the existing behavior — flip to "ensemble" when
-    # the new brief track is ready to be the primary user-facing brief.
+    #
+    # The default is "regime" — the served track since 2026-08-19 — and that is
+    # load-bearing, not cosmetic. It used to be "legacy", which was correct while
+    # legacy ran and became a landmine the day it was deleted: any consumer that
+    # does not set the env var looks for `YYYYMMDD-CompassAudio.*`, a file nobody
+    # writes any more, and concludes the audio is missing.
+    #
+    # That is exactly what happened to `cc-publish-session` on its first live
+    # night (2026-08-19): the backend *service* carried the env var, the *job* did
+    # not, so the gate held the session back reporting `audio=False` while
+    # `-Regime.m4a` sat in Drive. A dead default must never be the fallback.
     BRIEF_DEFAULT_VERSION: str = config(
-        "BRIEF_DEFAULT_VERSION", default="legacy", cast=str
+        "BRIEF_DEFAULT_VERSION", default="regime", cast=str
     )
 
     # Per-client entitlement enforcement. Default OFF → dark deploy: principals

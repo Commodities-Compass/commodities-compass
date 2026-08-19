@@ -151,13 +151,14 @@ class AudioService:
         """Get metadata for audio file including URL and title.
 
         ``version`` selects which brief track's audio to fetch:
-          - ``"legacy"`` (default from settings): ``YYYYMMDD-CompassAudio.{ext}``
-          - ``"ensemble"``: ``YYYYMMDD-CompassAudio-Ensemble.{ext}``
+          - ``"regime"`` (default from settings): ``YYYYMMDD-CompassAudio-Regime.{ext}``
+          - ``"ensemble"``: ``…-Ensemble.{ext}`` — retired 2026-08-19, historical only
+          - ``"legacy"``: ``…-CompassAudio.{ext}`` — retired 2026-08-19, historical only
         If ``version`` is None, falls back to ``settings.BRIEF_DEFAULT_VERSION``.
 
         ``language`` selects the edition (``"fr"`` default | ``"en"``). The EN
-        edition is ensemble-only and resolves to ``-Ensemble-EN`` files; it
-        never falls back to an FR audio (see ``_candidate_suffixes``).
+        edition follows the served version (``-Regime-EN``) and never falls back
+        to an FR audio (see ``_candidate_suffixes``).
         """
         resolved_version = _normalize_version(version)
         resolved_language = _normalize_language(language)
@@ -193,8 +194,9 @@ class AudioService:
     ) -> Optional[dict]:
         """Get audio file info including URL and filename.
 
-        ``version`` is the brief track to fetch (``legacy`` or ``ensemble``),
-        defaulting to ``settings.BRIEF_DEFAULT_VERSION``. ``language`` is the
+        ``version`` is the brief track to fetch (``regime`` today; ``ensemble``
+        and ``legacy`` resolve historical files only), defaulting to
+        ``settings.BRIEF_DEFAULT_VERSION``. ``language`` is the
         edition (``fr`` default | ``en``). The cache is keyed on
         ``(date, version, language)`` so every track/edition coexists.
 

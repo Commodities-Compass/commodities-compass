@@ -169,3 +169,60 @@ class TestAudioResolution:
         assert fr is not None and en is not None
         assert fr["filename"].endswith("-Ensemble.m4a")
         assert en["filename"].endswith("-Ensemble-EN.m4a")
+
+
+# ── The default version is load-bearing, not cosmetic ──────────────────────
+
+
+class TestDefaultVersionIsTheServedTrack:
+    """`BRIEF_DEFAULT_VERSION` must name a track that still writes files.
+
+    Regression for the 2026-08-19 publish-gate blackout. The default was
+    ``"legacy"`` — correct while legacy ran, a landmine the day it was deleted.
+    The backend *service* carried `BRIEF_DEFAULT_VERSION=regime` as an env var;
+    the `cc-publish-session` *job* did not, so it fell through to the default and
+    looked for ``YYYYMMDD-CompassAudio.m4a`` — a file no producer writes any
+    more. The gate reported ``audio=False`` all night while
+    ``-CompassAudio-Regime.m4a`` sat in Drive, and the dashboard could only ever
+    be released by the 09:00 morning fallback, data-only.
+
+    Env-var parity between a service and a job is not enforced anywhere, so the
+    default itself has to be right.
+    """
+
+    def test_default_resolves_to_the_regime_suffix(self) -> None:
+        from app.core.config import settings
+        from app.services.audio_service import (
+            _VERSION_FILENAME_SUFFIX,
+            _normalize_version,
+        )
+
+        resolved = _normalize_version(None)
+
+        assert resolved == "regime"
+        assert _VERSION_FILENAME_SUFFIX[resolved] == "-Regime"
+        assert settings.BRIEF_DEFAULT_VERSION == "regime"
+
+    def test_default_never_names_a_retired_track(self) -> None:
+        """The check that survives the next flip.
+
+        Whatever the default becomes, it must not be a track whose producer was
+        deleted — that is the failure mode, not the specific string 'legacy'.
+        """
+        from app.services.audio_service import _normalize_version
+
+        retired = {"legacy", "ensemble"}
+
+        assert _normalize_version(None) not in retired
+
+    def test_a_consumer_with_no_env_var_finds_the_regime_file(self) -> None:
+        """End-to-end shape of the gate's lookup, with no version passed."""
+        service, drive = _service()
+        drive.files.return_value.list.return_value.execute.return_value = {
+            "files": _drive_files("20260819-CompassAudio-Regime.m4a")
+        }
+
+        info = asyncio.run(service.get_audio_file_info(date(2026, 8, 19)))
+
+        assert info is not None
+        assert info["filename"] == "20260819-CompassAudio-Regime.m4a"

@@ -37,6 +37,13 @@ function flatten(node: Catalog, prefix = ''): Set<string> {
 const frKeys = flatten(fr as Catalog);
 const enKeys = flatten(en as Catalog);
 
+/** Resolve a dotted path against a catalog. */
+function read(catalog: unknown, path: string): unknown {
+  return path
+    .split('.')
+    .reduce<unknown>((node, k) => (node as Record<string, unknown>)?.[k], catalog);
+}
+
 describe('i18n catalogs', () => {
   it('define exactly the same keys in both editions', () => {
     expect([...frKeys].filter((k) => !enKeys.has(k)).sort()).toEqual([]);
@@ -77,6 +84,76 @@ describe('i18n catalogs', () => {
         ).toBe(true);
       }
     }
+  });
+
+  /**
+   * Keys whose value is deliberately identical in both editions.
+   *
+   * Three legitimate reasons, and no fourth:
+   *   - brand vocabulary ("Compass Intelligence Desk", "Lead Analysis") —
+   *     carried identically by both editions on purpose;
+   *   - proper nouns and technical names (MACD, GEPEX, Ghana, Oceanic Niño Index);
+   *   - cognates that are genuinely the same word (Destination, Total, Pause).
+   *
+   * Anything else identical is an untranslated string. That is how
+   * `market.tab_supply` and `market.tab_technical` shipped as "Supply & Momentum"
+   * and "Technical Outlook" on the French dashboard, and how the weather table
+   * ran "Pays / Statut" next to "Origin / Trend" — half translated, which reads
+   * worse than not translated at all.
+   *
+   * Adding a key here is a decision, not a formality: say which of the three
+   * reasons applies.
+   */
+  const INTENTIONALLY_IDENTICAL = new Set([
+    // brand
+    'dashboard.algo_regime',
+    'dashboard.desk_name',
+    'dashboard.lead_analysis',
+    // proper nouns / technical names
+    'indicators.atr_name',
+    'indicators.cot_mm_net_eu_name',
+    'indicators.cot_mm_net_us_name',
+    'indicators.enso_oni_name',
+    'indicators.fx_dxy_name',
+    'indicators.macd_name',
+    'indicators.rsi_name',
+    'indicators.voloi_name',
+    'market.grp_fx',
+    'origin.gepex_member',
+    'theme.production',
+    'weather.country_civ',
+    'weather.country_ghana',
+    // cognates — same word in both languages
+    'common.session_prefix',
+    'market.socle_session',
+    'origin.caption_grinding',
+    'origin.caption_tonnes',
+    'origin.col_destination',
+    'origin.col_port',
+    'origin.col_tonnes',
+    'origin.concentration_count',
+    'origin.tab_destinations',
+    'origin.total',
+    'origin.vs',
+    'podcast.pause',
+    'weather.col_harmattan',
+    'weather.harmattan_label',
+    'weather.status_normal',
+    'weather.status_stress',
+  ]);
+
+  it('has no untranslated string — identical values must be declared', () => {
+    const identical = [...frKeys]
+      .filter((k) => enKeys.has(k))
+      .filter((k) => read(fr, k) === read(en, k))
+      .filter((k) => !INTENTIONALLY_IDENTICAL.has(k))
+      .sort();
+
+    expect(
+      identical,
+      'these are identical in fr and en — translate them, or add them to ' +
+        'INTENTIONALLY_IDENTICAL with the reason',
+    ).toEqual([]);
   });
 
   it('keeps the two headline sets distinct — a copy-paste is not a translation', () => {

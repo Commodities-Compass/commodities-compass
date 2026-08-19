@@ -91,7 +91,8 @@
     "judge_macro_suffix": "macro read",
     "judge_specialist_caption": "model dedicated to the regime",
     "judge_confidence_caption": "{{band}} conviction",
-    "judge_hit_rate_caption": "{{pct}}% over the last 5 evaluated sessions"
+    "judge_hit_rate_caption": "{{pct}}% over the last 5 evaluated sessions",
+    "invalidation_label": "What would invalidate this read"
   },
   "news": {
     "empty_state": "No press review for this date.",
@@ -377,5 +378,12 @@
     "ytd_help_body": "The season runs October to September. Published months of this season are never compared against the previous season in full — that would compare 10 months to 12. Each source is compared against the same months a year earlier, and each has its own window: STATSER grindings publish 2 to 3 months late, so they compare 7 months where exports compare 10.",
     "ytd_help_title": "Season to date, equivalent period",
     "ytd_title": "Season to date, equivalent period"
+  },
+  "sections": {
+    "brief": "Compass Daily Brief",
+    "market_analysis": "Market Analysis",
+    "price_chart": "Price History & Signal Overlay",
+    "press_review": "Press Review",
+    "weather": "Weather Intelligence"
   }
 }

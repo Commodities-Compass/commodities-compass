@@ -91,7 +91,8 @@
     "judge_macro_suffix": "lecture macro",
     "judge_specialist_caption": "modèle dédié au régime",
     "judge_confidence_caption": "conviction {{band}}",
-    "judge_hit_rate_caption": "{{pct}} % sur les 5 dernières séances évaluées"
+    "judge_hit_rate_caption": "{{pct}} % sur les 5 dernières séances évaluées",
+    "invalidation_label": "Ce qui invaliderait cette lecture"
   },
   "news": {
     "empty_state": "Aucune revue de presse pour cette date.",
@@ -104,8 +105,8 @@
   },
   "market": {
     "tab_recommendation": "Recommandation",
-    "tab_supply": "Supply & Momentum",
-    "tab_technical": "Technical Outlook",
+    "tab_supply": "Offre & Momentum",
+    "tab_technical": "Lecture technique",
     "watchlist_title": "À surveiller",
     "chart_period_aria": "Période du graphique",
     "grp_technicals": "Technique",
@@ -160,15 +161,15 @@
     "status_stress": "Stress",
     "country_civ": "Côte d'Ivoire",
     "country_ghana": "Ghana",
-    "col_origin": "Origin",
+    "col_origin": "Origine",
     "col_country": "Pays",
     "col_trend_7d": "Tendance 7j",
-    "col_streak": "Streak",
-    "col_trend": "Trend",
+    "col_streak": "Série",
+    "col_trend": "Tendance",
     "col_harmattan": "Harmattan",
     "col_status": "Statut",
-    "streak_days": "Streak {{days}}j",
-    "streak_none": "Streak —",
+    "streak_days": "Série {{days}}j",
+    "streak_none": "Série —",
     "harmattan_label": "Harmattan {{value}}"
   },
   "podcast": {
@@ -309,7 +310,7 @@
     "col_delta": "Évolution",
     "col_destination": "Destination",
     "col_exporter": "Exportateur",
-    "col_exports": "Exports",
+    "col_exports": "Exportations",
     "col_grinding": "Broyage",
     "col_growth": "Croissance",
     "col_month": "Mois",
@@ -351,7 +352,7 @@
     "ports_title": "Ports d'embarquement",
     "rates": "taux de sortie {{outflow}} · taux de transformation {{transfo}} sur achats",
     "section_title": "Marché physique",
-    "source_exports": "Exports",
+    "source_exports": "Exportations",
     "source_grinding": "Broyage",
     "source_purchases": "Achats",
     "stage_balance": "Solde apparent",
@@ -377,5 +378,12 @@
     "ytd_help_body": "La campagne va d'octobre à septembre. On ne compare jamais les mois publiés cette campagne à la campagne précédente complète — ce serait comparer 10 mois à 12. Chaque source est comparée aux mêmes mois de l'an dernier, et chacune a sa propre fenêtre : le broyage STATSER paraît avec 2 à 3 mois de retard, donc il compare 7 mois quand les exports en comparent 10.",
     "ytd_help_title": "Cumul à période équivalente",
     "ytd_title": "Cumul à période équivalente"
+  },
+  "sections": {
+    "brief": "Le Brief du jour",
+    "market_analysis": "Analyse de marché",
+    "price_chart": "Historique des prix & signal",
+    "press_review": "Revue de presse",
+    "weather": "Météo des origines"
   }
 }

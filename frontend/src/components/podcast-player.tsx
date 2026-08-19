@@ -126,7 +126,7 @@ export default function PodcastPlayer({
       <style>{`
         .podcast-play-btn:not(:disabled):hover { background: var(--paper-off) !important; }
       `}</style>
-      <SectionHeader numeral="I" title="Compass Daily Brief" />
+      <SectionHeader numeral="I" title={t('sections.brief')} />
 
       <div
         style={{

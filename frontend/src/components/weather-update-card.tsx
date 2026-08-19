@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { ChevronDown, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useWeather } from '@/hooks/useDashboard';
 import SectionHeader from '@/components/section-header';
@@ -21,7 +20,6 @@ export default function WeatherUpdateCard({
 }: WeatherUpdateCardProps) {
   const { t } = useTranslation();
   const { data, isLoading, error } = useWeather(targetDate);
-  const [isBulletinOpen, setIsBulletinOpen] = useState(true);
 
   if (isLoading) {
     return (
@@ -75,6 +73,8 @@ export default function WeatherUpdateCard({
         />
       )}
 
+      {/* Always visible. The toggle moved to the 7-day stress table, which is
+          the block worth folding away — this bulletin is three sentences. */}
       {!summary && data.description && (
         <div
           style={{
@@ -83,57 +83,36 @@ export default function WeatherUpdateCard({
             borderLeft: '3px solid var(--ink)',
           }}
         >
-          <button
-            type="button"
-            onClick={() => setIsBulletinOpen((open) => !open)}
-            aria-expanded={isBulletinOpen}
-            aria-controls="weather-daily-bulletin"
-            className="flex w-full items-start justify-between gap-4 text-left"
-            style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer' }}
-          >
-            <span>
-              <Eyebrow as="div" tracking="0.2em" style={{ marginBottom: 2 }}>
-                {t('weather.daily_bulletin_title')}
-              </Eyebrow>
-              <Eyebrow as="div" tone="subtle" size={9} tracking="0.18em">
-                {t('weather.horizon_subtitle')}
-              </Eyebrow>
-            </span>
-            <ChevronDown
-              aria-hidden="true"
-              className="h-3.5 w-3.5 shrink-0 transition-transform duration-200"
-              style={{
-                color: 'var(--ink-light)',
-                marginTop: 2,
-                transform: isBulletinOpen ? 'rotate(180deg)' : 'none',
-              }}
-            />
-          </button>
+          <Eyebrow as="div" tracking="0.2em" style={{ marginBottom: 2 }}>
+            {t('weather.daily_bulletin_title')}
+          </Eyebrow>
+          <Eyebrow as="div" tone="subtle" size={9} tracking="0.18em">
+            {t('weather.horizon_subtitle')}
+          </Eyebrow>
 
-          {isBulletinOpen && (
-            <div id="weather-daily-bulletin" style={{ marginTop: 12 }}>
-              {data.description
-                .split(/\n{2,}/)
-                .map((s) => s.trim())
-                .filter(Boolean)
-                .map((p, i) => (
-                  <p
-                    key={i}
-                    style={{
-                      fontFamily: 'var(--font-editorial)',
-                      fontSize: 14,
-                      lineHeight: 1.65,
-                      color: 'var(--ink-dark)',
-                      marginBottom: 10,
-                    }}
-                  >
-                    {p}
-                  </p>
-                ))}
-            </div>
-          )}
+          <div style={{ marginTop: 12 }}>
+            {data.description
+              .split(/\n{2,}/)
+              .map((s) => s.trim())
+              .filter(Boolean)
+              .map((p, i) => (
+                <p
+                  key={i}
+                  style={{
+                    fontFamily: 'var(--font-editorial)',
+                    fontSize: 14,
+                    lineHeight: 1.65,
+                    color: 'var(--ink-dark)',
+                    marginBottom: 10,
+                  }}
+                >
+                  {p}
+                </p>
+              ))}
+          </div>
         </div>
       )}
+
     </section>
   );
 }

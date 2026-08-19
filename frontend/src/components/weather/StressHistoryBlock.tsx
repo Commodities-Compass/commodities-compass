@@ -1,4 +1,5 @@
-import type { CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import type { LocationStressHistory } from '@/types/dashboard';
@@ -175,6 +176,11 @@ export default function StressHistoryBlock({
   harmattanByLocation = {},
 }: StressHistoryBlockProps) {
   const { t } = useTranslation();
+  // Open by default: collapsing is an affordance, not a way to hide the data.
+  // The six-origin table is the densest block of the section, so it is the one
+  // worth being able to fold away — the daily bulletin, which used to carry the
+  // toggle, is three sentences and never justified one.
+  const [isOpen, setIsOpen] = useState(true);
   const ordered = [...history].sort((a, b) => {
     if (a.country !== b.country) return a.country.localeCompare(b.country);
     return a.location_name.localeCompare(b.location_name);
@@ -182,18 +188,46 @@ export default function StressHistoryBlock({
 
   return (
     <div style={{ marginBottom: 40 }}>
-      <div
-        className="flex items-baseline justify-between mb-4 pb-2.5"
-        style={{ borderBottom: '1px solid var(--ink)' }}
+      <button
+        type="button"
+        onClick={() => setIsOpen((open) => !open)}
+        aria-expanded={isOpen}
+        aria-controls="weather-stress-history"
+        className="flex w-full items-baseline justify-between gap-4 mb-4 pb-2.5 text-left"
+        style={{
+          borderBottom: '1px solid var(--ink)',
+          background: 'none',
+          borderTop: 0,
+          borderLeft: 0,
+          borderRight: 0,
+          padding: '0 0 10px',
+          cursor: 'pointer',
+        }}
       >
         <Eyebrow as="h3" tone="primary" size={11} tracking="0.22em" style={{ fontWeight: 700 }}>
           {t('weather.stress_title')}
         </Eyebrow>
-        <Eyebrow tone="subtle" size={9} tracking="0.18em">
-          {t('weather.recent_evolution')}
-        </Eyebrow>
-      </div>
+        <span className="flex items-baseline gap-2 shrink-0">
+          <Eyebrow tone="subtle" size={9} tracking="0.18em">
+            {t('weather.recent_evolution')}
+          </Eyebrow>
+          <ChevronDown
+            aria-hidden="true"
+            className="h-3.5 w-3.5 shrink-0 transition-transform duration-200"
+            style={{
+              color: 'var(--ink-light)',
+              transform: isOpen ? 'rotate(180deg)' : 'none',
+            }}
+          />
+        </span>
+      </button>
 
+      {/* Conditional render, NOT the `hidden` attribute: `.stress-card-list`
+          carries an explicit `display` rule at both breakpoints, and a class
+          beats the UA stylesheet's `[hidden]`, so the phone list would have
+          stayed visible when collapsed. */}
+      {isOpen && (
+      <div id="weather-stress-history">
       {/* Desktop / tablet: editorial table */}
       <div className="stress-table-wrap">
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -294,6 +328,8 @@ export default function StressHistoryBlock({
           />
         ))}
       </ul>
+      </div>
+      )}
 
       <style>{`
         .stress-card-list { display: none; }

@@ -35,7 +35,7 @@ from sqlalchemy import text
 from app.core.i18n import LANGUAGE_CLI_CHOICES, expand_languages
 from scripts._shared.logging import configure_logging
 from scripts._shared.sentry import bootstrap_scraper
-from scripts.compass_brief.drive_uploader import DriveUploader
+from scripts._shared.drive_uploader import DriveUploader
 from scripts.regime_brief.brief_generator import render_brief
 from scripts.regime_brief.config import (
     ALGORITHM_NAME,

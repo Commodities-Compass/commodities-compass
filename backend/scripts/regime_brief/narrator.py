@@ -28,7 +28,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from scripts.daily_analysis.llm_client import LLMClient, LLMClientError
+from scripts._shared.llm_client import LLMClient, LLMClientError
 from scripts.llm_utils import extract_json
 from scripts.regime_brief.db_reader import BriefData
 

@@ -12,7 +12,6 @@ import type {
   FarmgatePriceResponse,
   MacroPanelResponse,
   PositioningResponse,
-  EnsembleDiagnosticsResponse,
   JudgeDiagnosticsResponse,
 } from '@/types/dashboard';
 
@@ -142,17 +141,6 @@ export const dashboardApi = {
       {
         params,
       }
-    );
-    return response.data;
-  },
-
-  getEnsembleDiagnostics: async (
-    targetDate?: string
-  ): Promise<EnsembleDiagnosticsResponse> => {
-    const params = targetDate ? { target_date: targetDate } : {};
-    const response = await apiClient.get<EnsembleDiagnosticsResponse>(
-      '/dashboard/ensemble-diagnostics',
-      { params }
     );
     return response.data;
   },

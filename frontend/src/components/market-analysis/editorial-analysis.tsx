@@ -1,12 +1,10 @@
 import EditorialTabs from '@/components/editorial-tabs';
-import { Eyebrow } from '@/components/editorial';
 import { Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { formatRecoText } from '@/utils/recommendation-parser';
 
 interface EditorialAnalysisProps {
   isLoading: boolean;
-  showNarrativeMismatch: boolean;
   bucketReco: string[];
   bucketSupply: string[];
   bucketTechnical: string[];
@@ -126,7 +124,6 @@ function Watchlist({ items }: { items: string[] }) {
 
 export default function EditorialAnalysis({
   isLoading,
-  showNarrativeMismatch,
   bucketReco,
   bucketSupply,
   bucketTechnical,
@@ -158,22 +155,6 @@ export default function EditorialAnalysis({
       }}
     >
       <div>
-        {showNarrativeMismatch && (
-          <div style={{ marginBottom: 12 }}>
-            <Eyebrow
-              as="div"
-              tone="muted"
-              size={9}
-              style={{
-                padding: '6px 10px',
-                borderLeft: '2px solid var(--color-signal-monitor)',
-                background: 'rgba(245, 158, 11, 0.05)',
-              }}
-            >
-              {t('market.narrative_mismatch_warning')}
-            </Eyebrow>
-          </div>
-        )}
         <EditorialTabs
           tabs={tabs}
           panels={{

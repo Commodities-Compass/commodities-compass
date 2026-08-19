@@ -12,7 +12,6 @@ import type {
   FarmgatePriceResponse,
   MacroPanelResponse,
   PositioningResponse,
-  EnsembleDiagnosticsResponse,
   JudgeDiagnosticsResponse,
 } from '@/types/dashboard';
 import axios from 'axios';
@@ -109,14 +108,6 @@ export const useNonTradingDays = (year: number) => {
   });
 };
 
-// Ensemble first ships on 2025-12-15 — earlier dates have no orchestrator row.
-const ENSEMBLE_FIRST_DATE = '2025-12-15';
-
-const isOnOrAfterEnsembleStart = (targetDate?: string): boolean => {
-  if (!targetDate) return true; // latest data → assume potentially ensemble
-  return targetDate >= ENSEMBLE_FIRST_DATE;
-};
-
 export const useMacroPanel = (targetDate?: string, enabled = true) => {
   return useQuery<MacroPanelResponse>({
     queryKey: ['macro-panel', targetDate],
@@ -148,17 +139,6 @@ export const useFarmgatePrice = (targetDate?: string) => {
 const shouldRetry404 = (failureCount: number, error: unknown): boolean => {
   if (axios.isAxiosError(error) && error.response?.status === 404) return false;
   return failureCount < 2;
-};
-
-export const useEnsembleDiagnostics = (targetDate?: string) => {
-  const enabled = isOnOrAfterEnsembleStart(targetDate);
-  return useQuery<EnsembleDiagnosticsResponse>({
-    queryKey: ['ensemble-diagnostics', targetDate],
-    queryFn: () => dashboardApi.getEnsembleDiagnostics(targetDate),
-    enabled,
-    retry: shouldRetry404,
-    ...DAILY_QUERY_OPTIONS,
-  });
 };
 
 // Judge overlay — the regime+judge conviction panel. Returns 404 on every date

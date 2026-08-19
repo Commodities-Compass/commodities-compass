@@ -1,13 +1,14 @@
 """Configuration for the regime+judge brief.
 
-Reuses the Drive uploader and credentials of the legacy brief — same folder,
-same service account. What distinguishes the briefs is the FILENAME, so several
-tracks can coexist in one folder while they overlap.
+Drive credentials and target folder come from ``scripts/_shared`` — one folder,
+one service account, and the FILENAME is what distinguishes the tracks. They used
+to live under the legacy brief; they were extracted when it was retired, since
+the plumbing outlived the track that introduced it.
 """
 
 from __future__ import annotations
 
-from scripts.compass_brief.config import (  # noqa: F401 -- re-export
+from scripts._shared.drive_config import (  # noqa: F401 -- re-export
     DRIVE_BRIEFS_FOLDER_ENV_VAR,
     SCOPES_DRIVE,
     get_credentials_json,

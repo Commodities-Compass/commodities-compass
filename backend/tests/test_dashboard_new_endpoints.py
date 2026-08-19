@@ -3,12 +3,10 @@
 Covers:
 - macro_panel_service: FX lookup (latest business day), ENSO lag, orchestrator join.
 - positioning_service: COT EU lookup, stocks (date-fallback), EU/US ratio in tonnes.
-- ensemble_diagnostics_service: orchestrator + specialist votes + cluster mapping JSON.
 """
 
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import date as date_cls
 from decimal import Decimal
@@ -17,21 +15,15 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.pipeline import (
-    PlAlgorithmConfig,
     PlAlgorithmVersion,
     PlContractDataDaily,
     PlCotEuWeekly,
     PlCotUsWeekly,
     PlExternalIndicator,
     PlOrchestratorDecision,
-    PlSpecialistPrediction,
     PlStockObservation,
 )
 from app.models.reference import RefCommodity, RefContract, RefExchange
-from app.services.ensemble_diagnostics_service import (
-    get_ensemble_diagnostics,
-    get_specialist_votes,
-)
 from app.services.macro_panel_service import ENSO_LAG_DAYS, get_macro_panel
 from app.services.positioning_service import get_positioning
 
@@ -329,182 +321,3 @@ async def test_positioning_falls_back_to_latest_when_target_missing(
     assert out["stock_eu_tonnes"] == 60_000.0
     assert out["stock_us_tonnes"] == 10_000.0
     assert out["stock_eu_us_ratio"] == 6.0  # 60_000 / 10_000
-
-
-# ---------------------------------------------------------------------------
-# ensemble_diagnostics_service
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.integration
-@pytest.mark.asyncio
-async def test_diagnostics_returns_orchestrator_row(db_session: AsyncSession) -> None:
-    contract = await _seed_chain(db_session, "CAK26")
-    version = await _seed_version(db_session, "ensemble_v1_softgate_wrapper")
-    target = date_cls(2026, 5, 11)
-
-    db_session.add(
-        PlOrchestratorDecision(
-            date=target,
-            contract_id=contract,
-            algorithm_version_id=version,
-            soft_gate_decision="OPEN",
-            net_score=Decimal("0.78"),
-            weights_sum=Decimal("13.0"),
-            n_committed_specialists=14,
-            decision_wrapped="OPEN",
-            wrapper_active=True,
-            fired_running_acc=True,
-            fired_trend=False,
-            fired_dispersion=True,
-            fired_three_way=False,
-            running_acc_5d=Decimal("0.95"),
-            winter_vote_signed=3,
-            spring_vote_signed=-2,
-        )
-    )
-    await db_session.flush()
-
-    out = await get_ensemble_diagnostics(
-        db_session,
-        target,
-        contract_id=contract,
-        algo_id=version,
-        algo_name="ensemble_v1_softgate_wrapper",
-    )
-    assert out is not None
-    assert out["soft_gate_decision"] == "OPEN"
-    assert out["decision_wrapped"] == "OPEN"
-    assert out["fired_dispersion"] is True
-    assert out["winter_vote_signed"] == 3
-    assert out["spring_vote_signed"] == -2
-    assert out["net_score"] == pytest.approx(0.78)
-
-
-@pytest.mark.integration
-@pytest.mark.asyncio
-async def test_diagnostics_returns_none_for_legacy_date(
-    db_session: AsyncSession,
-) -> None:
-    contract = await _seed_chain(db_session, "CAH24")
-    version = await _seed_version(db_session, "ensemble_v1_softgate_wrapper")
-    target = date_cls(2024, 6, 15)
-
-    out = await get_ensemble_diagnostics(
-        db_session,
-        target,
-        contract_id=contract,
-        algo_id=version,
-        algo_name="ensemble_v1_softgate_wrapper",
-    )
-    assert out is None
-
-
-@pytest.mark.integration
-@pytest.mark.asyncio
-async def test_specialist_votes_with_cluster_mapping(db_session: AsyncSession) -> None:
-    contract = await _seed_chain(db_session, "CAK26")
-    version = await _seed_version(db_session, "ensemble_v1_softgate_wrapper")
-    target = date_cls(2026, 5, 11)
-
-    cluster_map = {
-        "wm_h1_a": "winter",
-        "wm_h1_b": "winter",
-        "sp_h1_a": "spring",
-        "sp_h1_b": "spring",
-    }
-    db_session.add(
-        PlAlgorithmConfig(
-            algorithm_version_id=version,
-            parameter_name="specialist_cluster_map",
-            value=json.dumps(cluster_map),
-        )
-    )
-
-    db_session.add_all(
-        [
-            PlSpecialistPrediction(
-                date=target,
-                contract_id=contract,
-                algorithm_version_id=version,
-                specialist_name="wm_h1_a",
-                window_months=12,
-                pred="OPEN",
-            ),
-            PlSpecialistPrediction(
-                date=target,
-                contract_id=contract,
-                algorithm_version_id=version,
-                specialist_name="wm_h1_b",
-                window_months=12,
-                pred="OPEN",
-            ),
-            PlSpecialistPrediction(
-                date=target,
-                contract_id=contract,
-                algorithm_version_id=version,
-                specialist_name="sp_h1_a",
-                window_months=12,
-                pred="HEDGE",
-            ),
-            PlSpecialistPrediction(
-                date=target,
-                contract_id=contract,
-                algorithm_version_id=version,
-                specialist_name="sp_h1_b",
-                window_months=12,
-                pred="MONITOR",
-            ),
-        ]
-    )
-    await db_session.flush()
-
-    out = await get_specialist_votes(
-        db_session,
-        target,
-        contract_id=contract,
-        algo_id=version,
-        algo_name="ensemble_v1_softgate_wrapper",
-    )
-    assert out is not None
-    assert len(out["votes"]) == 4
-    # Winter cluster: OPEN + OPEN = +2 signed
-    assert out["winter_signed"] == 2
-    # Spring cluster: HEDGE + MONITOR = -1 + 0 = -1 signed
-    assert out["spring_signed"] == -1
-    by_name = {v["specialist_name"]: v for v in out["votes"]}
-    assert by_name["wm_h1_a"]["cluster"] == "winter"
-    assert by_name["sp_h1_b"]["cluster"] == "spring"
-
-
-@pytest.mark.integration
-@pytest.mark.asyncio
-async def test_specialist_votes_missing_cluster_map(db_session: AsyncSession) -> None:
-    contract = await _seed_chain(db_session, "CAK26")
-    version = await _seed_version(db_session, "ensemble_v1_softgate_wrapper")
-    target = date_cls(2026, 5, 11)
-
-    db_session.add(
-        PlSpecialistPrediction(
-            date=target,
-            contract_id=contract,
-            algorithm_version_id=version,
-            specialist_name="wm_h1_a",
-            window_months=12,
-            pred="OPEN",
-        )
-    )
-    await db_session.flush()
-
-    out = await get_specialist_votes(
-        db_session,
-        target,
-        contract_id=contract,
-        algo_id=version,
-        algo_name="ensemble_v1_softgate_wrapper",
-    )
-    assert out is not None
-    assert out["votes"][0]["cluster"] == "unmapped"
-    # With no mapping, winter/spring sums should be None
-    assert out["winter_signed"] is None
-    assert out["spring_signed"] is None

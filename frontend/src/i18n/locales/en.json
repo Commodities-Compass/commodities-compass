@@ -18,17 +18,10 @@
     "price_chart": "Loading chart…"
   },
   "dashboard": {
-    "algo_ensemble": "Powered by Ensemble v1",
-    "algo_legacy": "Powered by Legacy v1.0.1",
     "lead_analysis": "Lead Analysis",
     "desk_name": "Compass Intelligence Desk",
-    "conviction_consensus_label": "Consensus",
-    "specialists_engaged": "specialists engaged",
     "conviction_confidence_label": "Confidence",
     "rationale_unavailable": "rationale not available",
-    "conviction_context_label": "Context",
-    "macro_suffix": "macro",
-    "conviction_breakdown_title": "Conviction breakdown",
     "horizon_label": "Projection horizon",
     "horizon_short_ensemble": "~4 D",
     "horizon_short_legacy": "D+1",
@@ -53,12 +46,6 @@
     "horizon_ensemble_label": "4 trading days",
     "horizon_ensemble_label_approx": "~4 trading days",
     "horizon_legacy_label": "Next session · D+1",
-    "consensus": {
-      "large": "broad consensus",
-      "solid": "solid consensus",
-      "partial": "partial consensus",
-      "weak": "shaky consensus"
-    },
     "confidence": {
       "very_high": "very strong",
       "high": "strong",
@@ -66,10 +53,6 @@
       "measured": "measured",
       "low": "weak"
     },
-    "ensemble_macro_positive": "Supportive macro context.",
-    "ensemble_macro_negative": "Unfavourable macro context.",
-    "ensemble_macro_neutral": "Neutral macro context.",
-    "convergence_fallback": "Technical and fundamental signals line up on today's read.",
     "explanation": {
       "with_confidence": "{{consensus}} on the {{decision}} call — {{n}} readings engaged, {{confidence}} confidence ({{score}}/5).{{macroClause}}",
       "without_confidence": "{{consensus}} on the {{decision}} call — {{n}} readings engaged.{{macroClause}}"
@@ -117,7 +100,6 @@
     "tab_recommendation": "Recommendation",
     "tab_supply": "Supply & Momentum",
     "tab_technical": "Technical Outlook",
-    "narrative_mismatch_warning": "Ensemble algo decision · Legacy narrative",
     "watchlist_title": "On the radar",
     "chart_period_aria": "Chart period",
     "grp_technicals": "Technicals",

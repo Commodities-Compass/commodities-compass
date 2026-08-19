@@ -46,6 +46,11 @@
     "horizon_ensemble_label": "4 jours boursiers",
     "horizon_ensemble_label_approx": "~4 jours boursiers",
     "horizon_legacy_label": "Session suivante · J+1",
+    "headline": {
+      "open": "Signal OPEN — Cacao en continuation haussière",
+      "monitor": "Signal MONITOR — Cacao en attente de direction",
+      "hedge": "Signal HEDGE — Cacao sous pression baissière"
+    },
     "confidence": {
       "very_high": "très forte",
       "high": "forte",
@@ -85,6 +90,7 @@
     "judge_arbitration_label": "Arbitrage macro",
     "judge_macro_suffix": "lecture macro",
     "judge_specialist_caption": "modèle dédié au régime",
+    "judge_confidence_caption": "conviction {{band}}",
     "judge_hit_rate_caption": "{{pct}} % sur les 5 dernières séances évaluées"
   },
   "news": {

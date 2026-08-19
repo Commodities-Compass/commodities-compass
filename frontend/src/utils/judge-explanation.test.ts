@@ -3,6 +3,7 @@ import type { JudgeDiagnosticsResponse } from '@/types/dashboard';
 import i18n from '@/i18n';
 import {
   buildJudgeExplanation,
+  confidenceLabel,
   regimeLabel,
   stanceLabel,
 } from './judge-explanation';
@@ -100,19 +101,36 @@ describe('buildJudgeExplanation', () => {
     expect(r[0]).not.toMatch(/macro/i);
   });
 
-  it('carries the key risk as sentence 2, not the confidence rationale', () => {
-    // The Conviction tile already shows `confidence_rationale` as the caption of
-    // the CONFIANCE score, two columns to the left. Repeating it here put the
-    // same words twice on one screen — which reads as a bug, not as emphasis.
+  it('carries the natively-written rationale as sentence 2', () => {
     const rationale = 'Technique alignée, macro sans opposition.';
-    const risk = "Un retour des arrivages ivoiriens invaliderait la lecture.";
-    const r = build(makeDiag({ confidence_rationale: rationale, key_risk: risk }));
-    expect(r[1]).toBe(risk);
-    expect(r[1]).not.toBe(rationale);
+    const r = build(makeDiag({ confidence_rationale: rationale }));
+    expect(r[1]).toBe(rationale);
   });
 
-  it('falls back to a generic sentence 2 when the judge flagged no risk', () => {
-    const r = build(makeDiag({ key_risk: null }));
+  it('never renders a raw judge field — they are written in English', () => {
+    // The judge hands ENGLISH working notes to cc-regime-brief, which composes
+    // natively per language. `key_risk` was briefly rendered here to stop the
+    // Conviction tile from repeating the rationale; it fixed the duplication and
+    // put an English sentence in the middle of the French panel instead (caught
+    // on a production screenshot, 2026-08-19). Every raw judge field carries the
+    // same hazard, so the guard covers all of them, not just the one that shipped.
+    const englishNotes = {
+      key_risk:
+        'Whether EUDR gaps lead to export curbs remains the critical risk.',
+      drift_summary: 'Weather stress eased while arrivals accelerated.',
+      disconfirming_case: 'Smooth Ivorian port arrivals would undo this.',
+    };
+    const joined = build(
+      makeDiag({ ...englishNotes, confidence_rationale: 'Lecture française.' }),
+    ).join(' ');
+
+    for (const note of Object.values(englishNotes)) {
+      expect(joined).not.toContain(note);
+    }
+  });
+
+  it('falls back to a generic sentence 2 when the brief wrote no rationale', () => {
+    const r = build(makeDiag({ confidence_rationale: null }));
     expect(r[1]).toBeTruthy();
     expect(r[1]).toMatch(/align/i);
   });
@@ -165,6 +183,25 @@ describe('regimeLabel', () => {
   it('shows an unknown tag de-underscored rather than blank', () => {
     // A silent blank would read as "no regime detected" — a different claim.
     expect(regimeLabel(t, 'some_new_regime')).toBe('some new regime');
+  });
+});
+
+describe('confidenceLabel', () => {
+  it('names every score on the 1-5 scale, in both editions', () => {
+    // This caption replaced `confidence_rationale` under the CONFIANCE score.
+    // A missing catalog entry would print the raw key inside the tile.
+    for (const score of [1, 2, 3, 4, 5]) {
+      for (const fixedT of [t, tEn]) {
+        const label = confidenceLabel(fixedT, score);
+        expect(label).toBeTruthy();
+        expect(label).not.toContain('signal.confidence');
+      }
+    }
+  });
+
+  it('separates the bands rather than collapsing them into one word', () => {
+    const bands = [1, 2, 3, 4, 5].map((s) => confidenceLabel(t, s));
+    expect(new Set(bands).size).toBe(5);
   });
 });
 

@@ -92,8 +92,11 @@ qualifie ("nettement au-dessus", "en repli marqué").
 
 Réponds UNIQUEMENT avec ce JSON :
 {{
-  "conclusion": "3 à 5 lignes. Une ligne par idée. La lecture du jour et ce \
-qu'elle implique pour l'acheteur.",
+  "conclusion": "EXACTEMENT 6 lignes séparées par des retours à la ligne, \
+dans cet ordre strict. Ligne 1, préfixée d'un chevron '> ' : la lecture du jour \
+en une phrase, c'est le titre. Ligne 2 : ce que l'acheteur fait de cette \
+lecture. Lignes 3 et 4 : l'offre et le momentum du marché. Lignes 5 et 6 : la \
+configuration technique. Une idée par ligne, aucune ligne vide, aucune puce.",
   "eco": "2 à 3 phrases sur le contexte macro et fondamental de la fenêtre.",
   "confidence_rationale": "1 à 2 phrases : ce qui pourrait faire mentir cette \
 lecture."
@@ -131,8 +134,11 @@ You are an analyst.
 
 Reply with THIS JSON ONLY:
 {{
-  "conclusion": "3 to 5 lines, one idea per line. Today's read and what it \
-means for the buyer.",
+  "conclusion": "EXACTLY 6 newline-separated lines, in this strict order. \
+Line 1, prefixed with '> ': today's read in one sentence — this is the headline. \
+Line 2: what the buyer does with it. Lines 3 and 4: supply and market momentum. \
+Lines 5 and 6: the technical configuration. One idea per line, no blank line, \
+no bullet.",
   "eco": "2 to 3 sentences on the macro and fundamental backdrop of the window.",
   "confidence_rationale": "1 to 2 sentences: what could prove this read wrong."
 }}"""
@@ -202,6 +208,44 @@ def _assert_in_character(narrative: Narrative, language: str) -> None:
         )
 
 
+#: The dashboard splits the conclusion into three tabs by cutting the analysis
+#: lines into thirds (`split3` in market-analysis.tsx), so the count is not
+#: cosmetic: 6 lines give 2 per tab, and anything else silently empties one.
+#: The first line carries the '>' marker the frontend reads as the headline —
+#: and the SignalHero deck now shows that line alone.
+CONCLUSION_LINES = 6
+
+
+def _assert_conclusion_shape(narrative: Narrative, language: str) -> None:
+    """Refuse a conclusion the dashboard cannot lay out.
+
+    The prompt has asked for structured lines since the first version; the model
+    answered with one flowing paragraph and nobody checked. The dashboard then
+    cut that single item into thirds, filled the first tab and left "Supply &
+    Momentum" and "Technical Outlook" showing "Aucune information" for a session
+    that had plenty. An instruction nothing verifies is a suggestion.
+    """
+    lines = [ln.strip() for ln in narrative.conclusion.splitlines() if ln.strip()]
+    if len(lines) != CONCLUSION_LINES:
+        raise NarrationError(
+            f"Narrative [{language}] conclusion has {len(lines)} line(s), expected "
+            f"{CONCLUSION_LINES} — the dashboard would leave tabs empty. Re-run; "
+            "if it recurs, the prompt needs tightening."
+        )
+    if not lines[0].startswith(">"):
+        raise NarrationError(
+            f"Narrative [{language}] conclusion line 1 is not marked with '>' — "
+            "the frontend reads that marker as the headline and the deck shows "
+            "that line alone."
+        )
+    if any(ln.startswith(">") for ln in lines[1:]):
+        raise NarrationError(
+            f"Narrative [{language}] conclusion has a '>' past line 1 — the second "
+            "marker is what opens the watch section, and that section is appended "
+            "by code from pl_derived_indicators, never written by the model."
+        )
+
+
 def narrate(data: BriefData, client: LLMClient | None = None) -> Narrative:
     """Compose the narrative natively in ``data.language``."""
     client = client or LLMClient()
@@ -230,6 +274,7 @@ def narrate(data: BriefData, client: LLMClient | None = None) -> Narrative:
         confidence_rationale=str(payload["confidence_rationale"]).strip(),
     )
     _assert_in_character(narrative, data.language)
+    _assert_conclusion_shape(narrative, data.language)
     logger.info(
         "narrated [%s]: %d chars (model=%s, %d output tokens)",
         data.language,

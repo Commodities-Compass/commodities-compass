@@ -16,6 +16,8 @@ The properties pinned here:
 
 from __future__ import annotations
 
+import json
+
 import uuid
 from datetime import date as date_cls
 from decimal import Decimal
@@ -94,9 +96,37 @@ def _data(language: str = "fr") -> BriefData:
     )
 
 
+def _payload(conclusion: str) -> str:
+    """A narrator response as the LLM would return it.
+
+    Built with json.dumps rather than a hand-written literal: the conclusion now
+    carries newlines and apostrophes, and escaping those by hand inside a Python
+    string is how this file first failed to parse.
+    """
+    return json.dumps(
+        {
+            "conclusion": conclusion,
+            "eco": "Fondamentaux équilibrés.",
+            "confidence_rationale": "Une normalisation invaliderait.",
+        },
+        ensure_ascii=False,
+    )
+
+
 def _narrative() -> Narrative:
     return Narrative(
-        conclusion="Le marché reste porté.\nLes arrivages pèsent peu à ce stade.",
+        # Six lines, first marked '>' — the shape the dashboard lays out into
+        # three tabs (see narrator.CONCLUSION_LINES). A shorter fixture used to
+        # pass here while production shipped a single paragraph and left two tabs
+        # empty; the guard now rejects both.
+        conclusion=(
+            "> Le marché reste porté par une offre contrainte.\n"
+            "L'acheteur garde ses couvertures et laisse courir.\n"
+            "Les arrivages pèsent peu à ce stade.\n"
+            "La demande de broyage reste ferme sur la fenêtre.\n"
+            "Le franchissement technique est net.\n"
+            "Les niveaux de repli restent éloignés."
+        ),
         eco="Le contexte fondamental reste équilibré.",
         confidence_rationale="Une normalisation logistique invaliderait la lecture.",
     )
@@ -155,15 +185,52 @@ class TestNarratorGuards:
 
     def test_clean_narrative_is_accepted(self) -> None:
         client = self._client(
-            '{"conclusion": "Le marché reste porté.",'
-            ' "eco": "Fondamentaux équilibrés.",'
-            ' "confidence_rationale": "Une normalisation invaliderait."}'
+            _payload(
+                "> Le marché reste porté.\n"
+                "L'acheteur garde ses couvertures.\n"
+                "Les arrivages pèsent peu.\n"
+                "La demande de broyage tient.\n"
+                "Le franchissement est net.\n"
+                "Les niveaux de repli sont loin."
+            )
         )
 
         narrative = narrate(_data(), client)
 
-        assert narrative.conclusion == "Le marché reste porté."
+        assert narrative.conclusion.splitlines()[0] == "> Le marché reste porté."
+        assert len(narrative.conclusion.splitlines()) == 6
         assert narrative.eco == "Fondamentaux équilibrés."
+
+    def test_a_single_paragraph_conclusion_is_refused(self) -> None:
+        """The failure that reached production and emptied two dashboard tabs.
+
+        The prompt asked for structured lines from its first version; the model
+        answered with one flowing paragraph and nothing checked. The dashboard
+        cuts the analysis lines into thirds, so a single item filled the first tab
+        and left "Supply & Momentum" and "Technical Outlook" reading "Aucune
+        information" on a session that had plenty to say.
+        """
+        client = self._client(
+            _payload("Le marché reste porté et l'acheteur garde ses couvertures.")
+        )
+
+        with pytest.raises(NarrationError, match="line"):
+            narrate(_data(), client)
+
+    def test_a_second_marker_is_refused(self) -> None:
+        """The watch section is appended by code, never written by the model.
+
+        A second '>' is what opens the watch block in the frontend parser. If the
+        model emits one, its prose lands in the block that is supposed to carry
+        pivot levels read straight from pl_derived_indicators — the one place the
+        pipeline guarantees a figure was not invented.
+        """
+        client = self._client(
+            _payload("> Titre.\nUne.\nDeux.\nTrois.\n> À SURVEILLER :\nQuatre.")
+        )
+
+        with pytest.raises(NarrationError, match="marker|'>'"):
+            narrate(_data(), client)
 
 
 class TestFilenames:
@@ -235,7 +302,7 @@ class TestRendering:
     def test_narrative_sections_are_present(self) -> None:
         brief = render_brief(_data(), _narrative())
 
-        assert "Le marché reste porté." in brief
+        assert "Le marché reste porté" in brief
         assert "Le contexte fondamental reste équilibré." in brief
         assert "Une normalisation logistique invaliderait la lecture." in brief
 

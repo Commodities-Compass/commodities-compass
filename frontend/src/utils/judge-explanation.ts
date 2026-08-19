@@ -112,10 +112,13 @@ export function buildJudgeExplanation(
     );
   }
 
-  const rationale = (diag.confidence_rationale ?? '').trim();
-  sentences.push(
-    rationale.length > 0 ? rationale : t('signal.judge_rationale_fallback'),
-  );
+  // The second sentence used to repeat `confidence_rationale` verbatim — which
+  // the Conviction tile already shows as the caption of the CONFIANCE score, two
+  // columns to the left. Same words twice on one screen reads as a bug, not as
+  // emphasis. The panel now carries what the tile cannot: the risk the judge
+  // itself flagged.
+  const risk = (diag.key_risk ?? '').trim();
+  sentences.push(risk.length > 0 ? risk : t('signal.judge_rationale_fallback'));
 
   return sentences;
 }

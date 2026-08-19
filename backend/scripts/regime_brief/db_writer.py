@@ -46,18 +46,34 @@ def write_narrative(
     session_date: date_cls,
     algorithm_version_id: uuid.UUID | str,
     language: str,
+    watch_lines: tuple[str, ...] = (),
 ) -> None:
     """Attach ``narrative`` to the served row for ``language``.
+
+    ``watch_lines`` is the "to watch" block — pivot levels straight out of
+    ``pl_derived_indicators``, built by ``db_reader._build_watch_lines``. It is
+    appended to the conclusion here rather than asked of the model, which keeps
+    the split the whole pipeline runs on: the narrator writes prose and never a
+    figure, the template writes figures and never prose.
+
+    It used to reach the Drive brief only, so the dashboard's "À surveiller"
+    sidebar had nothing to render on a served row — the levels a reader acts on
+    existed in the podcast and not on screen.
 
     Raises ``AdapterRowMissingError`` when no row was updated — that means
     cc-regime-daily has not projected this session, and a brief published
     against a decision the dashboard cannot show would be a silent split.
     """
+    conclusion = narrative.conclusion
+    if watch_lines:
+        # The frontend parser opens the watch section on the SECOND '>' line;
+        # `_build_watch_lines` already emits the header with that marker.
+        conclusion = conclusion.rstrip() + "\n" + "\n".join(watch_lines)
     result: CursorResult = session.execute(
         text(_UPDATE),
         {
             "eco": narrative.eco,
-            "conclusion": narrative.conclusion,
+            "conclusion": conclusion,
             "confidence_rationale": narrative.confidence_rationale,
             "date": session_date,
             "algorithm_version_id": str(algorithm_version_id),

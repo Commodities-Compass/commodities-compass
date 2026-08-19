@@ -90,31 +90,20 @@ def load_regime_for(
 
 
 def resolve_algorithm_version_id(session: Session) -> str:
-    """Resolve the ``judge`` v0.1 algorithm_version_id (seeded via migration).
+    """The algorithm the judge overlays — ``regime`` v1.0.0.
 
-    This is the judge's PROVENANCE id — what its own rows are tagged with. It is
-    NOT the algorithm the judge overlays; use ``resolve_base_algorithm_version_id``
-    for anything that reads the underlying calls.
-    """
-    row = session.execute(
-        text(
-            "SELECT id FROM pl_algorithm_version WHERE name = 'judge' AND version = '0.1'"
-        ),
-    ).fetchone()
-    if row is None:
-        raise RuntimeError(
-            "pl_algorithm_version 'judge'@'0.1' not found — apply migration "
-            "m8b9c0d1e2f3_seed_judge_algorithm_version first."
-        )
-    return str(row[0])
+    The judge writes `pl_judge_shadow` under this SAME id. It used to carry a
+    `judge` version of its own, which existed only to be a foreign key: the
+    table already stores `prompt_version` and `model_id`, which are what actually
+    identifies a judge run and what a replay targets.
 
+    That second id bought no information and cost a class of bug — two uuids of
+    the same type, both plausibly "the judge's", one correct per query. Reading
+    `pl_indicator_daily` under the judge id could only ever find nothing (the
+    judge writes no row there); reading `pl_judge_shadow` under the regime id
+    could only ever find nothing either. Both shipped.
 
-def resolve_base_algorithm_version_id(session: Session) -> str:
-    """Resolve the algorithm the judge overlays — ``regime`` v1.0.0.
-
-    The judge's prior-brief window must read the decisions of the algorithm it
-    is judging, not its own: the judge never writes ``pl_indicator_daily``, so
-    scoping that lookup to the judge's own version can only ever find nothing.
+    One id now. The confusion is not documented away, it is gone.
     """
     row = session.execute(
         text(

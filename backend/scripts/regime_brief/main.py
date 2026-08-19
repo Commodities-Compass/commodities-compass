@@ -167,6 +167,7 @@ def main() -> int:
                 session_date=session_date,
                 algorithm_version_id=version_id,
                 language=language,
+                watch_lines=data.watch_lines,
             )
             session.commit()
 

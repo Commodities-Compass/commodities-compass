@@ -63,6 +63,9 @@ async def get_judge_diagnostics(
     if regime is None:
         return None
 
+    # Same `algo_id` as the regime query: both tables are tagged with the
+    # overlaid algorithm. The judge's own identity is `prompt_version` /
+    # `model_id` on the row, not a second pl_algorithm_version.
     judge_q = select(PlJudgeShadow).where(
         PlJudgeShadow.date == target_date,
         PlJudgeShadow.algorithm_version_id == algo_id,

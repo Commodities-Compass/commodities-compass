@@ -1,17 +1,18 @@
-"""The judge reads the calls of the algorithm it overlays — not its own.
+"""One algorithm id, and every judge query goes through it.
 
-Two algorithm_version ids are in play on every judge run and they are easy to
-confuse because both are "the judge's":
+Two uuids of the same type once coexisted here — the judge's own version, and
+the algorithm it overlays. Exactly one was correct per query, and picking the
+wrong one never returned a partial result: it returned nothing at all. That
+shipped twice, on the write side (fail-loud, killed the nightly job) and on the
+read side (silently absorbed by a legitimate "no overlay tonight" degradation,
+visible only on a screenshot).
 
-  * ``judge`` v0.1  — provenance. What ``pl_judge_shadow`` rows are tagged with.
-  * ``regime`` v1.0.0 — the algorithm being overlaid. The only one that carries
-    ``pl_indicator_daily`` decisions, because the judge writes none.
+Migration ``u3j4u5d6g7e8`` collapsed them: ``pl_judge_shadow`` is tagged with the
+overlaid algorithm, and the judge's identity stays where it already was —
+``prompt_version`` and ``model_id`` on the row itself.
 
-Scoping the prior-brief window to the first can only ever find nothing, and
-since that lookup is deliberately fail-loud (no fabricated neutral call), the
-nightly job dies on `PriorBaseCallMissingError`. This was live in the branch
-until a full v0.2 replay hit it on the first session — CI could not have caught
-it, because no test seeded two algorithm versions AND adapter rows.
+These tests hold the collapse. If a second resolver reappears, or the window
+starts reading under something other than the served algorithm, they fail.
 """
 
 from __future__ import annotations
@@ -23,16 +24,18 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from scripts.judge_shadow.regime_reader import (
-    resolve_algorithm_version_id,
-    resolve_base_algorithm_version_id,
-)
+from scripts.judge_shadow import regime_reader
+from scripts.judge_shadow.regime_reader import resolve_algorithm_version_id
 
 SESSION = date_cls(2026, 8, 17)
 
 
 def _seed_versions(session: Session) -> tuple[str, str]:
-    """Insert the judge and regime versions, returning (judge_id, regime_id)."""
+    """Insert the judge and regime versions, returning (judge_id, regime_id).
+
+    The judge row is seeded on purpose: it still exists in production (inert,
+    referenced by nothing) and the resolver must not drift back onto it.
+    """
     judge_id, regime_id = str(uuid.uuid4()), str(uuid.uuid4())
     for vid, name, ver, kind in (
         (judge_id, "judge", "0.1", "llm_overlay"),
@@ -51,32 +54,45 @@ def _seed_versions(session: Session) -> tuple[str, str]:
 
 
 @pytest.mark.integration
-def test_the_two_resolvers_return_different_versions(sync_db_session: Session) -> None:
+def test_the_resolver_returns_the_overlaid_algorithm(sync_db_session: Session) -> None:
+    """Not the judge's own version, even though its row is right there."""
     judge_id, regime_id = _seed_versions(sync_db_session)
 
-    assert resolve_algorithm_version_id(sync_db_session) == judge_id
-    assert resolve_base_algorithm_version_id(sync_db_session) == regime_id
-    # The whole point: they must not be interchangeable.
-    assert resolve_algorithm_version_id(
-        sync_db_session
-    ) != resolve_base_algorithm_version_id(sync_db_session)
+    resolved = resolve_algorithm_version_id(sync_db_session)
+    assert resolved == regime_id
+    assert resolved != judge_id
 
 
 @pytest.mark.integration
-def test_the_base_resolver_names_regime_when_it_is_missing(
-    sync_db_session: Session,
-) -> None:
+def test_there_is_only_one_resolver_left(sync_db_session: Session) -> None:
+    """The second one was the bug's habitat.
+
+    Asserted on the module rather than by reading code: a helper reintroduced
+    "just for this one call site" is exactly how the confusion came back the
+    second time.
+    """
+    assert not hasattr(regime_reader, "resolve_base_algorithm_version_id"), (
+        "a second algorithm-id resolver is back — that is the shape the bug took "
+        "twice; the judge and the algorithm it overlays share one id now"
+    )
+
+
+@pytest.mark.integration
+def test_the_resolver_names_regime_when_it_is_missing(sync_db_session: Session) -> None:
     """Fail-loud with the migration to run, not a NoneType further down."""
     with pytest.raises(RuntimeError, match="regime"):
-        resolve_base_algorithm_version_id(sync_db_session)
+        resolve_algorithm_version_id(sync_db_session)
 
 
 @pytest.mark.integration
-def test_the_window_reads_regime_rows_not_judge_rows(sync_db_session: Session) -> None:
-    """End-to-end on the lookup that broke: a decision exists under regime only.
+def test_the_prior_brief_window_reads_the_served_algorithm(
+    sync_db_session: Session,
+) -> None:
+    """End-to-end on the lookup that broke first.
 
-    Scoped to ``_fetch_algo_base_call`` rather than the whole runner so the test
-    states one thing — which version id the window is allowed to read.
+    A decision exists under regime; the window must find it. And the judge
+    version — which carries no pl_indicator_daily row and never will — must still
+    fail loud rather than pad the window with an invented neutral call.
     """
     from scripts.judge_shadow.brief_builder import (
         PriorBaseCallMissingError,
@@ -84,13 +100,13 @@ def test_the_window_reads_regime_rows_not_judge_rows(sync_db_session: Session) -
     )
 
     judge_id, regime_id = _seed_versions(sync_db_session)
-    contract_id = str(uuid.uuid4())
+    exchange_id = str(uuid.uuid4())
     sync_db_session.execute(
         text(
             "INSERT INTO ref_exchange (id, code, name, timezone) "
             "VALUES (:i, 'ICE-T', 'ICE', 'UTC')"
         ),
-        {"i": contract_id},
+        {"i": exchange_id},
     )
     commodity_id = str(uuid.uuid4())
     sync_db_session.execute(
@@ -98,15 +114,15 @@ def test_the_window_reads_regime_rows_not_judge_rows(sync_db_session: Session) -
             "INSERT INTO ref_commodity (id, code, name, exchange_id) "
             "VALUES (:i, 'CC-T', 'Cocoa', :e)"
         ),
-        {"i": commodity_id, "e": contract_id},
+        {"i": commodity_id, "e": exchange_id},
     )
-    real_contract = str(uuid.uuid4())
+    contract_id = str(uuid.uuid4())
     sync_db_session.execute(
         text(
             "INSERT INTO ref_contract (id, commodity_id, code, contract_month, is_active) "
             "VALUES (:i, :c, 'CAU26', 'U26', false)"
         ),
-        {"i": real_contract, "c": commodity_id},
+        {"i": contract_id, "c": commodity_id},
     )
     sync_db_session.execute(
         text(
@@ -114,19 +130,12 @@ def test_the_window_reads_regime_rows_not_judge_rows(sync_db_session: Session) -
             "(id, date, contract_id, algorithm_version_id, language, decision, confidence) "
             "VALUES (:i, :d, :c, :a, 'fr', 'HEDGE', 3)"
         ),
-        {
-            "i": str(uuid.uuid4()),
-            "d": SESSION,
-            "c": real_contract,
-            "a": regime_id,
-        },
+        {"i": str(uuid.uuid4()), "d": SESSION, "c": contract_id, "a": regime_id},
     )
     sync_db_session.flush()
 
     decision, _, _ = _fetch_algo_base_call(sync_db_session, SESSION, regime_id)
     assert decision == "HEDGE"
 
-    # The judge's own version carries no decision — and must fail loud rather
-    # than pad the window with an invented neutral call.
     with pytest.raises(PriorBaseCallMissingError):
         _fetch_algo_base_call(sync_db_session, SESSION, judge_id)

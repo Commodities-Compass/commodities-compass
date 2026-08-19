@@ -26,10 +26,10 @@ interface CampaignBlockProps {
 export default function CampaignBlock({ campaign, campaignHealth, seasons }: CampaignBlockProps) {
   const { t } = useTranslation();
   return (
-    <div style={{ marginBottom: 40 }}>
+    <div style={{ marginBottom: 28 }}>
       {/* Header: campaign title (left) + santé globale (right) */}
       <div
-        className="flex items-end justify-between gap-6 mb-6 pb-3"
+        className="flex items-end justify-between gap-6 mb-4 pb-2.5"
         style={{ borderBottom: '1px solid var(--ink)' }}
       >
         <div>
@@ -100,7 +100,7 @@ export default function CampaignBlock({ campaign, campaignHealth, seasons }: Cam
               <div
                 key={s.season_name}
                 style={{
-                  padding: '20px 18px',
+                  padding: '14px 16px 12px',
                   borderRight: isLast ? 'none' : '1px solid var(--rule)',
                   borderTop: isActive ? `2px solid ${healthColor(s.score)}` : '2px solid transparent',
                   position: 'relative',
@@ -111,10 +111,10 @@ export default function CampaignBlock({ campaign, campaignHealth, seasons }: Cam
                   style={{
                     fontFamily: 'var(--font-display)',
                     fontWeight: 300,
-                    fontSize: 36,
+                    fontSize: 26,
                     color: 'var(--rule)',
                     lineHeight: 1,
-                    marginBottom: 12,
+                    marginBottom: 6,
                   }}
                 >
                   {String(i + 1).padStart(2, '0')}
@@ -133,31 +133,35 @@ export default function CampaignBlock({ campaign, campaignHealth, seasons }: Cam
                 >
                   {s.label}
                 </Eyebrow>
-                <Eyebrow as="div" tone="subtle" size={9} tracking="0.18em" style={{ marginBottom: 12 }}>
+                <Eyebrow as="div" tone="subtle" size={9} tracking="0.18em" style={{ marginBottom: 8 }}>
                   {s.months_covered}
                 </Eyebrow>
+                {/* Score and "/5" on ONE line — stacked they cost a whole
+                    extra row per card, and the header already reads "2.7 /5"
+                    inline, so this is also the consistent treatment. */}
                 <div
                   className="tabular-nums"
                   style={{
                     fontFamily: 'var(--font-display)',
                     fontWeight: 700,
-                    fontSize: 28,
+                    fontSize: 26,
                     lineHeight: 1,
                     color: s.score != null ? healthColor(s.score) : 'var(--ink-light)',
-                    marginBottom: 2,
+                    marginBottom: 8,
                   }}
                 >
                   {s.score != null ? s.score.toFixed(1) : '—'}
-                </div>
-                <div
-                  style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 10,
-                    color: 'var(--ink-light)',
-                    marginBottom: 10,
-                  }}
-                >
-                  / 5
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 10,
+                      fontWeight: 500,
+                      color: 'var(--ink-light)',
+                      marginLeft: 3,
+                    }}
+                  >
+                    /5
+                  </span>
                 </div>
                 <Eyebrow as="div" size={9} tracking="0.18em" style={{ color: badge.color }}>
                   {badge.label}

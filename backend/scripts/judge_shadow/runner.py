@@ -32,7 +32,6 @@ from scripts.judge_shadow.regime_reader import (
     RegimeShadowRow,
     load_regime_for,
     resolve_algorithm_version_id,
-    resolve_base_algorithm_version_id,
     resolve_front_month_contract_id,
 )
 
@@ -105,11 +104,13 @@ def run_for_session(
     dry_run: bool = False,
 ) -> int:
     """Compute + write the judge overlay for one session. Returns rows written."""
-    # Two distinct ids, and conflating them is a silent dead end: `aid` tags the
-    # judge's OWN rows (provenance), `base_aid` is the algorithm being overlaid
-    # and the only one that carries decisions to read back.
+    # ONE algorithm id in the whole flow: the one being overlaid. The judge used
+    # to tag its rows with a `judge` version of its own, which bought nothing —
+    # pl_judge_shadow already carries `prompt_version` and `model_id`, which are
+    # the judge's real identity — and cost a whole class of bug: two uuids that
+    # read alike, one right per query, wrong everywhere else. It shipped twice
+    # (the prior-brief window here, then the diagnostics endpoint).
     aid = resolve_algorithm_version_id(session)
-    base_aid = resolve_base_algorithm_version_id(session)
     contract_id = resolve_front_month_contract_id(session, data_date)
     if contract_id is None:
         raise RuntimeError(
@@ -126,7 +127,7 @@ def run_for_session(
             (data_date - regime.source_date).days,
         )
 
-    window = _build_window(session, data_date, algorithm_version_id=base_aid)
+    window = _build_window(session, data_date, algorithm_version_id=aid)
     base_call = _regime_base_call(regime)
 
     if llm is None:

@@ -409,10 +409,17 @@ export default function SignalHero({ targetDate, className }: SignalHeroProps) {
   const sessionDate = pos.date ?? targetDate ?? null;
   const week = weekOfYear(sessionDate);
 
+  // The headline line only — the narrative marks it with '>' and the backend
+  // keeps that marker. This used to join the first TWO items, which was right
+  // when the conclusion was five lines and wrong the day it became one: the deck
+  // then swallowed the whole analysis and repeated, verbatim, the Recommandation
+  // tab a screen below. A deck is a hook, not the article.
   const deck = (recs?.recommendations ?? [])
-    .slice(0, 2)
-    .filter(Boolean)
-    .join(' ');
+    .map((line) => line.trim())
+    .find((line) => line.startsWith('>'))
+    ?.replace(/^>\s*/, '')
+    ?? (recs?.recommendations ?? [])[0]
+    ?? '';
 
   return (
     <section

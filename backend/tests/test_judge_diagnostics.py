@@ -65,12 +65,12 @@ async def _seed_contract(
 async def _seed_version(db: AsyncSession, name: str = "regime") -> uuid.UUID:
     v = PlAlgorithmVersion(
         name=name,
-        version="1.0.0",
+        version="0.1" if name == "judge" else "1.0.0",
         horizon="short_term",
         is_active=False,
         compute_enabled=False,
-        algorithm_kind="ml_regime",
-        description="Test regime",
+        algorithm_kind="llm_overlay" if name == "judge" else "ml_regime",
+        description=f"Test {name}",
     )
     db.add(v)
     await db.flush()
@@ -105,6 +105,13 @@ async def _seed_judge(
     *,
     evidence: list | None = None,
 ) -> None:
+    """Seed the judge row under the OVERLAID algorithm, as production does.
+
+    One id in the whole flow since migration ``u3j4u5d6g7e8``. The judge used to
+    carry a version of its own and these fixtures once tagged the row with the
+    regime id anyway — matching the bug in the service rather than production,
+    so both agreed and both were wrong.
+    """
     db.add(
         PlJudgeShadow(
             date=SESSION,
@@ -431,3 +438,38 @@ async def test_endpoint_is_silent_while_regime_is_not_served(
     # guard under test is the served-algorithm check, not date resolution.
     r = await client.get("/v1/dashboard/judge-diagnostics")
     assert r.status_code == 404, r.text
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_the_overlay_is_found_under_the_served_algorithm(
+    db_session: AsyncSession,
+) -> None:
+    """One algorithm id, and the overlay is found under it.
+
+    This is the invariant that replaced a bug which shipped twice: the judge used
+    to tag its rows with a version of its own, so a lookup by the served version
+    found nothing — always, not sometimes. On the write side it was fail-loud and
+    killed the nightly job; on the read side a legitimate degradation ("no
+    overlay tonight") absorbed it, and the panel reported "Arbitrage macro : Non
+    rendue" on a session the judge had ruled CONFIRM.
+
+    Migration ``u3j4u5d6g7e8`` collapsed the two ids. The judge's identity lives
+    where it always did — ``prompt_version`` and ``model_id`` on the row.
+    """
+    contract_id = await _seed_contract(db_session, "CAM28")
+    regime_id = await _seed_version(db_session, "regime")
+    await _seed_regime(db_session, contract_id, regime_id)
+    await _seed_judge(db_session, contract_id, regime_id)
+
+    out = await get_judge_diagnostics(
+        db_session,
+        SESSION,
+        contract_id=contract_id,
+        algo_id=regime_id,
+        algo_name="regime",
+    )
+    assert out is not None
+    assert out["judge_stance"] == "ABSTAIN", "the overlay was not found"
+    assert out["judge_confidence"] == 3
+    assert out["final_decision"] == "MONITOR"

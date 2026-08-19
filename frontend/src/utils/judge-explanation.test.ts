@@ -100,14 +100,19 @@ describe('buildJudgeExplanation', () => {
     expect(r[0]).not.toMatch(/macro/i);
   });
 
-  it('returns the rationale verbatim as sentence 2 when present', () => {
+  it('carries the key risk as sentence 2, not the confidence rationale', () => {
+    // The Conviction tile already shows `confidence_rationale` as the caption of
+    // the CONFIANCE score, two columns to the left. Repeating it here put the
+    // same words twice on one screen — which reads as a bug, not as emphasis.
     const rationale = 'Technique alignée, macro sans opposition.';
-    const r = build(makeDiag({ confidence_rationale: rationale }));
-    expect(r[1]).toBe(rationale);
+    const risk = "Un retour des arrivages ivoiriens invaliderait la lecture.";
+    const r = build(makeDiag({ confidence_rationale: rationale, key_risk: risk }));
+    expect(r[1]).toBe(risk);
+    expect(r[1]).not.toBe(rationale);
   });
 
-  it('falls back to a generic sentence 2 when the rationale is empty', () => {
-    const r = build(makeDiag({ confidence_rationale: null }));
+  it('falls back to a generic sentence 2 when the judge flagged no risk', () => {
+    const r = build(makeDiag({ key_risk: null }));
     expect(r[1]).toBeTruthy();
     expect(r[1]).toMatch(/align/i);
   });

@@ -1,8 +1,9 @@
 # Contract Roll Procedure — Operational Runbook
 
-> Updated 2026-06-17 (post-ensemble, post multi-contract scrape). The legacy
-> sections below still hold; the **Ensemble** and **Multi-contract** sections
-> are the parts the original runbook was blind to.
+> Updated 2026-08-19 (post regime+judge flip). The mechanics of a roll did not
+> change with the flip; what changed is the cascade afterwards — the served
+> decision self-computes from raw prices, so it no longer needs the recompute
+> the ensemble did.
 
 ## When to use this runbook
 
@@ -19,7 +20,7 @@ Run this when the active cocoa contract needs to roll to the next delivery month
 
 ## TL;DR — two modes
 
-- **Mode A — non-event roll (default once multi-contract scrape is live).** The barchart scraper now captures the **front + next delivery month** every day (`BACK_MONTHS_TO_SCRAPE`), so `v_contract_data_chained` (front-month-by-OI) **auto-switches at the true crossover**. The ensemble/engine already read the chained view, so a roll needs **no backfill and no rewrite** — you only flip `is_active` to relabel the dashboard headline and point the legacy track at the new contract. See **Mode A** below.
+- **Mode A — non-event roll (default).** The barchart scraper captures the **front + next delivery month** every day (`BACK_MONTHS_TO_SCRAPE`), so `v_contract_data_chained` **auto-switches at the true crossover**. Both the engine and regime read that view, so a roll needs **no backfill and no rewrite** — you only flip `is_active` to relabel the dashboard headline and repoint the scrapers. See **Mode A** below.
 - **Mode B — manual backfill roll (legacy / fallback).** Used before multi-contract scrape existed, or if the back-month wasn't being captured (data gap). Requires manually inserting the new contract's OHLCV+OI. See **Mode B**. ⚠️ Sourcing that data is hard — see **Data-sourcing reality**.
 
 ---
@@ -38,7 +39,7 @@ Run this when the active cocoa contract needs to roll to the next delivery month
    ```sql
    SELECT date, contract_id FROM v_contract_data_chained ORDER BY date DESC LIMIT 5;
    ```
-2. **Flip the active flag** (relabels the dashboard headline + repoints the legacy `cc-daily-analysis` track). Either:
+2. **Flip the active flag** (relabels the dashboard headline + repoints every scraper and agent that resolves the active contract at run time). Either:
    ```bash
    poetry run roll-contract CAU26      # validates + logs; needs prod DB URL
    ```
@@ -55,7 +56,7 @@ Run this when the active cocoa contract needs to roll to the next delivery month
    ```sql
    SELECT code, is_active FROM ref_contract WHERE is_active;
    ```
-4. **Done.** The next pipeline run computes on the new front-month via the chained view. No backfill, no recompute, no rewrite. The ensemble wrapper stays continuous (see **Ensemble** below).
+4. **Done.** The next pipeline run computes on the new front-month via the chained view. No backfill, no recompute, no rewrite.
 
 ---
 
@@ -75,27 +76,32 @@ gcloud run jobs execute cc-compute-indicators \
   --args="compute-indicators,--all-contracts,--all-versions,--full" \
   --region=europe-west9 --project=cacaooo
 ```
-`--full` re-upserts (front-month resolution may select a different contract for boundary dates). This covers legacy + shadow legacy algos. **It does NOT touch the ensemble** (separate job).
+`--full` re-upserts (front-month resolution may select a different contract for boundary dates). This rebuilds `pl_derived_indicators` and the gauges. **It does not touch the served decision** — see below.
 
-### B4 — (Optional) ensemble historical rewrite
-Only if you want the crossover days' *ensemble* decisions recomputed on the true front-month, **and** the window is small (we cap at ~7 sessions), **and** you have real OHLCV+OI for them:
+### B4 — (Optional) regime historical rewrite
+Only if you want the crossover days' *decisions* recomputed on the true front-month, **and** the window is small (we cap at ~7 sessions), **and** you have real OHLCV+OI for them:
 ```bash
-# chronological, one date at a time; --historical resolves front-month-by-OI per date
-poetry run ensemble-compute --session-date <D> --historical   # for each crossover day, oldest first
-poetry run ensemble-explainer --session-date <D>       # DB narrative only (~$0.13/day)
+# chronological, oldest first. --no-judge skips the LLM leg (cheap) but still
+# writes the adapter rows, which the NEXT night's judge requires at J-1/J-2.
+poetry run regime-shadow-compute --session-date <D> --force
 ```
-- This **overwrites** `pl_orchestrator_decision` for those days; the old (rolled-off contract) rows linger as duplicates per date — inert, because the chained-window join (PR #46) and the dashboard resolver both pick the front-month one. We don't delete produced signals (immutability).
-- **Do NOT** re-run `cc-compass-brief-ensemble` / regenerate NotebookLM podcasts for past days — those are frozen "published editions". The explainer rewrite is DB-only and does not touch Drive briefs or podcasts.
+- This **overwrites** `pl_regime_shadow` / `pl_judge_shadow` and the adapter rows for those days. Rows produced under the rolled-off contract linger — inert, because the chained view and the dashboard resolver both pick the front-month one. We don't delete produced signals (immutability).
+- **Do NOT** regenerate NotebookLM podcasts for past days — those are frozen "published editions". A DB rewrite does not touch Drive briefs or podcasts.
 - If the crossover is **> the cap** or you lack real data → **don't rewrite**; roll forward-only. The historical days stay on the old contract (covered by the dashboard's cross-contract fallback) — an honest blemish, not fabricated data.
 
 ---
 
-## Ensemble specifics (what the old runbook missed)
+## Why a roll is cheap now
 
-- **`v_contract_data_chained`** (`DISTINCT ON (date) ORDER BY oi DESC`) is the front-month-by-OI series. `cc-ensemble-compute` reads it for `market_history` (600d GARCH lookback) and `cc-compute-indicators` uses the same front-month picker. So **past ensemble decisions are roll-stable** — they don't need recompute on a roll (unlike legacy's `--full`).
-- **Wrapper trailing window (PR #46, merged `71be87d`)**: the Compass wrapper's `running_acc` / cluster-dispersion inputs now chain across rolls via the view (`db_loader._RECENT_DECISIONS_SELECT` / `_RECENT_VOTES_WINDOWED_SELECT` join the chained view). **Without this**, a roll reset the wrapper to a permissive NaN-bootstrap for ~1-2 weeks (it blindly committed directional bets with no accuracy signal). With it, the wrapper has continuity at the roll — **no warmup**. This is the durable fix that makes forward-only rolls safe.
+- **`v_contract_data_chained`** (front-month = leads on **both** OI and volume) is the roll-safe series. **Regime reads it directly and self-computes its features from raw prices** — it never reads `pl_derived_indicators`. So a `compute-indicators --full` is about the gauges and the pivots, not about the decision, and past decisions are roll-stable without a recompute.
+- **The two consumers must move together.** Fixing the front-month rule in the compute path but not in the `v_contract_data_chained` VIEW (or the reverse) does not fix the bug — it relocates it, producing a split brain where the engine and the dashboard disagree about which contract is front. The durable fix (`bbfc079`) changed both in one commit. Verify both after any change to the rule.
 - **Model artifacts** (`pl_model_artifact`) are commodity-agnostic — **no re-bootstrap** on a roll.
-- **`cc-ensemble-explainer` / `cc-compass-brief-ensemble`** resolve the active contract at runtime and are fail-loud if the ensemble row is missing.
+- **`cc-regime-brief`** resolves the active contract at runtime and is fail-loud if the adapter row is missing.
+
+> **Retired 2026-08-19.** The ensemble wrapper's trailing-window continuity (PR #46)
+> and its `--historical` flag were the reason B4 used to be delicate. That track no
+> longer runs; the paragraphs describing it are in
+> [docs/archive/pipelines/](../archive/pipelines/).
 
 ---
 
@@ -139,7 +145,7 @@ After a roll, historical (pre-roll) dates would show empty gauges if dashboard q
 
 ## Past incidents (CAK26 → CAN26, 2026-04-14)
 
-Fixed but verify after each roll: daily-analysis hardcoded contract default (now DB-resolved); daily-analysis SQL had no contract filter (now filters + cross-contract fallback for transition days); compass-brief had no contract filter; compute engine interleaved overlapping contracts (now `DISTINCT ON (date) ORDER BY oi DESC`); press-review prompt missed contract context (now injects `contract_code` + `contract_month`).
+This bug class has recurred **five times**. The jobs named in the original incidents (`cc-daily-analysis`, `cc-compass-brief`) no longer exist, but the *shape* is what recurs, so keep the list: a hardcoded contract default instead of a DB lookup; a query with no contract filter; the compute engine interleaving overlapping contracts; a prompt with no contract context. Two later variants: an `is_active`-keyed read breaks **pre-roll** dates, and the OI-only chain rolled **too early** on a marginal crossover (2026-06-23/24). The durable fix (`bbfc079`) defines front-month as *leads on both OI and volume* and applies it to the compute path and the `v_contract_data_chained` VIEW **in the same commit** — fixing one consumer alone relocates the split brain rather than closing it. Audit both before every roll.
 
 ---
 
@@ -149,5 +155,5 @@ Fixed but verify after each roll: daily-analysis hardcoded contract default (now
 - Cycle + auto-register: `backend/scripts/contract_resolver.py` (`next_contract_code`, `contract_month_for`, `ensure_contract`)
 - Roll CLI: `backend/scripts/roll_contract.py` (`poetry run roll-contract`)
 - Prod DB access: `.local/db-prod.sh`
-- Ensemble chained window: `backend/scripts/ensemble_compute/db_loader.py`; VIEW in Alembic `n8i9j0k1l2m3` / `r2m3n4o5p6q7`
+- Chained window VIEW: Alembic `n8i9j0k1l2m3` / `r2m3n4o5p6q7`; front-month rule in `app/utils/front_month.py`
 - Dashboard fallback: `backend/app/utils/contract_resolver.py` (`resolve_contract_for_date`)

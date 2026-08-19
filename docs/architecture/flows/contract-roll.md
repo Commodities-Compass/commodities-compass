@@ -1,5 +1,18 @@
 # Flow — Contract Roll
 
+> ⚠️ **Written 2026-06-18, before the regime+judge flip (2026-08-19).** The
+> *paths* traced here — date semantics, roll handling, gating, failure
+> propagation — still hold; they are what the audit was about. But the jobs it
+> names on the decision leg (`cc-ensemble-compute`, `cc-ensemble-explainer`,
+> `cc-daily-analysis`, `cc-compass-brief`, `cc-compass-brief-ensemble`) were
+> **deleted**. Read them as "whatever occupies that slot": today it is
+> `cc-regime-shadow` (19:50) then `cc-regime-brief` (19:55). This banner is
+> deliberate — rewriting a dated audit at the present tense would destroy the
+> record of what it actually found. Current state:
+> [PIPELINE_REGIME_JUDGE.md](../PIPELINE_REGIME_JUDGE.md) ·
+> [JOBS_AND_SCRAPERS.md](../JOBS_AND_SCRAPERS.md).
+
+
 > Architecture flow for rolling the active cocoa contract to the next ICE Europe Cocoa #7 delivery month.
 > This is the **how-it-works** companion to the ops runbook ([docs/runbooks/contract-roll-procedure.md](../../runbooks/contract-roll-procedure.md)).
 > Read this to understand *why* a roll is (now) a non-event and *where it can still bite you*.
@@ -201,5 +214,5 @@ Then watch the next nightly pipeline: front-month scrape, `cc-compute-indicators
 - Roll CLI: [`backend/scripts/roll_contract.py`](../../../backend/scripts/roll_contract.py)
 - Multi-contract scrape: [`backend/scripts/barchart_scraper/main.py`](../../../backend/scripts/barchart_scraper/main.py), `config.py` (`BACK_MONTHS_TO_SCRAPE`)
 - Chained view: Alembic `n8i9j0k1l2m3` (create), `r2m3n4o5p6q7` (recreate without legacy weekly columns)
-- Wrapper chained window: [`backend/scripts/ensemble_compute/db_loader.py`](../../../backend/scripts/ensemble_compute/db_loader.py) (`_RECENT_DECISIONS_SELECT`, `_RECENT_VOTES_WINDOWED_SELECT`)
+- Wrapper chained window: [`backend/scripts/ensemble_compute/db_loader.py`](../../archive/pipelines/PIPELINE_ENSEMBLE.md) (`_RECENT_DECISIONS_SELECT`, `_RECENT_VOTES_WINDOWED_SELECT`)
 - Dashboard fallback: [`backend/app/utils/contract_resolver.py`](../../../backend/app/utils/contract_resolver.py) (`resolve_contract_for_date`)

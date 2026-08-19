@@ -4,6 +4,18 @@
 >
 > Generated: 2026-06-18. Line numbers reflect the state of the codebase at audit time and may shift as files change.
 >
+> ⚠️ **Partially obsolete since 2026-08-19.** Every finding filed against
+> `daily_analysis/`, `compass_brief/`, `compass_brief_ensemble/`,
+> `ensemble_compute/`, `ensemble_explainer/` or `ensemble_bootstrap/` is **moot**:
+> those files were deleted with the regime+judge flip, so the drift they describe
+> cannot be fixed and no longer misleads anyone. They are left in place rather
+> than struck out, because the backlog is an audit record of what a 2026-06-18
+> sweep found — and because the *classes* of defect it catalogues (a suffix
+> hardcoded in five places, a cron documented two hours off, a comment describing
+> a superseded behaviour) are exactly the ones that recur in the surviving code.
+> Findings against `app/`, `scripts/_shared/`, the scrapers and the agents are
+> **still live**.
+>
 > **Kinds**: `doc_drift` (docs/README/docstring contradicts live code) · `stale_comment` (inline comment wrong) · `dead_code` (unreachable / never-raised) · `dangling_reference` (points to a file/doc that doesn't exist) · `incorrect_reference` (points to the wrong source).
 >
 > **Actions**: `update-doc` (correct the prose) · `fix` (correct comment/code-level naming or value) · `delete` (remove the stale block/file/flag entirely).

@@ -356,7 +356,7 @@ In `scripts/` scrapers (barchart, ice_stocks, cftc):
 
 ### LLM Agent Reliability (HIGH)
 
-In `scripts/press_review_agent/`, `scripts/daily_analysis/`, `scripts/meteo_agent/`, `scripts/compass_brief/`:
+In `scripts/press_review_agent/`, `scripts/meteo_agent/`, `scripts/regime_shadow/`, `scripts/regime_brief/`:
 
 - **Single-provider call without fallback**: If Claude API is down at 9:10 PM UTC, the press review fails. Should cascade: Claude → OpenAI → Gemini.
 

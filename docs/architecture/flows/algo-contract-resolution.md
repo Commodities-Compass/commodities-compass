@@ -1,5 +1,18 @@
 # Algo + Contract Resolution Flow
 
+> ⚠️ **Written 2026-06-18, before the regime+judge flip (2026-08-19).** The
+> *paths* traced here — date semantics, roll handling, gating, failure
+> propagation — still hold; they are what the audit was about. But the jobs it
+> names on the decision leg (`cc-ensemble-compute`, `cc-ensemble-explainer`,
+> `cc-daily-analysis`, `cc-compass-brief`, `cc-compass-brief-ensemble`) were
+> **deleted**. Read them as "whatever occupies that slot": today it is
+> `cc-regime-shadow` (19:50) then `cc-regime-brief` (19:55). This banner is
+> deliberate — rewriting a dated audit at the present tense would destroy the
+> record of what it actually found. Current state:
+> [PIPELINE_REGIME_JUDGE.md](../PIPELINE_REGIME_JUDGE.md) ·
+> [JOBS_AND_SCRAPERS.md](../JOBS_AND_SCRAPERS.md).
+
+
 > **Why this doc exists.** The path "user picks a date → which (contract, algorithm_version) rows do we read?" has caused **five** distinct contract-roll bugs (PRs #46, #47, #48, #51, #52). Every one shared the same root cause: **resolving by the *active* contract instead of the *front-month contract for the requested date*.** This doc makes the correct per-date resolution explicit and names the active-contract trap precisely so it stops recurring.
 >
 > Scope: read-path (dashboard API) + producer-path (pipeline jobs). Code lives in `backend/app/utils/contract_resolver.py` (async, dashboard), `backend/scripts/contract_resolver.py` (sync, jobs), `backend/app/api/api_v1/endpoints/dashboard.py` (orchestration), `backend/app/services/dashboard_service.py` (queries).

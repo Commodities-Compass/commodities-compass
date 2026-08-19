@@ -127,8 +127,8 @@ backend/
 │   ├── cftc_scraper/        # CFTC COT positions (httpx)
 │   ├── press_review_agent/  # LLM press review (OpenAI/Claude/Gemini)
 │   ├── meteo_agent/         # Weather analysis (OpenAI)
-│   ├── daily_analysis/      # Trading decision pipeline (OpenAI)
-│   ├── compass_brief/       # Daily brief generator for NotebookLM
+│   ├── regime_shadow/      # Served decision: L1+L2 regime, L3 judge, adapter row
+│   ├── regime_brief/       # Narrative FR/EN on the served row + Drive brief
 │   ├── seed_gcp.py          # Clean data migration to GCP
 │   ├── seed_trading_calendar.py  # Trading calendar seeder
 │   ├── seed_historical_csv.py   # Historical CSV import

@@ -15,27 +15,37 @@
 ```
 Time UTC | Job                                   | Track       | Type
 ─────────┼───────────────────────────────────────┼─────────────┼──────────────────
+08:00-16:00 */15 | cc-intraday-monitor              | shared      | Alertes intraday (gate London)
 13:00    | cc-eca-grindings-scraper              | shared      | Calendar-gated quarterly
 14:00    | cc-nca-grindings-scraper              | shared      | Calendar-gated quarterly
 16:00    | cc-publication-calendar-watchdog      | shared      | Daily safety watchdog
 18:30    | cc-fx-scraper                         | shared      | Phase A (FX, ECB daily)
 19:00    | cc-barchart-scraper                   | shared      | Phase A (OHLCV+IV)
-19:00    | cc-meteo-agent                        | both        | Phase B (eve-gated)
+19:00    | cc-meteo-agent                        | REGIME      | Phase B (eve-gated)
 19:05    | cc-ice-stocks-scraper                 | shared      | Phase A (STOCK US)
 19:05    | cc-cftc-scraper                       | shared      | Phase A (COM NET US)
-19:05    | cc-press-review-agent                 | both        | Phase B (eve-gated)
+19:05    | cc-press-review-agent                 | REGIME      | Phase B (eve-gated)
 19:10    | cc-barchart-stocks-eu-scraper         | shared      | Phase A (stock_eu)
 19:15    | cc-compute-indicators                 | shared      | Phase A (engine) + jauges (--stage all)
-22:10    | cc-ice-cot-eu-scraper                 | ENSEMBLE-only| Phase A (weekly snapshot)
+19:45    | cc-roll-watchdog                      | shared      | Nudge roll (Sentry only)
+19:50    | cc-regime-shadow                      | REGIME      | Phase B — LA DÉCISION SERVIE
+19:55    | cc-regime-brief                       | REGIME      | Phase B — narratif + Drive
+22:10    | cc-ice-cot-eu-scraper                 | shared      | Phase A (weekly snapshot)
 ─────────┼───────────────────────────────────────┼─────────────┼──────────────────
-Monthly  | cc-enso-scraper                       | ENSEMBLE-only| 20 of month at 22:00 UTC
+20:00-09:30 */30 | cc-publish-session               | shared      | Gate de publication
+Monthly  | cc-enso-scraper                       | shared      | 20 of month at 22:00 UTC
 ```
 
 **Légende du Track** :
-- `shared` : alimente les 2 pipelines (legacy + ensemble)
-- `LEGACY` : exclusif au pipeline legacy
-- `ENSEMBLE` : exclusif au pipeline ensemble
-- `both` : Phase B agents qui écrivent pour les 2 tracks (le brief consume)
+- `shared` : données de marché, consommées par la décision, les jauges ou le dashboard
+- `REGIME` : la piste servie depuis le 2026-08-19 (regime + judge + brief)
+
+⚠️ Les mentions `ENSEMBLE-only` qui subsistent plus bas dans ce document datent de
+l'époque à deux pistes. Les scrapers ainsi étiquetés (`cc-ice-cot-eu-scraper`,
+`cc-enso-scraper`) **tournent toujours** : ils alimentent `pl_cot_eu_weekly` et
+`pl_external_indicator`, que le dashboard et le panneau macro lisent. Ce que
+l'étiquette voulait dire, c'est « pas consommé par le moteur legacy » — ce qui
+n'a plus d'objet.
 
 **Légende du Type** :
 - `Phase A` : Market close (weekdays, sur session T)
@@ -510,6 +520,6 @@ table »), pas des producteurs actifs. Replay :
 - [docs/archive/pipelines/brief-dual-track.md](../archive/pipelines/brief-dual-track.md) — opérations du dual-track
 - [docs/runbooks/pipeline-failure-recovery.md](../runbooks/pipeline-failure-recovery.md) — récupération en cas de panne
 - [docs/archive/pipelines/ensemble-failure-recovery.md](../archive/pipelines/ensemble-failure-recovery.md) — récupération ensemble spécifique
-- [docs/onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md](../onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md) — déploiement initial ensemble
-- [docs/onboarding/HEDI_DATA_MAP.md](../onboarding/HEDI_DATA_MAP.md) — détail features ensemble par specialist
+- [docs/onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md](../archive/onboarding/CAMPAIGN_5_PROD_DEPLOYMENT.md) — déploiement initial ensemble
+- [docs/onboarding/HEDI_DATA_MAP.md](../archive/onboarding/HEDI_DATA_MAP.md) — détail features ensemble par specialist
 - [CLAUDE.md](../../CLAUDE.md) — référence complète du projet (commandes, architecture, déploiement)

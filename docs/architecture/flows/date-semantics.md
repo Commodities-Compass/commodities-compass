@@ -1,5 +1,18 @@
 # Date Semantics — `session date` vs `display_date`, Phase A / Phase B
 
+> ⚠️ **Written 2026-06-18, before the regime+judge flip (2026-08-19).** The
+> *paths* traced here — date semantics, roll handling, gating, failure
+> propagation — still hold; they are what the audit was about. But the jobs it
+> names on the decision leg (`cc-ensemble-compute`, `cc-ensemble-explainer`,
+> `cc-daily-analysis`, `cc-compass-brief`, `cc-compass-brief-ensemble`) were
+> **deleted**. Read them as "whatever occupies that slot": today it is
+> `cc-regime-shadow` (19:50) then `cc-regime-brief` (19:55). This banner is
+> deliberate — rewriting a dated audit at the present tense would destroy the
+> record of what it actually found. Current state:
+> [PIPELINE_REGIME_JUDGE.md](../PIPELINE_REGIME_JUDGE.md) ·
+> [JOBS_AND_SCRAPERS.md](../JOBS_AND_SCRAPERS.md).
+
+
 > Self-contained reference for the two date concepts that flow through the
 > Commodities Compass pipeline, why they differ, and how every producer and
 > consumer keeps them consistent. Read this before touching any scraper, agent,

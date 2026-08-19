@@ -62,7 +62,7 @@ Détail mensuel + méthodologie : `05_PERFORMANCE.md`.
 
 - **Vendor delivery** : `backend/vendor/campaign5_ensemble_v1.0.0/` (lire `frozen/manifest.json` pour SHA-256 + lib versions)
 - **Code Compass-side** : `backend/scripts/ensemble_compute/` (main.py, db_loader.py, db_writer.py, compass_wrapper.py, cluster_mapping_loader.py)
-- **Runbook ops** : `docs/runbooks/ensemble-failure-recovery.md` (diagnostic + relaunch)
+- **Runbook ops** : `docs/archive/pipelines/ensemble-failure-recovery.md` (diagnostic + relaunch)
 - **Rules projet** : `.claude/rules/pipeline-error-handling.md`, `.claude/rules/north-star-alignment.md`, `.claude/rules/migrations-prod-via-main-only.md`
 - **Bastion DB prod** : `./.local/db-prod.sh {up|status|exec|csv|down}` (procédure tunnel IAP)
 

@@ -220,13 +220,13 @@ Delivery : tarball `campaign5_ensemble_v1.0.0_2026-07.tar.gz` + a comparative pe
 ---
 
 ### Internal references
-- Ensemble architecture : `docs/architecture/PIPELINE_ENSEMBLE.md`
+- Ensemble architecture : `docs/archive/pipelines/PIPELINE_ENSEMBLE.md`
 - Original R&D handoff : `docs/archive/2026-05-rnd-handoff/handoff_v1.0.0/` (esp. `04_ALGORITHM_FROZEN.md`, `07_PARQUET_EXPORT.md`)
 - R&D freezer : `vendor/campaign5_ensemble_v1.0.0/tools/freeze_artifacts.py` ; package deps : `vendor/campaign5_ensemble_v1.0.0/pyproject.toml`
 - Compass bootstrap : `backend/scripts/ensemble_bootstrap/` (README + `main.py`)
 - **DB persistence (§3.1)** : `pl_algorithm_version` (v1.0.0 identity) + `pl_model_artifact.training_month` (migration `i3d4e5f6g7h8`, auto-select `main.py:154`) + temporal config `pl_algorithm_config`/`v_algorithm_config_current` (migration `g2b3c4d5e6f7`)
 - **Features / anti-corruption (§3.7)** : `app/engine/runner.py` (`_assert_unique_dates`, `_attach_version_macroeco`, `load_all_market_data`) + `.claude/rules/timeseries-uniqueness.md` + PR #74 ; `--derived-only` recompute : `app/engine/db_writer.py:272`
 - **Roll-neutralization (§3.7 / §7-Q9, implemented)** : `runner.mark_roll_boundaries` + neutralization in `indicators/ratios.py` (`DailyReturn`), `indicators/rsi.py` (`WilderRSI`), `indicators/atr.py` (`TrueRange`) ; column `pl_derived_indicators.is_roll_boundary` (migration `i4d5e6f7g8h9`, model `PlDerivedIndicators`, writer `db_writer.write_derived_indicators`) ; tests `tests/engine/test_roll_neutralization.py`
-- **Compass wrapper override (§3.6)** : `scripts/ensemble_compute/compass_wrapper.py` + swap `main.py:248` + tuning `docs/runbooks/wrapper-levers-tuning.md`
+- **Compass wrapper override (§3.6)** : `scripts/ensemble_compute/compass_wrapper.py` + swap `main.py:248` + tuning `docs/archive/pipelines/wrapper-levers-tuning.md`
 - Local-DB sync : `backend/scripts/sync_from_gcp.py` + `docs/runbooks/db-sync-from-gcp.md`
 - Version discipline : `.claude/rules/migrations-prod-via-main-only.md` + PR #75→#77 (the collapse not to replay)

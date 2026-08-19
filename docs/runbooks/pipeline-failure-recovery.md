@@ -255,7 +255,7 @@ gcloud run jobs execute cc-compass-brief-ensemble  $R
 
 If it fails with `KeyError: 'k'` or `pl_algorithm_version row missing` / `No specialist_model
 rows`, the algorithm-version or artifact seeding is the root cause — see
-[ensemble-failure-recovery.md](./ensemble-failure-recovery.md); do NOT just relaunch.
+[ensemble-failure-recovery.md](../archive/pipelines/ensemble-failure-recovery.md); do NOT just relaunch.
 
 #### Scenario H — ensemble_explainer failed
 

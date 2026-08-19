@@ -8,30 +8,50 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 These describe the **business logic + data flows** without code details:
 
-- **[docs/architecture/PIPELINE_LEGACY.md](docs/architecture/PIPELINE_LEGACY.md)** — pipeline `cc-daily-analysis` + `cc-compass-brief` (LLM-as-decision-maker, T+1 horizon, operational since 18 months)
-- **[docs/architecture/PIPELINE_ENSEMBLE.md](docs/architecture/PIPELINE_ENSEMBLE.md)** — pipeline ensemble v1.0.0 : 14 ML specialists + soft-gate Bayésien + Compass wrapper + ensemble-explainer + compass-brief-ensemble (J+4-J+5 horizon, dashboard already serves this)
-- **[docs/architecture/PIPELINE_REGIME_JUDGE.md](docs/architecture/PIPELINE_REGIME_JUDGE.md)** — pipeline Campagne 6 : routeur de régime + spécialistes (L1+L2) + overlay macro judge (L3) + adapter row + brief FR/EN. **Construit, tourne chaque nuit, ne sert RIEN** — `serving_rank` NULL. Contient aussi la chaîne de service, le découplage des jauges et la purge des fallbacks inter-algo.
+- **[docs/archive/pipelines/](docs/archive/pipelines/)** — LEGACY et ENSEMBLE, **retirés le 2026-08-19**. Leurs docs y sont conservées telles quelles : le présent y est faux, mais les lignes qu'ils ont écrites sont toujours en base et il faut pouvoir savoir ce qui les a produites.
+- **[docs/architecture/PIPELINE_REGIME_JUDGE.md](docs/architecture/PIPELINE_REGIME_JUDGE.md)** — **le pipeline servi** : routeur de régime + spécialistes (L1+L2) + overlay macro judge (L3) + adapter row + brief FR/EN. Contient aussi la chaîne de service (`serving_rank`), le découplage des jauges et la purge des fallbacks inter-algo.
 - **[docs/architecture/JOBS_AND_SCRAPERS.md](docs/architecture/JOBS_AND_SCRAPERS.md)** — exhaustive catalog of all 20 Cloud Run Jobs + 17 schedulers + dependency graph + shared vs specific data tables
 
-**Flow deep-dives** ([docs/architecture/flows/](docs/architecture/flows/)) — failure-prone cross-cutting paths, esp. anything roll-related: [contract-roll](docs/architecture/flows/contract-roll.md) · [date-semantics](docs/architecture/flows/date-semantics.md) · [algo-contract-resolution](docs/architecture/flows/algo-contract-resolution.md) (the recurring roll-bug path — active-contract vs front-month-by-date) · [daily-pipeline](docs/architecture/flows/daily-pipeline.md) · [dual-track-brief](docs/architecture/flows/dual-track-brief.md). Known doc/comment drift is tracked in [docs/architecture/REMEDIATION_BACKLOG.md](docs/architecture/REMEDIATION_BACKLOG.md).
+**Flow deep-dives** ([docs/architecture/flows/](docs/architecture/flows/)) — failure-prone cross-cutting paths, esp. anything roll-related: [contract-roll](docs/architecture/flows/contract-roll.md) · [date-semantics](docs/architecture/flows/date-semantics.md) · [algo-contract-resolution](docs/architecture/flows/algo-contract-resolution.md) (the recurring roll-bug path — active-contract vs front-month-by-date) · [daily-pipeline](docs/architecture/flows/daily-pipeline.md). Known doc/comment drift is tracked in [docs/architecture/REMEDIATION_BACKLOG.md](docs/architecture/REMEDIATION_BACKLOG.md).
 
 ## Project Overview
 
 Commodities Compass is a Business Intelligence application for commodities trading, providing real-time market insights, technical analysis, and trading signals for cocoa (ICE contracts). This is a monorepo with a FastAPI backend and React frontend, using Auth0 for authentication and PostgreSQL (GCP Cloud SQL) for data storage. Deployed on GCP Cloud Run with 20 automated Cloud Run Jobs (scrapers, agents, compute engine, briefs, intraday alerts). Dashboard reads from `pl_*` tables. Google Sheets is no longer used as a data source — all data flows through PostgreSQL. Google Drive is still used for audio (NotebookLM) and brief uploads.
 
-**Three tracks exist — two serve, one is built and inert.**
+**One track serves: REGIME + JUDGE (Campaign 6).** Since 2026-08-19.
 
-⚠️ **REGIME + JUDGE (Campaign 6) — built, running nightly, serving NOTHING.** The full
-pipeline is in place (decision → adapter row → native FR/EN narrative → Drive brief),
-but `pl_algorithm_version.serving_rank` is NULL for `regime`, so the dashboard still
-serves ensemble. Nothing flips until that column is set. See
+```
+cc-compute-indicators  →  pl_derived_indicators + pl_dashboard_gauge   (algorithm-independent)
+cc-regime-shadow       →  L1+L2 regime  →  L3 judge  →  adapter row in pl_indicator_daily
+cc-regime-brief        →  narrative FR/EN on the served row + Drive YYYYMMDD-CompassBrief-Regime{,-EN}.txt
+```
+
+What decides what is served is **`pl_algorithm_version.serving_rank`** — an
+integer, not a code path. `regime = 1`, and `ensemble`/`legacy` keep ranks 2 and 3
+as historical links for dates regime has no row on. Full description, including
+how to flip and unflip:
 [docs/architecture/PIPELINE_REGIME_JUDGE.md](docs/architecture/PIPELINE_REGIME_JUDGE.md).
 
-**Two production tracks coexist** :
-- **LEGACY** : `cc-daily-analysis` (LLM) → `pl_indicator_daily` row `legacy` → `cc-compass-brief` → `YYYYMMDD-CompassBrief.txt` → NotebookLM audio (legacy filename)
-- **ENSEMBLE** : `cc-ensemble-compute` (ML) → `pl_indicator_daily` row `ensemble_v1_softgate_wrapper` + `pl_orchestrator_decision` + 14 `pl_specialist_prediction` → `cc-ensemble-explainer` (LLM narrative) → `cc-compass-brief-ensemble` → `YYYYMMDD-CompassBrief-Ensemble.txt` → NotebookLM audio (ensemble filename)
-- Frontend dashboard serves ensemble via `_resolve_algo_for_date()` (row-existence based). Audio is served from legacy by default ; flip `BRIEF_DEFAULT_VERSION=ensemble` env var or `?version=ensemble` query param to switch.
-- Voir [docs/runbooks/brief-dual-track.md](docs/runbooks/brief-dual-track.md) pour les opérations.
+**LEGACY and ENSEMBLE are gone.** Their schedulers were destroyed and their code
+deleted on 2026-08-19 (−28 617 lines: `daily_analysis/`, `compass_brief/`,
+`ensemble_compute/`, `ensemble_explainer/`, `compass_brief_ensemble/`,
+`ensemble_bootstrap/`, the vendored `campaign5_ensemble_v1.0.0` pack,
+`/ensemble-diagnostics` + `/specialist-votes`). Their **tables keep every row** —
+`pl_orchestrator_decision`, `pl_specialist_prediction`, and the legacy/ensemble
+rows of `pl_indicator_daily` are the audit trail of what was published to clients.
+Their documentation is in [docs/archive/pipelines/](docs/archive/pipelines/) and
+is written in a present tense that no longer applies.
+
+⚠️ **There is no rollback anymore.** Reverting `serving_rank` still executes, but
+ensemble stopped writing rows on 2026-08-18 — it would serve data frozen at that
+date. Going back means re-running its jobs by hand (the Cloud Run jobs still
+exist, pinned to the last image that carried their code).
+
+⚠️ **Nothing measures whether the switch was right.** `production_score` is NULL
+on every `pl_regime_shadow` / `pl_judge_shadow` row; the shadow-eval scoring pass
+was never written. On the only window measured by hand (13 forward sessions),
+regime's hit-rate was **0.538** against ensemble's **0.706** — too small a sample
+to conclude anything, and the only figure that exists.
 
 ## Development Commands
 
@@ -407,10 +427,9 @@ Four LLM-powered agents run as GCP Cloud Run Jobs, each generating content for P
  7:00 PM UTC  -- Meteo agent            -> pl_weather_observation (independent)
  7:05 PM UTC  -- ICE stocks + CFTC      -> pl_contract_data_daily (STOCK US, COM NET US)
  7:05 PM UTC  -- Press review agent     -> pl_fundamental_article (needs CLOSE)
- 7:15 PM UTC  -- Compute indicators     -> pl_derived_indicators + pl_indicator_daily
- 7:18 PM UTC  -- Ensemble compute       -> pl_specialist_prediction + pl_orchestrator_decision + pl_indicator_daily (LIVE — served by the dashboard)
- 7:20 PM UTC  -- Daily analysis          -> pl_indicator_daily (LLM decision + score)
- 7:30 PM UTC  -- Compass brief          -> Google Drive (.txt for NotebookLM)
+ 7:15 PM UTC  -- Compute indicators     -> pl_derived_indicators + pl_dashboard_gauge
+ 7:50 PM UTC  -- Regime + judge         -> pl_regime_shadow + pl_judge_shadow + adapter row (SERVED)
+ 7:55 PM UTC  -- Regime brief           -> narrative on the served row + Drive .txt (fr + en)
 ```
 
 ### Press Review Agent (`backend/scripts/press_review_agent/`)
@@ -428,50 +447,46 @@ Four LLM-powered agents run as GCP Cloud Run Jobs, each generating content for P
 - **Output**: `pl_weather_observation` (DB)
 - **Cron**: `10 19 * * 1-5` — **CLI**: `poetry run meteo-agent [--dry-run]`
 
-### Daily Analysis (`backend/scripts/daily_analysis/`)
+### Regime + Judge (`backend/scripts/regime_shadow/` + `judge_shadow/`)
 
-- **Purpose**: Core AI analysis engine replacing Make.com DAILY BOT AI. Reads 42 variables from TECHNICALS + news + weather, runs 2 LLM calls (`gpt-4-turbo`), writes trading decisions
-- **Contract resolution**: `--contract` flag defaults to active contract from DB (`resolve_active_code()`). Never hardcoded.
-- **Transition fallback**: `_read_technicals()` filters by active contract. If < 2 rows found (first days after a roll), falls back to cross-contract read for continuity.
-- **LLM Call #1**: Macro/weather analysis → MACROECO_BONUS + ECO → writes to `pl_indicator_daily`
-- **LLM Call #2**: Trading decision → DECISION/CONFIANCE/DIRECTION/CONCLUSION → writes to `pl_indicator_daily`
-- **Cron**: `20 19 * * 1-5` — **CLI**: `poetry run daily-analysis [--dry-run]`
+- **Purpose**: the served decision. One Cloud Run job, three steps in one execution:
+  L1+L2 regime (causal router + frozen per-regime specialist, self-computes its
+  features from raw prices — never reads `pl_derived_indicators`), then L3 judge
+  (o4-mini macro overlay reading press + weather from the DB), then the adapter row
+  that projects the fused decision into `pl_indicator_daily` (fr + en, structural
+  only — the prose is `cc-regime-brief`'s job).
+- **Horizon J+1**. The judge has none of its own and inherits regime's;
+  `eval_horizon_for()` scores it accordingly (the rest defaults to 4).
+- **Outputs**: `pl_regime_shadow` + `pl_judge_shadow` + 2 rows in `pl_indicator_daily`.
+- **Cron**: `50 19 * * *` — **CLI**: `poetry run regime-shadow-compute [--session-date T] [--backfill-days N] [--no-judge] [--force]`
+- **Recovery**: the judge leg alone re-runs with `poetry run judge-shadow-compute --session-date T`.
+- ⚠️ The judge's prior-brief window reads **regime's** adapter rows at J-1/J-2 and
+  fails loud if they are missing. A regime backfill must write adapter rows (it
+  does, `--no-judge` included) or the next run dies.
 
-### Compass Brief (`backend/scripts/compass_brief/`)
+### Regime Brief (`backend/scripts/regime_brief/`)
 
-- **Purpose**: Generates structured `.txt` brief from pl_* tables, uploads to Google Drive Shared Drive for NotebookLM audio podcast generation
-- **Output**: `YYYYMMDD-CompassBrief.txt` uploaded to Drive (idempotent — updates existing file for same date)
-- **Cron**: `30 19 * * 1-5` — **CLI**: `poetry run compass-brief`
+- **Purpose**: the whole of Compass in one file — signal, guaranteed farmgate price,
+  editorial read, eco & press, weather, technical snapshot, operational
+  recommendations. Only the editorial section is track-specific.
+- **Native per language, not translated.** The judge writes its working notes in
+  English; each language composes from them in its own voice. The prose lands both
+  on the served row (`conclusion` / `eco` / `confidence_rationale`) and in the
+  `.txt`, so the dashboard and the audio cannot disagree.
+- **`rationale` is never used.** The fuse trace (`ABSTAIN HEDGE->MONITOR: …`) is
+  audit material for the judge's own replay; it reaches neither the brief nor the API.
+- **Output**: `YYYYMMDD-CompassBrief-Regime.txt` and `-Regime-EN.txt` on Drive.
+  NotebookLM (manual) produces `YYYYMMDD-CompassAudio-Regime{,-EN}.{wav,m4a,mp4}`.
+- **Cron**: `55 19 * * *` — **CLI**: `poetry run regime-brief --language both [--session-date T]`
+- **Podcast prompts**: [notebooklm-podcast-prompt-regime.md](docs/operations/notebooklm-podcast-prompt-regime.md) (FR) and [-regime-en.md](docs/operations/notebooklm-podcast-prompt-regime-en.md). A contract test binds every anchor the prompt navigates to the rendered brief.
 
-### Ensemble Explainer (`backend/scripts/ensemble_explainer/`) — thin wrapper around DBAnalysisEngine
+### Ensemble Compute — Campaign 5 — RETIRÉ le 2026-08-19
 
-- **Purpose**: enriches the ensemble row of `pl_indicator_daily` with the same long-form LLM narrative (`eco`, `confidence`, `direction`, `conclusion` with `> ... • ... > A SURVEILLER AUJOURD'HUI: ...` structure) that `cc-daily-analysis` writes on the legacy row. The decision is IMMUTABLE (pinned to `decision_wrapped` by the engine's auto-align path).
-- **Implementation** (refactored 2026-05-27): the job is a **thin wrapper** that invokes `scripts.daily_analysis.db_analysis_engine.DBAnalysisEngine.run()` **without pinning `algorithm_version_name`**. The engine's built-in auto-alignment (db_analysis_engine.py:187-200) detects the ensemble row in `pl_orchestrator_decision`, injects the 25-field diagnostics block via `CALL_2_PROMPT_ENSEMBLE`, and writes the narrative to the ensemble row. No custom prompt / parser / writer in this module — everything is reused from `scripts/daily_analysis/`.
-- **Pre-flight**: fail-loud `EnsembleRowMissingError` if `cc-ensemble-compute` has not populated the ensemble row at `data_date` (prevents silent fallback to legacy).
-- **Inputs** (via the engine's `DBReader`): `pl_orchestrator_decision` + 14× `pl_specialist_prediction` + `pl_fundamental_article` + `pl_weather_observation` + `pl_contract_data_daily` (last 2 sessions for the today/yesterday technicals snapshot).
-- **LLM**: 2 calls `gpt-4-turbo` (Call#1 macro/weather → `eco` + `macroeco_bonus`; Call#2 ensemble-aware → `decision`/`confidence`/`direction`/`conclusion`). ~$0.13/day, ~$30/year.
-- **Cron**: `25 19 * * *` (P2b daily-gated, after `cc-ensemble-compute`) — **CLI**: `poetry run ensemble-explainer [--session-date YYYY-MM-DD] [--dry-run] [--force]`
+Le job, son wrapper Compass, ses leviers temporels et le pack vendoré ont été
+supprimés avec la bascule. `pl_orchestrator_decision`, `pl_specialist_prediction`
+et `pl_model_artifact` gardent leurs lignes (piste d'audit + replay forensique).
+Doc conservée : [docs/archive/pipelines/PIPELINE_ENSEMBLE.md](docs/archive/pipelines/PIPELINE_ENSEMBLE.md).
 
-### Compass Brief Ensemble (`backend/scripts/compass_brief_ensemble/`) 🆕 P4
-
-- **Purpose**: dual-track companion to `cc-compass-brief`. Renders the new 7-section brief (signal + 14 specialists decomposition + macro radar + LLM eco + weather + technicals + recommendations), keyed on J+4-J+5 horizon. Reads the ensemble row enriched by cc-ensemble-explainer.
-- **Output**: `YYYYMMDD-CompassBrief-Ensemble.txt` uploaded to the same Drive folder as legacy (filename suffix discriminates). NotebookLM produces `YYYYMMDD-CompassAudio-Ensemble.{wav,m4a,mp4}`.
-- **Cron**: `35 19 * * *` (P2b daily-gated) — **CLI**: `poetry run compass-brief-ensemble [--session-date YYYY-MM-DD] [--dry-run]`
-- **Frontend audio routing**: env var `BRIEF_DEFAULT_VERSION=legacy|ensemble` on backend service drives which audio is served by `/v1/dashboard/audio`. Per-request override via `?version=` query param. Both audios coexist on Drive.
-- **Runbooks**: [brief-dual-track.md](docs/runbooks/brief-dual-track.md), [brief-rollback-procedure.md](docs/runbooks/brief-rollback-procedure.md), [brief-ensemble-evolution.md](docs/runbooks/brief-ensemble-evolution.md)
-
-### Ensemble Compute — Campaign 5 (`backend/scripts/ensemble_compute/`)
-
-- **Purpose**: Daily C5 ensemble decision combining 14 LightGBM/GARCH specialists, a Bayesian soft-gate orchestrator, and a Compass-side transition wrapper. **Today the frontend dashboard serves ensemble decisions directly** via `_resolve_algo_for_date()` (row-existence based). The dual-track brief (cc-compass-brief-ensemble + cc-ensemble-explainer) is the latest piece migrating the NotebookLM audio to ensemble while keeping legacy alive in parallel.
-- **Vendored R&D code**: `backend/vendor/campaign5_ensemble_v1.0.0/` — read-only delivery, never patched in-place. Override path is subclassing (see `compass_wrapper.py`).
-- **Algorithm version**: `ensemble_v1_softgate_wrapper` **v1.0.0 — the ONE continuous version, LIVE** (served by the dashboard; the `is_active/compute_enabled` flags stay FALSE — the ensemble job doesn't gate on them and `compute_enabled=TRUE` would wrongly route it through the power-formula engine). **⚠️ Never ship an ensemble config change as a NEW `pl_algorithm_version`**: the pipeline assumes one continuous version (YTD, wrapper trailing windows, explainer/brief pin it) — the v1.1.0 attempt of 2026-07-22 broke those in cascade and was collapsed (PRs #75→#77). Config changes are versioned via **temporal config** instead (see Compass levers below).
-- **Inputs**: `v_contract_data_chained` VIEW (front-month-by-OI chain for GARCH lookback) × `pl_derived_indicators` for market_history; `pl_orchestrator_decision` + `pl_specialist_prediction` for the wrapper trailing window; `pl_article_segment` (confidence ≥ 0.70 segments, 90d window) for the macro signal via `MacroEventLayer`.
-- **Outputs**: 14 rows in `pl_specialist_prediction` + 1 row in `pl_orchestrator_decision` (soft-gate + wrapper diagnostics) + 1 row UPSERT in `pl_indicator_daily` (decision = wrapped_decision).
-- **Compass wrapper override** (`compass_wrapper.py`): the vendor OR-combines its 4 detectors → every fire becomes MONITOR. Empirically this vetoed 73% of soft-gate commits when `running_acc_5d=0.981`. The Compass subclass adds an AND-gated release: dispersion-only veto is released when `running_acc_5d ≥ threshold` (or NaN bootstrap). Threshold stored in `pl_algorithm_config.compass_wrapper_dispersion_with_acc_threshold` = 0.60 (config-as-data, migration `o9j0k1l2m3n4`). On 2026 backfill: WR coverage 17% → 49% (beats R&D 46.1%), WR accuracy 100% → 76% (target ≥ 80%; gap is cold-start NaN, accepted).
-- **Compass levers — TEMPORAL config-as-data (retune C5-full 2026-07-22, migration `g2b3c4d5e6f7`)**: `pl_algorithm_config` is **append-only** (`effective_from DATE` + `active BOOLEAN`, unique on `(version, param, effective_from)`) — a config change INSERTs a new row (old value preserved = provenance), a removal INSERTs an `active=false` tombstone; the runtime reads the VIEW **`v_algorithm_config_current`** (latest active row per param, all loaders go through it). Current levers (effective 2026-07-22, tuned on corrected indicators — dir-acc 75→88% full / 57→87.5% recent, actionable 14→35%): **alpha_macro cap 0.9→`0.3`** (dominant lever — the LLM press macro signal is noisy, over-weighted it hurts), **`commit_threshold=0.15`** (soft-gate band, now wired from config in `ensemble_compute/main.py`), **trend-conflict on with `wrapper_tau_trend=0.05`** (0.03 over-vetoed), **regime-MONITOR OFF** (tombstone — veto-precision 0.14 on corrected data, its premise was a corruption artifact; code path remains config-gated). Published decision = `soft-gate(capped 0.3) → wrapper → [regime-MONITOR if configured]`; `pl_indicator_daily.decision` carries the final. Tuning/rollback (append pattern, never UPDATE/DELETE): [docs/runbooks/wrapper-levers-tuning.md](docs/runbooks/wrapper-levers-tuning.md).
-- **Bootstrap**: `cc-ensemble-bootstrap-artifacts` (deployed without scheduler, manual trigger) seeds 38 BYTEA rows in `pl_model_artifact` from the frozen R&D pack. Re-run only when R&D ships v1.1.0+.
-- **Cron**: `18 19 * * *` (P2b daily, eve-of-trading gate — fires Mon-Thu eve and Sunday eve; skips Friday + Saturday eves). Writes for `data_date = previous_session(next_session(today))` (= today mid-week, = Friday on Sunday eve). This is the move that lets the MacroSignal incorporate weekend news: Sunday 19:05 press-review writes article_segments with `article_date = Friday`, Sunday 19:18 ensemble-compute reads them before deciding Friday's row. — **CLI**: `poetry run ensemble-compute [--session-date YYYY-MM-DD] [--historical] [--dry-run]`
-- **Failure recovery**: [docs/runbooks/ensemble-failure-recovery.md](docs/runbooks/ensemble-failure-recovery.md).
 
 ## Code Quality
 
@@ -633,15 +648,12 @@ P2b — the pipeline is split into two phases:
 # Phase B — daily cron, agent-gated on eve-of-trading-day, keyed to T+next:
 19:00  cc-meteo-agent                 → pl_weather_observation (row date = data_date = T)
 19:05  cc-press-review-agent          → pl_fundamental_article + pl_article_segment (row date = data_date = T)
-19:18  cc-ensemble-compute            → pl_orchestrator_decision + 14 specialist_prediction + ensemble row (date = T)
-19:20  cc-daily-analysis --algorithm-version legacy → UPDATE pl_indicator_daily LEGACY row at date=T
-19:25  cc-ensemble-explainer          → invokes DBAnalysisEngine (auto-align) → UPDATE ENSEMBLE row at date=T
-19:30  cc-compass-brief               → Drive: YYYYMMDD-CompassBrief.txt (legacy)
-19:35  cc-compass-brief-ensemble      → Drive: YYYYMMDD-CompassBrief-Ensemble.txt
+19:45  cc-roll-watchdog               → nudge when the liquidity front-month leads the
+                                        roll calendar by >= 3 sessions
 19:50  cc-regime-shadow               → pl_regime_shadow + pl_judge_shadow
                                         + adapter row in pl_indicator_daily
-                                        (INERT — regime has no serving_rank)
-19:55  cc-regime-brief --language both → narrative onto the regime row
+                                        (SERVED — regime carries serving_rank = 1)
+19:55  cc-regime-brief --language both → narrative onto the served row
                                         + Drive: YYYYMMDD-CompassBrief-Regime{,-EN}.txt
 
 # Publication gate — every 30 min, evening → 09:30 UTC next morning:
@@ -663,7 +675,7 @@ Notes:
 - Phase B daily cron + in-agent gate eliminates the Sun→Mon ~60h freshness gap that Phase B used to have when it was weekday-only. On Sun eve at 19:20 UTC the agents fire and tag their writes to Mon's session date.
 - The ECA + NCA scrapers gate against `ref_publication_calendar` (not the trading calendar) and exit 0 cleanly on the ~250 weekdays per year when no quarterly publication is pending. Watchdog escalates "expected but not ingested" rows past a 21-day grace window.
 - Sentry cron monitors interpret Phase B "skip on non-eve-of-trading-day" as success (exit 0) — no false-positive alerts on weekends + holidays.
-- **Dual-track brief** (legacy + ensemble) : `cc-compass-brief` (LEGACY) et `cc-compass-brief-ensemble` (NEW P4) tournent en parallèle chaque jour de session. 2 audios NotebookLM produits par jour. Audio servi par le frontend dépend de `BRIEF_DEFAULT_VERSION` env var (default `legacy`) — flip via `gcloud run services update backend --update-env-vars BRIEF_DEFAULT_VERSION=ensemble`. Per-request override `?version=ensemble`. Voir [docs/runbooks/brief-dual-track.md](docs/runbooks/brief-dual-track.md).
+- **Brief unique** : `cc-regime-brief --language both` écrit le narratif sur la ligne servie ET dépose `YYYYMMDD-CompassBrief-Regime{,-EN}.txt` sur Drive. L'audio NotebookLM se génère à la main depuis ces fichiers, en `YYYYMMDD-CompassAudio-Regime{,-EN}.{wav,m4a,mp4}`. `BRIEF_DEFAULT_VERSION=regime` depuis le 2026-08-19 ; override par requête via `?version=`.
 - **Publication gate** (`cc-publish-session`) : the dashboard's "latest session" is gated on `pl_session_release`. The job runs every 30 min (evening → 09:30 UTC next morning) and stamps a session once its data is complete AND the NotebookLM audio is present → the dashboard flips **atomically the same evening** (all sections + audio), not the next-morning `display_date`. Morning fallback (past `display_date(T)` 09:00 UTC) releases data-only so a late audio never freezes the dashboard. Endpoint gate has a safe fallback to the legacy `MAX(display_date) <= today()` while the table is empty (non-breaking). Voir [docs/runbooks/session-publish-gate.md](docs/runbooks/session-publish-gate.md).
 
 When a job fails, follow [docs/runbooks/pipeline-failure-recovery.md](docs/runbooks/pipeline-failure-recovery.md) — covers diagnosis, root-cause categories, and the cascade of jobs to re-run based on the dependency graph. Pipeline jobs are configured fail-loud, no auto-retry (see `.claude/rules/pipeline-error-handling.md`).

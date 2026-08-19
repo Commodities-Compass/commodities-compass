@@ -1,14 +1,17 @@
 # Pipeline REGIME + JUDGE (Campaign 6)
 
-> **Status: BUILT, RUNNING NIGHTLY, SERVING NOTHING.**
-> Every piece below is deployed and writes to the database each evening. The
-> dashboard still serves ensemble, because `pl_algorithm_version.serving_rank`
-> is NULL for `regime`. Setting that column is the entire bascule — and it is
-> reversible by setting it back.
+> **Status: SERVED, since 2026-08-19.** `pl_algorithm_version.serving_rank = 1`
+> for `regime`. This is the only track that decides what a client sees.
 
-Companion to [PIPELINE_LEGACY.md](PIPELINE_LEGACY.md) and
-[PIPELINE_ENSEMBLE.md](PIPELINE_ENSEMBLE.md), which describe the two tracks that
-currently serve.
+LEGACY and ENSEMBLE were retired the same day — schedulers destroyed, code
+deleted (−28 617 lines). Their documentation is in
+[docs/archive/pipelines/](../archive/pipelines/), written in a present tense that
+no longer applies; their tables keep every row.
+
+> ⚠️ **There is no rollback.** Reverting `serving_rank` still executes, but
+> ensemble stopped writing on 2026-08-18: it would serve data frozen at that
+> date. Going back means re-running its jobs by hand — the Cloud Run jobs still
+> exist, pinned to the last image that carried their code.
 
 ---
 

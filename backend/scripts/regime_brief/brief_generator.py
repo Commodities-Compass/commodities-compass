@@ -163,9 +163,16 @@ _REGIME_LABEL = {
     },
 }
 
-# Substrings that would leak the machinery into a text read aloud. Same intent
-# as the ensemble guard; the vocabulary differs because the mechanics differ.
-_FORBIDDEN = (
+# Substrings that would leak the machinery into a text read aloud.
+#
+# Two lists, because the brief renders text from two sources with two different
+# threat models. Applying one list to both is what broke the 2026-08-23 run.
+#
+# OUR OWN PROSE — the narrator's conclusion / eco / confidence_rationale. We
+# control it through the prompt, so ANY machinery vocabulary is a leak and a
+# prompt regression. Broad on purpose: "modèle", "algorithme", "IA" are exactly
+# the words a model reaches for when it starts describing itself.
+_FORBIDDEN_OWN_PROSE = (
     "regime router",
     "routeur",
     "specialist",
@@ -187,6 +194,29 @@ _FORBIDDEN = (
     "intelligence artificielle",
 )
 
+# THIRD-PARTY CONTENT — the press review and the weather bulletin. Written by
+# other agents summarising real articles and real measurements; they never see
+# our engine, so they cannot leak it. What they DO contain is ordinary business
+# French: "le modèle coopératif ivoirien", "un algorithme de tri des fèves",
+# "l'intelligence artificielle dans l'agriculture". None of that is a leak.
+#
+# On 2026-08-23 the press summary used the word "modèle" and the brief refused to
+# render — killing the job for a session whose decision was already computed. The
+# guard was policing a source it was never designed for.
+#
+# Kept here: only tokens that could not plausibly appear in cocoa journalism and
+# would therefore mean our own vocabulary escaped into another agent's output.
+_FORBIDDEN_THIRD_PARTY = (
+    "regime router",
+    "routeur",
+    "prob_up",
+    "p(up)",
+    "soft-gate",
+    "lightgbm",
+    "orchestrator",
+    "o4-mini",
+)
+
 
 class BriefLeakError(RuntimeError):
     """A field about to be rendered names the machinery."""
@@ -196,17 +226,27 @@ def _labels_for(language: str) -> _BriefLabels:
     return _LABELS_BY_LANG.get(language, _LABELS_FR)
 
 
-def _assert_safe(value: str | None, *, field_name: str) -> None:
+def _assert_safe(
+    value: str | None,
+    *,
+    field_name: str,
+    forbidden: tuple[str, ...] = _FORBIDDEN_OWN_PROSE,
+) -> None:
     """Abort before rendering rather than emit a leaky brief.
 
     The brief is read aloud outside the company and is the most exposed channel
     for reverse-engineering the decision engine. A producer fails, it does not
     degrade.
+
+    ``forbidden`` defaults to the strict list, so a new call site is policed
+    strictly unless it opts out explicitly — the safe direction to be wrong in.
+    Pass ``_FORBIDDEN_THIRD_PARTY`` for text another agent wrote from external
+    sources.
     """
     if not value:
         return
     lowered = value.lower()
-    hits = [token for token in _FORBIDDEN if token in lowered]
+    hits = [token for token in forbidden if token in lowered]
     if hits:
         raise BriefLeakError(
             f"{field_name} leaks internals {hits} — refusing to render the brief"
@@ -294,11 +334,28 @@ def render_brief(data: BriefData, narrative: Narrative) -> str:
         lines.extend(farmgate_lines)
         lines.append("")
 
-    # Fail-loud on every LLM-written field BEFORE rendering anything else.
-    _assert_safe(narrative.conclusion, field_name="conclusion")
-    _assert_safe(narrative.eco, field_name="eco")
-    _assert_safe(narrative.confidence_rationale, field_name="confidence_rationale")
-    _assert_safe(data.press_summary, field_name="press_summary")
+    # Fail-loud on every LLM-written field BEFORE rendering anything else, and
+    # before any DB write (main.py persists only after render_brief returns) —
+    # a refused brief must leave the previous session's narrative untouched.
+    #
+    # Our own prose is held to the strict list; text other agents wrote from
+    # external sources is held to the narrow one. See the two tuples above.
+    for field, value in (
+        ("conclusion", narrative.conclusion),
+        ("eco", narrative.eco),
+        ("confidence_rationale", narrative.confidence_rationale),
+    ):
+        _assert_safe(value, field_name=field)
+
+    for field, value in (
+        ("press_summary", data.press_summary),
+        ("press_impact", data.press_impact),
+        ("press_sentiment", data.press_sentiment),
+        ("meteo_summary", data.meteo_summary),
+        ("meteo_impact", data.meteo_impact),
+        ("weather_body", data.weather_body),
+    ):
+        _assert_safe(value, field_name=field, forbidden=_FORBIDDEN_THIRD_PARTY)
 
     # ── II — Editorial read (the only track-specific section) ─────────────
     lines.append(labels.section_editorial)

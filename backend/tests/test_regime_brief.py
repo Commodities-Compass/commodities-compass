@@ -25,7 +25,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from scripts.regime_brief.brief_generator import render_brief
+from scripts.regime_brief.brief_generator import BriefLeakError, render_brief
 from scripts.regime_brief.config import filename_for
 from scripts.regime_brief.db_reader import (
     BriefData,
@@ -319,3 +319,69 @@ class TestRendering:
         assert "III — ECO & PRESS REVIEW" in brief
         assert "Market regime identified: established uptrend" in brief
         assert "LECTURE ÉDITORIALE" not in brief
+
+
+class TestLeakGuardBySource:
+    """The guard polices two sources with two different threat models.
+
+    Origin: 2026-08-23. The press review summarised an article using the word
+    « modèle » — ordinary business French — and `render_brief` refused to render,
+    killing the job for a session whose decision was already computed. One list
+    was applied both to our own prose and to text other agents wrote from
+    external sources.
+    """
+
+    @staticmethod
+    def _with(**overrides) -> BriefData:
+        from dataclasses import replace
+
+        return replace(_data(), **overrides)
+
+    def test_our_own_prose_is_still_held_to_the_strict_list(self) -> None:
+        """The guard must not have been loosened where it was designed to bite."""
+        leaky = Narrative(
+            conclusion=(
+                "> Le modèle anticipe une hausse.\nUne.\nDeux.\nTrois.\nQuatre.\nCinq."
+            ),
+            eco="Contexte porteur.",
+            confidence_rationale="Un repli invaliderait.",
+        )
+
+        with pytest.raises(BriefLeakError, match="conclusion"):
+            render_brief(_data(), leaky)
+
+    def test_business_french_in_the_press_review_is_not_a_leak(self) -> None:
+        """The exact 2026-08-23 failure. 'modèle' in cocoa journalism is a word."""
+        data = self._with(
+            press_summary=(
+                "Le modèle coopératif ivoirien est cité en exemple ; un "
+                "algorithme de tri des fèves est testé à San-Pédro."
+            )
+        )
+
+        brief = render_brief(data, _narrative())
+
+        assert "modèle coopératif" in brief
+
+    def test_every_third_party_field_is_covered(self) -> None:
+        """Only `press_summary` was checked before; the others were blind spots."""
+        for field in (
+            "press_summary",
+            "press_impact",
+            "press_sentiment",
+            "meteo_summary",
+            "meteo_impact",
+            "weather_body",
+        ):
+            data = self._with(**{field: "prob_up=0.61 sur la séance"})
+
+            with pytest.raises(BriefLeakError, match=field):
+                render_brief(data, _narrative())
+
+    def test_the_narrow_list_still_catches_our_own_vocabulary(self) -> None:
+        """Tokens that could ONLY come from us must still abort the render."""
+        for token in ("regime router", "soft-gate", "o4-mini", "LightGBM"):
+            data = self._with(press_summary=f"Analyse {token} du marché.")
+
+            with pytest.raises(BriefLeakError):
+                render_brief(data, _narrative())

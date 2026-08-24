@@ -1,4 +1,22 @@
-# Per-Client Entitlement & Tenancy — Design
+# ⛔ SUPERSEDED — do not read this file
+
+> **This is a stale duplicate.** The canonical document is
+> **[entitlement-and-tenancy.md](./entitlement-and-tenancy.md)** — every link in the repo
+> (CLAUDE.md, CODE_MAP.md, backend/README.md, docs/README.md) points there, and it is the version
+> that was kept current.
+>
+> Known drift in this copy: it still describes Coop Essentiel as a **0-seat push-only tier**
+> (it is `max_seats=1`, a minimal farmgate-only dashboard, since PR #92), it lacks the `internal`
+> full-access marker as locked decision #13, and its §10 rollout is written in the future tense
+> although **enforcement went live in production on 2026-08-24**.
+>
+> Operations live in **[docs/runbooks/entitlement-enforcement.md](../runbooks/entitlement-enforcement.md)**.
+>
+> Kept only so existing links do not 404. Safe to delete once nothing references it.
+
+---
+
+# Per-Client Entitlement & Tenancy — Design (stale copy)
 
 > **Status**: Backend BUILT + tested on branch `feat/per-client-entitlement` (worktree, not merged, dark by default). Frontend + audio signed-URLs pending. Tiers reconciled to the commercial matrix "Compass CC block, July 2026".
 > **Short-term goal**: per-client **display entitlement** (show/hide sections, features, export series).

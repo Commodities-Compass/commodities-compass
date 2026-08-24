@@ -18,6 +18,7 @@ import { useLanguage } from '@/hooks/useLanguage';
 import { useEntitlements } from '@/contexts/EntitlementsContext';
 import { ENT } from '@/entitlements';
 import type { Language } from '@/contexts/LanguageContext';
+import { BillingBanner } from '@/components/billing-banner';
 import DateSelector from '@/components/date-selector';
 import LiveSignalStrip from '@/components/live-signal-strip';
 import MastheadPulse from '@/components/masthead-pulse';
@@ -70,6 +71,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       className="min-h-screen"
       style={{ background: 'var(--paper)', color: 'var(--ink)' }}
     >
+      {/* Payment state. Renders nothing unless the account needs attention —
+          and `past_due` still has FULL access, so this is the only signal. */}
+      <BillingBanner />
+
       {/* ===== MASTHEAD ===== */}
       <header
         className="border-b-[3px] border-double"

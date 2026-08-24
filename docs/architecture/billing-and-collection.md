@@ -1,6 +1,6 @@
 # Billing & Collection — Design
 
-> **Status**: **socle IMPLEMENTED and shipped dark** (`BILLING_ENFORCED=false`) — migration `b1i2l3l4i5n6`, 3 tables, the gate in `resolve_principal`, the Stripe webhook, and the ops CLI. Not yet wired to a real Stripe account. Remaining: `cc-billing-watchdog`, the frontend banner, and Stripe Products/Prices.
+> **Status**: **socle IMPLEMENTED and shipped dark** (`BILLING_ENFORCED=false`) — migration `b1i2l3l4i5n6`, 3 tables, the gate in `resolve_principal`, the Stripe webhook, and the ops CLI. Not yet wired to a real Stripe account. Remaining: the watchdog's Cloud Scheduler entry, and the Stripe account + Products/Prices.
 > **Goal**: recurring EUR billing by **card on file with automatic debit**, for 7 negotiated tiers sold by hand.
 > **Prerequisite, already met**: per-client entitlement is LIVE and enforced ([entitlement-and-tenancy.md](./entitlement-and-tenancy.md) · [runbook](../runbooks/entitlement-enforcement.md)). Billing plugs into `resolve_principal`; it does not replace it.
 > **Guardrails**: [north-star-alignment](../../.claude/rules/north-star-alignment.md) · [pipeline-error-handling](../../.claude/rules/pipeline-error-handling.md) · [migrations-prod-via-main-only](../../.claude/rules/migrations-prod-via-main-only.md) · [no-workaround-without-asking](../../.claude/rules/no-workaround-without-asking.md).
@@ -281,19 +281,22 @@ Roughly 80% of Part 1 is invariant to any of this (model, gate, webhook, `manual
 - [x] `app/core/config.py` — `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `BILLING_ENFORCED`
 - [x] `app/schemas/auth.py` — `billing_status` on `UserResponse`
 - [x] CLI (`scripts/billing_admin.py`): `billing-status`, `mark-paid`, `create-checkout-link`
-- [ ] `cc-billing-watchdog` job + scheduler + `deploy.yml` entry
+- [x] `cc-billing-watchdog` job (`scripts/billing_watchdog/`) + `deploy.yml` entry — **scheduler still TODO** (`infra/terraform/scheduler.tf`, suggested `0 15 * * 1-5`); until then the job exists but never fires
 
 **Frontend**
-- [ ] `components/billing-banner.tsx`
-- [ ] `billingStatus` through `EntitlementsContext`
-- [ ] Mount the banner in `dashboard-layout.tsx`
+- [x] `components/billing-banner.tsx` (+ 9 tests, FR/EN copy)
+- [x] `billingStatus` through `EntitlementsContext`
+- [x] Mount the banner in `dashboard-layout.tsx`
 
-**Ops**
+**Ops** — all of this is Hedi's, and none of it blocks the code
 - [ ] Stripe account (French entity) — **not created yet**
 - [ ] `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` in Secret Manager + `deploy.yml` (backend service only)
 - [ ] 7 Products/Prices in EUR
 - [ ] Customer Portal configured (card update + invoice history)
 - [ ] Smart Retries + dunning emails configured; reminders **off** for the institutional segment
+- [ ] Cloud Scheduler entry for `cc-billing-watchdog` in `infra/terraform/scheduler.tf` (suggested `0 15 * * 1-5`, before the evening pipeline)
+
+**Public site — the real activation blocker.** Stripe reviews it manually, and per their own guide this stops more activations than the Kbis does. The landing (`landing/`, Astro FR+EN) is live and has a contact section, but lacks: mentions légales, CGV, politique de confidentialité, and a page stating the billing model (monthly recurring EUR, price on quote, how to cancel). Note that most of the French *consumer* obligations Stripe's guide lists — 14-day withdrawal, three-click cancellation, tacit renewal, OSS VAT — do **not** apply to B2B sales to non-EU clients. The three legal pages are owed anyway (LCEN, GDPR, art. L441-1 Code de commerce); Stripe only forces the timing. Have a lawyer review before publishing.
 
 ---
 

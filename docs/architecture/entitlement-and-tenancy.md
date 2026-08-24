@@ -1,6 +1,7 @@
 # Per-Client Entitlement & Tenancy — Design
 
-> **Status**: Backend BUILT + tested on branch `feat/per-client-entitlement` (worktree, not merged, dark by default). Frontend + audio signed-URLs pending. Tiers reconciled to the commercial matrix "Compass CC block, July 2026".
+> **Status**: **LIVE AND ENFORCED IN PRODUCTION since 2026-08-24** (`ENTITLEMENTS_ENFORCED=true`, revision `backend-00255-mqs`). Full stack shipped: backend gates, frontend gating, audio signed URLs. Six Auth0 logins seated on the `internal` account. Tiers reconciled to the commercial matrix "Compass CC block, July 2026".
+> **Day-to-day operations → [docs/runbooks/entitlement-enforcement.md](../runbooks/entitlement-enforcement.md)** (onboarding a client, rollback, the backfill CLI, symptom→cause). This document is the design; the runbook is the procedure.
 > **Short-term goal**: per-client **display entitlement** (show/hide sections, features, export series).
 > **Long-term goal**: **commodity isolation** (one client subscribes to cocoa *and/or* coffee in a single solution), designed-for-now so it is zero-rework later.
 > **Guardrails**: [north-star-alignment](../../.claude/rules/north-star-alignment.md) · [timeseries-uniqueness](../../.claude/rules/timeseries-uniqueness.md) · [migrations-prod-via-main-only](../../.claude/rules/migrations-prod-via-main-only.md) · North Star MCD ([The-North-Star.md](../../The-North-Star.md)).
@@ -222,15 +223,26 @@ Poetry scripts, in the spirit of `set-farmgate-price`:
 - **The critical test**: authenticated-but-no-tenant-row → **denied**, not allowed.
 - Target coverage ≥ 80% (testing rule).
 
-### 10. Rollout — dark-deploy then flip (non-breaking)
+### 10. Rollout — ✅ COMPLETED 2026-08-24
 
-1. **Ship dark (step 1)** — merge to `main` ([migrations-prod-via-main-only](../../.claude/rules/migrations-prod-via-main-only.md)); the migration creates the 3 tables + view, and `ENTITLEMENTS_ENFORCED` is unset (**false**). Gates are no-ops, `/auth/me` returns `enforced:false`, the frontend shows everything → **zero user impact, no backfill needed**. Build features on top of this.
-2. **Backfill before the flip (mandatory, because default-deny)** — grandfather every current login onto the **`internal`** tier so they keep the *whole* app, including future features (a commercial tier like `export_pro` would silently revoke CSV export, which is open today):
-   - `poetry run create-tenant --code cc-existing --name "Existing users" --tier internal`
-   - `poetry run link-seat --account cc-existing --auth0-sub <sub>` for each existing Auth0 login (enumerate via the Auth0 Management API).
-3. **Set the signing secret** `AUDIO_URL_SECRET` (Secret Manager) — required once enforcement is on (podcast hard boundary).
-4. **Verify** against seeded data via the bastion.
-5. **Flip** `ENTITLEMENTS_ENFORCED=true` — GCP: `--update-env-vars`, never `--set-env-vars`. Locally, `PRINCIPAL_CACHE_TTL=0` makes tier changes reflect on the next request (demos).
+Kept as the historical record of how the flip was actually done. **For operations from here on, use
+[docs/runbooks/entitlement-enforcement.md](../runbooks/entitlement-enforcement.md).**
+
+1. ✅ **Shipped dark** — PR #91 merged the 3 tables + view with `ENTITLEMENTS_ENFORCED` unset (false). Zero user impact; the farmgate and WatchAI features were built on top of it in that window.
+2. ✅ **Backfilled** — PR #112 added `poetry run seed-internal-tenants` (idempotent, `--dry-run` as the readiness gate). It created account `internal` and seated the **6** existing Auth0 logins on it (28 grants). Grandfathering onto `internal` rather than a commercial tier was deliberate: `export_pro` holds no CSV-export keys and would have silently revoked an export that was open to everyone.
+3. ✅ **Signing secret** — `AUDIO_URL_SECRET` created in Secret Manager (`europe-west9`, user-managed replication) and injected by `deploy.yml` on the backend service only. `cc-cloud-run-api` already held `secretmanager.secretAccessor` at project level, so no IAM change was needed.
+4. ✅ **Verified** — a second `--dry-run` through the bastion returned `0 would be seated, 6 already here, 0 on another account`.
+5. ✅ **Flipped** — `ENTITLEMENTS_ENFORCED=true` via the GitHub var consumed by `deploy.yml`. Smoke-tested: `/audio/stream` without a signed token → `403` (the hard boundary is live), gated routes → `401` not `500`, `/health` → `200`. Browser-validated by Hedi.
+
+**What the flip actually revealed**: before step 2, `tenant_account` / `tenant_user` /
+`tenant_entitlement` were **0 rows in production**. Flipping without the backfill would have blanked
+every single login. The `--dry-run` gate is the entire safety net — treat it as mandatory, not
+advisory.
+
+**Two flag locations.** The value lives both in the GitHub repo variable and on the Cloud Run
+service. A rollback must change **both**, or the next deploy re-applies `true`. GCP:
+`--update-env-vars`, never `--set-env-vars`. Locally, `PRINCIPAL_CACHE_TTL=0` makes tier changes
+reflect on the next request (demos).
 
 ---
 

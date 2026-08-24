@@ -53,6 +53,13 @@ from .signal import PlSignalComponent
 # Tenant schema — per-client accounts, seats, entitlements (serving-layer only)
 from .tenant import TenantAccount, TenantUser, TenantEntitlement
 
+# Billing — recurring EUR collection. Never writes tenant_entitlement.
+from .billing import (
+    AudBillingEvent,
+    TenantBillingInvoice,
+    TenantBillingSubscription,
+)
+
 __all__ = [
     "Base",
     "TestRange",
@@ -91,4 +98,8 @@ __all__ = [
     "TenantAccount",
     "TenantUser",
     "TenantEntitlement",
+    # Billing
+    "TenantBillingSubscription",
+    "TenantBillingInvoice",
+    "AudBillingEvent",
 ]

@@ -78,6 +78,19 @@ class TenantAccount(Base):
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("true")
     )
+
+    #: Payment state — the SECOND axis of the access boundary, orthogonal to the
+    #: entitlement grants. `trialing|active|past_due|unpaid|canceled|manual`.
+    #: Only `unpaid`/`canceled` deny (and `manual` past `paid_through`); see
+    #: `_billing_blocks` in app/core/tenancy.py. Defaults to `manual` so the
+    #: migration is non-breaking for every pre-existing account.
+    billing_status: Mapped[str] = mapped_column(
+        VARCHAR(20), nullable=False, server_default="manual"
+    )
+    #: Wire / institutional accounts: access is granted while this is >= today.
+    #: NULL on a card-billed account, where the provider status governs instead.
+    paid_through: Mapped[Optional[date]] = mapped_column(DATE, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
 
     __table_args__ = (UniqueConstraint("code", name="uq_tenant_account_code"),)

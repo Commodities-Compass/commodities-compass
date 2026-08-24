@@ -1,6 +1,6 @@
 # Billing & Collection — Design
 
-> **Status**: DESIGN ONLY — no code, no `stripe` dependency, no Stripe account as of 2026-08-24.
+> **Status**: **socle IMPLEMENTED and shipped dark** (`BILLING_ENFORCED=false`) — migration `b1i2l3l4i5n6`, 3 tables, the gate in `resolve_principal`, the Stripe webhook, and the ops CLI. Not yet wired to a real Stripe account. Remaining: `cc-billing-watchdog`, the frontend banner, and Stripe Products/Prices.
 > **Goal**: recurring EUR billing by **card on file with automatic debit**, for 7 negotiated tiers sold by hand.
 > **Prerequisite, already met**: per-client entitlement is LIVE and enforced ([entitlement-and-tenancy.md](./entitlement-and-tenancy.md) · [runbook](../runbooks/entitlement-enforcement.md)). Billing plugs into `resolve_principal`; it does not replace it.
 > **Guardrails**: [north-star-alignment](../../.claude/rules/north-star-alignment.md) · [pipeline-error-handling](../../.claude/rules/pipeline-error-handling.md) · [migrations-prod-via-main-only](../../.claude/rules/migrations-prod-via-main-only.md) · [no-workaround-without-asking](../../.claude/rules/no-workaround-without-asking.md).
@@ -68,7 +68,7 @@ tenant_billing_subscription     -- what they are signed up to
   tier VARCHAR                  -- denormalised for audit: what was sold, at the time
   currency VARCHAR              -- 'EUR'
   amount_cents INTEGER
-  interval VARCHAR              -- 'month' | 'year'
+  billing_interval VARCHAR      -- 'month' | 'year' (`interval` is a SQL keyword)
   status VARCHAR                -- mirror of Stripe's subscription status
   current_period_end TIMESTAMPTZ
   effective_from DATE, active BOOLEAN
@@ -88,9 +88,9 @@ tenant_billing_invoice          -- history + PDF links, mirrored from Stripe
 aud_billing_event               -- raw webhook archive + idempotency
   id UUID PK
   provider VARCHAR, event_id VARCHAR
-  type VARCHAR
+  event_type VARCHAR            -- (`type` is a SQL keyword)
   payload JSONB
-  received_at, processed_at TIMESTAMPTZ
+  received_at, processed_at TIMESTAMPTZ, error TEXT
   UNIQUE(provider, event_id)
 ```
 
@@ -203,7 +203,8 @@ No admin UI (entitlement decision #3 carries over).
 A daily Cloud Run Job, same shape as `cc-publication-calendar-watchdog`:
 
 - emails a Customer Portal link **30 days before** a card expires;
-- Sentry-alerts on any account where Stripe's status and `billing_status` disagree.
+- Sentry-alerts on any account where Stripe's status and `billing_status` disagree;
+- **Sentry-alerts on the FIRST off-session failure of any account** — an `invoice.payment_failed` on an account that was `active` is the signal *"this issuer mishandles merchant-initiated transactions"*, and it is the only early warning that exists (§13).
 
 **Why it is not optional**: Stripe's Card Account Updater covers Visa only in the UK and Europe, and Mastercard globally. **A Visa issued in Abidjan is therefore probably not covered** — the card expires, the subscription dies quietly, and nobody notices until the client asks why the dashboard went blank.
 
@@ -239,39 +240,47 @@ Do not re-litigate these without new information.
 
 **Merchant of Record** (Paddle / Lemon Squeezy / Stripe Managed Payments) — ~5% vs ~2%, weak on negotiated B2B contracts and wire payment. Its value is VAT complexity we do not have: B2B services to a non-EU business are outside French VAT scope. *Caveat to verify with the accountant*: if a donor or institution turns out to be a **French** entity, that flips into 20% TVA **and** into the French e-invoicing reform, where a Stripe PDF is not a compliant Factur-X invoice and a PDP is required.
 
-### 13. The go/no-go test — run this before writing code
+### 13. What cannot be tested in advance — and how it is instrumented instead
 
-Take **one real Ivorian card from an exporter and one from a coop**. Run a live `SetupIntent`, then a charge at the actual tier amount. A month later, confirm the off-session renewal.
+This section originally said "run a card test before writing code". That was wrong on two counts, and the correction matters more than the original advice.
 
-Twenty minutes. It answers what no amount of desk research can:
+**First**: the real risk was overstated for the segment that matters. An exporter or trading house doing international business holds a card that works in international e-commerce. The domestic-only GIM-UEMOA problem is a **coop and individual** risk, not a corporate one.
 
-| Risk | What the test reveals |
+**Second, and decisive**: the failure mode that actually kills a subscription is **not the first payment — it is the second**.
+
+The souscription charge is *on-session*: the client is at their screen, 3DS runs, the issuer sees an authenticated cardholder. The monthly debit is a *merchant-initiated transaction*: nobody is present, and the issuer sees only a mandate. **An issuer can accept the first and refuse the second**, and several West African banks handle MITs badly. No test card reveals this — even holding a real Ivorian card today, you would have to wait a full billing cycle. **The only reliable signal is month 2 of the first real client.**
+
+So the gate is removed. Since it cannot be tested ahead of time, the failure is made **loud and early** instead:
+
+| Risk | How it surfaces |
 |---|---|
-| Domestic-only GIM-UEMOA cards | The card cannot be saved at all |
-| International e-commerce disabled by default at the bank | Fails until the client phones their bank — belongs in the onboarding checklist, not the code |
-| Low monthly online ceilings | The tier amount is refused; confirms decision #7 (monthly) or forces it lower |
-| Issuers that mishandle off-session MITs | Only visible at the *second* debit, a month later |
+| Issuer refuses the off-session MIT | `cc-billing-watchdog` Sentry-alerts on the **first** `invoice.payment_failed` of an `active` account (§9) — same day, not as churn three months later |
+| Card expires, ACU does not cover it | Portal link emailed 30 days ahead (§9) |
+| Low monthly ceiling | Same alert path; mitigated up front by monthly billing (decision #7) |
+| Domestic-only card (coops) | Visible at souscription — the card simply cannot be saved. Falls back to `manual`. |
 
-**Outcome → action**: both cards work → build as specced. Exporter works, coop does not → build as specced and put coops on `manual`. Neither works → the rail is wrong, and §12's pawaPay note becomes the live option.
+**The escape hatch is in from day one.** Any account that turns out not to be debitable moves to `billing_status='manual'` with one command (`poetry run mark-paid`) and pays by wire. No code to write, no deploy.
 
-Roughly 80% of Part 1 is invariant to this result (model, gate, webhook, `manual` path). The test decides the **rail strategy**, not whether to start.
+Coops remain genuinely unknown — but that is a commercial question answered when one is signed, not a technical one to settle now. If card fails for that segment, §12's pawaPay note becomes the live option.
+
+Roughly 80% of Part 1 is invariant to any of this (model, gate, webhook, `manual` path).
 
 ---
 
 ## Appendix A — Implementation checklist
 
 **DB**
-- [ ] Alembic migration: `billing_status` + `paid_through` on `tenant_account`; `tenant_billing_subscription`, `tenant_billing_invoice`, `aud_billing_event`. Idempotent, via `main`.
+- [x] Alembic migration `b1i2l3l4i5n6`: `billing_status` + `paid_through` on `tenant_account`; `tenant_billing_subscription`, `tenant_billing_invoice`, `aud_billing_event`. Idempotent, via `main`.
 
 **Backend**
-- [ ] `stripe` dependency in `pyproject.toml`
-- [ ] `app/models/billing.py` — 3 models
-- [ ] `app/services/billing_service.py` — customer, checkout session, portal session, mark-paid
-- [ ] `app/api/api_v1/endpoints/billing.py` — `POST /v1/webhooks/stripe`, `POST /v1/billing/portal-session`
-- [ ] `app/core/tenancy.py` — `_billing_blocks` + 2 columns in the `resolve_principal` SELECT
-- [ ] `app/core/config.py` — `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `BILLING_ENFORCED`
-- [ ] `app/schemas/auth.py` — `billing_status` on `UserResponse`
-- [ ] CLI: `--billing` on `create-tenant`, plus `billing-status`, `mark-paid`
+- [x] `stripe` dependency in `pyproject.toml`
+- [x] `app/models/billing.py` — 3 models
+- [x] `app/services/billing_service.py` — customer, checkout session, portal session, mark-paid
+- [x] `app/api/api_v1/endpoints/billing.py` — `POST /v1/webhooks/stripe`, `POST /v1/billing/portal-session`
+- [x] `app/core/tenancy.py` — `_billing_blocks` + 2 columns in the `resolve_principal` SELECT
+- [x] `app/core/config.py` — `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `BILLING_ENFORCED`
+- [x] `app/schemas/auth.py` — `billing_status` on `UserResponse`
+- [x] CLI (`scripts/billing_admin.py`): `billing-status`, `mark-paid`, `create-checkout-link`
 - [ ] `cc-billing-watchdog` job + scheduler + `deploy.yml` entry
 
 **Frontend**

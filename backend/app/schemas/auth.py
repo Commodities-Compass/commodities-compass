@@ -25,6 +25,13 @@ class UserResponse(BaseModel):
     enforced: bool = Field(
         False, description="Whether entitlement enforcement is active server-side"
     )
+    # Payment state, so the frontend can show the "update your card" banner.
+    # Note this is orthogonal to `entitlements`: an account in `past_due` still
+    # holds its full key set (the Stripe retry window keeps access), so the
+    # banner is the ONLY signal the client gets before the retries are exhausted.
+    billing_status: str | None = Field(
+        None, description="trialing|active|past_due|unpaid|canceled|manual"
+    )
 
 
 class TokenVerifyResponse(BaseModel):

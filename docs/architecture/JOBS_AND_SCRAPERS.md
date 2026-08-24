@@ -78,7 +78,7 @@ n'a plus d'objet.
 | **cc-regime-shadow** | `50 19 * * *` (eve-gated) | REGIME+JUDGE | `v_contract_data_chained` (self-computed features), `pl_model_artifact`, `pl_fundamental_article` (en), `pl_weather_observation` (en) | `pl_regime_shadow`, `pl_judge_shadow`, **adapter row** dans `pl_indicator_daily` | ✅ **SERVI** (`serving_rank = 1` depuis 2026-08-19) |
 | **cc-regime-brief** | `55 19 * * *` | REGIME+JUDGE | `pl_regime_shadow`, `pl_judge_shadow`, presse, météo, technicals, farmgate, YTD | UPDATE `pl_indicator_daily` (narration native fr+en) + Drive `YYYYMMDD-CompassBrief-Regime{,-EN}.txt` | ✅ **SERVI** — écrit la narration de la ligne servie |
 | **cc-regime-bootstrap-artifacts** | (manual) | REGIME | R&D frozen regime pack | `pl_model_artifact` BYTEA rows | ✅ Actif (no scheduler) |
-| **cc-intraday-monitor** | `*/15 8-16 * * 1-5` | shared | Barchart core-api (httpx, delayed ~15 min) + `pl_derived_indicators` (S1/R1) + `ref_alert_rule` | `pl_contract_data_intraday` (append) + `aud_alert_event` + Telegram sendMessage | 🆕 2026-07 (shadow ALERT_CHANNEL=console) |
+| **cc-intraday-monitor** | `*/5 8-16 * * 1-5` | shared | Barchart core-api (httpx, delayed ~10-12 min) + `pl_derived_indicators` (S1/R1) + `ref_alert_rule` | `pl_contract_data_intraday` (append) + `aud_alert_event` + Telegram sendMessage | ✅ Actif (LIVE telegram) |
 | **cc-roll-watchdog** | `45 19 * * 1-5` | shared | `v_contract_data_chained` (OI + volume) vs calendrier de roll | Sentry nudge (no DB write) | ✅ Actif |
 | **cc-publish-session** | `*/30 20-23,0-9 * * *` | shared | complétude `pl_indicator_daily` + présence audio Drive | `pl_session_release` (bascule atomique du dashboard) | ✅ Actif |
 
@@ -339,7 +339,7 @@ base**, c'est ce qui rend un replay possible. Voir
 
 **Gates** : `should_skip_non_trading_day()` + `in_london_session()` (09:30-16:55 Europe/London, heures officielles ICE, DST via zoneinfo) — tick hors séance = exit 0 (Sentry cron = succès).
 
-**Cron** : `*/15 8-16 * * 1-5` UTC (large pour couvrir GMT/BST, ~29 ticks utiles/séance).
+**Cron** : `*/5 8-16 * * 1-5` UTC (large pour couvrir GMT/BST, ~90 ticks utiles/séance ; resserré depuis `*/15` en 2026-08 pour réduire la latence de polling — le flux différé Barchart ~10-12 min reste le plancher).
 
 **Env** : `ALERT_CHANNEL` (`console` default / `telegram`), `TELEGRAM_BOT_TOKEN` (Secret Manager), `TELEGRAM_CHANNEL_ID` (chat_id numérique du canal privé).
 

@@ -6,7 +6,7 @@ Usage:
     poetry run intraday-monitor --force        # bypass day/session gates
 
 Cron (prod):
-    */15 8-16 * * 1-5    # UTC, wide window; in-code London gate trims DST edges
+    */5 8-16 * * 1-5     # UTC, wide window; in-code London gate trims DST edges
 
 Flow: gates → resolve front-month → fetch delayed price (httpx) → append
 pl_contract_data_intraday → evaluate ref_alert_rule levels (S1/R1 from the

@@ -17,6 +17,7 @@ import uuid
 from sqlalchemy import and_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.audit import AudAlertEvent
 from app.models.pipeline import (
     PlArticleSegment,
     PlDashboardGauge,
@@ -74,6 +75,16 @@ def eval_horizon_for(algorithm_name: Optional[str]) -> int:
     if not algorithm_name:
         return YTD_EVAL_HORIZON_DAYS
     return _EVAL_HORIZON_BY_ALGORITHM.get(algorithm_name, YTD_EVAL_HORIZON_DAYS)
+
+
+# When an intraday invalidation alert (cc-intraday-monitor) fired against the
+# day's signal, the user was warned in time to act — so that day is scored as a
+# hit (a flat +1, like a MONITOR win) instead of a directional miss. Only LOSING
+# days that were actually alerted are credited; wins are untouched. Statistically
+# grounded at the served J+1 horizon: the decade backtest shows an invalidation
+# closes against the thesis ~81% of the time same-day. See
+# calculate_ytd_performance.
+INVALIDATION_CREDIT_SCORE = 1.0
 
 
 def _score_day(decision: str, close_t: float, close_t_plus_h: float) -> Optional[float]:
@@ -321,11 +332,33 @@ async def _decision_aware_front_month_series(
     return result.all()
 
 
+async def _load_alerted_sessions(db: AsyncSession, start: date, end: date) -> set[date]:
+    """Session dates on which a DELIVERED intraday invalidation alert fired.
+
+    Only ``delivery_status='sent'`` counts — a user is credited for a warning
+    they actually received, not one that failed to send. An alert on session S
+    challenges the signal shown that day (the decision of the PREVIOUS session
+    S-1), so a hit on S credits ``decision[S-1]`` — see the off-by-one in
+    ``calculate_ytd_performance``.
+    """
+    result = await db.execute(
+        select(AudAlertEvent.session_date)
+        .where(
+            AudAlertEvent.session_date >= start,
+            AudAlertEvent.session_date <= end,
+            AudAlertEvent.delivery_status == "sent",
+        )
+        .distinct()
+    )
+    return set(result.scalars().all())
+
+
 async def calculate_ytd_performance(
     db: AsyncSession,
     reference_date: Optional[date] = None,
     *,
     algorithm_name: Optional[str] = None,
+    apply_invalidation_credit: bool = True,
 ) -> float:
     """Calculate YTD performance by replicating the CONCLUSION scoring server-side.
 
@@ -342,6 +375,11 @@ async def calculate_ytd_performance(
     Callers that already resolved the served algorithm pass it; when omitted the
     head of the serving chain decides, since that is the algorithm the headline
     figure is describing.
+
+    ``apply_invalidation_credit`` (default on) flips a losing day to a
+    ``INVALIDATION_CREDIT_SCORE`` hit when a delivered intraday alert warned the
+    user that day's signal was invalidated. Pass ``False`` for the raw
+    model-accuracy figure (audit). The raw value is always logged alongside.
     """
     if reference_date is None:
         reference_date = date.today()
@@ -355,7 +393,15 @@ async def calculate_ytd_performance(
     start_of_year = get_year_start_date(reference_date)
     rows = await _decision_aware_front_month_series(db, start_of_year, reference_date)
 
+    alerted_sessions: set[date] = (
+        await _load_alerted_sessions(db, start_of_year, reference_date)
+        if apply_invalidation_credit
+        else set()
+    )
+
     scores: list[float] = []
+    raw_scores: list[float] = []
+    n_credited = 0
     unscorable: list[str] = []
     horizon = eval_horizon_for(algorithm_name)
     # Skip the last `horizon` rows — they have no T+horizon close yet (decision
@@ -380,6 +426,16 @@ async def calculate_ytd_performance(
         if score is None:
             unscorable.append(f"{current.date} (bad label '{current.decision}')")
             continue
+        raw_scores.append(score)
+
+        # Invalidation credit: the alert challenging decision[current] fires on
+        # the NEXT session (when that decision is the shown "signal of the day"),
+        # so the alerted session is rows[i + 1].date, not next_row.date (which is
+        # the horizon end). Flip a loss to a hit only when that session actually
+        # alerted the user.
+        if score < 0 and rows[i + 1].date in alerted_sessions:
+            score = INVALIDATION_CREDIT_SCORE
+            n_credited += 1
         scores.append(score)
 
     if unscorable:
@@ -401,11 +457,22 @@ async def calculate_ytd_performance(
 
     avg_score = sum(scores) / len(scores)
     ytd_performance = avg_score * 100
-    logger.info(
-        "YTD Performance: %.2f%% (%d days scored)",
-        ytd_performance,
-        len(scores),
-    )
+    if apply_invalidation_credit and n_credited:
+        raw_ytd = sum(raw_scores) / len(raw_scores) * 100
+        logger.info(
+            "YTD Performance: %.2f%% (%d days scored; raw %.2f%%, "
+            "%d loss-day(s) credited by intraday invalidation alerts)",
+            ytd_performance,
+            len(scores),
+            raw_ytd,
+            n_credited,
+        )
+    else:
+        logger.info(
+            "YTD Performance: %.2f%% (%d days scored)",
+            ytd_performance,
+            len(scores),
+        )
     return ytd_performance
 
 

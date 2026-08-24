@@ -63,10 +63,20 @@ jobs:
             --max-instances=2
             --port=8000
             --allow-unauthenticated
+          # ENTITLEMENTS_ENFORCED: the per-client visibility boundary. Defaults to
+          # 'false' (dark) so this deploy changes nothing. Flip by setting the GitHub
+          # var to 'true' and redeploying — but ONLY once every live Auth0 login holds
+          # a seat (poetry run seed-internal-tenants --dry-run must show no '+' left),
+          # because an unseeded login default-denies to a blank dashboard.
           env_vars: |
             GOOGLE_DRIVE_AUDIO_FOLDER_ID=${{ vars.GOOGLE_DRIVE_AUDIO_FOLDER_ID }}
             BACKEND_CORS_ORIGINS=${{ vars.BACKEND_CORS_ORIGINS }}
             GIT_COMMIT_SHA=${{ github.sha }}
+            ENTITLEMENTS_ENFORCED=${{ vars.ENTITLEMENTS_ENFORCED || 'false' }}
+          # AUDIO_URL_SECRET: HMAC key for the signed /audio/stream capability token.
+          # Read only when ENTITLEMENTS_ENFORCED is on, and signing fails loud when it
+          # is empty — so the secret must exist BEFORE that flag flips. Service only:
+          # no Cloud Run Job streams audio.
           secrets: |
             DATABASE_URL=DATABASE_URL:latest
             DATABASE_SYNC_URL=DATABASE_SYNC_URL:latest
@@ -76,6 +86,7 @@ jobs:
             AUTH0_ISSUER=AUTH0_ISSUER:latest
             GOOGLE_DRIVE_CREDENTIALS_JSON=GOOGLE_DRIVE_CREDENTIALS_JSON:latest
             SENTRY_DSN=SENTRY_DSN:latest
+            AUDIO_URL_SECRET=AUDIO_URL_SECRET:latest
 
   deploy-frontend:
     name: Deploy Frontend to Cloud Run

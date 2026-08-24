@@ -1,14 +1,28 @@
 # Flow — Contract Roll
 
-> ⚠️ **Written 2026-06-18, before the regime+judge flip (2026-08-19).** The
-> *paths* traced here — date semantics, roll handling, gating, failure
-> propagation — still hold; they are what the audit was about. But the jobs it
-> names on the decision leg (`cc-ensemble-compute`, `cc-ensemble-explainer`,
-> `cc-daily-analysis`, `cc-compass-brief`, `cc-compass-brief-ensemble`) were
-> **deleted**. Read them as "whatever occupies that slot": today it is
-> `cc-regime-shadow` (19:50) then `cc-regime-brief` (19:55). This banner is
-> deliberate — rewriting a dated audit at the present tense would destroy the
-> record of what it actually found. Current state:
+> 🛑 **SUPERSEDED — DO NOT OPERATE FROM THIS DOCUMENT.** Written 2026-06-18. The
+> roll *mechanism* described below was **deleted** by migration `d5e6f7a8b9c0`
+> (PR #73, 2026-07-22). Everything here about `v_contract_data_chained`
+> auto-switching at the OI crossover, about the "two/three resolution
+> conventions", and about `is_active` being the manual label is **false today**.
+>
+> The live model: **`ref_contract.active_from` is a roll calendar, and it is the
+> only thing that decides the front-month.** The chained VIEW is a calendar INNER
+> JOIN — it *follows* the stamp, it never leads it. `is_active` is a derived
+> cache. Liquidity (OI+volume) survives only inside `cc-roll-watchdog` as a nudge.
+>
+> → Operate from [docs/runbooks/contract-roll-procedure.md](../../runbooks/contract-roll-procedure.md) (rewritten 2026-08-24).
+>
+> This banner is deliberate: rewriting a dated audit at the present tense would
+> destroy the record of what it actually found, and this document is still the
+> best account of *why* the split-brain class existed — which is the problem the
+> calendar was built to end. Read it as history, not as procedure.
+>
+> Also stale on the decision leg: the jobs it names (`cc-ensemble-compute`,
+> `cc-ensemble-explainer`, `cc-daily-analysis`, `cc-compass-brief`,
+> `cc-compass-brief-ensemble`) were **deleted** 2026-08-19; today it is
+> `cc-regime-shadow` (19:50) then `cc-regime-brief` (19:55). `pl_orchestrator_decision`
+> has been frozen since 2026-08-18. Current state:
 > [PIPELINE_REGIME_JUDGE.md](../PIPELINE_REGIME_JUDGE.md) ·
 > [JOBS_AND_SCRAPERS.md](../JOBS_AND_SCRAPERS.md).
 
@@ -56,7 +70,15 @@ Three different "what's the current contract" answers coexist by design. Mixing 
 | **Front-month-by-OI** | `v_contract_data_chained` VIEW (`DISTINCT ON (date) ORDER BY oi DESC`) | engine `--all-contracts`, ensemble `market_history`, wrapper trailing window | Automatic — switches at the true OI crossover, per date |
 | **Historical front-month-by-OI** | `resolve_active_at_date` / dashboard `resolve_contract_for_date` | ensemble `--historical` backfill; dashboard reads for past dates | Per-date, deterministic; spans rolls seamlessly |
 
-> ⚠️ **FOOTGUN — `is_active` ≠ front-month-by-OI during the crossover window.** For the ~5-10 sessions where OI is migrating, the chained view may already serve the new contract while `is_active` still points at the old one (or vice-versa). This is *intentional* — data follows OI, the label follows a human. Don't "fix" the divergence; it self-resolves when you flip the flag. But do not assume the two agree on any given day around a roll.
+> 🛑 **REVERSED SINCE 2026-07-22 — the advice below is now the signature of a BROKEN roll.**
+> The table above and this footgun describe the pre-calendar world. Today there is
+> exactly **one** resolution rule (`active_from`), the chained VIEW cannot diverge
+> from it by construction, and a visible `is_active` ↔ view divergence means the
+> calendar was never stamped — i.e. someone flipped `is_active` by hand and the
+> served track is silently frozen. **Do not dismiss it. Investigate it.**
+> See the runbook's *Rollback / repair*.
+
+> ⚠️ *(historical)* **FOOTGUN — `is_active` ≠ front-month-by-OI during the crossover window.** For the ~5-10 sessions where OI is migrating, the chained view may already serve the new contract while `is_active` still points at the old one (or vice-versa). This is *intentional* — data follows OI, the label follows a human. Don't "fix" the divergence; it self-resolves when you flip the flag. But do not assume the two agree on any given day around a roll.
 
 ---
 

@@ -416,7 +416,11 @@ The frontend calendar shows `display_date` values. Non-trading days (weekends + 
 
 ### Contract Roll Procedure
 
-When OI shifts to the next delivery month (e.g., `CAK26 → CAN26`), follow [docs/runbooks/contract-roll-procedure.md](docs/runbooks/contract-roll-procedure.md). Quick path: `poetry run roll-contract <NEW>` (against GCP via bastion) then trigger `cc-compute-indicators` with `--full --all-versions`. The runbook covers backfill, rollback, past incidents (CAK26→CAN26 bugs), and the dashboard cross-contract fallback (`resolve_contract_for_date()` in `app/utils/contract_resolver.py`) that ensures historical dates resolve correctly across rolls — no gaps when navigating across a roll boundary.
+**`ref_contract.active_from` is a roll calendar and it is the only thing that decides the front-month** (since migration `d5e6f7a8b9c0`, PR #73). Front-month for date D = the contract with the greatest `active_from <= D`; one rule, implemented in `app/utils/front_month.py` (async), `scripts/front_month.py` (sync) and the `v_contract_data_chained` VIEW, which is a **calendar INNER JOIN** — it follows the stamp, it never leads it. `is_active` is a derived cache. Liquidity (OI+volume) decides nothing: it survives only in `cc-roll-watchdog` (`45 19 * * 1-5`) as a Sentry nudge when it has led the calendar for ≥3 sessions.
+
+⚠️ Because the VIEW is an INNER JOIN, **a date whose calendar front-month has no OHLCV row vanishes from the series silently** (every job exits 0). `poetry run roll-contract <NEW>` flips `is_active` immediately but stamps `active_from` to the *next* session — so roll **on a weekend, or after 19:10 UTC** on a trading day, never mid-session. `roll-contract` is the only writer of `active_from`; a raw `UPDATE ref_contract SET is_active` freezes the served track.
+
+Full procedure, pre/post-roll SQL, rollback and known gaps: [docs/runbooks/contract-roll-procedure.md](docs/runbooks/contract-roll-procedure.md) (rewritten 2026-08-24). The architecture flow doc [flows/contract-roll.md](docs/architecture/flows/contract-roll.md) is **superseded** — history only.
 
 ## AI Agents
 

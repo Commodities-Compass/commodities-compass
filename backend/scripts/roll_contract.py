@@ -8,7 +8,7 @@ Usage:
 import argparse
 import logging
 import sys
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -17,6 +17,16 @@ from sqlalchemy import select
 from app.models.reference import RefContract
 from scripts.contract_resolver import ContractResolverError, resolve_active_code
 from scripts.db import get_next_session_date, get_session
+
+# Upper bound on --effective-date. The post-condition below only asserts the new
+# contract holds the GREATEST active_from, which any future date trivially
+# satisfies — so a year typo (`2027-08-25` for `2026-08-25`) would be accepted
+# silently, keeping every calendar consumer on the OLD contract while is_active
+# repoints the scrapers to the new one: the whole chain then loses a session per
+# day, with no error. Legitimate values are the next session (a few days out at
+# most, over a long weekend or holiday) or a past date for a re-stamp, so a month
+# of headroom is generous and still catches the typo.
+MAX_EFFECTIVE_DATE_LOOKAHEAD_DAYS = 31
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
@@ -62,6 +72,23 @@ def main() -> int:
         else get_next_session_date(date.today())
     )
 
+    # Bound the stamp against the future — see MAX_EFFECTIVE_DATE_LOOKAHEAD_DAYS.
+    # Applied to the derived default too (defence in depth: a broken trading
+    # calendar must not be able to stamp a far date either).
+    max_effective = date.today() + timedelta(days=MAX_EFFECTIVE_DATE_LOOKAHEAD_DAYS)
+    if effective_date > max_effective:
+        logger.error(
+            "Refusing effective date %s: more than %d days ahead (max %s). "
+            "A future-dated active_from keeps every calendar consumer on the OLD "
+            "contract while is_active repoints the scrapers to %s — the chained "
+            "view then loses a session per day, silently. Check for a typo.",
+            effective_date,
+            MAX_EFFECTIVE_DATE_LOOKAHEAD_DAYS,
+            max_effective,
+            new_code,
+        )
+        return 1
+
     try:
         with get_session() as session:
             # Validate: new contract must exist in ref_contract
@@ -76,11 +103,39 @@ def main() -> int:
                 )
                 return 1
 
+            # `is_active` alone is NOT proof the roll happened: it is a derived
+            # cache, while `active_from` is the calendar the front-month resolver
+            # actually reads. A raw `UPDATE ref_contract SET is_active` (the
+            # procedure the old runbook documented) sets one and not the other —
+            # and this early-return used to fire on that state, before any
+            # active_from handling and ignoring --effective-date, leaving NO CLI
+            # path back. Only short-circuit when the calendar agrees.
+            from scripts.front_month import FrontMonthError, active_front_month
+
+            calendar_agrees = False
             if new_contract.is_active:
+                try:
+                    calendar_agrees = active_front_month(session) == new_contract.id
+                except FrontMonthError:
+                    calendar_agrees = False  # empty calendar → nothing is rolled
+
+            if new_contract.is_active and calendar_agrees:
                 logger.warning(
-                    "Contract %s is already active. Nothing to do.", new_code
+                    "Contract %s is already active and holds the calendar leading "
+                    "edge (active_from=%s). Nothing to do.",
+                    new_code,
+                    new_contract.active_from,
                 )
                 return 0
+
+            if new_contract.is_active:
+                logger.warning(
+                    "Contract %s has is_active=true but does NOT hold the calendar "
+                    "leading edge (active_from=%s) — half-rolled state. Repairing "
+                    "by stamping the roll calendar.",
+                    new_code,
+                    new_contract.active_from,
+                )
 
             # Find current active contract
             try:

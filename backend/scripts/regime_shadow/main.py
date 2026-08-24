@@ -37,7 +37,7 @@ from sqlalchemy.orm import Session
 from scripts._shared.cli import build_base_argparser
 from scripts._shared.logging import configure_logging
 from scripts._shared.sentry import bootstrap_scraper
-from scripts.db import get_session, phase_b_should_skip
+from scripts.db import get_session, phase_b_should_skip, resolve_phase_b_dates
 from scripts.regime_shadow.db_writer import write_regime_shadow
 from scripts.regime_shadow.feature_engine import build_selfcomputed_features
 from scripts.regime_shadow.indicator_adapter import (
@@ -97,12 +97,39 @@ def _resolve_version_id(session: Session):
     return row[0]
 
 
-def _resolve_target_dates(features: pd.DataFrame, args) -> list[date_cls]:
+class RegimeChainStaleError(RuntimeError):
+    """The chain's newest session is older than the session we must publish."""
+
+
+def _resolve_target_dates(
+    features: pd.DataFrame, args, expected: date_cls | None = None
+) -> list[date_cls]:
+    """Sessions to compute. Fail loud if the cron path would publish a stale one.
+
+    ``expected`` is the session the run is meant to produce (Phase-B ``data_date``).
+    Without this guard the cron path silently returns the tail of whatever the chain
+    happens to hold — so a chain frozen by a roll hole, or a scrape that never ran,
+    makes the job recompute and re-upsert YESTERDAY every night at exit 0, while
+    cc-regime-brief re-uploads under the stale date stem. Backfills and an explicit
+    --session-date deliberately target older sessions and bypass the check.
+    """
     if args.session_date:
         return [args.session_date]
     all_dates = sorted(d.date() for d in features["date"])
     if not all_dates:
         raise RuntimeError("self-computed feature chain is empty — no sessions")
+    if (
+        expected is not None
+        and args.backfill_days is None
+        and all_dates[-1] != expected
+    ):
+        raise RegimeChainStaleError(
+            f"front-month chain ends at {all_dates[-1]} but this run must publish "
+            f"{expected}. The chain is not advancing — either cc-barchart-scraper "
+            f"did not write {expected}, or the roll calendar leaves that session "
+            "without a front-month row (see assert_chain_has_no_gaps). Refusing to "
+            "republish an older session as today's decision."
+        )
     n = args.backfill_days or 1
     return all_dates[-n:]
 
@@ -128,7 +155,11 @@ def main() -> int:
         aid = _resolve_version_id(session)
         pipe = load_regime_pipeline_from_db(session, algorithm_version_id=aid)
         features = build_selfcomputed_features(session)
-        dates = _resolve_target_dates(features, args)
+        # The session this run must publish — the Phase-B data_date (the session
+        # that just closed). Guards against publishing a stale one; see
+        # _resolve_target_dates.
+        expected = resolve_phase_b_dates(args.session_date).data_date
+        dates = _resolve_target_dates(features, args, expected=expected)
         logger.info(
             "regime shadow: %d date(s) [%s..%s]", len(dates), dates[0], dates[-1]
         )

@@ -15,7 +15,7 @@
 ```
 Time UTC | Job                                   | Track       | Type
 ─────────┼───────────────────────────────────────┼─────────────┼──────────────────
-08:00-16:00 */15 | cc-intraday-monitor              | shared      | Alertes intraday (gate London)
+08:00-16:00 */5  | cc-intraday-monitor              | shared      | Alertes intraday (gate London)
 13:00    | cc-eca-grindings-scraper              | shared      | Calendar-gated quarterly
 14:00    | cc-nca-grindings-scraper              | shared      | Calendar-gated quarterly
 16:00    | cc-publication-calendar-watchdog      | shared      | Daily safety watchdog
@@ -79,7 +79,7 @@ n'a plus d'objet.
 | **cc-regime-brief** | `55 19 * * *` | REGIME+JUDGE | `pl_regime_shadow`, `pl_judge_shadow`, presse, météo, technicals, farmgate, YTD | UPDATE `pl_indicator_daily` (narration native fr+en) + Drive `YYYYMMDD-CompassBrief-Regime{,-EN}.txt` | ✅ **SERVI** — écrit la narration de la ligne servie |
 | **cc-regime-bootstrap-artifacts** | (manual) | REGIME | R&D frozen regime pack | `pl_model_artifact` BYTEA rows | ✅ Actif (no scheduler) |
 | **cc-intraday-monitor** | `*/5 8-16 * * 1-5` | shared | Barchart core-api (httpx, delayed ~10-12 min) + `pl_derived_indicators` (S1/R1) + `ref_alert_rule` | `pl_contract_data_intraday` (append) + `aud_alert_event` + Telegram sendMessage | ✅ Actif (LIVE telegram) |
-| **cc-roll-watchdog** | `45 19 * * 1-5` | shared | `v_contract_data_chained` (OI + volume) vs calendrier de roll | Sentry nudge (no DB write) | ✅ Actif |
+| **cc-roll-watchdog** | `45 19 * * 1-5` | shared | `pl_contract_data_daily` ⨝ `ref_contract` — front-month liquidité (OI **et** volume) vs `active_from` (calendrier). **Pas** la VIEW : la règle OI n'y existe plus depuis `d5e6f7a8b9c0` | Sentry nudge (no DB write), exit 1 | ✅ Actif |
 | **cc-publish-session** | `*/30 20-23,0-9 * * *` | shared | complétude `pl_indicator_daily` + présence audio Drive | `pl_session_release` (bascule atomique du dashboard) | ✅ Actif |
 
 ---

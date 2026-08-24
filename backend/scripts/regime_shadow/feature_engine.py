@@ -22,6 +22,7 @@ window from it.
 from __future__ import annotations
 
 import logging
+from datetime import date
 
 import pandas as pd
 from sqlalchemy import text
@@ -37,6 +38,53 @@ logger = logging.getLogger(__name__)
 
 class RegimeFeatureError(RuntimeError):
     """Raised on a missing/duplicated raw chain or a missing engine output column."""
+
+
+class RegimeChainGapError(RegimeFeatureError):
+    """A scraped session is absent from the front-month chain (roll hole)."""
+
+
+# Every session the scraper wrote must appear in the chain. Since d5e6f7a8b9c0
+# the VIEW is a calendar INNER JOIN, so a date whose calendar front-month has no
+# OHLCV row is silently DROPPED rather than erroring — the exact shape of a roll
+# performed mid-session (is_active repoints the scraper now, active_from only
+# takes effect next session). Scoped to the chain's own span: prehistory older
+# than the earliest active_from is legitimately absent and is not a gap.
+_CHAIN_GAP_SQL = text(
+    """
+    SELECT DISTINCT d.date
+    FROM pl_contract_data_daily d
+    WHERE d.close IS NOT NULL
+      AND d.date >= :chain_min
+      AND NOT EXISTS (
+          SELECT 1 FROM v_contract_data_chained v WHERE v.date = d.date
+      )
+    ORDER BY d.date
+    """
+)
+
+
+def assert_chain_has_no_gaps(session: Session, chain_min: date) -> None:
+    """Fail loud if a scraped session inside the chain's span is missing from it.
+
+    Silent corruption otherwise: the positional rolling windows (Wilder RSI/ATR,
+    EMA, 252d z-scores) would shift by one step, and the job would publish an
+    older session's decision as today's. See .claude/rules/timeseries-uniqueness.md.
+    """
+    missing = [
+        r.date
+        for r in session.execute(_CHAIN_GAP_SQL, {"chain_min": chain_min}).fetchall()
+    ]
+    if missing:
+        raise RegimeChainGapError(
+            f"{len(missing)} scraped session(s) missing from v_contract_data_chained "
+            f"(first: {', '.join(str(d) for d in missing[:5])}). The calendar "
+            "front-month for those dates has no pl_contract_data_daily row — a roll "
+            "was almost certainly executed mid-session (ref_contract.is_active "
+            "repointed the scraper before active_from took effect). Fix the roll "
+            "calendar, then re-scrape/backfill the missing session(s); do NOT "
+            "compute over a holed chain."
+        )
 
 
 # Same front-month chain the engine's load_all_market_data reads (front-month per
@@ -90,6 +138,11 @@ def build_selfcomputed_features(session: Session) -> pd.DataFrame:
             f"raw chain has duplicate dates {dups[:5]} — v_contract_data_chained "
             "must be DISTINCT ON (date)"
         )
+
+    # The VIEW is a calendar INNER JOIN: a session whose front-month has no row is
+    # dropped silently rather than raising. Catch it here, before it shifts every
+    # positional window and freezes the published session.
+    assert_chain_has_no_gaps(session, df["date"].min().date())
 
     # Regime marks its OWN roll boundaries (contract_code changes) → the engine
     # indicators neutralize the phantom splice. cc-compute-indicators does not mark,

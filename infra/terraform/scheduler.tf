@@ -133,12 +133,14 @@ locals {
     }
     intraday-monitor = {
       description = "Intraday delayed-price polling — S1/R1 invalidation alerts (Telegram)"
-      # Every 15 min, 8-16 UTC weekdays — deliberately wide to cover both GMT
+      # Every 5 min, 8-16 UTC weekdays — deliberately wide to cover both GMT
       # and BST regimes; the in-code London gate (09:30-16:55 Europe/London,
       # official ICE hours) trims out-of-session ticks as clean exit-0 skips.
-      # ~29 in-session ticks/day, first-cross-only per (rule, session) — see
-      # docs/user-stories/P1-intraday-threshold-alerts-telegram.md.
-      schedule = "*/15 8-16 * * 1-5"
+      # ~90 in-session ticks/day, first-cross-only per (rule, session). Tightened
+      # from */15 (2026-08) to cut polling latency ~7.5→~2.5 min; the Barchart
+      # delayed feed (~10-12 min floor, measured) still dominates total latency.
+      # See docs/user-stories/P1-intraday-threshold-alerts-telegram.md.
+      schedule = "*/5 8-16 * * 1-5"
     }
     # Campaign 6 regime + judge — INERT shadow-compute bundled in a single job.
     # Regime (Layer-1+2, self-computing) writes pl_regime_shadow, then judge

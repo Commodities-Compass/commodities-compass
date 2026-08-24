@@ -134,10 +134,13 @@ def render_message(
         if signal_decision
         else "Le signal du jour est remis en cause"
     )
+    # Horizon reflects the SERVED model. Regime (serving_rank=1 since 2026-08-19)
+    # is J+1 — keep in sync if the served algorithm's evaluation horizon changes
+    # (app/services/dashboard_service._EVAL_HORIZON_BY_ALGORITHM).
     return (
         "⚠️ <b>Compass CC — Alerte intraday</b>\n"
         f"<b>{contract_code}</b> : le cours (<b>{_fmt(price)}</b>) a franchi "
         f"<b>{level_label} à {_fmt(level_value)}</b> à <b>{time_utc} UTC</b>.\n"
-        f"{signal_line} (horizon 4-5 sessions).\n"
+        f"{signal_line} (horizon J+1).\n"
         "<i>Information de marché, pas un conseil en investissement.</i>"
     )

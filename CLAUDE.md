@@ -401,7 +401,7 @@ The frontend calendar shows `display_date` values. Non-trading days (weekends + 
 - **Delivery**: `AlertSender` abstraction — `TelegramSender` (private broadcast channel, one `sendMessage` = fan-out) / `ConsoleSender` (dev/shadow). Channel selected by `ALERT_CHANNEL` env (`console` default, `telegram` live since 2026-07-28). `TELEGRAM_BOT_TOKEN` (Secret Manager) + `TELEGRAM_CHANNEL_ID` (numeric `-100…`, GitHub var). Transport-swappable (a `WhatsAppSender` could be added without touching the engine).
 - **Gates**: `should_skip_non_trading_day()` + `in_london_session()` (09:30-16:55 Europe/London, official ICE hours, DST via zoneinfo). Out-of-session tick = exit 0 (Sentry cron = success).
 - **Tables**: `pl_contract_data_intraday` (append-only observations), `ref_alert_rule`, `aud_alert_event`. Never writes `pl_contract_data_daily` (EOD truth = 1 row/day).
-- **Cron**: `*/15 8-16 * * 1-5` (wide UTC window; the in-code London gate trims the DST edges) — **CLI**: `poetry run intraday-monitor [--dry-run] [--verbose] [--force]`
+- **Cron**: `*/5 8-16 * * 1-5` (wide UTC window; the in-code London gate trims the DST edges; tightened from `*/15` 2026-08 to cut polling latency — Barchart's ~10-12 min delayed feed is the remaining floor) — **CLI**: `poetry run intraday-monitor [--dry-run] [--verbose] [--force]`
 - **US**: [docs/user-stories/P1-intraday-threshold-alerts-telegram.md](docs/user-stories/P1-intraday-threshold-alerts-telegram.md)
 
 ### Known Issues & Lessons (2026-02-18 debugging sessions)

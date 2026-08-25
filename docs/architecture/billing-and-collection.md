@@ -3,6 +3,7 @@
 > **Status**: **socle IMPLEMENTED and shipped dark** (`BILLING_ENFORCED=false`) — migration `b1i2l3l4i5n6`, 3 tables, the gate in `resolve_principal`, the Stripe webhook, and the ops CLI. Not yet wired to a real Stripe account. Remaining: the watchdog's Cloud Scheduler entry, and the Stripe account + Products/Prices.
 > **Goal**: recurring EUR billing by **card on file with automatic debit**, for 7 negotiated tiers sold by hand.
 > **Prerequisite, already met**: per-client entitlement is LIVE and enforced ([entitlement-and-tenancy.md](./entitlement-and-tenancy.md) · [runbook](../runbooks/entitlement-enforcement.md)). Billing plugs into `resolve_principal`; it does not replace it.
+> **How these decisions were reached**, what was rejected on what evidence, and what we got wrong on the way: [billing-decision-log.md](./billing-decision-log.md).
 > **Guardrails**: [north-star-alignment](../../.claude/rules/north-star-alignment.md) · [pipeline-error-handling](../../.claude/rules/pipeline-error-handling.md) · [migrations-prod-via-main-only](../../.claude/rules/migrations-prod-via-main-only.md) · [no-workaround-without-asking](../../.claude/rules/no-workaround-without-asking.md).
 
 ---

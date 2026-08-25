@@ -545,3 +545,46 @@ async def test_unknown_subscription_status_leaves_billing_untouched(
     ).scalar_one()
     await db_session.refresh(refreshed)
     assert refreshed.billing_status == "active"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_unhandled_event_types_never_touch_the_database(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Stripe emits far more than we subscribe to.
+
+    One `stripe trigger invoice.payment_failed` delivered 11 events, of which we
+    handle exactly one. Without an early return, each of the other ten cost a
+    join and logged a misleading "unknown customer" warning — the customer is
+    beside the point when the type would be ignored anyway.
+    """
+    calls: list[str] = []
+
+    async def _spy(session, customer_id):  # noqa: ANN001
+        calls.append(customer_id)
+        return None
+
+    monkeypatch.setattr(billing_service, "_account_by_customer", _spy)
+
+    for etype in (
+        "payment_intent.created",
+        "charge.failed",
+        "invoice.finalized",
+        "invoice.updated",
+        "customer.updated",
+    ):
+        assert etype not in billing_service.HANDLED_EVENTS
+        assert (
+            await billing_service.apply_event(
+                db_session,
+                {
+                    "id": f"evt_{etype}",
+                    "type": etype,
+                    "data": {"object": {"customer": "cus_whatever"}},
+                },
+            )
+            == []
+        )
+
+    assert calls == []  # not one lookup for five ignored events

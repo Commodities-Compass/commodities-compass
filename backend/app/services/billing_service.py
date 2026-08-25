@@ -59,6 +59,21 @@ _STATUS_MAP: dict[str, str] = {
 }
 
 
+#: The only event types that change state. Everything else is archived and
+#: dropped without touching the database — Stripe emits far more than we
+#: subscribe to (a single `stripe trigger` produced 11 events for 1 we handle),
+#: and a production endpoint may be configured to send everything.
+HANDLED_EVENTS: frozenset[str] = frozenset(
+    {
+        "checkout.session.completed",
+        "invoice.paid",
+        "invoice.payment_failed",
+        "customer.subscription.updated",
+        "customer.subscription.deleted",
+    }
+)
+
+
 class BillingError(RuntimeError):
     """Billing failed. Always surfaced, never swallowed."""
 
@@ -316,6 +331,13 @@ async def apply_event(session: AsyncSession, event: dict[str, Any]) -> list[str]
         )
         await _set_status(session, account, "active")
         return await _subs_of(session, account)
+
+    # Bail out BEFORE hitting the database. Without this, every unhandled event
+    # costs a join and logs a misleading "unknown customer" warning — the
+    # customer is beside the point when we would ignore the type anyway.
+    if etype not in HANDLED_EVENTS:
+        logger.debug("Stripe event %s is not handled — archived only.", etype)
+        return []
 
     customer_id = obj.get("customer")
     if not customer_id:

@@ -63,7 +63,7 @@ to conclude anything, and the only figure that exists.
 - `pnpm dev` - Start both backend and frontend in development mode (concurrently)
 - `pnpm dev:backend` - Start only backend (<http://localhost:8000>)
 - `pnpm dev:frontend` - Start only frontend (<http://localhost:5173>)
-- `pnpm db:up` - Start PostgreSQL (port 5433) and Redis (port 6380) containers
+- `pnpm db:up` - Start PostgreSQL (port 5433) container
 - `pnpm db:down` - Stop database containers
 - `pnpm db:logs` - View database container logs
 - `pnpm lint` - Run linting for both projects
@@ -219,7 +219,6 @@ Frontend code uses Auth0 variables (not VITE_ prefixed) exposed via custom Vite 
 ### Database Setup
 
 - PostgreSQL 15 runs on custom port 5433 (not default 5432) via Docker
-- Redis 7 runs on custom port 6380 (not default 6379) via Docker
 - Database URL: `postgresql+asyncpg://postgres:password@localhost:5433/commodities_compass`
 - Async SQLAlchemy with asyncpg driver for app, sync engine for Alembic migrations
 - Multiple migrations exist (idempotent with `_has_column()` checks and `if_not_exists=True` for safe re-application on GCP)

@@ -50,6 +50,18 @@ BLOCKING_STATUSES: frozenset[str] = frozenset({"unpaid", "canceled"})
 #: institutional path, and it is what makes the migration non-breaking.
 STATUS_MANUAL = "manual"
 
+#: Legal regime of a contract. French consumer protections (14-day withdrawal,
+#: simplified cancellation, renewal notice) bind at CONTRACT FORMATION, so the
+#: regime that applied has to be recorded per contract rather than derived from
+#: a current account attribute — it cannot be reconstructed after the fact.
+#: Constant `business` while we sell B2B only; the column exists so that opening
+#: to consumers later does not leave existing contracts undocumented.
+CUSTOMER_TYPE_BUSINESS = "business"
+CUSTOMER_TYPE_CONSUMER = "consumer"
+CUSTOMER_TYPES: frozenset[str] = frozenset(
+    {CUSTOMER_TYPE_BUSINESS, CUSTOMER_TYPE_CONSUMER}
+)
+
 
 class TenantBillingSubscription(Base):
     """What an account is signed up to. Temporal append-only."""
@@ -79,6 +91,10 @@ class TenantBillingSubscription(Base):
     #: Denormalised on purpose: what was sold, at the time it was sold. The
     #: account's current tier can change without rewriting billing history.
     tier: Mapped[str] = mapped_column(VARCHAR(30), nullable=False)
+    #: Same logic, applied to the legal regime — see CUSTOMER_TYPES above.
+    customer_type: Mapped[str] = mapped_column(
+        VARCHAR(20), nullable=False, server_default=CUSTOMER_TYPE_BUSINESS
+    )
     currency: Mapped[str] = mapped_column(
         VARCHAR(3), nullable=False, server_default="EUR"
     )

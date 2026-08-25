@@ -29,6 +29,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from sqlalchemy import select, text
 
+from app.models.billing import CUSTOMER_TYPE_BUSINESS, CUSTOMER_TYPES
 from app.models.tenant import TenantAccount
 from scripts.db import get_session
 
@@ -79,8 +80,9 @@ def billing_status() -> int:
             text(
                 """
                 SELECT provider, provider_customer_id, provider_subscription_id,
-                       tier, amount_cents, currency, billing_interval, status,
-                       current_period_end, effective_from, active
+                       tier, customer_type, amount_cents, currency,
+                       billing_interval, status, current_period_end,
+                       effective_from, active
                 FROM tenant_billing_subscription
                 WHERE account_id = :aid
                 ORDER BY effective_from DESC, created_at DESC
@@ -93,10 +95,11 @@ def billing_status() -> int:
         for s in subs:
             m = s._mapping
             logger.info(
-                "  sub %s %s %s %d %s/%s status=%s until=%s active=%s",
+                "  sub %s %s %s [%s] %d %s/%s status=%s until=%s active=%s",
                 m["provider"],
                 m["provider_subscription_id"] or "—",
                 m["tier"],
+                m["customer_type"],
                 m["amount_cents"],
                 m["currency"],
                 m["billing_interval"],
@@ -197,6 +200,15 @@ def create_checkout_link() -> int:
     p.add_argument("--price", required=True, help="Stripe Price id (price_…)")
     p.add_argument("--amount-cents", type=int, required=True, help="For our own record")
     p.add_argument("--interval", default="month", choices=["month", "year"])
+    # Recorded per CONTRACT because French consumer protections bind at contract
+    # formation: which regime applied is not reconstructable later from the
+    # account. Constant while we sell B2B only — that is the point.
+    p.add_argument(
+        "--customer-type",
+        default=CUSTOMER_TYPE_BUSINESS,
+        choices=sorted(CUSTOMER_TYPES),
+        help="Legal regime at contract formation (default: business).",
+    )
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args()
 
@@ -208,11 +220,12 @@ def create_checkout_link() -> int:
     with get_session() as session:
         account = _account(session, args.account)
         logger.info(
-            "Checkout for %s tier=%s %d EUR-cents/%s price=%s",
+            "Checkout for %s tier=%s %d EUR-cents/%s regime=%s price=%s",
             account.code,
             account.tier,
             args.amount_cents,
             args.interval,
+            args.customer_type,
             args.price,
         )
         if args.dry_run:
@@ -234,9 +247,9 @@ def create_checkout_link() -> int:
             text(
                 """
                 INSERT INTO tenant_billing_subscription
-                    (id, account_id, provider, tier, currency, amount_cents,
-                     billing_interval, status, effective_from, active)
-                VALUES (:id, :aid, 'stripe', :tier, 'EUR', :amt,
+                    (id, account_id, provider, tier, customer_type, currency,
+                     amount_cents, billing_interval, status, effective_from, active)
+                VALUES (:id, :aid, 'stripe', :tier, :ctype, 'EUR', :amt,
                         :itv, 'incomplete', CURRENT_DATE, true)
                 ON CONFLICT DO NOTHING
                 """
@@ -245,6 +258,7 @@ def create_checkout_link() -> int:
                 "id": uuid.uuid4(),
                 "aid": account.id,
                 "tier": account.tier,
+                "ctype": args.customer_type,
                 "amt": args.amount_cents,
                 "itv": args.interval,
             },

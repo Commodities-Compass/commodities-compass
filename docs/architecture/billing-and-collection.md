@@ -66,6 +66,11 @@ tenant_billing_subscription     -- what they are signed up to
   provider_customer_id VARCHAR
   provider_subscription_id VARCHAR
   tier VARCHAR                  -- denormalised for audit: what was sold, at the time
+  customer_type VARCHAR         -- 'business'|'consumer': the LEGAL regime at contract
+                                --  formation. Same denormalisation logic as `tier` —
+                                --  French consumer protections bind when the contract
+                                --  is formed, so it cannot be derived later from a
+                                --  current account attribute. Constant while B2B-only.
   currency VARCHAR              -- 'EUR'
   amount_cents INTEGER
   billing_interval VARCHAR      -- 'month' | 'year' (`interval` is a SQL keyword)
@@ -265,6 +270,21 @@ Coops remain genuinely unknown — but that is a commercial question answered wh
 
 Roughly 80% of Part 1 is invariant to any of this (model, gate, webhook, `manual` path).
 
+### 14. If we open to consumers (B2C) later
+
+Not planned, but cheap to keep possible. What would return: 14-day withdrawal, electronic cancellation, renewal notice, TTC public pricing, and VAT at the consumer's country rate via the OSS one-stop shop — so Stripe Tax, deliberately left off today.
+
+**One thing is anticipated, and only one**: `tenant_billing_subscription.customer_type`. The reason is legal, not technical — **French consumer protections bind at contract formation**, so which regime applied has to be recorded per contract. It cannot be derived afterwards from a current account attribute, because an account can change status while a contract signed last year cannot be re-qualified. It is constant `business` while we sell B2B only; that is the point.
+
+**What already serves a future B2C without having been built for it:**
+- `aud_billing_event` archives raw payloads → turning on Checkout `consent_collection` makes the withdrawal-waiver proof land there automatically. Nothing to build.
+- The Customer Portal is already wired (`POST /v1/billing/portal-session`) → that is the "cancel as easily as you subscribed" mechanism. It would only need surfacing permanently instead of on payment failure.
+- Stripe Tax is off by configuration, not absent — a flip, not a rewrite.
+
+**Deliberately not built**: consent collection, permanent portal link, Stripe Tax + OSS registration, TTC price grid. These do not pre-build usefully.
+
+**A misconception worth killing**: B2C does *not* require self-serve signup. What requires it is an acquisition motion where a consumer discovers the product and buys unassisted — a question of decision window, not of volume. Selling to individuals we are already in contact with works with today's manual provisioning unchanged. If self-serve ever ships, the hard part is not scale: it is **binding a Stripe payment to an Auth0 identity** when the two are created independently, and an email is not proof of identity until Auth0 has verified it.
+
 ---
 
 ## Appendix A — Implementation checklist
@@ -274,7 +294,7 @@ Roughly 80% of Part 1 is invariant to any of this (model, gate, webhook, `manual
 
 **Backend**
 - [x] `stripe` dependency in `pyproject.toml`
-- [x] `app/models/billing.py` — 3 models
+- [x] `app/models/billing.py` — 3 models (+ `customer_type` on the subscription)
 - [x] `app/services/billing_service.py` — customer, checkout session, portal session, mark-paid
 - [x] `app/api/api_v1/endpoints/billing.py` — `POST /v1/webhooks/stripe`, `POST /v1/billing/portal-session`
 - [x] `app/core/tenancy.py` — `_billing_blocks` + 2 columns in the `resolve_principal` SELECT

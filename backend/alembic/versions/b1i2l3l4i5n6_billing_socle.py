@@ -94,6 +94,19 @@ def upgrade() -> None:
             sa.Column("provider_subscription_id", sa.VARCHAR(255), nullable=True),
             # Denormalised on purpose: what was sold, at the time it was sold.
             sa.Column("tier", sa.VARCHAR(30), nullable=False),
+            # Same logic applied to the LEGAL regime: French consumer law binds
+            # at contract formation, so which regime applied must be recorded
+            # per contract — it cannot be reconstructed afterwards from a
+            # current account attribute. Constant 'business' while we sell B2B
+            # only; the column exists so opening to consumers later does not
+            # leave existing contracts undocumented.
+            sa.Column(
+                "customer_type",
+                sa.VARCHAR(20),
+                nullable=False,
+                server_default="business",
+                comment="business|consumer — legal regime at contract formation",
+            ),
             sa.Column("currency", sa.VARCHAR(3), nullable=False, server_default="EUR"),
             sa.Column("amount_cents", sa.Integer(), nullable=False),
             sa.Column("billing_interval", sa.VARCHAR(10), nullable=False),

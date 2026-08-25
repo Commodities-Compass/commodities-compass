@@ -296,6 +296,73 @@ async def test_auth_me_surfaces_billing_status(
 # --------------------------------------------------------------------------- #
 @pytest.mark.integration
 @pytest.mark.asyncio
+async def test_subscription_records_the_legal_regime_per_contract(
+    db_session: AsyncSession,
+) -> None:
+    """French consumer protections bind at CONTRACT FORMATION.
+
+    Which regime applied therefore has to live on the contract row, not be
+    derived from a current account attribute — an account can change status,
+    and a contract signed last year cannot be re-qualified retroactively. The
+    column is constant `business` while we sell B2B only; that is the point.
+    """
+    sub = "auth0|regime"
+    await _seed(db_session, sub, {ent.SECTION_WEATHER})
+    account = (
+        await db_session.execute(
+            select(TenantAccount)
+            .join(TenantUser, TenantUser.account_id == TenantAccount.id)
+            .where(TenantUser.auth0_sub == sub)
+        )
+    ).scalar_one()
+
+    # Default: a row written without naming the regime is a B2B contract.
+    await db_session.execute(
+        text(
+            """
+            INSERT INTO tenant_billing_subscription
+                (id, account_id, provider, tier, currency, amount_cents,
+                 billing_interval, status, effective_from, active)
+            VALUES (:id, :aid, 'stripe', :tier, 'EUR', 30000, 'month',
+                    'active', CURRENT_DATE, true)
+            """
+        ),
+        {"id": uuid.uuid4(), "aid": account.id, "tier": account.tier},
+    )
+    # And a consumer contract can be recorded explicitly, so opening to B2C
+    # later does not leave earlier contracts undocumented.
+    await db_session.execute(
+        text(
+            """
+            INSERT INTO tenant_billing_subscription
+                (id, account_id, provider, provider_subscription_id, tier,
+                 customer_type, currency, amount_cents, billing_interval,
+                 status, effective_from, active)
+            VALUES (:id, :aid, 'stripe', 'sub_b2c', :tier, 'consumer', 'EUR',
+                    3000, 'month', 'active', CURRENT_DATE, true)
+            """
+        ),
+        {"id": uuid.uuid4(), "aid": account.id, "tier": account.tier},
+    )
+    await db_session.flush()
+
+    regimes = sorted(
+        r[0]
+        for r in (
+            await db_session.execute(
+                text(
+                    "SELECT customer_type FROM tenant_billing_subscription "
+                    "WHERE account_id = :aid"
+                ),
+                {"aid": account.id},
+            )
+        ).all()
+    )
+    assert regimes == ["business", "consumer"]
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_webhook_rejects_a_bad_signature(client: AsyncClient) -> None:
     """400, not 500: a forged payload is not a retry candidate."""
     r = await client.post(

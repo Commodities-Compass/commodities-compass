@@ -124,8 +124,13 @@ def billing_status() -> int:
         for inv in invoices:
             m = inv._mapping
             short = ""
-            if m["amount_received_cents"] is not None and (
-                m["amount_received_cents"] < m["amount_cents"]
+            # Only meaningful on a SETTLED invoice: an `open` one is short by its
+            # full amount simply because it has not been paid, which would flag
+            # every unpaid invoice as a short payment.
+            if (
+                m["status"] == "paid"
+                and m["amount_received_cents"] is not None
+                and m["amount_received_cents"] < m["amount_cents"]
             ):
                 # Correspondent-bank skim on a wire. Visible, not silently lost.
                 short = f"  ⚠ SHORT by {m['amount_cents'] - m['amount_received_cents']}"

@@ -442,14 +442,13 @@ failure mode. Not decided.
   fixed threshold.
 - ElevenLabs Studio podcast endpoint may require workspace allowlisting —
   confirm before counting on arm 4.
-- **`scripts/` is excluded from pyright** (`pyproject.toml`, `[tool.pyright]`
-  `exclude = ["scripts", "vendor"]` — the comment only justifies `vendor`). All
-  19 Cloud Run jobs are therefore unchecked; a probe with a temporary config
-  found **147 hidden errors**, 67 of them `reportAttributeAccessIssue`. Excluding
-  `archive` (52) and `research` (29) leaves ~66 in live pipeline modules:
-  press_review_agent 17, barchart_scraper 12, regime_shadow 7, meteo_agent 5,
-  regime_brief 4, publish_session 3. `podcast_audio` is at 0 — it was written
-  against a temporary config that checked it. Worth a dedicated pass.
+- ~~**`scripts/` is excluded from pyright**~~ — **RESOLVED**, PR #116. The
+  exclusion dated from 2026-03-09 (`bffc272`, "resolve pyright errors for CI"),
+  so every Cloud Run job went unchecked for five and a half months — and almost
+  everything in `scripts/` today was written after it. The pre-commit hook
+  matched those files and printed `Passed` while pyright skipped them, which is
+  why nobody noticed. 66 errors closed in shipping modules; `archive` and
+  `research` stay excluded.
 - `backend/.env.bak*` is **not** covered by `.gitignore` — a hand-made backup of
   `.env` shows up as untracked and is one `git add .` away from being committed.
   One line in `.gitignore` would close it.

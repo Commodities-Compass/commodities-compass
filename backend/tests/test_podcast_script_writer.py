@@ -168,6 +168,13 @@ def good_turns() -> tuple[Turn, ...]:
             "Marc",
             "Une reprise rapide des arrivages portuaires en Côte d'Ivoire. Avec une météo qui reste favorable, ça détendrait la tension très vite et ça pèserait sur les prix. C'est le scénario à garder en tête.",
         ),
+        Turn("Ana", "Et si le support cède en séance, on fait quoi ?"),
+        Turn(
+            "Marc",
+            "On ne se précipite pas : on laisse la séance confirmer avant d'ajuster "
+            "quoi que ce soit, parce qu'une mèche sous le support ne fait pas une "
+            "cassure, et se retourner pour rien coûte un aller-retour.",
+        ),
         Turn(
             "Ana",
             "Message reçu. On se retrouve demain pour voir si les arrivages ont bougé.",
@@ -214,13 +221,30 @@ class TestTheDecision:
         with pytest.raises(ScriptError, match="never announces"):
             validate(script(turns), make_data(), NARRATIVE)
 
-    def test_rejects_a_second_decision_pushed_as_a_call(self):
+    def test_rejects_a_third_call_pushed_at_the_listener(self):
+        # OPEN is neither the served call (MONITOR) nor the technical base
+        # (HEDGE), so pushing it twice competes with the published decision.
         turns = good_turns() + (
-            Turn("Ana", "On passe en HEDGE alors ?"),
-            Turn("Marc", "Oui, HEDGE. À demain les COMPASTEURS !"),
+            Turn("Ana", "On passe en OPEN alors ?"),
+            Turn("Marc", "Oui, OPEN. À demain les COMPASTEURS !"),
         )
-        with pytest.raises(ScriptError, match="ambiguous"):
+        with pytest.raises(ScriptError, match="pushes 'OPEN'"):
             validate(script(turns), make_data(), NARRATIVE)
+
+    def test_allows_the_technical_base_to_be_named_freely(self):
+        # The editorial section exists to contrast the technical read with the
+        # macro overlay; the served prose itself says "la base technique HEDGE".
+        # Forbidding the word would forbid the heart of the episode.
+        turns = good_turns() + (
+            Turn("Ana", "Et la lecture technique disait quoi ?"),
+            Turn("Marc", "Elle disait HEDGE, dans un contexte de volatilité élevée."),
+            Turn(
+                "Ana",
+                "Donc HEDGE côté technique, MONITOR une fois le macro pris en compte.",
+            ),
+            Turn("Marc", "À demain les COMPASTEURS !"),
+        )
+        validate(script(turns), make_data(), NARRATIVE)
 
 
 class TestTheMachineryStaysHidden:
@@ -342,3 +366,30 @@ class TestWriteScript:
     def test_refuses_a_response_with_no_turns(self):
         with pytest.raises(ScriptError, match="no turns"):
             write_script(make_data(), NARRATIVE, _client_returning({"turns": []}))
+
+
+class TestOpenInterestIsNotADecision:
+    """ "open interest" is the standard English term for OI and contains "open".
+
+    Live false positive, 2026-08-26: every English episode was refused because a
+    case-insensitive substring count read the phrase as a competing OPEN call.
+    """
+
+    def test_english_open_interest_prose_is_not_a_competing_call(self):
+        turns = good_turns()[:-1] + (
+            Turn("Ana", "Volume and open interest — anything unusual?"),
+            Turn(
+                "Marc",
+                "Volume came in at 3625 with open interest at 36333, both steady.",
+            ),
+            Turn("Marc", "À demain les COMPASTEURS !"),
+        )
+        validate(script(turns), make_data(), NARRATIVE)
+
+    def test_the_signal_name_in_capitals_is_still_caught(self):
+        turns = good_turns()[:-1] + (
+            Turn("Ana", "On bascule en OPEN ?"),
+            Turn("Marc", "Oui, OPEN. À demain les COMPASTEURS !"),
+        )
+        with pytest.raises(ScriptError, match="pushes 'OPEN'"):
+            validate(script(turns), make_data(), NARRATIVE)

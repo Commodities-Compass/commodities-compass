@@ -61,8 +61,12 @@ class TestNumericTokens:
         assert numeric_tokens("le SUPPORT 1, la RÉSISTANCE 1, confiance 4/5") == set()
 
     def test_extracts_every_figure_of_the_real_row(self):
+        # Both the full-precision form and the integer part: the validator's job
+        # is to catch invention, and a speaker rounding is not invention.
         assert numeric_tokens(normalize_for_speech(REAL_CONCLUSION)) == {
+            "4160",
             "416067",
+            "4315",
             "431567",
         }
 
@@ -109,7 +113,57 @@ class TestNumericTokensSeparation:
         assert numeric_tokens("positions ouvertes 36 333") == {"36333"}
 
     def test_a_grouped_decimal_survives(self):
-        assert numeric_tokens("support à 4 160,67") == {"416067"}
+        assert numeric_tokens("support à 4 160,67") == {"4160", "416067"}
 
     def test_a_percentage_is_too_short_to_assert_on(self):
         assert numeric_tokens("en repli de 1,4 %") == set()
+
+
+class TestSpokenMatchesStored:
+    """The database writes for the eye, the episode speaks for the ear.
+
+    Every case below was a live false positive on 2026-08-26: the generator was
+    refused three runs running for quoting a stock figure it had read correctly
+    out of `technicals_snapshot` (`STOCK_US=236,110.00`).
+    """
+
+    def test_a_zero_fraction_is_formatting_not_precision(self):
+        assert numeric_tokens("236 110 tonnes") <= numeric_tokens("STOCK_US=236,110.00")
+
+    def test_a_speaker_may_round_a_real_fraction_away(self):
+        # STOCK_EU=40,858.92 spoken as "40 858 tonnes" — at that scale the
+        # decimal carries nothing, and rounding it off is correct speech.
+        assert numeric_tokens("40 858 tonnes") <= numeric_tokens("STOCK_EU=40,858.92")
+
+    def test_the_full_precision_form_still_matches(self):
+        # A price level keeps its decimals, and both spellings must resolve.
+        assert numeric_tokens("4 160,67") <= numeric_tokens("SUPPORT 1 (4 160.67)")
+
+    def test_an_actually_invented_figure_is_still_caught(self):
+        assert not numeric_tokens("9 999 tonnes") <= numeric_tokens(
+            "STOCK_US=236,110.00"
+        )
+
+
+class TestSeparatorMeansOppositeThingsPerLocale:
+    """`,` and `.` swap roles between French and English.
+
+    Live false positive, 2026-08-26: the English episode quoted `236,110 tonnes`
+    straight out of `technicals_snapshot` and was refused, because the thousands
+    comma was read as a decimal point and produced a stray `236`.
+    """
+
+    def test_a_french_decimal_comma_keeps_two_precisions(self):
+        assert numeric_tokens("4 160,67") == {"4160", "416067"}
+
+    def test_an_english_thousands_comma_is_one_number(self):
+        assert numeric_tokens("236,110") == {"236110"}
+
+    def test_the_stored_form_matches_both_spoken_forms(self):
+        source = numeric_tokens("STOCK_US=236,110.00 | STOCK_EU=40,858.92 | OI=23806")
+        assert numeric_tokens("236 110 et 40 858 tonnes, OI 23 806") <= source
+        assert numeric_tokens("236,110 and 40,858 tonnes, OI 23,806") <= source
+
+    def test_a_three_digit_group_never_becomes_a_fraction(self):
+        # "236 point 110" is what broke it; the group is thousands, not decimals.
+        assert "236" not in numeric_tokens("236,110")

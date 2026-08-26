@@ -77,6 +77,17 @@ _DIGITS = re.compile(
 )
 
 
+# Splits a matched number into its integer part and its fractional digits.
+#
+# `,` and `.` mean opposite things either side of the Channel: French writes
+# `4 160,67` (decimal comma) where English writes `236,110` (thousands comma).
+# The digit count disambiguates without knowing the locale — a separator
+# followed by exactly three digits groups thousands, one followed by one or two
+# is a decimal. Reading `236,110` as "236 point 110" is what made a correctly
+# quoted stock figure look invented in the English episode.
+_FRACTION = re.compile(r"^(.*?)(?:([.,])(\d{1,2}))?$", re.DOTALL)
+
+
 def numeric_tokens(text: str) -> set[str]:
     """Canonical digit sequences in ``text``, for comparing spoken to source.
 
@@ -85,7 +96,19 @@ def numeric_tokens(text: str) -> set[str]:
     """
     tokens = set()
     for raw in _DIGITS.findall(text):
-        digits = re.sub(r"\D", "", raw)
-        if len(digits) >= _MIN_ASSERTABLE_DIGITS:
-            tokens.add(digits.lstrip("0") or "0")
+        # A trailing all-zero fraction is formatting, not precision: the database
+        # renders STOCK_US=236,110.00 where a speaker says "236 110 tonnes". Left
+        # in, the two never match and every genuine figure reads as invented.
+        head, _sep, frac = _FRACTION.match(raw).groups()  # type: ignore[union-attr]
+        whole = re.sub(r"\D", "", head)
+        # Emit the integer part on its own as well as the full-precision form. A
+        # speaker rounds — the database holds STOCK_EU=40,858.92 and the episode
+        # says "40 858 tonnes". That is the figure, not an invented one. A zero
+        # fraction is pure formatting and collapses to the same token.
+        for candidate in {
+            whole,
+            whole + frac if frac and set(frac) != {"0"} else whole,
+        }:
+            if len(candidate) >= _MIN_ASSERTABLE_DIGITS:
+                tokens.add(candidate.lstrip("0") or "0")
     return tokens

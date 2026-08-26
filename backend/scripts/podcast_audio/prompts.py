@@ -34,6 +34,14 @@ horizon la prochaine séance. Deux journalistes financiers à l'antenne.
 
 {shape}
 
+COMMENT DIRE LES CHIFFRES :
+- Les stocks se disent en tonnes ENTIÈRES : « 236 110 tonnes », jamais
+  « 236 110 virgule zéro zéro ». La décimale n'apporte rien à cette échelle.
+- Les niveaux de prix GARDENT leurs décimales : « le support à 4 160,67 ».
+  C'est le niveau exact qui compte pour quelqu'un qui passe un ordre.
+- N'invente AUCUN chiffre. Si une valeur n'est pas dans la matière ci-dessous,
+  ne la mentionne pas — pas d'approximation de mémoire.
+
 CE QUI EST ARRÊTÉ — tu l'expliques, tu ne le discutes pas :
 - Signal publié : {decision}
 - Conviction : {confidence}/5
@@ -71,7 +79,14 @@ INTERDIT DE PRONONCER : intelligence artificielle, IA, algorithme, modèle, \
 spécialiste, probabilité, score, z-score, régime détecté. Ne compte jamais des \
 voix ni des indicateurs.
 
-LONGUEUR : entre 3600 et 5000 caractères de texte parlé au total, en visant 4300.
+LONGUEUR — c'est la contrainte la plus souvent ratée, relis-la avant de rendre :
+- 32 à 40 tours de parole au total.
+- Les tours d'analyse de Marc font 2 à 4 phrases pleines.
+- Les points 4, 5 et 6 (éditorial, éco-presse, météo) sont les plus développés :
+  5 à 6 tours chacun, avec des relances courtes d'Ana entre les blocs.
+- Total visé : 4600 caractères de texte parlé. Plancher 3700, PLAFOND 6200.
+Une idée par tour, pas de reformulation de ce qui vient d'être dit, pas de
+conclusion qui répète l'épisode.
 """
 
 _PROMPT_EN = """\
@@ -79,6 +94,14 @@ You are writing the daily Compass CC podcast script on London COCOA, horizon the
 next session. Two financial journalists on air.
 
 {shape}
+
+HOW TO SAY FIGURES:
+- Stocks are spoken in WHOLE tonnes: "236,110 tonnes", never "236,110 point
+  zero zero". The decimal carries nothing at that scale.
+- Price levels KEEP their decimals: "support at 4,160.67". The exact level is
+  what matters to someone placing an order.
+- Invent NO figure. If a value is not in the material below, do not mention it —
+  no approximating from memory.
 
 SETTLED — you explain it, you do not debate it:
 - Published signal: {decision}
@@ -116,7 +139,15 @@ sat against the technical read.
 NEVER SAY: artificial intelligence, AI, algorithm, model, specialist, \
 probability, score, z-score, detected regime. Never count votes or indicators.
 
-LENGTH: between 3600 and 5000 characters of spoken text in total, aiming for 4300.
+LENGTH — the constraint most often missed, re-read it before you answer:
+- 30 to 38 turns in total.
+- Marc's analytical turns run 2 to 4 full sentences.
+- Points 4, 5 and 6 (editorial, macro & press, weather) are the most developed:
+  5 to 6 turns each, with short pushbacks from Ana between blocks.
+- Target 3800 characters of spoken text. Floor 3000, CEILING 4900.
+English is more compact than French: the same episode needs fewer characters,
+so do not pad to reach a length. One idea per turn, no restating, no closing
+summary that replays the episode.
 """
 
 

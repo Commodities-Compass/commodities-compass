@@ -28,6 +28,7 @@ from datetime import date as date_cls
 from datetime import datetime
 
 import pandas as pd
+from typing import cast
 import sentry_sdk
 from regime.data_loader_protocol import DecideRequest
 from sentry_sdk.crons import monitor
@@ -167,7 +168,7 @@ def main() -> int:
             panel, contract_id = slice_panel(features, d)
             dec = pipe.decide(
                 DecideRequest(
-                    today=pd.Timestamp(d),
+                    today=cast(pd.Timestamp, pd.Timestamp(d)),
                     contract_id=contract_id,
                     market_history=panel,
                 )

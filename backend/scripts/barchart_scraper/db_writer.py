@@ -2,7 +2,9 @@
 
 import logging
 from datetime import date
+from datetime import datetime
 from decimal import Decimal
+from typing import cast
 from typing import Any
 
 from sqlalchemy import select
@@ -40,7 +42,7 @@ def write_ohlcv(
     """
     contract_id = resolve_by_code(session, contract_code)
     ts = data["timestamp"]
-    row_date: date = ts.date() if hasattr(ts, "date") and callable(ts.date) else ts
+    row_date: date = ts.date() if isinstance(ts, datetime) else cast(date, ts)
 
     iv_raw = data.get("implied_volatility")
     iv_decimal = Decimal(str(iv_raw)) / 100 if iv_raw is not None else None

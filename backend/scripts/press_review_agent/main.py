@@ -205,7 +205,23 @@ def main() -> int:
                     )
                     continue
 
-                errors = validate_output(result.parsed, result.provider)
+                if result.parsed is None:
+                    # success=True with no payload is a contradiction in
+                    # LLMResult; skip this provider rather than write nothing.
+                    logger.error(
+                        "[%s/%s] LLM reported success with no parsed payload",
+                        result.provider.value,
+                        lang,
+                    )
+                    sentry_sdk.capture_message(
+                        f"Press review success with no payload: "
+                        f"{result.provider.value}/{lang}",
+                        level="error",
+                    )
+                    continue
+                parsed = result.parsed
+
+                errors = validate_output(parsed, result.provider)
                 if errors:
                     logger.error(
                         "[%s/%s] Validation failed: %s",
@@ -229,7 +245,7 @@ def main() -> int:
                     article_id = write_article(
                         session,
                         result.provider,
-                        result.parsed,
+                        parsed,
                         article_date=data_date,
                         language=str(lang),
                         dry_run=args.dry_run,
@@ -253,7 +269,7 @@ def main() -> int:
                     # double-count it. So the segments stay owned by the fr run;
                     # the EN run still emits theme_sentiments (kept in the prompt
                     # so the shared validator passes) but discards them here.
-                    if result.parsed is not None and lang == "fr":
+                    if lang == "fr":
                         try:
                             # P2b: theme sentiments share the same date as the
                             # article row → data_date (= last completed session),
@@ -265,7 +281,11 @@ def main() -> int:
                                 session,
                                 article_id or uuid.uuid4(),
                                 data_date,
-                                result.parsed.get("theme_sentiments") or {},
+                                themes
+                                if isinstance(
+                                    themes := parsed.get("theme_sentiments"), dict
+                                )
+                                else {},
                                 result.provider,
                                 dry_run=args.dry_run,
                                 force=args.force,

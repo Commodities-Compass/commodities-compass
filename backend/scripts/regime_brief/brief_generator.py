@@ -22,6 +22,7 @@ Split of responsibility, as in the ensemble track:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
 from datetime import date as date_cls
 
 from scripts._shared.farmgate_brief import format_farmgate_lines
@@ -43,7 +44,7 @@ MONTHS_EN = (
 
 @dataclass(frozen=True)
 class _BriefLabels:
-    months: list[str]
+    months: Sequence[str]
     date_prefix: str
     horizon: str
     intro: str
@@ -329,7 +330,9 @@ def render_brief(data: BriefData, narrative: Narrative) -> str:
     lines.append("")
 
     # ── Official guaranteed farmgate price (standing reference) ───────────
-    farmgate_lines = format_farmgate_lines(data.farmgate, language)
+    farmgate_lines = format_farmgate_lines(
+        data.farmgate if isinstance(data.farmgate, Mapping) else None, language
+    )
     if farmgate_lines:
         lines.extend(farmgate_lines)
         lines.append("")

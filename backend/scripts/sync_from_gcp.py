@@ -330,11 +330,11 @@ def main() -> int:
             total_inserted += len(rows)
         else:
             with gcp_engine.connect() as gc:
-                count = gc.execute(text(f"SELECT COUNT(*) FROM {table}")).fetchone()[0]
+                count = gc.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar_one()
             with local_engine.connect() as lc:
                 local_count = lc.execute(
                     text(f"SELECT COUNT(*) FROM {table}")
-                ).fetchone()[0]
+                ).scalar_one()
             diff = count - local_count
             flag = f" ({diff:+d})" if diff != 0 else ""
             logger.info("  %s: gcp=%d local=%d%s", table, count, local_count, flag)

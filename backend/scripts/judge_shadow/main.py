@@ -24,6 +24,7 @@ import logging
 import sys
 from datetime import date as date_cls
 from datetime import datetime
+from typing import cast
 
 import sentry_sdk
 from sentry_sdk.crons import monitor
@@ -113,7 +114,12 @@ def main() -> int:
         )
         for d in dates:
             written += run_for_session(
-                session, data_date=d, llm=llm, dry_run=args.dry_run
+                session,
+                data_date=d,
+                # _ProbeLLM duck-types OpenAIJudgeLLM so --dry-run never calls
+                # the endpoint; the runner's annotation names the real class.
+                llm=cast(OpenAIJudgeLLM, llm),
+                dry_run=args.dry_run,
             )
         if args.dry_run:
             logger.info("[DRY RUN] no writes")

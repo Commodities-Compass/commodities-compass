@@ -129,6 +129,10 @@ def _completeness(session: Session, d: date) -> tuple[bool, bool, bool]:
         ),
         {"d": d},
     ).fetchone()
+    if row is None:
+        # Three EXISTS in one SELECT always yield a row; None means the query or
+        # the connection is broken, never "no data". Fail loud.
+        raise RuntimeError(f"completeness probe returned no row for {d}")
     return bool(row.core), bool(row.press), bool(row.meteo)
 
 

@@ -64,7 +64,9 @@ _STYLE = {
     "en": (
         "Two financial journalists talking live on air. Natural, lively, easy with each "
         "other: they answer, pick up, sometimes cut in. This is NOT a read-aloud. Even, "
-        "measured pace. Read numbers as whole numbers, never digit by digit."
+        "measured pace. Do NOT punch individual words — no emphatic stress, no word "
+        "set apart to underline it; the tone stays a live conversation, not a "
+        "demonstration. Read numbers as whole numbers, never digit by digit."
     ),
 }
 

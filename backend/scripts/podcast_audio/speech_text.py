@@ -25,11 +25,28 @@ _WHITESPACE = re.compile(r"\s+")
 
 
 def normalize_for_speech(text: str) -> str:
-    """Strip layout markup and re-spell numbers for a French voice."""
+    """Strip layout markup, re-spell numbers, and case coined words as spoken."""
     cleaned = _BLOCKQUOTE.sub("", text)
     cleaned = _BULLET.sub("", cleaned)
     cleaned = _DECIMAL_POINT.sub(",", cleaned)
+    cleaned = _apply_lexicon_casing(cleaned)
     return _WHITESPACE.sub(" ", cleaned).strip()
+
+
+def _apply_lexicon_casing(text: str) -> str:
+    """Rewrite lexicon words to the casing they are pronounced correctly in.
+
+    The brief and the script both write COMPASTEURS in capitals — that is the
+    brand form, and it is also exactly what made a voice read it as an
+    initialism. P0-quinquies settled it: normal case plus IPA was clean 3/3,
+    capitals were not. Heard live on 2026-08-26 as "compasteutuses" with the
+    caps still in place. The written form stays; only the spoken one changes.
+    """
+    for entry in LEXICON:
+        text = re.compile(rf"\b{re.escape(entry.phrase)}\b", re.IGNORECASE).sub(
+            entry.phrase, text
+        )
+    return text
 
 
 @dataclass(frozen=True)

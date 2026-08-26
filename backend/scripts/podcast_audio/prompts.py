@@ -56,10 +56,22 @@ MATIÈRE (n'utilise QUE ça — n'invente AUCUN chiffre) :
 [Météo] {weather}
 
 C'EST UNE CONVERSATION, PAS UNE LECTURE À TOUR DE RÔLE.
+Ton de PRÉSENTATEURS de podcast : vivants, complices, jamais récitants.
 - Ana lance, questionne, relance. Marc porte l'analyse.
-- Alterne des tours LONGS (une analyse développée) et des tours TRÈS COURTS \
-(une réaction de 3 à 8 mots : "Exactement.", "...mais le macro ne suit pas.").
-- L'un finit parfois la phrase de l'autre. Ils rebondissent.
+- Alterne des tours LONGS (une analyse développée) et des tours TRÈS COURTS.
+- Les tours courts sont de VRAIES réactions parlées, pas des accusés de
+  réception : "ah oui, quand même", "c'est massif ouais", "attends, 40 000
+  tonnes ?", "ça change tout". Après une réaction, l'autre ENCHAÎNE sur son idée
+  au lieu de repartir de zéro — comme quand on se coupe gentiment la parole.
+- Chaque tour court doit APPORTER quelque chose : une surprise, une objection,
+  une conséquence, une question. Un tour qui se contente d'approuver n'existe
+  pas dans cet épisode — s'il n'ajoute rien, supprime-le et enchaîne.
+  Exemples de tours courts valides : "ça, c'est nouveau", "donc l'offre ne suit
+  pas", "et côté acheteur ?", "attends, ça remonte à quand ?".
+- Aucune formule d'approbation ne se répète : chaque relance a ses propres mots.
+  (Ne cite AUCUN chiffre dans une réaction courte : les chiffres se disent dans
+  les tours d'analyse, à partir de la matière fournie.)
+- L'un finit parfois la phrase de l'autre.
 - Un script où chaque tour fait la même longueur est REFUSÉ.
 
 DÉROULÉ :
@@ -84,7 +96,9 @@ LONGUEUR — c'est la contrainte la plus souvent ratée, relis-la avant de rendr
 - Les tours d'analyse de Marc font 2 à 4 phrases pleines.
 - Les points 4, 5 et 6 (éditorial, éco-presse, météo) sont les plus développés :
   5 à 6 tours chacun, avec des relances courtes d'Ana entre les blocs.
-- Total visé : 4600 caractères de texte parlé. Plancher 3700, PLAFOND 6200.
+- Total visé : 4200 caractères de texte parlé. Plancher 3700, PLAFOND 6200.
+  Les exigences de naturel ci-dessus ne sont pas une invitation à rallonger :
+  un tour court qui apporte quelque chose reste court.
 Une idée par tour, pas de reformulation de ce qui vient d'être dit, pas de
 conclusion qui répète l'épisode.
 """
@@ -117,9 +131,21 @@ MATERIAL (use ONLY this — invent NO figure):
 [Weather] {weather}
 
 THIS IS A CONVERSATION, NOT TWO PEOPLE READING IN TURN.
+Podcast PRESENTER tone: alive, easy with each other, never reciting.
 - Ana opens, questions, pushes back. Marc carries the analysis.
-- Alternate LONG turns (a developed point) with VERY SHORT ones (a 3-to-8 word \
-reaction: "Exactly.", "...but the macro doesn't follow.").
+- Alternate LONG turns (a developed point) with VERY SHORT ones.
+- Short turns are REAL spoken reactions, not acknowledgements: "oh wow, really",
+  "that's huge", "hang on, forty thousand tonnes?", "that changes things". After
+  a reaction the other CARRIES ON with the same thought rather than restarting —
+  the way people cut in on each other without breaking the flow.
+- Every short turn must ADD something: a surprise, an objection, a consequence,
+  a question. A turn that merely agrees does not exist in this episode — if it
+  adds nothing, drop it and carry on.
+  Valid short turns look like: "that's new", "so supply isn't keeping up",
+  "and for the buyer?", "hang on, since when?".
+- No approving phrase repeats: every pickup has its own words.
+  (Quote NO figure in a short reaction: figures belong in the analytical turns,
+  taken from the material provided.)
 - One sometimes finishes the other's sentence.
 - A script where every turn is the same length is REJECTED.
 
@@ -144,7 +170,9 @@ LENGTH — the constraint most often missed, re-read it before you answer:
 - Marc's analytical turns run 2 to 4 full sentences.
 - Points 4, 5 and 6 (editorial, macro & press, weather) are the most developed:
   5 to 6 turns each, with short pushbacks from Ana between blocks.
-- Target 3800 characters of spoken text. Floor 3000, CEILING 4900.
+- Target 3500 characters of spoken text. Floor 3000, CEILING 4900.
+  The naturalness rules above are not licence to run long: a short turn
+  that adds something stays short.
 English is more compact than French: the same episode needs fewer characters,
 so do not pad to reach a length. One idea per turn, no restating, no closing
 summary that replays the episode.

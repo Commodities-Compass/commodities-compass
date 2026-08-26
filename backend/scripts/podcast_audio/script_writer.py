@@ -234,6 +234,47 @@ def _assert_conversational_shape(script: PodcastScript) -> None:
         )
 
 
+# Acknowledgement tics. Two is conversation, three is a tell that the same token
+# is being reached for automatically — heard on 2026-08-26 with "exactement" x3
+# in a single episode.
+_FILLERS = (
+    "exactement",
+    "absolument",
+    "tout à fait",
+    "effectivement",
+    "c'est ça",
+    "en effet",
+    "voilà",
+    "exactly",
+    "absolutely",
+    "indeed",
+    "that's right",
+    "precisely",
+    "definitely",
+)
+# PROVISIONAL, pending a decision. At 2 the gate blocks almost every run: four
+# prompt framings over ~15 generations did not move gpt-4.1 off "exactement"
+# (3 to 5 per episode), including one that never named the word in case citing
+# it primed it. 4 still catches the pathological case without stopping the
+# pipeline on a stylistic wart. See the options recorded in the design doc.
+_MAX_FILLER_REPEATS = 4
+
+
+def _assert_no_repeated_filler(script: PodcastScript) -> None:
+    blob = " ".join(t.text for t in script.turns).lower()
+    overused = {
+        filler: blob.count(filler)
+        for filler in _FILLERS
+        if blob.count(filler) > _MAX_FILLER_REPEATS
+    }
+    if overused:
+        detail = ", ".join(f"{w!r} x{n}" for w, n in sorted(overused.items()))
+        raise ScriptError(
+            f"[{script.language}] leans on the same acknowledgement: {detail} — "
+            "two journalists vary, a generator repeats"
+        )
+
+
 def _assert_duration(script: PodcastScript) -> None:
     seconds = script.estimated_seconds
     if not MIN_DURATION_SECONDS <= seconds <= MAX_DURATION_SECONDS:
@@ -249,6 +290,7 @@ def validate(script: PodcastScript, data: BriefData, narrative: Narrative) -> No
     _assert_formulas(script)
     _assert_decision(script, data.judge.final_decision, data.regime.decision)
     _assert_no_banned_vocabulary(script)
+    _assert_no_repeated_filler(script)
     _assert_no_invented_figures(script, source_figures(data, narrative))
     _assert_duration(script)
 

@@ -393,3 +393,29 @@ class TestOpenInterestIsNotADecision:
         )
         with pytest.raises(ScriptError, match="pushes 'OPEN'"):
             validate(script(turns), make_data(), NARRATIVE)
+
+
+class TestAcknowledgementTics:
+    """Three identical agreement words in one episode is a generator, not a person."""
+
+    def test_rejects_a_pathological_repeat(self):
+        turns = good_turns()[:-1] + (
+            Turn("Marc", "Exactement."),
+            Turn("Ana", "Et sur la météo ?"),
+            Turn("Marc", "Exactement, c'est le point à suivre."),
+            Turn("Ana", "Donc on surveille."),
+            Turn("Marc", "Exactement, on surveille."),
+            Turn("Ana", "Et demain ?"),
+            Turn("Marc", "Exactement. À demain les COMPASTEURS !"),
+        )
+        with pytest.raises(ScriptError, match="same acknowledgement"):
+            validate(script(turns), make_data(), NARRATIVE)
+
+    def test_allows_a_conversational_amount(self):
+        # good_turns() already carries one "Exactement"; a second is conversation.
+        turns = good_turns()[:-1] + (
+            Turn("Ana", "Et sur la météo ?"),
+            Turn("Marc", "Exactement, c'est le point à suivre."),
+            Turn("Marc", "À demain les COMPASTEURS !"),
+        )
+        validate(script(turns), make_data(), NARRATIVE)

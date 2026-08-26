@@ -208,6 +208,12 @@ off-target chunks at `rate × target/measured`, clamped to [0.7, 1.4].
 2-chunk episode, spread across chunks:  uncorrected 7.3 %  →  corrected 2.2 %
 ```
 
+**The target is relative, not absolute.** The natural rate depends on the shape
+of the content: the same voices run at 15.7 chars/s on a dialogue of short turns
+and ~20 on monologue prose, because dialogue carries pauses and reactions. A
+hard-coded target therefore imposes a tempo instead of levelling one. Calibrate
+from the episode's own first pass (median across chunks) and normalise to that.
+
 Cost: one extra call per off-target chunk — at most 2× on a ~$0.08 episode.
 
 ### 4.4 Drive

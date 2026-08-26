@@ -406,6 +406,39 @@ anyone — a client, an analyst, an archive? If yes it stays as a deliverable in
 its own right. If no, dropping the upload removes a Drive dependency and a
 failure mode. Not decided.
 
+## 6.3 Deferred — make the two layers legible to the reader
+
+Decided 2026-08-26, **to do after P2**. The served narrative never says that two
+readings happened. `pl_judge_shadow.judge_stance` already records which:
+
+| stance | n | same call | overridden |
+|---|---|---|---|
+| `CONFIRM` | 9 | 9 | 0 |
+| `CONTRADICT` | 8 | 1 | **7** |
+| `NEUTRAL` | 2 | 2 | 0 |
+
+**Eight sessions in nineteen are `CONTRADICT`, and seven of those reverse the
+technical call.** Nearly one session in two, the macro overlay takes the opposite
+side — and the reader is never told. On 2026-08-24, a `CONTRADICT` that turned
+HEDGE into MONITOR, the whole articulation renders as one flat line: *"La base
+technique HEDGE indique une approche de couverture."*
+
+The fix belongs in `regime_brief/narrator.py`, **not** in the podcast: the
+narrative feeds the dashboard *and* `script_writer`, so doing it in one place
+keeps them saying the same thing. Three stances, three deterministic shapes —
+"l'algorithme Compass" for the technical read, "notre spécialiste cacao" for the
+macro arbitration.
+
+This reverses part of the banned-vocabulary rule, deliberately: the ban targets
+**mechanics leakage** ("le spécialiste macro dit", "la probabilité est de",
+"régime détecté par le système"). Two named personas do the opposite — they hide
+the machinery behind a human metaphor. The mechanics words stay banned.
+
+⚠️ Noted once and accepted by Hedi: "notre spécialiste cacao" implies a person
+where there is a model. It is defensible because the frontend already signs
+analyses "Compass Intelligence Desk" and there is real human oversight — but it
+is a commercial claim, chosen rather than slid into.
+
 ## 7. Blockers and open items
 
 ### Blockers found 2026-08-25

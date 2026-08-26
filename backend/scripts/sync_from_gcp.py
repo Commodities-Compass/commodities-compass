@@ -54,6 +54,9 @@ SYNC_TABLES = [
     "pl_contract_data_daily",
     "pl_contract_data_intraday",
     "pl_derived_indicators",
+    # Dashboard gauges — FK ref_contract only (algorithm-independent by design,
+    # written by the --stage gauges half of cc-compute-indicators)
+    "pl_dashboard_gauge",
     "pl_indicator_daily",
     "pl_signal_component",
     "pl_fundamental_article",
@@ -79,6 +82,22 @@ SYNC_TABLES = [
     "pl_external_indicator",
     "pl_stock_observation",
     "pl_supply_demand_observation",
+    # WatchAI physical origin flows (matrix block 2) — monthly grain, manual
+    # ingestion. The batch is the parent of every fact; ref_origin_entity lives
+    # here rather than with the other ref_ tables because it is rebuilt on each
+    # watchai-sync and tenant_account FKs it with ondelete=RESTRICT.
+    "pl_origin_ingest_batch",
+    "ref_origin_entity",
+    "pl_origin_export_declaration",
+    "pl_origin_purchase_monthly",
+    "pl_origin_grinding_monthly",
+    "pl_origin_flow_monthly",
+    # Tenancy / entitlements — tenant_account FKs pl_algorithm_version (algo pin)
+    # and ref_origin_entity (exporter identity), so it must follow both.
+    # Carries real auth0 subs: this copies customer identities to the local DB.
+    "tenant_account",
+    "tenant_user",
+    "tenant_entitlement",
     # Audit tables
     "aud_pipeline_run",
     "aud_data_quality_check",
@@ -86,6 +105,62 @@ SYNC_TABLES = [
     # Alert events — FK to ref_alert_rule + ref_contract (both above)
     "aud_alert_event",
 ]
+
+
+def check_local_only_dependents(
+    gcp_engine, local_engine, tables: list[str]
+) -> list[str]:
+    """Local tables absent upstream that FK into a synced table.
+
+    A feature branch that adds a child table — `tenant_billing_subscription` on
+    feat/billing-stripe-socle — makes `DELETE FROM tenant_account` fail. The sync
+    cannot repopulate such a table (it does not exist on GCP), so the only honest
+    outcomes are "clear it" or "stop". We stop, and we say which table, instead of
+    dying on a raw FK traceback twenty tables into the run.
+    """
+    with gcp_engine.connect() as gc:
+        upstream = {
+            r[0]
+            for r in gc.execute(
+                text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
+            )
+        }
+
+    synced = set(tables)
+    with local_engine.connect() as lc:
+        rows = lc.execute(
+            text(
+                "SELECT DISTINCT src.relname, tgt.relname "
+                "FROM pg_constraint c "
+                "JOIN pg_class src ON src.oid = c.conrelid "
+                "JOIN pg_class tgt ON tgt.oid = c.confrelid "
+                "WHERE c.contype = 'f' AND src.relname <> tgt.relname"
+            )
+        ).fetchall()
+
+    candidates: dict[str, set[str]] = {}
+    for child, parent in rows:
+        if parent in synced and child not in synced and child not in upstream:
+            candidates.setdefault(child, set()).add(parent)
+
+    # Only rows block a DELETE. An empty local-only child — a migration applied on
+    # the branch but never exercised — is harmless, and aborting on it would make
+    # the sync unusable on every feature branch that adds a table.
+    blockers: dict[str, set[str]] = {}
+    with local_engine.connect() as lc:
+        for child, parents in candidates.items():
+            n = lc.execute(text(f"SELECT COUNT(*) FROM {child}")).scalar_one()
+            if n:
+                blockers[child] = parents
+                logger.debug("  %s holds %d row(s) — blocking", child, n)
+
+    for child, parents in sorted(blockers.items()):
+        logger.error(
+            "  %s (local-only, non-empty) references %s — the sync cannot repopulate it",
+            child,
+            ", ".join(sorted(parents)),
+        )
+    return sorted(blockers)
 
 
 def get_gcp_url() -> str:
@@ -187,6 +262,21 @@ def main() -> int:
         if t not in SYNC_TABLES:
             logger.error("Unknown table: %s (valid: %s)", t, ", ".join(SYNC_TABLES))
             return 1
+
+    blockers = check_local_only_dependents(gcp_engine, local_engine, tables)
+    if blockers:
+        logger.error("=" * 60)
+        logger.error(
+            "ABORT — %d local-only table(s) block the delete phase. They come from "
+            "a migration that is not in production yet.",
+            len(blockers),
+        )
+        logger.error(
+            "Clear them first (their rows are branch fixtures, not prod data):"
+        )
+        logger.error("  TRUNCATE %s CASCADE;", ", ".join(blockers))
+        logger.error("=" * 60)
+        return 1
 
     mode = "DRY RUN" if args.dry_run else "SYNC"
     logger.info("=" * 60)

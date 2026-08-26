@@ -5,9 +5,11 @@ import uuid
 from datetime import date
 from decimal import Decimal
 from typing import Any
+from typing import cast
 
 import sentry_sdk
 from sqlalchemy import delete, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session
 
 from app.models.audit import AudLlmCall
@@ -237,8 +239,13 @@ def write_theme_sentiments(
         # Wipe the 4 cascading rows from the previous run so the INSERT
         # below doesn't pile up duplicates (no UNIQUE constraint on
         # pl_article_segment to protect against this).
-        deleted = session.execute(
-            delete(PlArticleSegment).where(PlArticleSegment.article_id == article_id)
+        deleted = cast(
+            CursorResult,
+            session.execute(
+                delete(PlArticleSegment).where(
+                    PlArticleSegment.article_id == article_id
+                )
+            ),
         ).rowcount
         if deleted:
             log.warning(

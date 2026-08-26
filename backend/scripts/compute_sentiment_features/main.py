@@ -66,7 +66,7 @@ def main() -> int:
         logger.info("No inline_v1 sentiment data found. Nothing to compute.")
         return 0
 
-    df = pd.DataFrame(rows, columns=["date", "theme", "raw_score"])
+    df = pd.DataFrame(rows, columns=pd.Index(["date", "theme", "raw_score"]))
     df["raw_score"] = df["raw_score"].astype(float)
     logger.info(f"Loaded {len(df)} date×theme observations")
 
@@ -119,9 +119,9 @@ def main() -> int:
                 {
                     "date": row["date"],
                     "theme": row["theme"],
-                    "raw_score": None if pd.isna(raw) else round(float(raw), 3),
-                    "zscore": None if pd.isna(z) else round(float(z), 3),
-                    "zscore_delta": None if pd.isna(zd) else round(float(zd), 3),
+                    "raw_score": None if bool(pd.isna(raw)) else round(float(raw), 3),
+                    "zscore": None if bool(pd.isna(z)) else round(float(z), 3),
+                    "zscore_delta": None if bool(pd.isna(zd)) else round(float(zd), 3),
                     "min_periods_met": bool(row["min_periods_met"]),
                 },
             )

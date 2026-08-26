@@ -72,16 +72,16 @@ class DataValidator:
                 logger.error(f"Validation error: {e}")
 
         # Logical checks
-        if data.get("high") and data.get("low"):
-            if data["high"] < data["low"]:
-                errors.append(
-                    f"HIGH ({data['high']}) cannot be less than LOW ({data['low']})"
-                )
+        high, low, close = data.get("high"), data.get("low"), data.get("close")
 
-        if data.get("close") and data.get("high") and data.get("low"):
-            if not (data["low"] <= data["close"] <= data["high"]):
+        if high is not None and low is not None:
+            if high < low:
+                errors.append(f"HIGH ({high}) cannot be less than LOW ({low})")
+
+        if close is not None and high is not None and low is not None:
+            if not (low <= close <= high):
                 errors.append(
-                    f"CLOSE ({data['close']}) must be between LOW ({data['low']}) and HIGH ({data['high']})"
+                    f"CLOSE ({close}) must be between LOW ({low}) and HIGH ({high})"
                 )
 
         if errors:

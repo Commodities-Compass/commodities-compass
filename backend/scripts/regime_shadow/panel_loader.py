@@ -13,6 +13,7 @@ import logging
 from datetime import date as date_cls
 
 import pandas as pd
+from typing import cast
 
 from regime.config import DERIVED_PASSTHROUGH
 
@@ -52,9 +53,11 @@ def slice_panel(
             f"(latest available {latest})"
         )
 
+    hist = cast(pd.DataFrame, hist)
     contract_id = str(hist.loc[hist["date"].idxmax(), "contract_id"])
-    panel = (
-        hist[["date", *DERIVED_PASSTHROUGH]].tail(window_rows).reset_index(drop=True)
+    panel = cast(
+        pd.DataFrame,
+        hist[["date", *DERIVED_PASSTHROUGH]].tail(window_rows).reset_index(drop=True),
     )
     if len(panel) < min_rows:
         raise RegimePanelError(

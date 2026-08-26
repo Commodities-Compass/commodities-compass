@@ -102,12 +102,33 @@ Which of the two applies is the first thing to confirm if B1 wins.
     15-turn dialogue (avg 77 chars) reads smoothly where a 26-turn mechanical
     split (avg 44 chars) sounds jerky — a speaker change every sentence forces a
     pause and a fresh attack. Rhythm is a script property.
-11. **A pronunciation lexicon is required.** `COMPASTEURS` opens and closes every
-    episode and is a coined Compass word in neither French nor English; it was
-    heard as "C-O-M-P-asteurs". Prime suspect is the all-caps spelling being
-    taken for an initialism. `customPronunciations` (IPA) **is supported** by
-    Gemini-TTS and is deterministic, unlike a prompt hint — so the lexicon also
-    covers `CAZ26`, `ICE`, `COT`, `momentum`, `HEDGE`, `MONITOR`, `YTD`.
+11. **A pronunciation lexicon, via `customPronunciations` (IPA).** `COMPASTEURS`
+    opens and closes every episode and is a coined Compass word in neither French
+    nor English; it was heard as "C-O-M-P-asteurs". Validated 3/3 with
+    `customPronunciations` + IPA `kɔ̃pastœʁ` — chosen over normal-casing or a
+    prompt hint because it is **deterministic**: the model cannot drop it. The
+    lexicon extends to `CAZ26`, `ICE`, `COT`, `momentum`, `HEDGE`, `MONITOR`,
+    `YTD`. Config, not code.
+
+### 3.1 The synthesis contract — settled, P1 builds against this
+
+| Parameter | Value |
+|---|---|
+| model | `gemini-3.1-flash-tts-preview` |
+| surface | Cloud TTS `texttospeech.googleapis.com` (**needs `aiplatform` enabled too**) |
+| voices | `Kore` (Ana, F) · `Algieba` (Marc, M) |
+| languages | `fr-FR` (GA) · `en-US` (GA) |
+| `input.prompt` | mandatory — conversational steering |
+| `input.customPronunciations` | mandatory — IPA lexicon |
+| tempo | 15 chars/s, calibrated per episode, `speakingRate` clamped [0.7, 1.4] |
+| chunking | ≤3 500 B payload ⇒ ~2 chunks per 5-min episode |
+| chunk levelling | measure, then re-synthesise off-target chunks (7.3 % → 2.2 %) |
+| encoding | LINEAR16 24 kHz mono, transcoded to `.m4a` for Drive |
+
+**ElevenLabs is not needed.** Gemini passed every P0 gate — pronunciation,
+conversation, numbers, seam, coined vocabulary. The escalation arm stays
+documented in §2 but is not opened. The cheapest option won on merit, at ~$40/yr
+against ~$250–1 200.
 
 ## 4. Architecture
 
@@ -347,7 +368,7 @@ that is a script problem and a more expensive TTS will not fix it.
 
 | | Deliverable | Est. | Blocked on |
 |---|---|---|---|
-| **P0** | pronunciation smoke test, candidates culled | 1 d | Vertex access; ElevenLabs trial |
+| **P0** | ~~pronunciation + stitching~~ **DONE 2026-08-26** — see §3.1 | — | — |
 | **P1** | `script_writer.py` + contract tests, **no TTS** — the script is reviewed as text | 2-3 d | — |
 | **P2** | `tts/` adapter + `upload_bytes` + blind benchmark pack delivered | 2 d | P0, P1 |
 | **P3** | blind scoring → provider verdict | Hedi | P2 |

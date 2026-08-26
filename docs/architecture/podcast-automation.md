@@ -80,6 +80,23 @@ Which of the two applies is the first thing to confirm if B1 wins.
    `AlertSender`/`ALERT_CHANNEL` in `intraday_monitor` — swap providers by env
    var without touching the pipeline.
 
+### Settled by the P0 listening tests (2026-08-26)
+
+5. **Brand voice: `Kore` (F) + `Algieba` (M)**, pinned by `speakerId`. Chosen by
+   Hedi over Charon (flat), Aoede, Puck, Orus, Umbriel, Iapetus and Schedar.
+   This is the least reversible decision in the project — clients will associate
+   these two voices with Compass.
+6. **`input.prompt` is mandatory, not optional.** Without a style prompt the
+   output is two narrators taking turns. With one ("deux journalistes financiers
+   en direct… ce n'est PAS une lecture à tour de rôle") it reads as a
+   conversation. Verified A/B/C.
+7. **Conversational quality is a script property, not a TTS property.** Feeding
+   the served *monologue* prose and flipping speaker every sentence produces a
+   monologue cut in half. `script_writer` must emit a real dialogue — questions,
+   reactions, one speaker finishing the other's sentence. This is the single
+   biggest determinant of whether the result passes for NotebookLM.
+8. **`normalize_for_speech()` before any synthesis.** See §4.1.1.
+
 ## 4. Architecture
 
 ```
@@ -152,17 +169,46 @@ on the existing `cacaooo` project — the service account and Workload Identity
 Federation already exist, so there is no new API key to provision or rotate.
 ElevenLabs needs a Secret Manager entry (`ELEVENLABS_API_KEY`).
 
+#### 4.1.1 The prose is written for the eye — normalise before speaking
+
+The served `conclusion` contains markdown and a hybrid number format:
+
+```
+> Signal MONITOR avec une conviction modérée…
+> À SURVEILLER AUJOURD'HUI :
+        • Baissier si le cours casse le SUPPORT 1 (4 160.67).
+```
+
+Sent raw to a French voice, the `>` and `•` are **spoken aloud**, and
+`4 160.67` — French thousands space with an English decimal dot — cannot be
+parsed as a number, so it is read digit by digit. `> Signal` also garbles the
+following word. All three were heard in the first P0 pack and all three are
+layout, never meaning. `normalize_for_speech()` strips the markup and rewrites
+the decimal separator. It belongs to `script_writer`, whichever engine wins.
+
 #### 4.3.1 The 4 000-byte wall — Gemini only
 
 Gemini-TTS caps the `text` field at **4 000 bytes** (8 000 combined with the
 prompt), output audio at ~655 s. A 5-minute French script is ~5 000 characters,
 and French accents cost 2 bytes in UTF-8 ⇒ **~5 300+ bytes, over the limit**.
 
-So the Gemini arm must **chunk and stitch**. The 9-section structure gives
-natural boundaries, and prebuilt voices are deterministic across calls, so the
-seams *should* be inaudible — but that is a hypothesis, not a fact, and it is
-now an explicit P0 test. ElevenLabs has no comparable cap: if stitching audibly
-degrades the result, that alone is the argument for the escalation path.
+The cap is on the **whole payload, not per turn** — 12 turns / 1 764 B pass,
+30 turns / 4 410 B are refused. Chunking is therefore structural, and a real
+5-minute episode (~5 000 B) splits into **2 chunks, one seam**.
+
+**The seam is not a click, it is a pace change.** Each call is an independent
+generation that picks its own tempo: the same chunk sent three times unchanged
+came back at 16.9, 15.5 and 13.4 chars/s — 26 % spread on identical input.
+
+`audioConfig.speakingRate` is honoured and near-linear, which makes the fix
+deterministic: synthesise, measure the achieved chars/s, re-synthesise
+off-target chunks at `rate × target/measured`, clamped to [0.7, 1.4].
+
+```
+2-chunk episode, spread across chunks:  uncorrected 7.3 %  →  corrected 2.2 %
+```
+
+Cost: one extra call per off-target chunk — at most 2× on a ~$0.08 episode.
 
 ### 4.4 Drive
 

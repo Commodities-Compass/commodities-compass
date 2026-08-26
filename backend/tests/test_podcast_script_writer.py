@@ -7,12 +7,16 @@ turned into something that fails.
 
 from __future__ import annotations
 
+import json
 import uuid
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from typing import cast
 
 import pytest
 
+from scripts._shared.llm_client import LLMClient
 from scripts.podcast_audio.script_writer import (
     PodcastScript,
     ScriptError,
@@ -303,39 +307,38 @@ class TestDuration:
             validate(script(turns), make_data(), NARRATIVE)
 
 
+@dataclass
+class _FakeResponse:
+    """Shaped like LLMResponse — only what write_script reads."""
+
+    raw_text: str
+    model: str = "fake"
+    output_tokens: int = 1
+
+
+class _FakeClient:
+    """Duck-types LLMClient so no test ever reaches the API."""
+
+    def __init__(self, raw_text: str) -> None:
+        self._raw_text = raw_text
+
+    def call(self, prompt: str, **_: object) -> _FakeResponse:
+        return _FakeResponse(raw_text=self._raw_text)
+
+
+def _client_returning(payload: dict) -> LLMClient:
+    return cast(LLMClient, _FakeClient(json.dumps(payload)))
+
+
 class TestWriteScript:
     def test_parses_and_validates_a_model_response(self):
-        class FakeResponse:
-            raw_text = None
-            model = "fake"
-            output_tokens = 1
-
-        class FakeClient:
-            def call(self, prompt, **kw):
-                import json
-
-                FakeResponse.raw_text = json.dumps(
-                    {
-                        "turns": [
-                            {"speaker": t.speaker, "text": t.text} for t in good_turns()
-                        ]
-                    }
-                )
-                return FakeResponse()
-
-        out = write_script(make_data(), NARRATIVE, FakeClient())
+        client = _client_returning(
+            {"turns": [{"speaker": t.speaker, "text": t.text} for t in good_turns()]}
+        )
+        out = write_script(make_data(), NARRATIVE, client)
         assert len(out.turns) == len(good_turns())
         assert out.language == "fr"
 
     def test_refuses_a_response_with_no_turns(self):
-        class R:
-            raw_text = '{"turns": []}'
-            model = "fake"
-            output_tokens = 1
-
-        class C:
-            def call(self, prompt, **kw):
-                return R()
-
         with pytest.raises(ScriptError, match="no turns"):
-            write_script(make_data(), NARRATIVE, C())
+            write_script(make_data(), NARRATIVE, _client_returning({"turns": []}))

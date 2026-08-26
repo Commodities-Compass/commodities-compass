@@ -369,7 +369,7 @@ that is a script problem and a more expensive TTS will not fix it.
 | | Deliverable | Est. | Blocked on |
 |---|---|---|---|
 | **P0** | ~~pronunciation + stitching~~ **DONE 2026-08-26** — see §3.1 | — | — |
-| **P1** | `script_writer.py` + contract tests, **no TTS** — the script is reviewed as text | 2-3 d | — |
+| **P1** | ~~`script_writer.py` + contract tests~~ **DONE 2026-08-26** — `speech_text.py`, `prompts.py`, `script_writer.py`, 40 tests | — | — |
 | **P2** | `tts/` adapter + `upload_bytes` + blind benchmark pack delivered | 2 d | P0, P1 |
 | **P3** | blind scoring → provider verdict | Hedi | P2 |
 | **P4** | `cc-podcast-audio` job + scheduler + shadow folder, running in parallel | 2 d | P3 |
@@ -377,6 +377,34 @@ that is a script problem and a more expensive TTS will not fix it.
 
 P1 before P2 is deliberate: **validate the script as text before spending a cent
 on voice**. If the script is wrong, no engine saves it.
+
+## 6.1 Episode length is measured, not assumed
+
+The prompt has always said "< 5 min". The four NotebookLM episodes of
+2026-08-24 and 08-25 actually run **237, 294, 297 and 326 s** (ffprobe, m4a at
+~257 kbps). So the real product is 4–5.5 minutes, and `MIN/MAX_DURATION_SECONDS`
+is set to **[210, 360]** around the observed ~290 s middle rather than around a
+number nobody had checked. At 15 chars/s that is ~3 200–5 400 spoken characters.
+
+## 6.2 Does the Drive brief survive the switch?
+
+Hedi's question, 2026-08-26: once Gemini TTS is in, is the `.txt` still needed?
+
+**The Drive file has no machine consumer.** Grepped: only `regime_brief/config.py`
+(which names it) and tests reference it. The judge does *not* read it — 
+`scripts/judge_shadow/brief_builder.py` rebuilds brief-shaped text from the
+database and borrows only the vendored *parser functions*, never a Drive file.
+`script_writer` likewise reads the served row, not the `.txt`.
+
+**But `cc-regime-brief` is not only the `.txt`.** The same job writes
+`conclusion` / `eco` / `confidence_rationale` onto the served row, which is what
+the dashboard renders and what `script_writer` consumes. **The job stays; only
+the Drive upload becomes optional.**
+
+That leaves one question that is commercial, not technical: is the `.txt` read by
+anyone — a client, an analyst, an archive? If yes it stays as a deliverable in
+its own right. If no, dropping the upload removes a Drive dependency and a
+failure mode. Not decided.
 
 ## 7. Blockers and open items
 
@@ -414,6 +442,14 @@ on voice**. If the script is wrong, no engine saves it.
   fixed threshold.
 - ElevenLabs Studio podcast endpoint may require workspace allowlisting —
   confirm before counting on arm 4.
+- **`scripts/` is excluded from pyright** (`pyproject.toml`, `[tool.pyright]`
+  `exclude = ["scripts", "vendor"]` — the comment only justifies `vendor`). All
+  19 Cloud Run jobs are therefore unchecked; a probe with a temporary config
+  found **147 hidden errors**, 67 of them `reportAttributeAccessIssue`. Excluding
+  `archive` (52) and `research` (29) leaves ~66 in live pipeline modules:
+  press_review_agent 17, barchart_scraper 12, regime_shadow 7, meteo_agent 5,
+  regime_brief 4, publish_session 3. `podcast_audio` is at 0 — it was written
+  against a temporary config that checked it. Worth a dedicated pass.
 - `backend/.env.bak*` is **not** covered by `.gitignore` — a hand-made backup of
   `.env` shows up as untracked and is one `git add .` away from being committed.
   One line in `.gitignore` would close it.

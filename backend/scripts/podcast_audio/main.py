@@ -21,6 +21,11 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from scripts._shared.cli import build_base_argparser
+from scripts._shared.drive_config import (
+    get_credentials_json,
+    get_drive_audio_folder_id,
+)
+from scripts._shared.drive_uploader import DriveUploader
 from scripts._shared.logging import configure_logging
 from scripts.db import get_session
 from scripts.podcast_audio.db_reader import (
@@ -28,10 +33,15 @@ from scripts.podcast_audio.db_reader import (
     read_episode_inputs,
 )
 from scripts.podcast_audio.script_writer import PodcastScript, ScriptError, write_script
+from scripts.podcast_audio.tts import SynthesisError, get_synthesizer
 
 load_dotenv(Path(__file__).parent.parent.parent / ".env")
 
 logger = logging.getLogger(__name__)
+
+# Must match app/services/audio_service._candidate_suffixes — the dashboard finds
+# the episode by this name and nothing else.
+AUDIO_FILENAME = "{stem}-CompassAudio-Regime{suffix}.wav"
 
 
 def _parse_args():
@@ -52,11 +62,22 @@ def _parse_args():
     parser.add_argument(
         "--script-only",
         action="store_true",
-        help="Write the script and stop. The only mode until the TTS adapter lands",
+        help="Write the script and stop — no synthesis, no upload",
+    )
+    parser.add_argument(
+        "--publish",
+        action="store_true",
+        help="Upload to the WATCHED audio folder, which publishes the episode. "
+        "Without it the upload goes to the shadow folder.",
+    )
+    parser.add_argument(
+        "--no-upload",
+        action="store_true",
+        help="Synthesise and write the audio locally, do not touch Drive",
     )
     parser.add_argument(
         "--out",
-        help="Write the script here instead of stdout (a directory for --language both)",
+        help="Directory to write the script (and the audio with --no-upload) into",
     )
     return parser.parse_args()
 
@@ -78,12 +99,6 @@ def main() -> int:
     args = _parse_args()
     configure_logging(verbose=args.verbose)
 
-    if not args.script_only:
-        logger.error(
-            "Only --script-only is implemented; the TTS adapter is the next step"
-        )
-        return 2
-
     session_date = datetime.strptime(args.session_date, "%Y-%m-%d").date()
     written: list[str] = []
 
@@ -102,12 +117,12 @@ def main() -> int:
 
             rendered = _render(script)
             if args.out:
-                path = _out_path(args.out, session_date, language, args.language)
+                path = _out_path(args.out, session_date, language)
                 with open(path, "w", encoding="utf-8") as handle:
                     handle.write(rendered)
                 written.append(path)
                 logger.info("[%s] wrote %s", language, path)
-            else:
+            elif args.script_only:
                 print(rendered)
 
             logger.info(
@@ -117,15 +132,48 @@ def main() -> int:
                 script.total_chars,
                 script.estimated_seconds,
             )
+            if args.script_only:
+                continue
+
+            try:
+                audio = get_synthesizer().synthesize(script)
+            except SynthesisError as exc:
+                logger.error("[%s] %s", language, exc)
+                return 1
+
+            filename = AUDIO_FILENAME.format(
+                stem=session_date.strftime("%Y%m%d"),
+                suffix="-EN" if language == "en" else "",
+            )
+            if args.no_upload:
+                local = f"{(args.out or '.').rstrip('/')}/{filename}"
+                with open(local, "wb") as handle:
+                    handle.write(audio)
+                written.append(local)
+                logger.info(
+                    "[%s] wrote %s (%.1f MB)", language, local, len(audio) / 1e6
+                )
+                continue
+
+            folder = get_drive_audio_folder_id(shadow=not args.publish)
+            uploader = DriveUploader(get_credentials_json())
+            file_id = uploader.upload_bytes(audio, filename, "audio/wav", folder)
+            written.append(filename)
+            logger.info(
+                "[%s] uploaded %s to the %s folder (id=%s)",
+                language,
+                filename,
+                "WATCHED" if args.publish else "shadow",
+                file_id,
+            )
 
     if written:
         logger.info("SUCCESS — %s", json.dumps(written))
     return 0
 
 
-def _out_path(out: str, session_date: date_cls, language: str, choice: str) -> str:
-    if choice != "both":
-        return out
+def _out_path(out: str, session_date: date_cls, language: str) -> str:
+    """``--out`` is always a directory: one language or both, same convention."""
     stem = session_date.strftime("%Y%m%d")
     suffix = "-EN" if language == "en" else ""
     return f"{out.rstrip('/')}/{stem}-CompassScript-Regime{suffix}.txt"

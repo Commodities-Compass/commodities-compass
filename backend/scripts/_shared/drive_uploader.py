@@ -31,7 +31,20 @@ class DriveUploader:
         If a file with the same name already exists in the folder, it is updated
         in place (no duplicates).
         """
-        media = MediaInMemoryUpload(content.encode("utf-8"), mimetype="text/plain")
+        return self.upload_bytes(
+            content.encode("utf-8"), filename, "text/plain", folder_id
+        )
+
+    def upload_bytes(
+        self, data: bytes, filename: str, mimetype: str, folder_id: str
+    ) -> str:
+        """Upload binary content to a Drive folder. Returns file ID.
+
+        Same idempotence as the text path: a file of the same name in the same
+        folder is updated in place, so re-running a job never leaves two
+        episodes for one session.
+        """
+        media = MediaInMemoryUpload(data, mimetype=mimetype)
 
         existing_id = self._find_file(filename, folder_id)
         if existing_id:

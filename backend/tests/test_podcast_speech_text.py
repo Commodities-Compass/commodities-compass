@@ -85,9 +85,17 @@ class TestLexicon:
             assert entry["phoneticEncoding"] == "PHONETIC_ENCODING_IPA"
             assert entry["pronunciation"].strip()
 
-    def test_covers_compasteurs_in_both_casings(self):
+    def test_covers_compasteurs(self):
         phrases = {e["phrase"] for e in custom_pronunciations()["pronunciations"]}
-        assert {"Compasteurs", "COMPASTEURS"} <= phrases
+        assert "Compasteurs" in phrases
+
+    def test_phrases_are_unique_case_insensitively(self):
+        # The API rejects the whole request with INVALID_ARGUMENT otherwise —
+        # "Compasteurs" and "COMPASTEURS" together killed the first live run.
+        phrases = [
+            e["phrase"].lower() for e in custom_pronunciations()["pronunciations"]
+        ]
+        assert len(phrases) == len(set(phrases))
 
 
 class TestNumericTokensSeparation:

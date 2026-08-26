@@ -42,9 +42,12 @@ class Pronunciation:
 
 # Validated by ear 2026-08-26 (P0-quinquies): COMPASTEURS in capitals is read as
 # an initialism ("C-O-M-P-asteurs") roughly one run in three. IPA fixed it 3/3.
+#
+# Phrases must be unique CASE-INSENSITIVELY — the API rejects the whole request
+# with INVALID_ARGUMENT if two entries differ only by capitalisation, which also
+# tells us one entry covers every casing.
 LEXICON: tuple[Pronunciation, ...] = (
     Pronunciation("Compasteurs", "kɔ̃pastœʁ"),
-    Pronunciation("COMPASTEURS", "kɔ̃pastœʁ"),
     Pronunciation("momentum", "mɔmɑ̃tɔm"),
     Pronunciation("Compass", "kɔ̃pas"),
 )
@@ -52,6 +55,12 @@ LEXICON: tuple[Pronunciation, ...] = (
 
 def custom_pronunciations() -> dict:
     """The ``input.customPronunciations`` payload for Gemini-TTS."""
+    phrases = [entry.phrase.lower() for entry in LEXICON]
+    duplicates = {p for p in phrases if phrases.count(p) > 1}
+    if duplicates:
+        raise ValueError(
+            f"lexicon phrases must be unique case-insensitively: {sorted(duplicates)}"
+        )
     return {
         "pronunciations": [
             {

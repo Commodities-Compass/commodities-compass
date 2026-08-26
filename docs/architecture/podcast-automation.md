@@ -96,6 +96,18 @@ Which of the two applies is the first thing to confirm if B1 wins.
    reactions, one speaker finishing the other's sentence. This is the single
    biggest determinant of whether the result passes for NotebookLM.
 8. **`normalize_for_speech()` before any synthesis.** See §4.1.1.
+9. **Tempo: 15 chars/s target** (`speakingRate ≈ 0.954` on the dialogue's own
+   calibration). Config constant, tunable without a deploy.
+10. **Turn length must vary.** Confirmed by ear: same words and same tempo, a
+    15-turn dialogue (avg 77 chars) reads smoothly where a 26-turn mechanical
+    split (avg 44 chars) sounds jerky — a speaker change every sentence forces a
+    pause and a fresh attack. Rhythm is a script property.
+11. **A pronunciation lexicon is required.** `COMPASTEURS` opens and closes every
+    episode and is a coined Compass word in neither French nor English; it was
+    heard as "C-O-M-P-asteurs". Prime suspect is the all-caps spelling being
+    taken for an initialism. `customPronunciations` (IPA) **is supported** by
+    Gemini-TTS and is deterministic, unlike a prompt hint — so the lexicon also
+    covers `CAZ26`, `ICE`, `COT`, `momentum`, `HEDGE`, `MONITOR`, `YTD`.
 
 ## 4. Architecture
 

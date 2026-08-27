@@ -221,10 +221,15 @@ def _assert_conversational_shape(script: PodcastScript) -> None:
         raise ScriptError(
             f"[{script.language}] unexpected speakers: {sorted(speakers)}"
         )
+    # Measured on three real NotebookLM episodes: cv 0.62, 0.84 and 0.98, with
+    # turns from 4 to 397 characters. 0.45 is a floor between what the generator
+    # produced unaided (0.18-0.27) and the reference — strict enough to reject a
+    # flat episode, loose enough to be reachable.
     cv = statistics.pstdev(lengths) / statistics.mean(lengths)
-    if cv < 0.30:
+    if cv < 0.45:
         raise ScriptError(
-            f"[{script.language}] turn lengths are too uniform (cv={cv:.2f} < 0.30) — "
+            f"[{script.language}] turn lengths are too uniform (cv={cv:.2f} < 0.45; a real "
+            f"episode runs 0.62 to 0.98) — "
             "this is the shape that reads as two narrators taking turns"
         )
     if min(lengths) > 45:
@@ -275,6 +280,29 @@ def _assert_no_repeated_filler(script: PodcastScript) -> None:
         )
 
 
+# Measured on three real NotebookLM episodes (2026-08-24 FR/EN, 08-25 FR): the
+# dominant voice carries 53 %, 55 % and 57 % of the characters — never a
+# host-and-expert split. Ours ran at 72 % because the prompt asked for one.
+# 62 % leaves room above the observed maximum without allowing a monologue.
+MAX_SPEECH_SHARE = 0.62
+
+
+def _assert_balanced_speakers(script: PodcastScript) -> None:
+    spoken: dict[str, int] = {}
+    for turn in script.turns:
+        spoken[turn.speaker] = spoken.get(turn.speaker, 0) + len(turn.text)
+    total = sum(spoken.values())
+    for speaker, chars in sorted(spoken.items()):
+        share = chars / total
+        if share > MAX_SPEECH_SHARE:
+            other = ", ".join(f"{s} {c / total:.0%}" for s, c in sorted(spoken.items()))
+            raise ScriptError(
+                f"[{script.language}] {speaker} carries {share:.0%} of the speech "
+                f"({other}) — a real episode never passes {MAX_SPEECH_SHARE:.0%}; "
+                "the two are co-analysts, not host and expert"
+            )
+
+
 def _assert_duration(script: PodcastScript) -> None:
     seconds = script.estimated_seconds
     if not MIN_DURATION_SECONDS <= seconds <= MAX_DURATION_SECONDS:
@@ -291,6 +319,7 @@ def validate(script: PodcastScript, data: BriefData, narrative: Narrative) -> No
     _assert_decision(script, data.judge.final_decision, data.regime.decision)
     _assert_no_banned_vocabulary(script)
     _assert_no_repeated_filler(script)
+    _assert_balanced_speakers(script)
     _assert_no_invented_figures(script, source_figures(data, narrative))
     _assert_duration(script)
 

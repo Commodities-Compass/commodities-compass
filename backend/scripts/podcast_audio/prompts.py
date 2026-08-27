@@ -57,8 +57,21 @@ MATIÈRE (n'utilise QUE ça — n'invente AUCUN chiffre) :
 
 C'EST UNE CONVERSATION, PAS UNE LECTURE À TOUR DE RÔLE.
 Ton de PRÉSENTATEURS de podcast : vivants, complices, jamais récitants.
-- Ana lance, questionne, relance. Marc porte l'analyse.
-- Alterne des tours LONGS (une analyse développée) et des tours TRÈS COURTS.
+- Ana et Marc sont DEUX CO-ANALYSTES de poids égal. Ce n'est PAS une animatrice
+  qui questionne et un expert qui répond. Les deux expliquent, les deux
+  apportent des faits, les deux peuvent poser une question.
+- Répartition de la parole : aucun des deux ne dépasse 55 % du texte total.
+  Compte-les. Si Marc a porté les trois derniers développements, le suivant est
+  pour Ana.
+- Leurs tours ont des longueurs COMPARABLES : entre 80 et 140 caractères en
+  moyenne chacun. Une Ana qui ne fait que des relances de 60 caractères pendant
+  que Marc en fait 200 est un déséquilibre REFUSÉ.
+- AMPLITUDE : les vrais épisodes vont de 4 caractères à 400. Il te faut les
+  deux extrêmes dans le même épisode.
+  * plusieurs tours de 2 à 5 MOTS : "Ah oui.", "Vraiment ?", "D'accord.",
+    "Ça change tout.", "Attends.". Au moins cinq dans l'épisode.
+  * et des développements de 200 à 300 caractères pour porter l'analyse.
+  Un épisode où tous les tours font la même taille sonne comme deux machines.
 - Les tours courts sont de VRAIES réactions parlées, pas des accusés de
   réception : "ah oui, quand même", "c'est massif ouais", "attends, 40 000
   tonnes ?", "ça change tout". Après une réaction, l'autre ENCHAÎNE sur son idée
@@ -92,11 +105,11 @@ spécialiste, probabilité, score, z-score, régime détecté. Ne compte jamais 
 voix ni des indicateurs.
 
 LONGUEUR — c'est la contrainte la plus souvent ratée, relis-la avant de rendre :
-- 32 à 40 tours de parole au total.
+- 40 à 56 tours de parole au total.
 - Les tours d'analyse de Marc font 2 à 4 phrases pleines.
 - Les points 4, 5 et 6 (éditorial, éco-presse, météo) sont les plus développés :
   5 à 6 tours chacun, avec des relances courtes d'Ana entre les blocs.
-- Total visé : 4200 caractères de texte parlé. Plancher 3700, PLAFOND 6200.
+- Total visé : 5300 caractères de texte parlé. Plancher 3700, PLAFOND 6200.
   Les exigences de naturel ci-dessus ne sont pas une invitation à rallonger :
   un tour court qui apporte quelque chose reste court.
 Une idée par tour, pas de reformulation de ce qui vient d'être dit, pas de
@@ -132,8 +145,19 @@ MATERIAL (use ONLY this — invent NO figure):
 
 THIS IS A CONVERSATION, NOT TWO PEOPLE READING IN TURN.
 Podcast PRESENTER tone: alive, easy with each other, never reciting.
-- Ana opens, questions, pushes back. Marc carries the analysis.
-- Alternate LONG turns (a developed point) with VERY SHORT ones.
+- Ana and Marc are TWO CO-ANALYSTS of equal weight. This is NOT a host asking
+  and an expert answering. Both explain, both bring facts, both may ask.
+- Share of speech: neither goes above 55 % of the total text. Count it. If Marc
+  carried the last three developments, the next one is Ana's.
+- Their turns are COMPARABLE in length: 80 to 140 characters on average each. An
+  Ana doing nothing but 60-character prompts while Marc does 200 is an
+  imbalance and is REJECTED.
+- RANGE: real episodes run from 4 characters to 400. You need both extremes in
+  the same episode.
+  * several turns of 2 to 5 WORDS: "Oh really.", "Wait.", "That changes it.",
+    "Right.", "Huge." — at least five across the episode.
+  * and developments of 200 to 300 characters to carry the analysis.
+  An episode where every turn is the same size sounds like two machines.
 - Short turns are REAL spoken reactions, not acknowledgements: "oh wow, really",
   "that's huge", "hang on, forty thousand tonnes?", "that changes things". After
   a reaction the other CARRIES ON with the same thought rather than restarting —
@@ -166,11 +190,11 @@ NEVER SAY: artificial intelligence, AI, algorithm, model, specialist, \
 probability, score, z-score, detected regime. Never count votes or indicators.
 
 LENGTH — the constraint most often missed, re-read it before you answer:
-- 30 to 38 turns in total.
+- 40 to 56 turns in total.
 - Marc's analytical turns run 2 to 4 full sentences.
 - Points 4, 5 and 6 (editorial, macro & press, weather) are the most developed:
   5 to 6 turns each, with short pushbacks from Ana between blocks.
-- Target 3500 characters of spoken text. Floor 3000, CEILING 4900.
+- Target 4200 characters of spoken text. Floor 3000, CEILING 4900.
   The naturalness rules above are not licence to run long: a short turn
   that adds something stays short.
 English is more compact than French: the same episode needs fewer characters,

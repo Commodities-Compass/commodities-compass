@@ -82,103 +82,139 @@ NARRATIVE = Narrative(
 
 
 def good_turns() -> tuple[Turn, ...]:
-    """A full-length episode with the shape validated by ear in P0.
+    """A full-length episode with the shape measured on the real thing.
 
-    Sized on the real thing: the NotebookLM episodes of 2026-08-24 and 08-25 run
-    237 to 326 s, so this lands near their ~290 s middle. Varied turn length with
-    genuine short reactions is what separates a conversation from two narrators
-    taking turns. Every figure spoken comes from ``make_data()``.
+    Sized and balanced on three NotebookLM episodes (2026-08-24 FR/EN, 08-25 FR):
+    237 to 326 s, the dominant voice carrying 53-57 % of the characters, both
+    speakers averaging 83 to 140 characters a turn. Ana is a co-analyst, not a
+    host: she brings facts too, and either of them may ask. Every figure spoken
+    here comes from ``make_data()``.
     """
     return (
         Turn(
             "Ana",
-            "Bonjour les COMPASTEURS ! Le signal Compass du jour sur le cacao Londres, horizon la prochaine séance. Marc, on commence par la performance ?",
+            "Bonjour les COMPASTEURS ! Le signal Compass du jour sur le cacao Londres, horizon la prochaine séance. Et on démarre sur un MONITOR, conviction modérée.",
         ),
         Turn(
             "Marc",
-            "Volontiers. Le signal reste dans le vert depuis le début de l'année, et ça donne un peu de recul pour lire la séance d'aujourd'hui sans surréagir à un mouvement isolé.",
-        ),
-        Turn("Ana", "Et le signal du jour, alors ?"),
-        Turn("Marc", "C'est un MONITOR."),
-        Turn("Ana", "Donc on observe. Avec quelle conviction ?"),
-        Turn(
-            "Marc",
-            "Modérée, trois sur cinq. Mais la direction sous-jacente reste haussière, et c'est tout l'intérêt du jour pour un acheteur physique qui doit se positionner sans se précipiter.",
+            "Modérée, mais avec une direction sous-jacente haussière, ce qui change la lecture pour un acheteur physique.",
         ),
         Turn(
             "Ana",
-            "Alors ça, c'est intéressant. Parce que la lecture technique penchait plutôt vers la couverture, non ?",
+            "Parce que la lecture technique, elle, appelait plutôt à la couverture dans un contexte de volatilité élevée.",
         ),
         Turn(
             "Marc",
-            "Exactement, et c'est tout l'arbitrage du jour. La lecture technique appelle à la prudence dans un contexte de volatilité élevée, mais la lecture macro ne suit pas, et c'est elle qui prend le dessus aujourd'hui.",
-        ),
-        Turn("Ana", "...parce que l'offre se resserre."),
-        Turn(
-            "Marc",
-            "Voilà. Les arrivées portuaires ralentissent en Côte d'Ivoire, ce qui entretient la tension sur les disponibilités physiques depuis plusieurs semaines maintenant. Et les prévisions de récolte sont revues en baisse, ce qui vient s'ajouter à cette tension.",
-        ),
-        Turn(
-            "Ana", "Ce ralentissement, il se lit comment concrètement sur le terrain ?"
-        ),
-        Turn(
-            "Marc",
-            "Par des volumes qui arrivent aux ports moins vite qu'attendu à ce stade de campagne. Ça ne veut pas dire que la récolte est mauvaise, ça veut dire que la marchandise met plus de temps à devenir disponible, et c'est cette différence-là que le marché price en ce moment.",
-        ),
-        Turn("Ana", "Côté éco, il y a autre chose à retenir ?"),
-        Turn(
-            "Marc",
-            "La demande chocolat tient, et c'est le point qui empêche la tension de se dénouer toute seule. Tant que les arrivages ne repartent pas et que la demande reste là, le marché reste sur cette asymétrie, avec un vendeur qui n'a pas de raison de brader.",
-        ),
-        Turn("Ana", "Et la météo dans les origines ?"),
-        Turn(
-            "Marc",
-            "Favorable en Côte d'Ivoire et au Ghana. C'est justement ce qui pourrait limiter les perturbations à court terme, donc c'est le paramètre à surveiller de près sur les prochaines séances.",
+            "Et c'est tout l'arbitrage du jour : la lecture macro ne la suit pas, et c'est elle qui prend le dessus.",
         ),
         Turn(
             "Ana",
-            "C'est un peu contre-intuitif, non ? Une bonne météo qui devient un risque.",
+            "Ce qui se lit surtout du côté de l'offre. Les arrivées portuaires ralentissent en Côte d'Ivoire depuis plusieurs semaines, et les prévisions de récolte sont revues en baisse.",
         ),
         Turn(
             "Marc",
-            "C'est tout le paradoxe du moment. Une météo favorable, dans un marché tendu par la logistique, ça veut dire que la marchandise finira par arriver. Donc oui, la bonne nouvelle agronomique est le principal facteur de détente des prix.",
+            "Ce ralentissement ne dit pas que la récolte est mauvaise, il dit que la marchandise met plus de temps à devenir disponible.",
         ),
-        Turn("Ana", "On passe aux niveaux. Qu'est-ce qui compte demain ?"),
+        Turn("Ana", "Ah, c'est ça."),
+        Turn("Marc", "Et c'est cette différence-là que le marché price."),
         Turn(
             "Marc",
-            "La clôture s'est faite à 4238, contre 4201 la veille. Volume à 3625 lots, positions ouvertes à 36333. Deux niveaux structurent la séance : baissier si le cours casse le support à 4 160,67, haussier s'il franchit la résistance à 4 315,67.",
-        ),
-        Turn("Ana", "Les positions ouvertes, elles nous disent quelque chose ?"),
-        Turn(
-            "Marc",
-            "Elles restent étoffées, ce qui veut dire que le marché ne se vide pas. On n'est pas sur un mouvement de sortie, on est sur une hésitation, et c'est cohérent avec le MONITOR du jour.",
-        ),
-        Turn("Ana", "Concrètement, pour un acheteur physique, on fait quoi ?"),
-        Turn(
-            "Marc",
-            "On ne tranche pas, on surveille. On garde ses couvertures existantes, on ne se renforce pas tant que la résistance n'est pas franchie, et on reste prêt à ajuster rapidement si le support cède en séance.",
-        ),
-        Turn("Ana", "Et si on est déjà couvert ?"),
-        Turn(
-            "Marc",
-            "On ne touche à rien. Une journée d'observation ne justifie pas de payer un aller-retour, surtout dans un marché où la volatilité reste élevée.",
-        ),
-        Turn("Ana", "Et ce qui remettrait tout ça en cause ?"),
-        Turn(
-            "Marc",
-            "Une reprise rapide des arrivages portuaires en Côte d'Ivoire. Avec une météo qui reste favorable, ça détendrait la tension très vite et ça pèserait sur les prix. C'est le scénario à garder en tête.",
-        ),
-        Turn("Ana", "Et si le support cède en séance, on fait quoi ?"),
-        Turn(
-            "Marc",
-            "On ne se précipite pas : on laisse la séance confirmer avant d'ajuster "
-            "quoi que ce soit, parce qu'une mèche sous le support ne fait pas une "
-            "cassure, et se retourner pour rien coûte un aller-retour.",
+            "Côté demande, le chocolat tient. C'est ce qui empêche la tension de se dénouer toute seule, parce qu'il n'y a pas de vendeur pressé en face.",
         ),
         Turn(
             "Ana",
-            "Message reçu. On se retrouve demain pour voir si les arrivages ont bougé.",
+            "Donc une asymétrie qui dure tant que les deux jambes restent en place.",
         ),
+        Turn(
+            "Marc",
+            "Voyons la météo, parce qu'elle est contre-intuitive aujourd'hui. Côte d'Ivoire et Ghana, conditions favorables.",
+        ),
+        Turn(
+            "Ana",
+            "Contre-intuitive parce qu'une bonne météo, dans un marché tendu par la logistique, veut dire que la marchandise finira par arriver.",
+        ),
+        Turn(
+            "Marc",
+            "C'est ça. La bonne nouvelle agronomique est le principal facteur de détente des prix, ce qui est rarement le cas.",
+        ),
+        Turn(
+            "Ana",
+            "Passons aux niveaux. La clôture s'est faite à 4238, contre 4201 la veille, sur un volume de 3625 lots.",
+        ),
+        Turn(
+            "Marc",
+            "Et les positions ouvertes tiennent à 36333, ce qui veut dire que le marché ne se vide pas.",
+        ),
+        Turn("Ana", "Pas une sortie, alors."),
+        Turn(
+            "Marc",
+            "Une hésitation, plutôt. C'est cohérent avec le MONITOR : deux niveaux structurent la séance, un support à 4 160,67 et une résistance à 4 315,67.",
+        ),
+        Turn(
+            "Ana",
+            "Concrètement, on garde ses couvertures existantes, on ne se renforce pas tant que la résistance n'est pas franchie.",
+        ),
+        Turn(
+            "Marc",
+            "Et on reste prêt à ajuster rapidement si le support cède en séance.",
+        ),
+        Turn("Ana", "Et si on est déjà couvert, on ne touche à rien ?"),
+        Turn(
+            "Marc",
+            "On ne touche à rien. Une journée d'observation ne justifie pas de payer un aller-retour dans un marché aussi volatil.",
+        ),
+        Turn(
+            "Ana",
+            "Reste ce qui remettrait tout ça en cause : une reprise rapide des arrivages portuaires ivoiriens.",
+        ),
+        Turn(
+            "Marc",
+            "Avec une météo qui reste favorable, ça détendrait la tension très vite et ça pèserait sur les prix. C'est le scénario à garder en tête.",
+        ),
+        Turn(
+            "Ana",
+            "Un mot sur la performance avant de fermer : le signal reste dans le vert depuis le début de l'année, ce qui donne un peu de recul pour lire la séance sans surréagir.",
+        ),
+        Turn(
+            "Marc",
+            "C'est important de le dire, parce qu'un MONITOR isolé peut donner l'impression d'une hésitation permanente, alors que c'est une posture de gestion assumée.",
+        ),
+        Turn(
+            "Ana",
+            "Et côté presse, la traçabilité ivoirienne revient régulièrement dans les commentaires depuis deux semaines.",
+        ),
+        Turn(
+            "Marc",
+            "Elle ajoute une friction administrative aux expéditions de début de campagne, ce qui se cumule avec le retard portuaire au lieu de le compenser.",
+        ),
+        Turn("Ana", "Deux causes, même sens."),
+        Turn(
+            "Marc",
+            "Et c'est ce qui rend la détente moins probable à court terme qu'une simple lecture météo le suggérerait.",
+        ),
+        Turn(
+            "Ana",
+            "Pour finir sur le Ghana, la situation y est plus calme que côté ivoirien, sans signal particulier à retenir aujourd'hui.",
+        ),
+        Turn(
+            "Marc",
+            "Ce qui est en soi une information : quand une des deux origines ne bouge pas, la tension vient bien de l'autre.",
+        ),
+        Turn(
+            "Ana",
+            "Dernier point avant de fermer : la volatilité implicite reste élevée, ce qui renchérit mécaniquement toute couverture optionnelle prise aujourd'hui.",
+        ),
+        Turn(
+            "Marc",
+            "D'où la recommandation de ne pas se renforcer sans signal : payer cher une protection pour un marché qui hésite, c'est le pire moment de cycle.",
+        ),
+        Turn("Ana", "Une dernière chose ?"),
+        Turn(
+            "Marc",
+            "Oui : ne pas confondre une séance d'observation avec une absence de direction. Le biais reste haussier, et si les arrivages ne repartent pas d'ici la fin de semaine, c'est cette lecture-là qui se confirmera d'elle-même, sans qu'on ait eu à parier dessus.",
+        ),
+        Turn("Ana", "Bien noté."),
+        Turn("Ana", "On se retrouve demain pour voir si les arrivages ont bougé."),
         Turn("Marc", "À demain les COMPASTEURS !"),
     )
 
@@ -325,8 +361,12 @@ class TestConversationalShape:
 
 class TestDuration:
     def test_rejects_an_episode_longer_than_the_promise(self):
-        filler = Turn("Marc", "Le marché reste tendu. " * 40)
-        turns = good_turns()[:-1] + (filler,) * 6 + (good_turns()[-1],)
+        # Split across both speakers so this tests duration, not balance.
+        filler = [
+            Turn("Ana", "Le marché reste tendu sur les disponibilités. " * 20),
+            Turn("Marc", "La tension logistique ne se dénoue pas encore. " * 20),
+        ] * 3
+        turns = good_turns()[:-1] + tuple(filler) + (good_turns()[-1],)
         with pytest.raises(ScriptError, match="outside"):
             validate(script(turns), make_data(), NARRATIVE)
 
@@ -399,14 +439,14 @@ class TestAcknowledgementTics:
     """Three identical agreement words in one episode is a generator, not a person."""
 
     def test_rejects_a_pathological_repeat(self):
+        # Spread over both voices so this tests the tic, not the balance.
         turns = good_turns()[:-1] + (
             Turn("Marc", "Exactement."),
-            Turn("Ana", "Et sur la météo ?"),
+            Turn("Ana", "Exactement, et sur la météo ?"),
             Turn("Marc", "Exactement, c'est le point à suivre."),
-            Turn("Ana", "Donc on surveille."),
-            Turn("Marc", "Exactement, on surveille."),
-            Turn("Ana", "Et demain ?"),
-            Turn("Marc", "Exactement. À demain les COMPASTEURS !"),
+            Turn("Ana", "Exactement, on surveille."),
+            Turn("Marc", "Exactement, on ne bouge pas."),
+            Turn("Marc", "À demain les COMPASTEURS !"),
         )
         with pytest.raises(ScriptError, match="same acknowledgement"):
             validate(script(turns), make_data(), NARRATIVE)

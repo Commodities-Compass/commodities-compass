@@ -35,7 +35,13 @@ from scripts.podcast_audio.tts.base import (
 
 logger = logging.getLogger(__name__)
 
-MODEL = "gemini-3.1-flash-tts-preview"
+# Chosen by ear 2026-08-27 over 3.1-flash and 2.5-flash on the same excerpt.
+# 3.1-flash — the newest, and what P0 picked without comparing — is the WORST of
+# the three at holding energy to the end of an utterance: tail/body 0.92 with 13
+# to 20 % of utterances collapsing, against 0.95 and 12 % here. 2.5-flash scores
+# best on the metric (0.99 / 7 %) but reads flat. Thirty-second P0 clips could
+# not surface this; over four minutes it becomes the dominant defect.
+MODEL = "gemini-2.5-pro-tts"
 ENDPOINT = "https://texttospeech.googleapis.com/v1beta1/text:synthesize"
 PROJECT = "cacaooo"
 

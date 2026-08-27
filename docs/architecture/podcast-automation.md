@@ -406,6 +406,34 @@ anyone — a client, an analyst, an archive? If yes it stays as a deliverable in
 its own right. If no, dropping the upload removes a Drive dependency and a
 failure mode. Not decided.
 
+## 6.2b The house style, measured instead of guessed
+
+Gemini transcribes audio directly (`aiplatform` is already enabled, no GCS, no
+Speech-to-Text), so a real NotebookLM episode can be turned into diarised turns
+and **measured**. Three episodes, 2026-08-24 FR/EN and 08-25 FR:
+
+| | dominant voice | avg turn (each) | cv of turn length | turns | chars |
+|---|---|---|---|---|---|
+| 08-24 FR | 55 % | 140 / 108 | 0.62 | 41 | 5 084 |
+| 08-25 FR | 57 % | 108 / 84 | 0.84 | 61 | 5 889 |
+| 08-24 EN | 53 % | 91 / 83 | 0.98 | 59 | 5 137 |
+| **ours, before** | **72 %** | **78 / 205** | **0.18-0.27** | 32 | 4 517 |
+
+Two findings the ear had flagged and the numbers pinned down:
+
+**There is no host-and-expert split.** Both voices are co-analysts of comparable
+weight, and the questioning role moves between episodes (the woman asks 10 in
+the EN one, the man asks 12 in the FR one, they split 3/3 in the third). Our
+prompt said *"Ana lance, questionne, relance. Marc porte l'analyse"* — we
+instructed the imbalance we were then hearing.
+
+**The dynamic range is far wider than anything we produce.** Real turns run from
+**4 characters** ("Ah.", "Oui.") to 397. The generator lands at cv 0.31-0.42
+even when asked explicitly for both extremes; NotebookLM sits at 0.62-0.98.
+
+Encoded as `MAX_SPEECH_SHARE = 0.62` and a turn-length cv floor. The balance rule
+works — the 72 % is gone. The cv floor is **not reached yet**: see §7.
+
 ## 6.3 Deferred — make the two layers legible to the reader
 
 Decided 2026-08-26, **to do after P2**. The served narrative never says that two
@@ -459,6 +487,20 @@ is a commercial claim, chosen rather than slid into.
    `feat/billing-stripe-socle`). Local is now 45/45 tables, 299 622 rows.
 
 ### Open
+
+- **Turn-length variety is the unsolved one.** The generator produces cv
+  0.31-0.42 against the 0.45 floor set from a measured 0.62-0.98. Options:
+  lower the floor to ~0.35 (still far better than the 0.18-0.27 baseline, but
+  accepting a flatter episode than NotebookLM's); or try a reasoning model for
+  the script — `o4-mini` is already the judge's model and structural constraints
+  are what it is good at, but `LLMClient` always sends `temperature`, which
+  o4-mini rejects, so that test needs a small client change first.
+- **TTS model settled 2026-08-27: `gemini-2.5-pro-tts`.** Chosen by ear over
+  3.1-flash (the newest, and what P0 picked without comparing — worst of the
+  three at holding energy to the end of an utterance) and 2.5-flash (best on the
+  metric, reads flat). This is why the full episode sounded worse than the P0
+  clips: the flaw rate was identical, but thirty seconds hides what four minutes
+  exposes.
 
 - ~~Cloud TTS / Vertex enablement~~ — **DONE 2026-08-26.** Both
   `texttospeech.googleapis.com` and `aiplatform.googleapis.com` are enabled on

@@ -26,6 +26,8 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from datetime import date as date_cls
+from datetime import datetime
 from pathlib import Path
 
 import sentry_sdk
@@ -82,6 +84,11 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="Write to this path instead of uploading (debug).",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Bypass the eve-of-trading-day gate (manual rerun on a non-eve day).",
+    )
     return parser.parse_args()
 
 
@@ -97,16 +104,19 @@ def _resolve_version_id(session):  # noqa: ANN001 — sync Session
     return row[0]
 
 
-def _resolve_session_date(session, explicit: str | None):  # noqa: ANN001
+def _resolve_session_date(session, explicit: date_cls | None):  # noqa: ANN001
     """The session to write for — explicit, else the latest regime decision.
 
     Anchored on pl_regime_shadow rather than the calendar: the brief speaks for
     a decision, so it can only exist where that decision does.
-    """
-    from datetime import datetime
 
+    ⚠️ This answers WHICH session, never WHETHER to run. Un-gated, it silently
+    re-briefs the newest decision every time the decision table stops advancing
+    (weekends, holidays) — see the Phase-B gate in main() and
+    .claude/rules/pipeline-phase-contract.md.
+    """
     if explicit:
-        return datetime.strptime(explicit, "%Y-%m-%d").date()
+        return explicit
     row = session.execute(
         text("SELECT MAX(date) AS d FROM pl_regime_shadow")
     ).fetchone()
@@ -120,7 +130,26 @@ def main() -> int:
     args = _parse_args()
     configure_logging(verbose=args.verbose)
 
-    from scripts.db import get_session
+    from scripts.db import get_session, phase_b_should_skip
+
+    explicit_session = (
+        datetime.strptime(args.session_date, "%Y-%m-%d").date()
+        if args.session_date
+        else None
+    )
+
+    # Phase-B gate. The brief is scheduled DAILY because the eve of Monday is a
+    # Sunday, so it must decide for itself whether tonight precedes a session.
+    # Without this it re-briefs whatever MAX(pl_regime_shadow) holds — on every
+    # weekend and holiday that is an ALREADY PUBLISHED session, and re-briefing
+    # burns two LLM calls, overwrites the narrative on the served row and
+    # overwrites the Drive .txt the NotebookLM podcast is cut from.
+    # See .claude/rules/pipeline-phase-contract.md
+    if phase_b_should_skip(explicit_session, args.force):
+        logger.info(
+            "regime-brief: not eve of a trading day + no --session-date/--force, skipping"
+        )
+        return 0
 
     langs = [str(lang) for lang in expand_languages(args.language)]
     logger.info("Mode: %s", "DRY RUN" if args.dry_run else "LIVE")
@@ -135,7 +164,7 @@ def main() -> int:
 
     with get_session() as session:
         version_id = _resolve_version_id(session)
-        session_date = _resolve_session_date(session, args.session_date)
+        session_date = _resolve_session_date(session, explicit_session)
         date_stem = session_date.strftime("%Y%m%d")
         logger.info("Session %s (algorithm %s)", session_date, ALGORITHM_NAME)
 

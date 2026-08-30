@@ -418,7 +418,12 @@ class TestPhaseBGate:
         uploader.assert_not_called()
 
     def test_gate_is_consulted_before_any_work(self):
-        """A False gate lets the run proceed past the short-circuit."""
+        """A False gate lets the run proceed past the short-circuit.
+
+        --dry-run keeps this hermetic: it skips the DriveUploader branch, whose
+        get_credentials_json() would otherwise raise on a machine with no Drive
+        credentials (CI) before the run ever reaches the DB.
+        """
         from unittest.mock import patch
 
         from scripts.regime_brief import main as m
@@ -426,8 +431,15 @@ class TestPhaseBGate:
         with (
             patch("scripts.db.phase_b_should_skip", return_value=False) as gate,
             patch("scripts.db.get_session", side_effect=RuntimeError("reached DB")),
-            patch.object(m, "DriveUploader"),
-            patch("sys.argv", ["regime-brief", "--language", "fr"]),
+            # Pins the hermeticity itself: on the --dry-run path the run must
+            # never ask for Drive credentials, which is what broke this test in
+            # CI (no GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON there).
+            patch.object(
+                m,
+                "get_credentials_json",
+                side_effect=AssertionError("must not need Drive credentials"),
+            ),
+            patch("sys.argv", ["regime-brief", "--language", "fr", "--dry-run"]),
             pytest.raises(RuntimeError, match="reached DB"),
         ):
             m.main()

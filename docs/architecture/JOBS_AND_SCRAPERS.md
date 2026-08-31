@@ -8,13 +8,15 @@
 > ont été supprimés le 2026-08-19 — contexte business dans
 > [docs/archive/pipelines/](../archive/pipelines/).
 >
-> ⚠️ **Deux jobs de plus sont déclarés dans `deploy.yml` mais pas encore déployés** :
-> `cc-billing-watchdog` et `cc-billing-purge`, qui arrivent avec la brique Stripe.
-> Le compte GCP passera à **21 jobs** au premier déploiement après ce merge, et
-> leurs deux schedulers restent à créer — voir
+> ⚠️ **Deux jobs de plus sont déclarés mais pas encore déployés** :
+> `cc-billing-watchdog` (`0 15 * * *`) et `cc-billing-purge` (`0 3 * * *`), qui
+> arrivent avec la brique Stripe. Les jobs sont dans `deploy.yml`, leurs
+> schedulers dans `scheduler.tf`, et les deux sont classés `CALENDAR_EXEMPT`
+> dans `scripts/_shared/phases.py` — la facturation n'a pas de dimension
+> session. Le compte GCP passera à **21 jobs et 20 schedulers** après le
+> déploiement et le `terraform apply`. Voir
 > [billing-and-collection.md](billing-and-collection.md) § 9 et § 9 bis. Ce
-> catalogue est une photographie de GCP, pas de `deploy.yml` : il sera repris
-> après le déploiement effectif.
+> catalogue est une photographie de GCP, pas du dépôt : il sera repris ensuite.
 
 ---
 
@@ -89,6 +91,8 @@ n'a plus d'objet.
 | **cc-intraday-monitor** | `*/5 8-16 * * 1-5` | shared | Barchart core-api (httpx, delayed ~10-12 min) + `pl_derived_indicators` (S1/R1) + `ref_alert_rule` | `pl_contract_data_intraday` (append) + `aud_alert_event` + Telegram sendMessage | ✅ Actif (LIVE telegram) |
 | **cc-roll-watchdog** | `45 19 * * 1-5` | shared | `pl_contract_data_daily` ⨝ `ref_contract` — front-month liquidité (OI **et** volume) vs `active_from` (calendrier). **Pas** la VIEW : la règle OI n'y existe plus depuis `d5e6f7a8b9c0` | Sentry nudge (no DB write), exit 1 | ✅ Actif |
 | **cc-publish-session** | `*/30 20-23,0-9 * * *` | shared | complétude `pl_indicator_daily` + présence audio Drive | `pl_session_release` (bascule atomique du dashboard) | ✅ Actif |
+| **cc-billing-watchdog** | `0 15 * * *` | serving | `aud_billing_event` (échecs < 26 h), `tenant_billing_subscription` ⨝ Stripe (cartes, statuts) | Sentry capture (no DB write), exit 1 si problème | ⏳ Déclaré, pas encore déployé |
+| **cc-billing-purge** | `0 3 * * *` | serving | `aud_billing_event` — ancre `GREATEST(received_at, period_end)` | DELETE au-delà de 18 mois (rétention publiée) | ⏳ Déclaré, pas encore déployé |
 
 ---
 

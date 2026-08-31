@@ -1,6 +1,6 @@
 # Billing & Collection — Design
 
-> **Status**: **socle IMPLEMENTED and shipped dark** (`BILLING_ENFORCED=false`) — migration `b1i2l3l4i5n6`, 3 tables, the gate in `resolve_principal`, the Stripe webhook, and the ops CLI. Not yet wired to a real Stripe account. Remaining: the watchdog's Cloud Scheduler entry, and the Stripe account + Products/Prices.
+> **Status**: **socle IMPLEMENTED and shipped dark** (`BILLING_ENFORCED=false`) — migration `b1i2l3l4i5n6`, 3 tables, the gate in `resolve_principal`, the Stripe webhook, and the ops CLI. Not yet wired to a real Stripe account. The 18-month purge of `aud_billing_event` (§9 bis) and both Cloud Scheduler entries are declared. Remaining: `terraform apply`, then the live Stripe account + Products/Prices.
 > **Goal**: recurring EUR billing by **card on file with automatic debit**, for 7 negotiated tiers sold by hand.
 > **Prerequisite, already met**: per-client entitlement is LIVE and enforced ([entitlement-and-tenancy.md](./entitlement-and-tenancy.md) · [runbook](../runbooks/entitlement-enforcement.md)). Billing plugs into `resolve_principal`; it does not replace it.
 > **How these decisions were reached**, what was rejected on what evidence, and what we got wrong on the way: [billing-decision-log.md](./billing-decision-log.md).
@@ -246,9 +246,10 @@ job that can be told to keep less than the published page promises is a job that
 will one day be told exactly that. `test_retention_matches_the_published_policy`
 is the tripwire.
 
-Cron: daily, `0 3 * * *`. Over-retaining by up to a day is harmless;
-under-retaining is the thing being guarded against. **The scheduler is not
-created yet** — see Appendix B.
+Cron: daily, `0 3 * * *`, declared in `infra/terraform/scheduler.tf` and
+classified `CALENDAR_EXEMPT` in `scripts/_shared/phases.py` — a legal deadline
+runs on the civil calendar, not the exchange one. Over-retaining by up to a day
+is harmless; under-retaining is the thing being guarded against.
 
 ### 10. Testing
 
@@ -359,17 +360,7 @@ Not planned, but cheap to keep possible. What would return: 14-day withdrawal, e
 
 ## Appendix B — Open items
 
-- 🔴 **The two billing schedulers do not exist.** `deploy.yml` creates the jobs; nothing runs them. `cc-billing-purge` in particular is what makes the privacy policy's 18-month claim true, so it has to be scheduled **before** the page is published, not merely written:
-
-  ```bash
-  gcloud scheduler jobs create http cc-billing-purge \
-    --location=europe-west1 --schedule="0 3 * * *" --time-zone=UTC \
-    --uri="https://run.googleapis.com/apis/run.googleapis.com/v1/namespaces/cacaooo/jobs/cc-billing-purge:run" \
-    --http-method=POST --oauth-service-account-email=<scheduler-sa> \
-    --project=cacaooo
-  ```
-
-  Same shape for `cc-billing-watchdog` at `0 15 * * 1-5`. Then fold both into `infra/terraform/scheduler.tf` so they survive a rebuild.
+- **The two billing schedulers are declared in `infra/terraform/scheduler.tf`** (`billing-watchdog` at `0 15 * * *`, `billing-purge` at `0 3 * * *`) and classified `CALENDAR_EXEMPT` in `scripts/_shared/phases.py`. Both are **daily, not weekday-only**: billing has no session dimension, and the watchdog's 26h look-back would drop every Friday-to-Sunday payment failure under a `1-5` cron. They exist in code from this PR; they exist in GCP only after `terraform apply`.
 - **The card go/no-go test** (§13) — the only real unknown.
 - Whether coops get card or `manual` from day one — falls out of the test.
 - Automating wire reconciliation (Qonto or Wise incoming-transfer webhook → matcher → `paid_out_of_band`). Deferred until manual reconciliation actually hurts; at ~10-30 invoices a year it does not.

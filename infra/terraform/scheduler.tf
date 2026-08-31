@@ -109,6 +109,28 @@ locals {
       # OI/volume is in before comparing liquidity vs the roll calendar.
       schedule = "45 19 * * 1-5"
     }
+    billing-watchdog = {
+      description = "First off-session payment failure, expiring cards, Stripe⇄DB drift"
+      # 15:00 UTC DAILY, not weekdays. The job's look-back is 26h (matching a
+      # daily cadence), so a weekday-only cron would drop every failure that
+      # lands Friday evening through Sunday — and the first off-session refusal
+      # is the ONLY early warning that an issuer rejects merchant-initiated
+      # debits. Card networks and Stripe retries do not observe the exchange
+      # calendar. 15:00 sits after the daytime fundamentals (13:00/14:00) and
+      # before the evening pipeline. See billing-and-collection.md §9.
+      schedule = "0 15 * * *"
+    }
+    billing-purge = {
+      description = "Drop aud_billing_event past the 18 months the privacy policy publishes"
+      # 03:00 UTC DAILY, outside the pipeline window (18:30-22:10) so it never
+      # contends. Daily rather than weekly because over-retention is the
+      # non-conformity being fixed: a 7-day cadence would keep identifying
+      # payload up to a week past the published deadline, and the compute
+      # saved is ~0.01 $/month. Retention is anchored on the END of the period
+      # the payment covers, not on the webhook's arrival — see
+      # billing-and-collection.md §9 bis.
+      schedule = "0 3 * * *"
+    }
     # Dual-track brief — ensemble side (Phase B daily cron + in-agent eve gate).
     # cc-ensemble-explainer enriches the ensemble row with LLM narrative right
     # after cc-ensemble-compute (19:18) and before cc-daily-analysis (19:20).

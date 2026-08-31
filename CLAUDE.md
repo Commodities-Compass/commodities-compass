@@ -678,6 +678,11 @@ P2b — the pipeline is split into two phases:
 
 # Monthly:
 22:00 on the 20th  cc-enso-scraper    → pl_external_indicator (ENSO ONI + Niño 3.4)
+
+# Billing — serving layer, CALENDAR-EXEMPT (daily, incl. weekends: a card
+# expires on a Sunday and a legal deadline runs on the civil calendar):
+03:00  cc-billing-purge     → DELETE aud_billing_event past 18 months
+15:00  cc-billing-watchdog  → Sentry: first off-session failure, expiring cards, drift
 ```
 
 Notes:

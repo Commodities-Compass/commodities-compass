@@ -1,12 +1,13 @@
 ---
-import { type Locale, t, pathFor } from '@/i18n/strings';
+import { type Locale, t, pathFor, legalPath } from '@/i18n/strings';
 import LangSwitch from '@/components/LangSwitch.astro';
 
 interface Props {
   locale: Locale;
+  alternates?: Record<Locale, string>;
 }
 
-const { locale } = Astro.props;
+const { locale, alternates } = Astro.props;
 const copy = t(locale);
 ---
 
@@ -19,7 +20,7 @@ const copy = t(locale);
     </a>
     <nav>
       <a href="#what">{copy.masthead.navWhat}</a>
-      <a href="#method">{copy.masthead.navMethod}</a>
+      <a href={legalPath(locale, 'methodology')}>{copy.masthead.navMethod}</a>
       <a href="#brief">{copy.masthead.navBrief}</a>
       <a href="#contact">{copy.masthead.navContact}</a>
       <a class="sign-in" href="https://app.com-compass.com" rel="noopener">
@@ -34,7 +35,7 @@ const copy = t(locale);
           <path d="M3.5 8h9M9 4.5 12.5 8 9 11.5" />
         </svg>
       </a>
-      <LangSwitch locale={locale} />
+      <LangSwitch locale={locale} alternates={alternates} />
     </nav>
   </div>
 </header>

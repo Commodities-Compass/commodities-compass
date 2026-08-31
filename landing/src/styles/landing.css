@@ -1007,8 +1007,8 @@ footer {
 }
 footer .grid {
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr;
-  gap: 48px;
+  grid-template-columns: 1.8fr 1fr 1fr 1.3fr;
+  gap: 44px;
   padding-bottom: 40px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.15);
 }
@@ -1228,6 +1228,114 @@ footer .schedule-line {
 .editorial-page .back-link:hover { opacity: 0.6; }
 
 /* ====================================================
+   LEGAL PROSE — the five published legal pages
+   ----------------------------------------------------
+   Long-form Markdown rendered by LegalLayout. `.editorial-page` already
+   covers h1/h2/p/eyebrow; this adds the elements legal text actually uses
+   and that the landing sections never needed: headings level 3, lists,
+   tables, blockquotes, inline links and rules.
+
+   Tables MUST scroll inside their own container — the retention and
+   sub-processor tables are wide and would otherwise make the whole page
+   scroll sideways on a phone.
+   ==================================================== */
+.legal-prose { max-width: 760px; }
+.legal-prose h1 { font-size: clamp(32px, 4.2vw, 46px); margin-bottom: 24px; }
+.legal-prose h2 {
+  margin-top: 44px;
+  padding-top: 20px;
+  border-top: 1px solid var(--rule-soft);
+}
+.legal-prose h3 {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: -0.005em;
+  color: var(--color-ink);
+  margin-top: 28px;
+  margin-bottom: 10px;
+}
+.legal-prose ul,
+.legal-prose ol {
+  font-family: var(--font-editorial);
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--ink-dark);
+  margin: 0 0 16px 0;
+  padding-left: 22px;
+}
+.legal-prose li { margin-bottom: 8px; }
+.legal-prose li strong { font-weight: 700; color: var(--color-ink); }
+.legal-prose a {
+  color: var(--color-ink);
+  text-decoration: none;
+  border-bottom: 1px solid var(--rule);
+  transition: border-color 220ms ease;
+}
+.legal-prose a:hover { border-bottom-color: var(--color-ink); }
+.legal-prose blockquote {
+  margin: 24px 0;
+  padding: 16px 20px;
+  border-left: 2px solid var(--color-ink);
+  background: var(--paper-off, rgba(0, 0, 0, 0.02));
+}
+.legal-prose blockquote p { margin-bottom: 8px; }
+.legal-prose blockquote p:last-child { margin-bottom: 0; }
+.legal-prose hr {
+  border: 0;
+  border-top: 1px solid var(--rule-soft);
+  margin: 40px 0;
+}
+/* Counsel's source separates sections with `---`, and every h2 already draws
+   its own top rule. Rendered as-is that stacks two lines; the section rule
+   wins and the redundant one collapses. */
+.legal-prose hr + h2 {
+  border-top: 0;
+  padding-top: 0;
+  margin-top: 0;
+}
+.legal-prose :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 1px 5px;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 4px;
+}
+/* Wide tables scroll in place; the page body never scrolls sideways. */
+.legal-prose .table-scroll { overflow-x: auto; margin: 0 0 20px 0; }
+.legal-prose table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 520px;
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--ink-dark);
+}
+.legal-prose thead th {
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-light-2);
+  border-bottom: 1px solid var(--color-ink);
+  padding: 0 12px 8px 0;
+}
+.legal-prose tbody td {
+  vertical-align: top;
+  padding: 10px 12px 10px 0;
+  border-bottom: 1px solid var(--rule-soft);
+}
+.legal-prose tbody td strong { font-weight: 600; color: var(--color-ink); }
+
+@media (max-width: 640px) {
+  .legal-prose h1 { font-size: 30px; }
+  .legal-prose h2 { font-size: 21px; }
+}
+
+/* ====================================================
    404 PAGE
    ==================================================== */
 .not-found {
@@ -1377,7 +1485,27 @@ footer .schedule-line {
   /* Very small phones — drop bento + brief to single column */
   .bento { grid-template-columns: 1fr; }
   .footer-grid { grid-template-columns: 1fr; }
+  footer .grid { grid-template-columns: 1fr; }
   .hero h1 { font-size: clamp(40px, 12vw, 64px); }
   /* Below 480px: drop sign-in to save space — primary conversion CTA wins */
   .masthead nav a.sign-in { display: none; }
 }
+
+/* A4 — section III keeps its commercial framing and now points at the full
+   published methodology page, which is where the MAR disclosures live. */
+.method-full-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 32px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-ink);
+  text-decoration: none;
+  border-bottom: 1px solid var(--color-ink);
+  padding-bottom: 3px;
+  transition: opacity 220ms ease;
+}
+.method-full-link:hover { opacity: 0.6; }

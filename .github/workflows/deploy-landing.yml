@@ -64,6 +64,9 @@ jobs:
         env:
           # Analytics gated on env var — empty unless explicitly enabled.
           # To activate Plausible: set vars.PUBLIC_PLAUSIBLE_DOMAIN at repo level.
+          # ⚠️ Doing so contradicts § 8 of the published privacy policy, which
+          # states no non-exempt audience tracker is set. Read the header of
+          # landing/src/components/Analytics.astro before setting it.
           PUBLIC_PLAUSIBLE_DOMAIN: ${{ vars.PUBLIC_PLAUSIBLE_DOMAIN }}
         run: pnpm build
 

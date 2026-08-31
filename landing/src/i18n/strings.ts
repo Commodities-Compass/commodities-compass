@@ -34,18 +34,16 @@ const strings = {
       ctaPrimary: 'Demander un accès',
       ctaSecondary: 'Voir la méthodologie',
       signalAside: 'Aperçu du signal du jour',
-      signalLabel: 'Signal du jour',
+      signalLabel: 'Signal du jour · Exemple',
       signalPill: 'OPEN',
       signalHeading: 'Signal OPEN —',
       signalHeadingEm: 'Pression haussière sur le cacao',
-      statContract: 'CAK26',
+      statContract: 'CAZ26',
       statContractValue: '£2 998',
       statDay: 'J/J',
       statDayValue: '+0,77 %',
       statHorizon: 'Horizon',
-      statHorizonValue: '~4 J',
-      statYtd: 'YTD',
-      statYtdValue: '+90 %',
+      statHorizonValue: 'J+1',
       mini1Label: 'Une seule conviction',
       mini1ValuePrefix: 'OPEN, MONITOR',
       mini1ValueMiddle: 'ou',
@@ -80,17 +78,11 @@ const strings = {
       cell3HeadingEm: 'minutes,',
       cell3HeadingRest: 'chaque jour.',
       cell3Body: 'Format podcast quotidien. À écouter sur le chemin du bureau, ou en streaming pendant que le tableau de bord charge.',
-      cell4Eyebrow: 'YTD 2026',
-      cell4Value: '+90 %',
-      cell4Body: 'Suivi de conviction, depuis le 2 janvier 2026.',
-      cell5Eyebrow: 'Taux de réussite',
-      cell5Value: '70 %',
-      cell5Suffix: '~ conviction nette',
-      cell5Body: 'Confirmé sur backtest + 6 mois de publication en live.',
     },
     method: {
       sectionRoman: 'III',
-      sectionTitle: 'Méthodologie',
+      sectionTitle: 'Discipline éditoriale',
+      fullLink: 'Méthodologie complète et transparence',
       sectionMeta: 'Quatre principes · Auditable',
       lede: 'La discipline contre',
       ledeEm: 'le bruit.',
@@ -129,7 +121,7 @@ const strings = {
       briefHeadingEm: 'HEDGE',
       briefHeadingTail: '— Pression baissière sur le cacao',
       briefP1: "Lecture Compass alignée sur la position HEDGE, conviction nette (<em>forte</em>). Le CLOSE recule de 2 975 à 2 964 (−0,37 %), le VOLUME s'effondre de 11 241 à 5 697 (−49,3 %) — désengagement marqué des commerciaux.",
-      briefP2: "<strong>Technique.</strong> CAK26 dans la moitié basse du range hebdo. %K Stochastique sous 30, MACD négatif en pente descendante, ATR Wilder en hausse. Le ratio Volume/OI se contracte vers 0,14 — épuisement de l'élan haussier de mai.",
+      briefP2: "<strong>Technique.</strong> CAZ26 dans la moitié basse du range hebdo. %K Stochastique sous 30, MACD négatif en pente descendante, ATR Wilder en hausse. Le ratio Volume/OI se contracte vers 0,14 — épuisement de l'élan haussier de mai.",
       briefP3: "<strong>Fondamental.</strong> Arrivages ports ivoiriens +8,2 % sur la semaine, au-dessus de la médiane 5-ans. ICCO révise la production à 4,72 Mt (vs 4,55 Mt). Grindings ECA Q1 2026 stables à −1,1 % YoY.",
       briefP4: "<strong>Météo & macro.</strong> Côte d'Ivoire + Ghana sortent d'une semaine sèche favorable au séchage, fenêtre de pluies J+5–J+8 sur la Sassandra-Marahoué. GBP/USD sous 1,26 après l'inflation UK. Pas d'alerte ENSO.",
       briefMore: '— suite · 1 page · FR natif · 4 min de lecture · exemple éditorial',
@@ -149,7 +141,7 @@ const strings = {
       headingEm: 'demain ?',
       body: "Compass est sur invitation uniquement. Dites-nous qui vous êtes, ce que vous tradez, et à quelle heure la cloche sonne pour vous. Réponse sous un jour ouvré. Accès d'essai possible pour les desks qualifiés.",
       ctaPrimary: 'Contacter le Pôle commercial',
-      email: 'issouf@com-compass.com',
+      email: 'contact@com-compass.com',
     },
     footer: {
       deck: "La rédaction quotidienne d'intelligence sur le cacao ICE.",
@@ -161,8 +153,19 @@ const strings = {
       colContactHeading: 'Contact',
       colContact1: 'Accès',
       colContact2: 'Email',
-      microLegal: 'Avertissement',
-      disclaimer: "<strong>Avertissement.</strong> Compass CC publie de l'intelligence de marché et un support à la décision pour les futures sur le cacao ICE. Cela ne constitue ni un conseil en investissement, ni une sollicitation. Le trading de futures comporte un risque substantiel de perte. Les performances passées ne préjugent pas des performances futures. Compass CC n'est pas un conseiller en investissement enregistré, un courtier, ou une plateforme de trading.",
+      colLegalHeading: 'Informations légales',
+      colLegal1: 'Mentions légales',
+      colLegal2: 'Conditions générales',
+      colLegal3: 'Politique de confidentialité',
+      colLegal4: 'Tarifs et conditions',
+      colLegal5: 'Méthodologie et transparence',
+      microLegal: 'Mentions légales',
+      // A3 — the MAR qualification opens the notice, and the last sentence
+      // now uses the French category (CIF), not the US "registered investment
+      // adviser" it was translating. Counsel's note to the CTO, § A3.
+      disclaimerLead: "Les lectures techniques publiées constituent des <strong>recommandations d'investissement</strong> au sens du règlement (UE) n° 596/2014. Elles sont générales et identiques pour tous les abonnés.",
+      disclaimerLeadLink: 'Méthodologie et transparence',
+      disclaimer: "<strong>Avertissement.</strong> Compass CC publie de l'intelligence de marché et un support à la décision pour les futures sur le cacao ICE. Cela ne constitue ni un conseil en investissement, ni une sollicitation. Le trading de futures comporte un risque substantiel de perte. Les performances passées ne préjugent pas des performances futures. Compass CC n'est ni prestataire de services d'investissement, ni conseiller en investissements financiers, ni courtier, ni plateforme de négociation.",
       copyright: '© 2026 Commodities Compass · ICE Cocoa #7',
     },
     meta: {
@@ -177,36 +180,11 @@ const strings = {
       ctaHome: "Retour à l'accueil",
       ctaContact: 'Signaler un lien cassé',
     },
-    disclaimerPage: {
-      pageTitle: 'Avertissement — Compass CC',
-      pageDescription: "Avertissement légal et notice de risque pour les publications Compass CC sur les futures cacao ICE.",
-      eyebrow: 'Avertissement',
-      title: 'À lire avant tout usage',
-      lastUpdate: 'Dernière mise à jour : 16 juin 2026',
-      sections: [
-        {
-          heading: 'Nature du service',
-          body: "Compass CC publie une intelligence éditoriale quotidienne destinée aux traders institutionnels du cacao ICE. Ce service produit une lecture de marché — OPEN, MONITOR ou HEDGE — accompagnée d'un texte explicatif et d'un brief audio. Il s'agit d'une information éditoriale, pas d'une recommandation d'investissement personnalisée.",
-        },
-        {
-          heading: 'Pas un conseil en investissement',
-          body: "Compass CC n'est pas un conseiller en investissement enregistré ni un prestataire de services d'investissement au sens des directives MiFID II. Les publications ne tiennent pas compte de votre situation financière, de vos objectifs ni de votre tolérance au risque. Avant toute décision, consultez un conseiller indépendant agréé dans votre juridiction.",
-        },
-        {
-          heading: 'Risque',
-          body: "Le trading de futures sur matières premières comporte un risque substantiel de perte, pouvant dépasser le capital initial. Le marché du cacao est volatil, exposé à des aléas climatiques, sanitaires, politiques et de change. Les performances passées (y compris les indicateurs YTD ou hit rate publiés sur ce site) ne préjugent pas des performances futures.",
-        },
-        {
-          heading: 'Sources et méthode',
-          body: "Compass CC croise des sources publiques (prix officiels ICE, CFTC COT, ICE EU COT, NOAA, ECB, Open-Meteo, ECA, NCA, presse spécialisée) avec une couche analytique propriétaire. Les sources sont auditables ; la méthode reste la propriété intellectuelle de Compass CC. Aucune donnée client n'est intégrée à la chaîne de publication.",
-        },
-        {
-          heading: 'Responsabilité',
-          body: "Compass CC ne garantit pas l'exactitude, l'exhaustivité ou l'actualité des informations publiées et décline toute responsabilité quant aux décisions prises sur leur base. L'accès au service est sur invitation et soumis aux conditions transmises lors de l'onboarding.",
-        },
-      ],
-      backToHome: 'Retour à la page d\'accueil',
-    },
+    // The standalone /disclaimer/ page was retired: it competed with the
+    // published legal notice on the same subject, and two documents that
+    // disagree is a contradiction handed to whoever looks for one.
+    // Its notice now lives in the footer and in /mentions-legales.
+    legalPage: { backToHome: "Retour à la page d'accueil" },
   },
   en: {
     masthead: {
@@ -228,18 +206,16 @@ const strings = {
       ctaPrimary: 'Request access',
       ctaSecondary: 'See the methodology',
       signalAside: "Today's signal preview",
-      signalLabel: "Today's signal",
+      signalLabel: "Today's signal · Example",
       signalPill: 'OPEN',
       signalHeading: 'Signal OPEN —',
       signalHeadingEm: 'Bullish pressure on cocoa',
-      statContract: 'CAK26',
+      statContract: 'CAZ26',
       statContractValue: '£2,998',
       statDay: 'D/D',
       statDayValue: '+0.77%',
       statHorizon: 'Horizon',
-      statHorizonValue: '~4 d',
-      statYtd: 'YTD',
-      statYtdValue: '+90%',
+      statHorizonValue: 'D+1',
       mini1Label: 'One single conviction',
       mini1ValuePrefix: 'OPEN, MONITOR',
       mini1ValueMiddle: 'or',
@@ -274,17 +250,11 @@ const strings = {
       cell3HeadingEm: 'minutes,',
       cell3HeadingRest: 'every day.',
       cell3Body: 'Daily podcast format. Listen on your way to the desk, or while the dashboard loads in the background.',
-      cell4Eyebrow: 'YTD 2026',
-      cell4Value: '+90%',
-      cell4Body: 'Conviction tracking, since 2 January 2026.',
-      cell5Eyebrow: 'Hit rate',
-      cell5Value: '70%',
-      cell5Suffix: '~ net conviction',
-      cell5Body: 'Confirmed on backtest + 6 months of live publication.',
     },
     method: {
       sectionRoman: 'III',
-      sectionTitle: 'Methodology',
+      sectionTitle: 'Editorial discipline',
+      fullLink: 'Full methodology and transparency',
       sectionMeta: 'Four principles · Auditable',
       lede: 'Discipline against',
       ledeEm: 'the noise.',
@@ -323,7 +293,7 @@ const strings = {
       briefHeadingEm: 'HEDGE',
       briefHeadingTail: '— Bearish pressure on cocoa',
       briefP1: "Compass reading aligned on the HEDGE position, net conviction (<em>strong</em>). CLOSE drops from 2,975 to 2,964 (−0.37%), VOLUME collapses from 11,241 to 5,697 (−49.3%) — sharp commercial disengagement.",
-      briefP2: "<strong>Technicals.</strong> CAK26 in the lower half of the weekly range. Stochastic %K below 30, MACD negative and sloping down, Wilder ATR rising. Volume/OI ratio contracting to 0.14 — exhaustion of May's bullish momentum.",
+      briefP2: "<strong>Technicals.</strong> CAZ26 in the lower half of the weekly range. Stochastic %K below 30, MACD negative and sloping down, Wilder ATR rising. Volume/OI ratio contracting to 0.14 — exhaustion of May's bullish momentum.",
       briefP3: "<strong>Fundamentals.</strong> Ivorian port arrivals +8.2% on the week, above the 5-year median. ICCO revises production to 4.72 Mt (vs 4.55 Mt). ECA Q1 2026 grindings stable at −1.1% YoY.",
       briefP4: "<strong>Weather & macro.</strong> Côte d'Ivoire + Ghana exit a dry week favourable to drying, rain window expected D+5 to D+8 on the Sassandra-Marahoué. GBP/USD below 1.26 after UK inflation. No ENSO alert.",
       briefMore: '— continued · 1 page · native EN · 4 min read · editorial sample',
@@ -343,7 +313,7 @@ const strings = {
       headingEm: 'tomorrow?',
       body: "Compass is invite-only. Tell us who you are, what you trade, and what time the bell rings for you. Reply within one business day. Trial access possible for qualified desks.",
       ctaPrimary: 'Contact our sales team',
-      email: 'issouf@com-compass.com',
+      email: 'contact@com-compass.com',
     },
     footer: {
       deck: "The daily intelligence desk for ICE cocoa.",
@@ -355,8 +325,16 @@ const strings = {
       colContactHeading: 'Contact',
       colContact1: 'Access',
       colContact2: 'Email',
-      microLegal: 'Disclaimer',
-      disclaimer: "<strong>Disclaimer.</strong> Compass CC publishes market intelligence and decision support for ICE cocoa futures. It does not constitute investment advice or a solicitation. Trading futures carries a substantial risk of loss. Past performance is no guarantee of future results. Compass CC is not a registered investment advisor, broker, or trading platform.",
+      colLegalHeading: 'Legal information',
+      colLegal1: 'Legal notice',
+      colLegal2: 'Terms and conditions',
+      colLegal3: 'Privacy policy',
+      colLegal4: 'Pricing and terms',
+      colLegal5: 'Methodology and transparency',
+      microLegal: 'Legal notice',
+      disclaimerLead: "The technical readings we publish are <strong>investment recommendations</strong> within the meaning of Regulation (EU) No 596/2014. They are general and identical for all subscribers.",
+      disclaimerLeadLink: 'Methodology and transparency',
+      disclaimer: "<strong>Disclaimer.</strong> Compass CC publishes market intelligence and decision support for ICE cocoa futures. It does not constitute investment advice or a solicitation. Trading futures carries a substantial risk of loss. Past performance is no guarantee of future results. Compass CC is neither an investment services provider, nor a financial investment adviser, nor a broker, nor a trading venue.",
       copyright: '© 2026 Commodities Compass · ICE Cocoa #7',
     },
     meta: {
@@ -371,41 +349,52 @@ const strings = {
       ctaHome: 'Back to home',
       ctaContact: 'Report a broken link',
     },
-    disclaimerPage: {
-      pageTitle: 'Disclaimer — Compass CC',
-      pageDescription: "Legal disclaimer and risk notice for Compass CC publications on ICE cocoa futures.",
-      eyebrow: 'Disclaimer',
-      title: 'Read before any use',
-      lastUpdate: 'Last updated: 16 June 2026',
-      sections: [
-        {
-          heading: 'Nature of the service',
-          body: "Compass CC publishes daily editorial intelligence for institutional traders on ICE cocoa futures. The service produces a market reading — OPEN, MONITOR or HEDGE — together with an explanatory text and an audio brief. This is editorial information, not personalised investment advice.",
-        },
-        {
-          heading: 'Not investment advice',
-          body: "Compass CC is not a registered investment advisor or investment services provider within the meaning of MiFID II. The publications do not take into account your financial situation, objectives or risk tolerance. Before any decision, consult an independent advisor licensed in your jurisdiction.",
-        },
-        {
-          heading: 'Risk',
-          body: "Trading commodity futures involves substantial risk of loss that may exceed the initial capital. The cocoa market is volatile and exposed to weather, sanitary, political and currency risks. Past performance (including any YTD or hit-rate indicators published on this site) is no guarantee of future results.",
-        },
-        {
-          heading: 'Sources and method',
-          body: "Compass CC cross-checks public sources (ICE official prices, CFTC COT, ICE EU COT, NOAA, ECB, Open-Meteo, ECA, NCA, specialised press) with a proprietary analytical layer. Sources are auditable; the method remains the intellectual property of Compass CC. No client data is integrated into the publishing chain.",
-        },
-        {
-          heading: 'Liability',
-          body: "Compass CC does not guarantee the accuracy, completeness or timeliness of the information published and disclaims any responsibility for decisions made on its basis. Access to the service is invite-only and subject to the terms communicated at onboarding.",
-        },
-      ],
-      backToHome: 'Back to home',
-    },
+    // The standalone /disclaimer/ page was retired: it competed with the
+    // published legal notice on the same subject, and two documents that
+    // disagree is a contradiction handed to whoever looks for one.
+    // Its notice now lives in the footer and in /mentions-legales.
+    legalPage: { backToHome: 'Back to home' },
   },
 } as const;
 
 export function t(locale: Locale): (typeof strings)[Locale] {
   return strings[locale];
+}
+
+/**
+ * The five published legal pages, and their slug in each locale.
+ *
+ * One map so a slug is declared once: the page file, the footer link, the
+ * hreflang alternate and the language switcher all read from here. Changing a
+ * URL in one place and not the others is how a legal page becomes unreachable
+ * in one language while still being linked in the other.
+ *
+ * Source of the text: `.local/Juridique Compass/` (counsel's delivery,
+ * 28 August 2026), cut at the `⛔` line.
+ */
+export const LEGAL_PAGES = {
+  legalNotice: { fr: 'mentions-legales', en: 'legal-notice' },
+  terms: { fr: 'cgv', en: 'terms' },
+  privacy: { fr: 'confidentialite', en: 'privacy' },
+  pricing: { fr: 'tarifs', en: 'pricing' },
+  methodology: { fr: 'methodologie', en: 'methodology' },
+} as const;
+
+export type LegalPageKey = keyof typeof LEGAL_PAGES;
+
+/** Absolute path of a legal page in one locale. */
+export function legalPath(locale: Locale, key: LegalPageKey): string {
+  return pathFor(locale, LEGAL_PAGES[key][locale]);
+}
+
+/**
+ * The `{ fr, en }` counterpart paths of a page — what `hreflang` and the
+ * language switcher need. Defaults to the two home pages for every page that
+ * does not declare a key.
+ */
+export function alternatesFor(key?: LegalPageKey): Record<Locale, string> {
+  if (!key) return { fr: pathFor('fr'), en: pathFor('en') };
+  return { fr: legalPath('fr', key), en: legalPath('en', key) };
 }
 
 export function pathFor(locale: Locale, path: string = ''): string {

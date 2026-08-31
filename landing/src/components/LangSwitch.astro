@@ -3,9 +3,11 @@ import { type Locale, pathFor, LOCALES } from '@/i18n/strings';
 
 interface Props {
   locale: Locale;
+  /** Counterpart path per locale. Falls back to each home page. */
+  alternates?: Record<Locale, string>;
 }
 
-const { locale } = Astro.props;
+const { locale, alternates } = Astro.props;
 ---
 
 <div class="lang-switch" role="group" aria-label="Language">
@@ -14,7 +16,7 @@ const { locale } = Astro.props;
       <>
         {i > 0 && <span class="lang-sep" aria-hidden="true">·</span>}
         <a
-          href={pathFor(code)}
+          href={alternates?.[code] ?? pathFor(code)}
           class:list={['lang-link', { active: code === locale }]}
           hreflang={code}
           aria-current={code === locale ? 'page' : undefined}

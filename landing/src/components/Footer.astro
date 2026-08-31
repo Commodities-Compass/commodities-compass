@@ -1,5 +1,5 @@
 ---
-import { type Locale, t, pathFor } from '@/i18n/strings';
+import { type Locale, t, legalPath } from '@/i18n/strings';
 
 interface Props {
   locale: Locale;
@@ -24,7 +24,7 @@ const copy = t(locale);
         <h5>{copy.footer.colReadHeading}</h5>
         <ul>
           <li><a href="#what">{copy.footer.colRead1}</a></li>
-          <li><a href="#method">{copy.footer.colRead2}</a></li>
+          <li><a href={legalPath(locale, 'methodology')}>{copy.footer.colRead2}</a></li>
           <li><a href="#brief">{copy.footer.colRead3}</a></li>
         </ul>
       </div>
@@ -35,12 +35,32 @@ const copy = t(locale);
           <li><a href={`mailto:${copy.contact.email}`}>{copy.footer.colContact2}</a></li>
         </ul>
       </div>
+      {/*
+        A1 — the five legal pages, on every page, reachable without
+        authentication and as selectable text. This is the first thing the
+        payment operator's reviewer checks, and the only genuinely blocking
+        item of the whole file.
+      */}
+      <div>
+        <h5>{copy.footer.colLegalHeading}</h5>
+        <ul>
+          <li><a href={legalPath(locale, 'legalNotice')}>{copy.footer.colLegal1}</a></li>
+          <li><a href={legalPath(locale, 'terms')}>{copy.footer.colLegal2}</a></li>
+          <li><a href={legalPath(locale, 'privacy')}>{copy.footer.colLegal3}</a></li>
+          <li><a href={legalPath(locale, 'pricing')}>{copy.footer.colLegal4}</a></li>
+          <li><a href={legalPath(locale, 'methodology')}>{copy.footer.colLegal5}</a></li>
+        </ul>
+      </div>
     </div>
 
+    <p class="disclaimer">
+      <span set:html={copy.footer.disclaimerLead}></span>{' '}
+      <a href={legalPath(locale, 'methodology')}>{copy.footer.disclaimerLeadLink}</a>
+    </p>
     <p class="disclaimer" set:html={copy.footer.disclaimer}></p>
     <div class="micro">
       <span>{copy.footer.copyright}</span>
-      <a href={pathFor(locale, 'disclaimer')} class="micro-link">{copy.footer.microLegal}</a>
+      <a href={legalPath(locale, 'legalNotice')} class="micro-link">{copy.footer.microLegal}</a>
     </div>
   </div>
 </footer>

@@ -175,3 +175,43 @@ class TestSeparatorMeansOppositeThingsPerLocale:
     def test_a_three_digit_group_never_becomes_a_fraction(self):
         # "236 point 110" is what broke it; the group is thousands, not decimals.
         assert "236" not in numeric_tokens("236,110")
+
+
+class TestNumbersFollowTheSpeakingLanguage:
+    """`,` and `.` swap roles across the Channel, and the database mixes both.
+
+    Heard 2026-08-27: the voice said "quatre mille deux cent cinquante-trois
+    virgule zéro zéro" for CLOSE=4,253.00, and read the abbreviation OI as
+    "O-I". Both reached the script straight out of `technicals_snapshot`.
+    """
+
+    SNAPSHOT = "CLOSE=4,253.00 | OI=23806 | STOCK_EU=40,858.92 | SUPPORT 1 (4 160.67)"
+
+    def test_a_zero_fraction_is_never_spoken(self):
+        assert "4 253" in normalize_for_speech("CLOSE=4,253.00", "fr")
+        assert "4,253" in normalize_for_speech("CLOSE=4,253.00", "en")
+        for language in ("fr", "en"):
+            assert "00" not in normalize_for_speech("CLOSE=4,253.00", language)
+
+    def test_french_gets_a_space_and_a_comma(self):
+        out = normalize_for_speech("STOCK_EU=40,858.92", "fr")
+        assert "40 858,92" in out
+
+    def test_english_keeps_a_comma_and_a_point(self):
+        assert "40,858.92" in normalize_for_speech("STOCK_EU=40,858.92", "en")
+
+    def test_a_real_decimal_survives_in_both(self):
+        assert "4 160,67" in normalize_for_speech("SUPPORT 1 (4 160.67)", "fr")
+        assert "4,160.67" in normalize_for_speech("SUPPORT 1 (4 160.67)", "en")
+
+    def test_abbreviations_are_spelled_out(self):
+        assert "positions ouvertes" in normalize_for_speech("OI=23806", "fr")
+        assert "open interest" in normalize_for_speech("OI=23806", "en")
+        assert "volatilité implicite" in normalize_for_speech("IV=0.46", "fr")
+
+    def test_rewriting_never_invents_a_figure(self):
+        allowed = numeric_tokens(self.SNAPSHOT)
+        for language in ("fr", "en"):
+            assert (
+                numeric_tokens(normalize_for_speech(self.SNAPSHOT, language)) <= allowed
+            )

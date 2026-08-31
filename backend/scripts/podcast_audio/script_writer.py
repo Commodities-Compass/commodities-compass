@@ -142,7 +142,7 @@ class PodcastScript:
     def as_markup_turns(self) -> list[dict[str, str]]:
         """The ``multiSpeakerMarkup.turns`` payload, speech-normalised."""
         return [
-            {"speaker": t.speaker, "text": normalize_for_speech(t.text)}
+            {"speaker": t.speaker, "text": normalize_for_speech(t.text, self.language)}
             for t in self.turns
         ]
 

@@ -24,13 +24,83 @@ _DECIMAL_POINT = re.compile(r"(?<=\d)\.(?=\d)")
 _WHITESPACE = re.compile(r"\s+")
 
 
-def normalize_for_speech(text: str) -> str:
-    """Strip layout markup, re-spell numbers, and case coined words as spoken."""
+def normalize_for_speech(text: str, language: str = "fr") -> str:
+    """Strip layout markup, re-spell numbers, expand abbreviations, case names."""
     cleaned = _BLOCKQUOTE.sub("", text)
     cleaned = _BULLET.sub("", cleaned)
-    cleaned = _DECIMAL_POINT.sub(",", cleaned)
+    cleaned = _normalize_numbers(cleaned, language)
+    cleaned = _expand_abbreviations(cleaned, language)
     cleaned = _apply_lexicon_casing(cleaned)
     return _WHITESPACE.sub(" ", cleaned).strip()
+
+
+# Rewrite every number into the convention of the language that will speak it.
+#
+# `,` and `.` swap roles across the Channel, and the database mixes both:
+# `4,253.00` is an English thousands comma with an English decimal point. Fed to
+# a French voice unchanged it becomes "4 virgule 253"; converting every dot to a
+# comma instead gives an English voice "40,858,92". The digit count settles it —
+# a separator followed by exactly three digits groups thousands, one followed by
+# one or two is a decimal.
+#
+# A trailing all-zero fraction is dropped in both: heard 2026-08-27 as "quatre
+# mille deux cent cinquante-trois virgule zéro zéro" for CLOSE=4,253.00.
+_NUMBER = re.compile(
+    r"\d{1,3}(?:[\u00a0\u202f ,.]\d{3})+(?:[.,]\d{1,2})?" r"|\d+(?:[.,]\d{1,2})?"
+)
+# A plain space, not the typographic U+202F: the final whitespace collapse
+# flattens a narrow space anyway, and no voice can tell them apart.
+_SEPARATORS = {"fr": (" ", ","), "en": (",", ".")}
+
+
+def _normalize_numbers(text: str, language: str) -> str:
+    thousands, decimal = _SEPARATORS.get(language, _SEPARATORS["fr"])
+
+    def render(match: re.Match[str]) -> str:
+        raw = match.group()
+        head, _, frac = re.match(r"^(.*?)(?:([.,])(\d{1,2}))?$", raw).groups()  # type: ignore[union-attr]
+        digits = re.sub(r"\D", "", head)
+        grouped = f"{int(digits):,}".replace(",", thousands) if digits else ""
+        if frac and set(frac) != {"0"}:
+            return f"{grouped}{decimal}{frac}"
+        return grouped
+
+    return _NUMBER.sub(render, text)
+
+
+# Column names out of technicals_snapshot. Left as written they reach the script
+# verbatim and the voice spells them — "O-I" instead of "positions ouvertes".
+_ABBREVIATIONS = {
+    "fr": (
+        ("STOCK_US", "stocks américains"),
+        ("STOCK_EU", "stocks européens"),
+        ("COM_NET", "position nette commerciale"),
+        ("VOLUME", "volume"),
+        ("CLOSE", "clôture"),
+        ("HIGH", "plus haut"),
+        ("LOW", "plus bas"),
+        ("OI", "positions ouvertes"),
+        ("IV", "volatilité implicite"),
+    ),
+    "en": (
+        ("STOCK_US", "US stocks"),
+        ("STOCK_EU", "EU stocks"),
+        ("COM_NET", "commercial net position"),
+        ("VOLUME", "volume"),
+        ("CLOSE", "close"),
+        ("HIGH", "high"),
+        ("LOW", "low"),
+        ("OI", "open interest"),
+        ("IV", "implied volatility"),
+    ),
+}
+
+
+def _expand_abbreviations(text: str, language: str) -> str:
+    """Spell out the column names a voice would otherwise read letter by letter."""
+    for short, spoken in _ABBREVIATIONS.get(language, _ABBREVIATIONS["fr"]):
+        text = re.sub(rf"\b{short}\b", spoken, text)
+    return text
 
 
 def _apply_lexicon_casing(text: str) -> str:

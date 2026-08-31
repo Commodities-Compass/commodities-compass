@@ -225,7 +225,10 @@ def build_prompt(data: BriefData, narrative: Narrative) -> str:
     """
     english = data.language == "en"
     template = _PROMPT_EN if english else _PROMPT_FR
-    clean = normalize_for_speech
+
+    def clean(text: str) -> str:
+        return normalize_for_speech(text, data.language)
+
     return template.format(
         shape=_SHAPE_EN if english else _SHAPE,
         decision=data.judge.final_decision,

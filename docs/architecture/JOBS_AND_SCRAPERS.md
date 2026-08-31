@@ -2,21 +2,20 @@
 
 > Inventaire complet des **jobs Cloud Run** et **schedulers** du pipeline Compass Cocoa. Pour chaque job : description, source, cron, output, quel(s) pipeline(s) le consomme, statut (actif / déprécié / out-of-scope), et tolérance de scraping. Document indépendant — peut être lu seul pour comprendre la photographie complète.
 
-> **Périmètre** (vérifié contre GCP le 2026-08-19) : **19 jobs Cloud Run**, tous
-> déployés par `deploy.yml`, et **18 schedulers**. Le 19ᵉ job n'a pas de scheduler :
+> **Périmètre** (vérifié contre GCP le 2026-08-31) : **21 jobs Cloud Run**, tous
+> déployés par `deploy.yml`, et **20 schedulers**. Le job sans scheduler :
 > `cc-regime-bootstrap-artifacts`, utilitaire one-shot. Les 6 jobs legacy/ensemble
 > ont été supprimés le 2026-08-19 — contexte business dans
 > [docs/archive/pipelines/](../archive/pipelines/).
 >
-> ⚠️ **Deux jobs de plus sont déclarés mais pas encore déployés** :
-> `cc-billing-watchdog` (`0 15 * * *`) et `cc-billing-purge` (`0 3 * * *`), qui
-> arrivent avec la brique Stripe. Les jobs sont dans `deploy.yml`, leurs
-> schedulers dans `scheduler.tf`, et les deux sont classés `CALENDAR_EXEMPT`
-> dans `scripts/_shared/phases.py` — la facturation n'a pas de dimension
-> session. Le compte GCP passera à **21 jobs et 20 schedulers** après le
-> déploiement et le `terraform apply`. Voir
-> [billing-and-collection.md](billing-and-collection.md) § 9 et § 9 bis. Ce
-> catalogue est une photographie de GCP, pas du dépôt : il sera repris ensuite.
+> **Les 2 derniers arrivés sont la couche facturation** (PR #115, 2026-08-31) :
+> `cc-billing-watchdog` (`0 15 * * *`) et `cc-billing-purge` (`0 3 * * *`). Tous
+> deux sont **quotidiens et `CALENDAR_EXEMPT`** (`scripts/_shared/phases.py`) :
+> la facturation n'a pas de dimension session — une carte expire un dimanche et
+> une échéance légale court sur le calendrier civil. Le watchdog en particulier
+> a une fenêtre de 26 h, donc un cron `1-5` perdrait tout échec de prélèvement
+> du vendredi soir au dimanche. Voir
+> [billing-and-collection.md](billing-and-collection.md) § 9 et § 9 bis.
 
 ---
 
@@ -44,11 +43,14 @@ Time UTC | Job                                   | Track       | Type
 ─────────┼───────────────────────────────────────┼─────────────┼──────────────────
 20:00-09:30 */30 | cc-publish-session               | shared      | Gate de publication
 Monthly  | cc-enso-scraper                       | shared      | 20 of month at 22:00 UTC
+03:00 daily | cc-billing-purge                   | serving     | Calendar-exempt (rétention 18 mois)
+15:00 daily | cc-billing-watchdog                | serving     | Calendar-exempt (échecs de prélèvement)
 ```
 
 **Légende du Track** :
 - `shared` : données de marché, consommées par la décision, les jauges ou le dashboard
 - `REGIME` : la piste servie depuis le 2026-08-19 (regime + judge + brief)
+- `serving` : couche de service (facturation, tenancy) — ne touche jamais une table `pl_*` du pipeline
 
 ⚠️ Les mentions `ENSEMBLE-only` qui subsistent plus bas dans ce document datent de
 l'époque à deux pistes. Les scrapers ainsi étiquetés (`cc-ice-cot-eu-scraper`,
@@ -91,8 +93,8 @@ n'a plus d'objet.
 | **cc-intraday-monitor** | `*/5 8-16 * * 1-5` | shared | Barchart core-api (httpx, delayed ~10-12 min) + `pl_derived_indicators` (S1/R1) + `ref_alert_rule` | `pl_contract_data_intraday` (append) + `aud_alert_event` + Telegram sendMessage | ✅ Actif (LIVE telegram) |
 | **cc-roll-watchdog** | `45 19 * * 1-5` | shared | `pl_contract_data_daily` ⨝ `ref_contract` — front-month liquidité (OI **et** volume) vs `active_from` (calendrier). **Pas** la VIEW : la règle OI n'y existe plus depuis `d5e6f7a8b9c0` | Sentry nudge (no DB write), exit 1 | ✅ Actif |
 | **cc-publish-session** | `*/30 20-23,0-9 * * *` | shared | complétude `pl_indicator_daily` + présence audio Drive | `pl_session_release` (bascule atomique du dashboard) | ✅ Actif |
-| **cc-billing-watchdog** | `0 15 * * *` | serving | `aud_billing_event` (échecs < 26 h), `tenant_billing_subscription` ⨝ Stripe (cartes, statuts) | Sentry capture (no DB write), exit 1 si problème | ⏳ Déclaré, pas encore déployé |
-| **cc-billing-purge** | `0 3 * * *` | serving | `aud_billing_event` — ancre `GREATEST(received_at, period_end)` | DELETE au-delà de 18 mois (rétention publiée) | ⏳ Déclaré, pas encore déployé |
+| **cc-billing-watchdog** | `0 15 * * *` | serving | `aud_billing_event` (échecs < 26 h), `tenant_billing_subscription` ⨝ Stripe (cartes, statuts) | Sentry capture (no DB write), exit 1 si problème | ✅ Actif — checks Stripe inactifs tant que `STRIPE_SECRET_KEY` est absent (exit 0 propre) |
+| **cc-billing-purge** | `0 3 * * *` | serving | `aud_billing_event` — ancre `GREATEST(received_at, period_end)` | DELETE au-delà de 18 mois (rétention publiée) | ✅ Actif |
 
 ---
 

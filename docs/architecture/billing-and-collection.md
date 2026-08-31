@@ -1,6 +1,6 @@
 # Billing & Collection — Design
 
-> **Status**: **socle IMPLEMENTED and shipped dark** (`BILLING_ENFORCED=false`) — migration `b1i2l3l4i5n6`, 3 tables, the gate in `resolve_principal`, the Stripe webhook, and the ops CLI. Not yet wired to a real Stripe account. The 18-month purge of `aud_billing_event` (§9 bis) and both Cloud Scheduler entries are declared. Remaining: `terraform apply`, then the live Stripe account + Products/Prices.
+> **Status**: **socle IMPLEMENTED and shipped dark** (`BILLING_ENFORCED=false`) — migration `b1i2l3l4i5n6`, 3 tables, the gate in `resolve_principal`, the Stripe webhook, and the ops CLI. **Merged and deployed 2026-08-31 (PR #115)**: prod is at Alembic `b1i2l3l4i5n6`, the 3 tables exist, and `cc-billing-watchdog` + `cc-billing-purge` run daily. `BILLING_ENFORCED` and `STRIPE_*` are absent from the prod service, so the gate is inert. Remaining: the live Stripe account + Products/Prices, then the flip.
 > **Goal**: recurring EUR billing by **card on file with automatic debit**, for 7 negotiated tiers sold by hand.
 > **Prerequisite, already met**: per-client entitlement is LIVE and enforced ([entitlement-and-tenancy.md](./entitlement-and-tenancy.md) · [runbook](../runbooks/entitlement-enforcement.md)). Billing plugs into `resolve_principal`; it does not replace it.
 > **How these decisions were reached**, what was rejected on what evidence, and what we got wrong on the way: [billing-decision-log.md](./billing-decision-log.md).

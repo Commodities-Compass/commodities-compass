@@ -1,5 +1,5 @@
 ---
-import { type Locale, t, legalPath } from '@/i18n/strings';
+import { type Locale, t } from '@/i18n/strings';
 
 interface Props {
   locale: Locale;
@@ -48,9 +48,5 @@ const blocks: readonly Block[] = [
         </article>
       ))}
     </div>
-
-    <a href={legalPath(locale, 'methodology')} class="method-full-link">
-      {copy.method.fullLink} →
-    </a>
   </div>
 </section>

@@ -1,5 +1,5 @@
 ---
-import { type Locale, t, legalPath } from '@/i18n/strings';
+import { type Locale, t, pathFor, legalPath } from '@/i18n/strings';
 
 interface Props {
   locale: Locale;
@@ -7,6 +7,8 @@ interface Props {
 
 const { locale } = Astro.props;
 const copy = t(locale);
+// Absolute, so the Sommaire and Contact links work from a legal page.
+const home = pathFor(locale);
 ---
 
 <footer>
@@ -23,15 +25,15 @@ const copy = t(locale);
       <div>
         <h5>{copy.footer.colReadHeading}</h5>
         <ul>
-          <li><a href="#what">{copy.footer.colRead1}</a></li>
-          <li><a href={legalPath(locale, 'methodology')}>{copy.footer.colRead2}</a></li>
-          <li><a href="#brief">{copy.footer.colRead3}</a></li>
+          <li><a href={`${home}#what`}>{copy.footer.colRead1}</a></li>
+          <li><a href={`${home}#method`}>{copy.footer.colRead2}</a></li>
+          <li><a href={`${home}#brief`}>{copy.footer.colRead3}</a></li>
         </ul>
       </div>
       <div>
         <h5>{copy.footer.colContactHeading}</h5>
         <ul>
-          <li><a href="#contact">{copy.footer.colContact1}</a></li>
+          <li><a href={`${home}#contact`}>{copy.footer.colContact1}</a></li>
           <li><a href={`mailto:${copy.contact.email}`}>{copy.footer.colContact2}</a></li>
         </ul>
       </div>

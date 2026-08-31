@@ -1,5 +1,5 @@
 ---
-import { type Locale, t, legalPath } from '@/i18n/strings';
+import { type Locale, t } from '@/i18n/strings';
 
 interface Props {
   locale: Locale;
@@ -23,12 +23,6 @@ const copy = t(locale);
         {copy.hero.ctaPrimary}
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M3.5 8h9M9 4.5 12.5 8 9 11.5" />
-        </svg>
-      </a>
-      <a href={legalPath(locale, 'methodology')} class="cta cta-ghost">
-        {copy.hero.ctaSecondary}
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M8 3.5v9M11.5 9 8 12.5 4.5 9" />
         </svg>
       </a>
     </div>

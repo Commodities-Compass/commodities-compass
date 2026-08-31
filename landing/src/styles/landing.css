@@ -1491,21 +1491,3 @@ footer .schedule-line {
   .masthead nav a.sign-in { display: none; }
 }
 
-/* A4 — section III keeps its commercial framing and now points at the full
-   published methodology page, which is where the MAR disclosures live. */
-.method-full-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 32px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--color-ink);
-  text-decoration: none;
-  border-bottom: 1px solid var(--color-ink);
-  padding-bottom: 3px;
-  transition: opacity 220ms ease;
-}
-.method-full-link:hover { opacity: 0.6; }

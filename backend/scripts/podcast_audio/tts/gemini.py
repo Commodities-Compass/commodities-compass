@@ -44,6 +44,7 @@ logger = logging.getLogger(__name__)
 MODEL = "gemini-2.5-pro-tts"
 ENDPOINT = "https://texttospeech.googleapis.com/v1beta1/text:synthesize"
 PROJECT = "cacaooo"
+_HTTP_TIMEOUT = 900
 
 # Chosen by ear in P0 over Charon (flat), Aoede, Puck, Orus, Umbriel, Iapetus and
 # Schedar. Pinned: clients will associate these two voices with Compass.
@@ -129,7 +130,9 @@ class GeminiSynthesizer:
             },
         )
         try:
-            with urllib.request.urlopen(request, timeout=300) as response:
+            # 2.5-pro is materially slower than the flash models: a ~2 700
+            # character chunk timed out at 300 s.
+            with urllib.request.urlopen(request, timeout=_HTTP_TIMEOUT) as response:
                 payload = json.load(response)
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode()[:300]

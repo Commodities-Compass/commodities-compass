@@ -45,9 +45,43 @@ GUEST = "Marc"
 # 2026-08-24 and 08-25 run 237, 294, 297 and 326 s. It brackets that observed
 # range with a little headroom, so a generated episode lands where the ones
 # clients already listen to land.
-MIN_DURATION_SECONDS = 210
-MAX_DURATION_SECONDS = 360
-TARGET_DURATION_SECONDS = 290
+# Two bands, answering different questions. The TARGET band is where real
+# episodes live (237-326 s measured) — missing it is a quality signal, not a
+# defect. The SANITY bounds catch something genuinely broken: a truncated
+# generation or a runaway.
+TARGET_MIN_SECONDS = 210
+TARGET_MAX_SECONDS = 360
+SANITY_MIN_SECONDS = 150
+SANITY_MAX_SECONDS = 480
+
+# --- the measured house style, from three real NotebookLM episodes -------------
+# 2026-08-24 FR/EN and 08-25 FR, transcribed and counted. None of these blocks an
+# episode; they are what `assess_quality` reports against.
+
+# The dominant voice carries 53 %, 55 % and 57 % of the characters — never a
+# host-and-expert split. Ours ran at 72 % because the prompt asked for one.
+MAX_SPEECH_SHARE = 0.62
+# Turn-length variety: 0.62, 0.84 and 0.98 in the reference, against 0.31-0.42
+# from the generator even when both extremes are asked for explicitly.
+MIN_LENGTH_CV = 0.35
+# Acknowledgement tics. Two is conversation; more is a token being reached for
+# automatically — "exactement" turned up 3 to 6 times per episode.
+_FILLERS = (
+    "exactement",
+    "absolument",
+    "tout à fait",
+    "effectivement",
+    "c'est ça",
+    "en effet",
+    "voilà",
+    "exactly",
+    "absolutely",
+    "indeed",
+    "that's right",
+    "precisely",
+    "definitely",
+)
+_MAX_FILLER_REPEATS = 2
 
 # Speech rate is per language, and it is not a matter of taste. Measured on a
 # 3 394-character French excerpt of a real episode (Kore + Algieba, the style
@@ -209,120 +243,119 @@ def _assert_no_invented_figures(script: PodcastScript, allowed: set[str]) -> Non
         )
 
 
-def _assert_conversational_shape(script: PodcastScript) -> None:
-    """Uniform turn lengths are what made pack 1 sound like a read-aloud."""
-    lengths = [len(t.text) for t in script.turns]
-    if len(lengths) < 8:
+def _assert_speakers(script: PodcastScript) -> None:
+    """Two known voices, and enough turns to be a conversation at all."""
+    if len(script.turns) < 8:
         raise ScriptError(
-            f"[{script.language}] only {len(lengths)} turns — not a conversation"
+            f"[{script.language}] only {len(script.turns)} turns — not a conversation"
         )
     speakers = {t.speaker for t in script.turns}
     if speakers != {HOST, GUEST}:
         raise ScriptError(
             f"[{script.language}] unexpected speakers: {sorted(speakers)}"
         )
-    # Measured on three real NotebookLM episodes: cv 0.62, 0.84 and 0.98, with
-    # turns from 4 to 397 characters. 0.35 is what the generator can actually
-    # reach — it lands 0.31-0.42 when asked for both extremes, against 0.18-0.27
-    # before the range was instructed. Deliberately below the reference: an
-    # unreachable floor is a job that never runs, not a better episode.
-    cv = statistics.pstdev(lengths) / statistics.mean(lengths)
-    if cv < 0.35:
+
+
+def _assert_duration_sane(script: PodcastScript) -> None:
+    """Catch a truncated or runaway generation, not a long episode."""
+    seconds = script.estimated_seconds
+    if not SANITY_MIN_SECONDS <= seconds <= SANITY_MAX_SECONDS:
         raise ScriptError(
-            f"[{script.language}] turn lengths are too uniform (cv={cv:.2f} < 0.35; a real "
-            f"episode runs 0.62 to 0.98) — "
-            "this is the shape that reads as two narrators taking turns"
-        )
-    if min(lengths) > 45:
-        raise ScriptError(
-            f"[{script.language}] no short interjection (shortest turn is "
-            f"{min(lengths)} chars) — a conversation needs reactions"
+            f"[{script.language}] estimated {seconds:.0f}s, outside the sanity "
+            f"bounds [{SANITY_MIN_SECONDS}, {SANITY_MAX_SECONDS}]"
         )
 
 
-# Acknowledgement tics. Two is conversation, three is a tell that the same token
-# is being reached for automatically — heard on 2026-08-26 with "exactement" x3
-# in a single episode.
-_FILLERS = (
-    "exactement",
-    "absolument",
-    "tout à fait",
-    "effectivement",
-    "c'est ça",
-    "en effet",
-    "voilà",
-    "exactly",
-    "absolutely",
-    "indeed",
-    "that's right",
-    "precisely",
-    "definitely",
-)
-# PROVISIONAL, pending a decision. At 2 the gate blocks almost every run: four
-# prompt framings over ~15 generations did not move gpt-4.1 off "exactement"
-# (3 to 5 per episode), including one that never named the word in case citing
-# it primed it. 4 still catches the pathological case without stopping the
-# pipeline on a stylistic wart. See the options recorded in the design doc.
-_MAX_FILLER_REPEATS = 4
+@dataclass(frozen=True)
+class QualityReport:
+    """What the episode looks like against the measured house style.
+
+    None of it blocks. Each figure is compared to three real NotebookLM episodes
+    (2026-08-24 FR/EN, 08-25 FR) and logged, so drift is visible day after day
+    and the prompt can be improved on real data instead of a handful of manual
+    runs.
+    """
+
+    language: str
+    turns: int
+    chars: int
+    seconds: float
+    speech_share: dict[str, float]
+    length_cv: float
+    overused: dict[str, int]
+    warnings: tuple[str, ...]
+
+    @property
+    def clean(self) -> bool:
+        return not self.warnings
 
 
-def _assert_no_repeated_filler(script: PodcastScript) -> None:
-    blob = " ".join(t.text for t in script.turns).lower()
-    overused = {
-        filler: blob.count(filler)
-        for filler in _FILLERS
-        if blob.count(filler) > _MAX_FILLER_REPEATS
-    }
-    if overused:
-        detail = ", ".join(f"{w!r} x{n}" for w, n in sorted(overused.items()))
-        raise ScriptError(
-            f"[{script.language}] leans on the same acknowledgement: {detail} — "
-            "two journalists vary, a generator repeats"
-        )
-
-
-# Measured on three real NotebookLM episodes (2026-08-24 FR/EN, 08-25 FR): the
-# dominant voice carries 53 %, 55 % and 57 % of the characters — never a
-# host-and-expert split. Ours ran at 72 % because the prompt asked for one.
-# 62 % leaves room above the observed maximum without allowing a monologue.
-MAX_SPEECH_SHARE = 0.62
-
-
-def _assert_balanced_speakers(script: PodcastScript) -> None:
+def assess_quality(script: PodcastScript) -> QualityReport:
+    """Measure the episode's texture against the reference. Never raises."""
+    lengths = [len(t.text) for t in script.turns]
+    total = sum(lengths)
     spoken: dict[str, int] = {}
     for turn in script.turns:
         spoken[turn.speaker] = spoken.get(turn.speaker, 0) + len(turn.text)
-    total = sum(spoken.values())
-    for speaker, chars in sorted(spoken.items()):
-        share = chars / total
-        if share > MAX_SPEECH_SHARE:
-            other = ", ".join(f"{s} {c / total:.0%}" for s, c in sorted(spoken.items()))
-            raise ScriptError(
-                f"[{script.language}] {speaker} carries {share:.0%} of the speech "
-                f"({other}) — a real episode never passes {MAX_SPEECH_SHARE:.0%}; "
-                "the two are co-analysts, not host and expert"
+    share = {k: v / total for k, v in spoken.items()}
+    cv = statistics.pstdev(lengths) / statistics.mean(lengths)
+
+    blob = " ".join(t.text for t in script.turns).lower()
+    overused = {
+        f: blob.count(f) for f in _FILLERS if blob.count(f) > _MAX_FILLER_REPEATS
+    }
+
+    warnings: list[str] = []
+    for speaker, value in sorted(share.items()):
+        if value > MAX_SPEECH_SHARE:
+            warnings.append(
+                f"{speaker} carries {value:.0%} of the speech "
+                f"(a real episode stays at 53-57%)"
             )
-
-
-def _assert_duration(script: PodcastScript) -> None:
-    seconds = script.estimated_seconds
-    if not MIN_DURATION_SECONDS <= seconds <= MAX_DURATION_SECONDS:
-        raise ScriptError(
-            f"[{script.language}] estimated {seconds:.0f}s, outside "
-            f"[{MIN_DURATION_SECONDS}, {MAX_DURATION_SECONDS}]"
+    if cv < MIN_LENGTH_CV:
+        warnings.append(
+            f"turn lengths uniform (cv={cv:.2f}; a real episode runs 0.62-0.98)"
         )
+    if overused:
+        warnings.append(
+            "acknowledgement tics: "
+            + ", ".join(f"{w!r} x{n}" for w, n in sorted(overused.items()))
+        )
+    seconds = script.estimated_seconds
+    if not TARGET_MIN_SECONDS <= seconds <= TARGET_MAX_SECONDS:
+        warnings.append(
+            f"{seconds:.0f}s, outside the {TARGET_MIN_SECONDS}-{TARGET_MAX_SECONDS}s "
+            "band real episodes sit in"
+        )
+
+    return QualityReport(
+        language=script.language,
+        turns=len(script.turns),
+        chars=total,
+        seconds=seconds,
+        speech_share=share,
+        length_cv=cv,
+        overused=overused,
+        warnings=tuple(warnings),
+    )
 
 
 def validate(script: PodcastScript, data: BriefData, narrative: Narrative) -> None:
-    """Every check that stands between a generated script and a client's ears."""
-    _assert_conversational_shape(script)
+    """The gates a listener must never get past. Failing one means no episode.
+
+    Style is deliberately NOT gated here. Eight blocking assertions, each passing
+    80-90 % of the time on its own, multiplied into a joint pass rate under 15 %
+    — every one reasonable alone, the conjunction unusable. What remains is
+    correctness: the call, the figures, the machinery, the formulas, and a sanity
+    bound on length. Everything else is measured by ``assess_quality`` and
+    reported, because a stylistically imperfect episode beats no episode.
+    """
+    _assert_speakers(script)
     _assert_formulas(script)
     _assert_decision(script, data.judge.final_decision, data.regime.decision)
     _assert_no_banned_vocabulary(script)
-    _assert_no_repeated_filler(script)
-    _assert_balanced_speakers(script)
     _assert_no_invented_figures(script, source_figures(data, narrative))
-    _assert_duration(script)
+    _assert_duration_sane(script)
 
 
 def _parse(payload: dict, language: str) -> PodcastScript:

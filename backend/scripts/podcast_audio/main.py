@@ -18,6 +18,7 @@ from datetime import date as date_cls
 from datetime import datetime
 from pathlib import Path
 
+import sentry_sdk
 from dotenv import load_dotenv
 
 from scripts._shared.cli import build_base_argparser
@@ -32,7 +33,12 @@ from scripts.podcast_audio.db_reader import (
     EpisodeInputsMissingError,
     read_episode_inputs,
 )
-from scripts.podcast_audio.script_writer import PodcastScript, ScriptError, write_script
+from scripts.podcast_audio.script_writer import (
+    PodcastScript,
+    ScriptError,
+    assess_quality,
+    write_script,
+)
 from scripts.podcast_audio.tts import SynthesisError, get_synthesizer
 
 load_dotenv(Path(__file__).parent.parent.parent / ".env")
@@ -91,6 +97,35 @@ def _render(script: PodcastScript) -> str:
     return header + "\n" + body + "\n"
 
 
+def _report_quality(script: PodcastScript) -> None:
+    """Log the episode's texture, and flag drift without blocking on it.
+
+    These are style signals, not defects: an episode outside the reference band
+    still says the right thing, and refusing to publish it would leave the
+    client with nothing. Reporting them makes the drift visible day after day so
+    the prompt can be improved on real data.
+    """
+    report = assess_quality(script)
+    shares = ", ".join(f"{k} {v:.0%}" for k, v in sorted(report.speech_share.items()))
+    logger.info(
+        "[%s] %d turns, %d chars, ~%.0fs — %s, cv %.2f",
+        report.language,
+        report.turns,
+        report.chars,
+        report.seconds,
+        shares,
+        report.length_cv,
+    )
+    for warning in report.warnings:
+        logger.warning("[%s] off the house style: %s", report.language, warning)
+    if report.warnings:
+        sentry_sdk.capture_message(
+            f"Podcast script [{report.language}] off the house style: "
+            + " | ".join(report.warnings),
+            level="warning",
+        )
+
+
 def _languages(choice: str) -> list[str]:
     return ["fr", "en"] if choice == "both" else [choice]
 
@@ -125,13 +160,7 @@ def main() -> int:
             elif args.script_only:
                 print(rendered)
 
-            logger.info(
-                "[%s] %d turns, %d chars, ~%.0fs",
-                language,
-                len(script.turns),
-                script.total_chars,
-                script.estimated_seconds,
-            )
+            _report_quality(script)
             if args.script_only:
                 continue
 

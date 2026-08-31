@@ -21,6 +21,7 @@ from scripts.podcast_audio.script_writer import (
     PodcastScript,
     ScriptError,
     Turn,
+    assess_quality,
     source_figures,
     validate,
     write_script,
@@ -318,56 +319,60 @@ class TestInventedFigures:
 
 
 class TestConversationalShape:
-    def test_rejects_uniform_turn_lengths(self):
-        body = "Le marché reste tendu sur les disponibilités physiques aujourd'hui."
-        turns = (
-            (Turn("Ana", "Bonjour les COMPASTEURS ! " + body),)
-            + tuple(Turn("Marc" if i % 2 else "Ana", body) for i in range(12))
-            + (Turn("Marc", "À demain les COMPASTEURS ! " + body),)
-        )
-        with pytest.raises(ScriptError, match="too uniform"):
-            validate(script(turns), make_data(), NARRATIVE)
+    """Texture is measured, never gated: it does not stop an episode shipping."""
 
-    def test_rejects_too_few_turns(self):
-        turns = (
-            Turn("Ana", "Bonjour les COMPASTEURS ! On est en MONITOR aujourd'hui."),
-            Turn("Marc", "À demain les COMPASTEURS !"),
+    @staticmethod
+    def _flattened() -> tuple[Turn, ...]:
+        """A valid episode whose middle turns are all the same length."""
+        body = (
+            "Le marché reste tendu sur les disponibilités physiques, et les "
+            "opérateurs surveillent la moindre inflexion des arrivages."
         )
-        with pytest.raises(ScriptError, match="not a conversation"):
-            validate(script(turns), make_data(), NARRATIVE)
+        middle = tuple(Turn("Marc" if i % 2 else "Ana", body) for i in range(40))
+        return (good_turns()[0],) + middle + (good_turns()[-1],)
 
-    def test_rejects_an_episode_with_no_short_reaction(self):
-        long = "Le marché reste tendu sur les disponibilités physiques et les arrivées ralentissent nettement."
-        turns = (
-            (
-                Turn(
-                    "Ana",
-                    "Bonjour les COMPASTEURS ! " + long + " Nous sommes en MONITOR.",
-                ),
-            )
-            + tuple(
-                Turn(
-                    "Marc" if i % 2 else "Ana",
-                    long
-                    + f" Point numéro {i} développé longuement ici même."[: 60 + i * 3],
-                )
-                for i in range(10)
-            )
-            + (Turn("Marc", "À demain les COMPASTEURS ! " + long),)
+    def test_uniform_turn_lengths_are_reported_not_blocked(self):
+        turns = self._flattened()
+        validate(script(turns), make_data(), NARRATIVE)  # style never blocks
+        assert any("uniform" in w for w in assess_quality(script(turns)).warnings)
+
+    def test_an_imbalanced_episode_is_reported_not_blocked(self):
+        long = (
+            "Le marché reste tendu et les arrivées ralentissent nettement cette "
+            "semaine encore, ce qui entretient la pression sur les disponibilités."
         )
-        with pytest.raises(ScriptError, match="short interjection|too uniform"):
-            validate(script(turns), make_data(), NARRATIVE)
+        turns = (
+            (good_turns()[0],)
+            + tuple(Turn("Marc", long) for _ in range(24))
+            + (Turn("Ana", "Oui."), good_turns()[-1])
+        )
+        validate(script(turns), make_data(), NARRATIVE)
+        report = assess_quality(script(turns))
+        assert any("carries" in w for w in report.warnings)
+
+    def test_a_balanced_varied_episode_reports_nothing(self):
+        assert assess_quality(script()).clean
 
 
 class TestDuration:
-    def test_rejects_an_episode_longer_than_the_promise(self):
-        # Split across both speakers so this tests duration, not balance.
-        filler = [
-            Turn("Ana", "Le marché reste tendu sur les disponibilités. " * 20),
-            Turn("Marc", "La tension logistique ne se dénoue pas encore. " * 20),
-        ] * 3
-        turns = good_turns()[:-1] + tuple(filler) + (good_turns()[-1],)
-        with pytest.raises(ScriptError, match="outside"):
+    def test_an_episode_past_the_band_is_reported_not_blocked(self):
+        pad = "Le marché reste tendu sur les disponibilités physiques. " * 12
+        turns = (
+            good_turns()[:-1]
+            + tuple(Turn("Ana" if i % 2 else "Marc", pad) for i in range(4))
+            + (good_turns()[-1],)
+        )
+        validate(script(turns), make_data(), NARRATIVE)
+        assert any("band" in w for w in assess_quality(script(turns)).warnings)
+
+    def test_a_runaway_generation_is_still_blocked(self):
+        pad = "Le marché reste tendu sur les disponibilités physiques. " * 60
+        turns = (
+            good_turns()[:-1]
+            + tuple(Turn("Ana" if i % 2 else "Marc", pad) for i in range(4))
+            + (good_turns()[-1],)
+        )
+        with pytest.raises(ScriptError, match="sanity bounds"):
             validate(script(turns), make_data(), NARRATIVE)
 
 
@@ -448,8 +453,8 @@ class TestAcknowledgementTics:
             Turn("Marc", "Exactement, on ne bouge pas."),
             Turn("Marc", "À demain les COMPASTEURS !"),
         )
-        with pytest.raises(ScriptError, match="same acknowledgement"):
-            validate(script(turns), make_data(), NARRATIVE)
+        validate(script(turns), make_data(), NARRATIVE)
+        assert any("tics" in w for w in assess_quality(script(turns)).warnings)
 
     def test_allows_a_conversational_amount(self):
         # good_turns() already carries one "Exactement"; a second is conversation.

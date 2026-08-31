@@ -41,6 +41,9 @@ COMMENT DIRE LES CHIFFRES :
   matière : c'est le niveau exact qui compte pour quelqu'un qui passe un ordre.
 - N'invente AUCUN chiffre. Si une valeur n'est pas dans la matière ci-dessous,
   ne la mentionne pas — pas d'approximation de mémoire.
+- N'ARRONDIS PAS. Cite les valeurs telles qu'elles sont fournies : dire « 23 800 »
+  pour 23 806 est une altération, pas un raccourci d'antenne. Seules les
+  décimales nulles d'un stock se taisent.
 
 CE QUI EST ARRÊTÉ — tu l'expliques, tu ne le discutes pas :
 - Signal publié : {decision}
@@ -111,7 +114,9 @@ LONGUEUR — c'est la contrainte la plus souvent ratée, relis-la avant de rendr
 - Les tours d'analyse de Marc font 2 à 4 phrases pleines.
 - Les points 4, 5 et 6 (éditorial, éco-presse, météo) sont les plus développés :
   5 à 6 tours chacun, avec des relances courtes d'Ana entre les blocs.
-- Total visé : 5300 caractères de texte parlé. Plancher 3700, PLAFOND 6200.
+- Total visé : 4000 caractères de texte parlé. Plancher 3400, PLAFOND 5200.
+  (Cible volontairement basse : la génération dépasse la consigne d'environ
+  un tiers, mesuré sur six runs — 4000 demandés donnent ~5400 rendus.)
   Les exigences de naturel ci-dessus ne sont pas une invitation à rallonger :
   un tour court qui apporte quelque chose reste court.
 Une idée par tour, pas de reformulation de ce qui vient d'être dit, pas de
@@ -131,6 +136,8 @@ HOW TO SAY FIGURES:
   level is what matters to someone placing an order.
 - Invent NO figure. If a value is not in the material below, do not mention it —
   no approximating from memory.
+- Do NOT round. Quote values as given: saying "23,800" for 23,806 is an
+  alteration, not broadcast shorthand. Only a stock's zero decimals go unsaid.
 
 SETTLED — you explain it, you do not debate it:
 - Published signal: {decision}
@@ -198,7 +205,9 @@ LENGTH — the constraint most often missed, re-read it before you answer:
 - Marc's analytical turns run 2 to 4 full sentences.
 - Points 4, 5 and 6 (editorial, macro & press, weather) are the most developed:
   5 to 6 turns each, with short pushbacks from Ana between blocks.
-- Target 4200 characters of spoken text. Floor 3000, CEILING 4900.
+- Target 3000 characters of spoken text. Floor 2600, CEILING 4200.
+  (Deliberately low: generation overshoots the instruction by about a third,
+  measured — asking 3000 yields roughly 4000.)
   The naturalness rules above are not licence to run long: a short turn
   that adds something stays short.
 English is more compact than French: the same episode needs fewer characters,

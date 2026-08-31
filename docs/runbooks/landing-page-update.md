@@ -27,6 +27,7 @@ For DNS changes, **do not go looking in GCP Cloud DNS** — the zone is not ther
 | # | Task | Cadence | Last applied |
 |---|---|---|---|
 | 1 | Refresh sparkline real close data (Section IV) | Monthly or after a roll | 2026-06-22 |
+| 2 | Republish a legal page after a revision from counsel | On each delivery | 2026-08-31 |
 
 ---
 
@@ -148,6 +149,91 @@ Both should return non-empty matches.
 - **Why `v_contract_data_chained` and not `pl_contract_data_daily`** : the active contract changes (rolls) every ~2 months. Querying current-active-only would return a partial series right after a roll. The chained view stitches the front-month (by OI) across rolls so the series is always continuous.
 - **Why not auto-refresh** : a cron-driven refresh + redeploy was scoped out for V1 (see [P1 user story discussion](../../) for the architectural tradeoff between hardcoded / cron-refresh / live-fetch). Re-evaluate when the landing has > 1k UV/month or when manual cadence becomes the limiter.
 - **The brief preview in the same section** (HEDGE example with CLOSE 2 975 → 2 964) is intentionally **decoupled** from the chart data — it's an illustrative editorial sample, not a real brief. The chart caption stays neutral ("Closes officiels … · ICE Europe") so the chart speaks to factual prices without claiming to align with the brief signal.
+
+---
+
+## Task 2 — Republish a legal page after a revision from counsel
+
+The five published legal pages exist in both locales — ten Markdown files under
+`landing/src/pages/` and `landing/src/pages/en/`. **Their body is a byte-for-byte
+copy of counsel's delivery**, cut at the `⛔ FIN DU TEXTE À PUBLIER` /
+`⛔ END OF PUBLISHED TEXT` line. That is deliberate: it makes the next revision a
+diff instead of a re-transcription, and it means anyone can verify the published
+page against the delivered document without reading Astro.
+
+| Key | FR | EN |
+|---|---|---|
+| `legalNotice` | `/mentions-legales/` | `/en/legal-notice/` |
+| `terms` | `/cgv/` | `/en/terms/` |
+| `privacy` | `/confidentialite/` | `/en/privacy/` |
+| `pricing` | `/tarifs/` | `/en/pricing/` |
+| `methodology` | `/methodologie/` | `/en/methodology/` |
+
+### Procedure
+
+1. Drop the new delivery in `.local/Juridique Compass/` (gitignored — the folder
+   also holds working notes that must never be published).
+2. Replace everything **below** the frontmatter in the target page with the text
+   **above** the `⛔` line. Keep the frontmatter as it is: `layout`, `title`,
+   `description`, `eyebrow`, `pathname`, `legalKey`, and `locale` for EN.
+3. `grep '«' landing/src/pages/*.md landing/src/pages/en/*.md` — **must return
+   nothing**. Counsel leaves `«…»` markers wherever a value is ours to supply
+   (author name, indicator distribution, ombudsman). A `«` reaching production
+   is a placeholder published as if it were text.
+4. Do the FR and the EN **in the same commit**. A revision applied to one locale
+   only leaves two versions of a contract in the wild.
+5. `pnpm --dir landing type-check && pnpm --dir landing build`, then read the
+   page at 390 px: the wide tables must scroll inside themselves and the page
+   body must not scroll sideways.
+
+### What is ours, not counsel's
+
+Three values in `/methodologie/` come from us and must be re-checked at each
+revision:
+
+- **§ 1 author** — name *and role* of a natural person. Required by art. 2 of
+  delegated regulation (EU) 2016/958; a desk name does not satisfy it.
+- **§ 3 meaning of OPEN / MONITOR / HEDGE**, and the horizon. The horizon is
+  **J+1** — the served regime track's, not the `~4 sessions` inherited from the
+  retired ensemble. If the served horizon ever changes, this page and the hero
+  card (`statHorizonValue`) both change with it.
+- **§ 5 distribution over twelve months.** Re-run against prod and republish the
+  window with the figures — the percentages mean nothing without their period:
+
+  ```sql
+  WITH servie AS (
+    SELECT DISTINCT ON (d.date) d.date, d.decision
+      FROM pl_indicator_daily d
+      JOIN pl_algorithm_version v ON v.id = d.algorithm_version_id
+     WHERE d.language = 'fr' AND d.decision IS NOT NULL
+       AND v.serving_rank IS NOT NULL
+       AND d.date >= CURRENT_DATE - INTERVAL '12 months'
+     ORDER BY d.date, v.serving_rank)
+  SELECT decision, count(*),
+         round(100.0*count(*)/sum(count(*)) OVER (), 1) AS pct
+    FROM servie GROUP BY 1 ORDER BY 2 DESC;
+  ```
+
+  `DISTINCT ON … ORDER BY serving_rank` is what makes this the **published**
+  recommendation for each date rather than one track's opinion — over twelve
+  months the served row changes producer (regime took over on 2026-08-19), and
+  MAR asks what was published, not what any one model thought.
+
+### Notes
+
+- **No performance figure is published anywhere.** Removed 2026-08-31: the
+  landing's `+90 %` aggregated back-test with live publication, which
+  mechanically overstates reliability. Do not reintroduce one without a real,
+  documented, closed-period figure — and never under a `YTD` label, which is
+  false the day after it is frozen.
+- **Enabling analytics is a legal change.** § 8 of the privacy policy states in
+  the affirmative that no non-exempt tracker is set. Read the header of
+  `landing/src/components/Analytics.astro` before setting
+  `PUBLIC_PLAUSIBLE_DOMAIN`.
+- Two values are still owed and both pages carry an honest interim statement
+  instead: the **ombudsman** (terms art. 28) and the **published phone number**
+  (legal notice § 2, omitted on instruction, with counsel's express reservation
+  on file).
 
 ---
 

@@ -55,25 +55,14 @@ const copy = t(locale);
         <p>{copy.bento.cell3Body}</p>
       </article>
 
-      <article class="bento-cell span-3 shape-grid">
-        <div class="shape-bg"></div>
-        <div class="shape-content">
-          <span class="ebrow">{copy.bento.cell4Eyebrow}</span>
-          <span class="perf-num">{copy.bento.cell4Value}</span>
-          <p style="margin-top:auto;">{copy.bento.cell4Body}</p>
-        </div>
-      </article>
-
-      <article class="bento-cell span-3">
-        <div>
-          <span class="ebrow">{copy.bento.cell5Eyebrow}</span>
-        </div>
-        <div style="display:flex; align-items:baseline; gap:12px;">
-          <span class="perf-num" style="color: var(--color-ink);">{copy.bento.cell5Value}</span>
-          <span class="ebrow ebrow-light"><em>{copy.bento.cell5Suffix}</em></span>
-        </div>
-        <p>{copy.bento.cell5Body}</p>
-      </article>
+      {/*
+        A2.1 / A2.2 — the two performance cells are gone, and no figure
+        replaces them. `YTD 2026 · +90 %` reads as a return whatever the
+        caption says, and `Taux de réussite · 70 %` aggregated a back-test
+        with live publication, which mechanically overstates reliability.
+        Nothing on the landing now claims a performance. What we publish
+        about past editions is their distribution, on /methodologie § 5.
+      */}
     </div>
   </div>
 </section>

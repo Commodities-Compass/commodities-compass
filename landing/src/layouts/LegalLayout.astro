@@ -1,0 +1,51 @@
+---
+/**
+ * Layout for the five published legal pages.
+ *
+ * Deliberately a *shell only*: it renders the chrome (head, masthead, footer,
+ * back link) and lets the Markdown body through untouched. The legal text in
+ * `src/pages/*.md` is therefore a byte-for-byte copy of counsel's delivery,
+ * cut at the `⛔ FIN DU TEXTE À PUBLIER` line — which is what makes the next
+ * revision a diff instead of a re-transcription.
+ *
+ * Never move a sentence from the Markdown into this file: a legal page whose
+ * text is split between a source document and a template is a page nobody can
+ * verify against the delivery.
+ *
+ * Pages: /mentions-legales /cgv /confidentialite /tarifs /methodologie
+ * Delivery: `.local/Juridique Compass/` (28 August 2026)
+ */
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { type Locale, t, pathFor, type LegalPageKey } from '@/i18n/strings';
+
+interface Props {
+  frontmatter: {
+    title: string;
+    description: string;
+    eyebrow: string;
+    pathname: string;
+    legalKey: LegalPageKey;
+    locale?: Locale;
+  };
+}
+
+const { frontmatter } = Astro.props;
+const locale: Locale = frontmatter.locale ?? 'fr';
+const copy = t(locale);
+---
+
+<BaseLayout
+  locale={locale}
+  pathname={frontmatter.pathname}
+  title={frontmatter.title}
+  description={frontmatter.description}
+  legalKey={frontmatter.legalKey}
+>
+  <section class="editorial-page">
+    <div class="column legal-prose">
+      <p class="eyebrow">{frontmatter.eyebrow}</p>
+      <slot />
+      <a href={pathFor(locale)} class="back-link">← {copy.legalPage.backToHome}</a>
+    </div>
+  </section>
+</BaseLayout>

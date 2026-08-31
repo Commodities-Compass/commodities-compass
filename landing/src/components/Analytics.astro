@@ -14,10 +14,26 @@
  *
  * Script variant used: `script.outbound-links.js` — also tracks clicks on
  * outbound links (mailto:, external) which is exactly what we need for the
- * `mailto:issouf@com-compass.com` CTA conversion funnel.
+ * `mailto:contact@com-compass.com` CTA conversion funnel.
  *
- * No cookies, no PII, no GDPR banner needed (Plausible is server-side
- * anonymous-IP-only by design).
+ * ⚠️ TURNING THIS ON IS A LEGAL CHANGE, NOT A CONFIG CHANGE.
+ *
+ * The published privacy policy states, in § 8 and in the affirmative:
+ * "Nous ne déposons aucun traceur de mesure d'audience non exemptée, de
+ * publicité ou de suivi tiers." That sentence is true today precisely because
+ * `PUBLIC_PLAUSIBLE_DOMAIN` is unset and this script is never emitted.
+ *
+ * Setting the variable makes the page load a script from a third-party origin.
+ * Before doing so:
+ *   1. have counsel confirm the deployment qualifies for the consent exemption
+ *      of art. 82 of loi n° 78-17 — vendor claims are not a CNIL position, and
+ *      Plausible is not on the CNIL's published exemption list;
+ *   2. update § 8 of /confidentialite/ and /en/privacy/ accordingly;
+ *   3. if it is not exempt, ship a consent banner FIRST. Trackers are the
+ *      CNIL's largest financial-risk category.
+ *
+ * Enabling it and leaving the policy as written does not merely create a
+ * breach — it documents one, in our own words, with a date.
  */
 const domain = import.meta.env.PUBLIC_PLAUSIBLE_DOMAIN as string | undefined;
 const enabled = typeof domain === 'string' && domain.length > 0;

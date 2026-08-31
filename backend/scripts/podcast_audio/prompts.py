@@ -35,10 +35,10 @@ horizon la prochaine séance. Deux journalistes financiers à l'antenne.
 {shape}
 
 COMMENT DIRE LES CHIFFRES :
-- Les stocks se disent en tonnes ENTIÈRES : « 236 110 tonnes », jamais
-  « 236 110 virgule zéro zéro ». La décimale n'apporte rien à cette échelle.
-- Les niveaux de prix GARDENT leurs décimales : « le support à 4 160,67 ».
-  C'est le niveau exact qui compte pour quelqu'un qui passe un ordre.
+- Les stocks se disent en tonnes ENTIÈRES, sans décimale : à cette échelle elle
+  n'apporte rien et personne ne la prononce.
+- Les niveaux de prix GARDENT leurs décimales, telles qu'elles figurent dans la
+  matière : c'est le niveau exact qui compte pour quelqu'un qui passe un ordre.
 - N'invente AUCUN chiffre. Si une valeur n'est pas dans la matière ci-dessous,
   ne la mentionne pas — pas d'approximation de mémoire.
 
@@ -70,17 +70,19 @@ Ton de PRÉSENTATEURS de podcast : vivants, complices, jamais récitants.
   deux extrêmes dans le même épisode.
   * plusieurs tours de 2 à 5 MOTS : "Ah oui.", "Vraiment ?", "D'accord.",
     "Ça change tout.", "Attends.". Au moins cinq dans l'épisode.
+    (Aucun exemple de ce prompt ne doit être recopié tel quel, et surtout aucun
+    chiffre : les seuls chiffres autorisés sont ceux de la matière ci-dessous.)
   * et des développements de 200 à 300 caractères pour porter l'analyse.
   Un épisode où tous les tours font la même taille sonne comme deux machines.
 - Les tours courts sont de VRAIES réactions parlées, pas des accusés de
-  réception : "ah oui, quand même", "c'est massif ouais", "attends, 40 000
-  tonnes ?", "ça change tout". Après une réaction, l'autre ENCHAÎNE sur son idée
+  réception : "ah oui, quand même", "c'est massif ouais", "attends, ça
+  change tout", "et côté acheteur ?". Après une réaction, l'autre ENCHAÎNE sur son idée
   au lieu de repartir de zéro — comme quand on se coupe gentiment la parole.
 - Chaque tour court doit APPORTER quelque chose : une surprise, une objection,
   une conséquence, une question. Un tour qui se contente d'approuver n'existe
   pas dans cet épisode — s'il n'ajoute rien, supprime-le et enchaîne.
   Exemples de tours courts valides : "ça, c'est nouveau", "donc l'offre ne suit
-  pas", "et côté acheteur ?", "attends, ça remonte à quand ?".
+  pas", "et côté acheteur ?", "et ça remonte à quand ?".
 - Aucune formule d'approbation ne se répète : chaque relance a ses propres mots.
   (Ne cite AUCUN chiffre dans une réaction courte : les chiffres se disent dans
   les tours d'analyse, à partir de la matière fournie.)
@@ -123,10 +125,10 @@ next session. Two financial journalists on air.
 {shape}
 
 HOW TO SAY FIGURES:
-- Stocks are spoken in WHOLE tonnes: "236,110 tonnes", never "236,110 point
-  zero zero". The decimal carries nothing at that scale.
-- Price levels KEEP their decimals: "support at 4,160.67". The exact level is
-  what matters to someone placing an order.
+- Stocks are spoken in WHOLE tonnes, no decimal: at that scale it carries
+  nothing and nobody says it aloud.
+- Price levels KEEP their decimals exactly as the material gives them: the exact
+  level is what matters to someone placing an order.
 - Invent NO figure. If a value is not in the material below, do not mention it —
   no approximating from memory.
 
@@ -156,6 +158,8 @@ Podcast PRESENTER tone: alive, easy with each other, never reciting.
   the same episode.
   * several turns of 2 to 5 WORDS: "Oh really.", "Wait.", "That changes it.",
     "Right.", "Huge." — at least five across the episode.
+    (Copy no example from this prompt verbatim, and no figure from one: the only
+    figures allowed are those in the material below.)
   * and developments of 200 to 300 characters to carry the analysis.
   An episode where every turn is the same size sounds like two machines.
 - Short turns are REAL spoken reactions, not acknowledgements: "oh wow, really",
@@ -166,7 +170,7 @@ Podcast PRESENTER tone: alive, easy with each other, never reciting.
   a question. A turn that merely agrees does not exist in this episode — if it
   adds nothing, drop it and carry on.
   Valid short turns look like: "that's new", "so supply isn't keeping up",
-  "and for the buyer?", "hang on, since when?".
+  "and for the buyer?", "and since when?".
 - No approving phrase repeats: every pickup has its own words.
   (Quote NO figure in a short reaction: figures belong in the analytical turns,
   taken from the material provided.)

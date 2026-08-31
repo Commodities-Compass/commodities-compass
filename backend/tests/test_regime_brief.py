@@ -385,3 +385,72 @@ class TestLeakGuardBySource:
 
             with pytest.raises(BriefLeakError):
                 render_brief(data, _narrative())
+
+
+class TestPhaseBGate:
+    """The brief must not run on an evening that precedes no session.
+
+    Origin: 2026-08-30. Scheduled daily but ungated, the job re-briefed
+    ``MAX(date) FROM pl_regime_shadow`` every weekend and holiday — burning two
+    LLM calls and overwriting both the published narrative and the Drive .txt
+    the podcast is cut from, while logging ``SUCCESS``. It ran 5 times in 11
+    days before a random word choice ("specialist") tripped the leak guard and
+    made it visible. The static contract lives in
+    tests/test_pipeline_phase_contract.py; this pins the behaviour.
+    """
+
+    def test_skips_without_touching_db_llm_or_drive(self):
+        from unittest.mock import patch
+
+        from scripts.regime_brief import main as m
+
+        with (
+            patch("scripts.db.phase_b_should_skip", return_value=True) as gate,
+            patch("scripts.db.get_session") as get_session,
+            patch.object(m, "DriveUploader") as uploader,
+            patch("sys.argv", ["regime-brief", "--language", "both"]),
+        ):
+            rc = m.main()
+
+        assert rc == 0
+        gate.assert_called_once()
+        get_session.assert_not_called()
+        uploader.assert_not_called()
+
+    def test_gate_is_consulted_before_any_work(self):
+        """A False gate lets the run proceed past the short-circuit.
+
+        --dry-run keeps this hermetic: it skips the DriveUploader branch, whose
+        get_credentials_json() would otherwise raise on a machine with no Drive
+        credentials (CI) before the run ever reaches the DB.
+        """
+        from unittest.mock import patch
+
+        from scripts.regime_brief import main as m
+
+        with (
+            patch("scripts.db.phase_b_should_skip", return_value=False) as gate,
+            patch("scripts.db.get_session", side_effect=RuntimeError("reached DB")),
+            # Pins the hermeticity itself: on the --dry-run path the run must
+            # never ask for Drive credentials, which is what broke this test in
+            # CI (no GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON there).
+            patch.object(
+                m,
+                "get_credentials_json",
+                side_effect=AssertionError("must not need Drive credentials"),
+            ),
+            patch("sys.argv", ["regime-brief", "--language", "fr", "--dry-run"]),
+            pytest.raises(RuntimeError, match="reached DB"),
+        ):
+            m.main()
+
+        gate.assert_called_once()
+
+    def test_explicit_session_date_and_force_bypass_the_gate(self):
+        """Operator reruns must still work on a non-eve day."""
+        from datetime import date
+
+        from scripts.db import phase_b_should_skip
+
+        assert phase_b_should_skip(date(2026, 8, 27), force=False) is False
+        assert phase_b_should_skip(None, force=True) is False

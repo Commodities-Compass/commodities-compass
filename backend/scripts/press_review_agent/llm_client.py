@@ -9,6 +9,7 @@ from dataclasses import dataclass
 import anthropic
 import openai
 from google import genai
+from google.genai import types as genai_types
 
 from scripts.llm_utils import extract_json
 from scripts.press_review_agent.config import MODEL_IDS, Provider
@@ -59,6 +60,22 @@ def _try_parse_json(
     )
 
 
+def _first_text_block(blocks: list, provider: Provider) -> str:
+    """The first text block of a Claude response.
+
+    ``content[0]`` is not necessarily text — a thinking or tool-use block can
+    come first, and ``.text`` on one of those is an AttributeError at runtime.
+    Raising here lets the caller's handler turn it into a failed ``LLMResult``
+    carrying the reason, which is this module's contract.
+    """
+    for block in blocks:
+        text = getattr(block, "text", None)
+        if isinstance(text, str) and text.strip():
+            return text
+    kinds = [type(b).__name__ for b in blocks]
+    raise RuntimeError(f"{provider.value}: response carries no text block ({kinds})")
+
+
 async def call_claude(system_prompt: str, user_prompt: str) -> LLMResult:
     """Call Anthropic Claude Sonnet 4.5."""
     provider = Provider.CLAUDE
@@ -71,7 +88,7 @@ async def call_claude(system_prompt: str, user_prompt: str) -> LLMResult:
             system=system_prompt,
             messages=[{"role": "user", "content": user_prompt}],
         )
-        raw = response.content[0].text
+        raw = _first_text_block(response.content, provider)
         usage = {
             "input_tokens": response.usage.input_tokens,
             "output_tokens": response.usage.output_tokens,
@@ -155,13 +172,17 @@ async def call_gemini(system_prompt: str, user_prompt: str) -> LLMResult:
             lambda: client.models.generate_content(
                 model=MODEL_IDS[provider],
                 contents=user_prompt,
-                config=genai.types.GenerateContentConfig(
+                config=genai_types.GenerateContentConfig(
                     system_instruction=system_prompt,
                     max_output_tokens=8192,
                 ),
             ),
         )
         raw = response.text
+        if raw is None:
+            # Same posture as Claude above: the caller's handler turns this into
+            # a failed LLMResult instead of a None reaching the JSON parser.
+            raise RuntimeError(f"{provider.value}: response carries no text")
         usage = {
             "input_tokens": getattr(response.usage_metadata, "prompt_token_count", 0),
             "output_tokens": getattr(

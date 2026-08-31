@@ -8,6 +8,7 @@ Usage:
 import argparse
 import logging
 import os
+import uuid
 from datetime import date
 from pathlib import Path
 
@@ -124,7 +125,7 @@ def main() -> int:
         for row_date, contract_id, conclusion in conclusions:
             raw_lines = extract_watchlist_section(conclusion)
             for raw_text in raw_lines:
-                item = parse_item(raw_text, row_date, contract_id)
+                item = parse_item(raw_text, row_date, uuid.UUID(str(contract_id)))
                 if item is not None:
                     all_items.append(item)
                 else:

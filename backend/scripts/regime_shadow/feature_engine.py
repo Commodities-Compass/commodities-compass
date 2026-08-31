@@ -25,6 +25,7 @@ import logging
 from datetime import date
 
 import pandas as pd
+from typing import cast
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -158,7 +159,7 @@ def build_selfcomputed_features(session: Session) -> pd.DataFrame:
         raise RegimeFeatureError(f"engine did not produce required columns: {missing}")
 
     keep = ["date", "contract_id", "is_roll_boundary", *DERIVED_PASSTHROUGH]
-    out = derived[keep].copy()
+    out = cast(pd.DataFrame, derived[keep].copy())
     logger.info(
         "Self-computed %d-row neutralized feature chain (%s..%s), %d roll boundaries",
         len(out),

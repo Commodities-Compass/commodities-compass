@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 import pandas as pd
+from typing import cast
 
 from scripts.watchai_sync import config
 from scripts.watchai_sync.errors import (
@@ -325,11 +326,17 @@ def _transform_purchases(raw: pd.DataFrame) -> pd.DataFrame:
     _assert_non_negative(_column(frame, "net_weight_kg"), "POIDS_NET_KG", "purchases")
     _require_names(_column(frame, "exporter_name"), "EXPORTATEUR_SIMPLE (achats)")
 
-    collapsed = (
-        frame.groupby(["period_date", "exporter_name"], as_index=False)["net_weight_kg"]
-        .sum()
-        .sort_values(["period_date", "exporter_name"])
-        .reset_index(drop=True)
+    # Cast the aggregation before sorting: with as_index=False the runtime value
+    # is a DataFrame, but the stub types the single-column selection as a Series
+    # and then refuses sort_values(by=[...]).
+    grouped = cast(
+        pd.DataFrame,
+        frame.groupby(["period_date", "exporter_name"], as_index=False)[
+            "net_weight_kg"
+        ].sum(),
+    )
+    collapsed = grouped.sort_values(["period_date", "exporter_name"]).reset_index(
+        drop=True
     )
     if len(collapsed) < len(frame):
         logger.info(
@@ -448,7 +455,7 @@ def _build_entities(
 # guards
 # ---------------------------------------------------------------------------
 def _assert_non_negative(series: pd.Series, column: str, dataset: str) -> None:
-    negative = series[series < 0]
+    negative = cast(pd.Series, series[series < 0])
     if len(negative):
         raise InvalidTonnageError(
             f"{dataset}: {len(negative)} row(s) with negative {column} "

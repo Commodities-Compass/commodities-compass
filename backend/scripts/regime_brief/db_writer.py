@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import date as date_cls
+from typing import cast
 
 from sqlalchemy import text
 from sqlalchemy.engine import CursorResult
@@ -69,16 +70,19 @@ def write_narrative(
         # The frontend parser opens the watch section on the SECOND '>' line;
         # `_build_watch_lines` already emits the header with that marker.
         conclusion = conclusion.rstrip() + "\n" + "\n".join(watch_lines)
-    result: CursorResult = session.execute(
-        text(_UPDATE),
-        {
-            "eco": narrative.eco,
-            "conclusion": conclusion,
-            "confidence_rationale": narrative.confidence_rationale,
-            "date": session_date,
-            "algorithm_version_id": str(algorithm_version_id),
-            "language": language,
-        },
+    result = cast(
+        CursorResult,
+        session.execute(
+            text(_UPDATE),
+            {
+                "eco": narrative.eco,
+                "conclusion": conclusion,
+                "confidence_rationale": narrative.confidence_rationale,
+                "date": session_date,
+                "algorithm_version_id": str(algorithm_version_id),
+                "language": language,
+            },
+        ),
     )
     if result.rowcount == 0:
         raise AdapterRowMissingError(

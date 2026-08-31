@@ -71,6 +71,21 @@ ON CONFLICT ON CONSTRAINT uq_judge_shadow DO UPDATE SET
 """
 
 
+def _as_float(value: object) -> float:
+    """Read a float out of the judge's untyped log payload, or fail loud.
+
+    ``float(value)`` already raised on a bad payload before this helper existed;
+    the helper only narrows the type for the checker. It must NOT default — a
+    silently zeroed confidence is a stored lie, and 0.0 is a valid confidence
+    (.claude/rules/pipeline-continuity.md).
+    """
+    if isinstance(value, (int, float, str)):
+        return float(value)
+    raise TypeError(
+        f"base_confidence is not numeric: {value!r} ({type(value).__name__})"
+    )
+
+
 def _jsonl(items) -> str:
     """Serialize a tuple/list to a JSON string (JSONB cast happens in the SQL)."""
     import json
@@ -104,7 +119,7 @@ def write_judge_shadow(
             "aid": str(algorithm_version_id),
             "base_source": str(log.get("base_source", "regime/1.0.0")),
             "base_decision": outcome.base_decision.value,
-            "base_confidence": float(log.get("base_confidence", 0.0)),
+            "base_confidence": _as_float(log.get("base_confidence", 0.0)),
             "base_direction_label": None,  # kept nullable for now
             "regime_source_date": regime_row.source_date,
             "regime": regime_row.regime,

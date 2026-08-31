@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 import platform
 
+from playwright.sync_api import BrowserContext, Page
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
 
@@ -59,8 +60,19 @@ class NcaBrowser:
         self._timeout_ms = timeout_ms
         self._pw = None
         self._browser = None
-        self._context = None
-        self._page = None
+        self._context: BrowserContext | None = None
+        self._page: Page | None = None
+
+    def _require_page(self) -> Page:
+        """The live page, or fail loud.
+
+        ``_page`` stays None until ``_launch`` runs; reaching a fetch without it
+        is a programming error, and a named exception beats an AttributeError on
+        None from inside Playwright.
+        """
+        if self._page is None:
+            raise NcaScraperError("Browser page not started — use as a context manager")
+        return self._page
 
     def __enter__(self) -> "NcaBrowser":
         logger.info("Launching Playwright browser (headless=%s)", self._headless)
@@ -92,20 +104,20 @@ class NcaBrowser:
         """Load ``url`` through the WAF and return the settled page HTML."""
         logger.info("Loading %s (through WAF)", url)
         try:
-            self._page.goto(
+            self._require_page().goto(
                 url, wait_until="domcontentloaded", timeout=self._timeout_ms
             )
         except PlaywrightError as exc:
             raise NcaScraperError(f"Network error loading {url}: {exc}") from exc
 
         self._await_challenge_clear(url)
-        return self._page.content()
+        return self._require_page().content()
 
     def fetch_bytes(self, url: str) -> bytes:
         """Download a binary (PDF) reusing the context's WAF clearance cookie."""
         logger.info("Downloading %s", url)
         try:
-            response = self._context.request.get(url, timeout=self._timeout_ms)
+            response = self._require_page().request.get(url, timeout=self._timeout_ms)
         except PlaywrightError as exc:
             raise NcaScraperError(f"Network error fetching {url}: {exc}") from exc
 
@@ -121,21 +133,21 @@ class NcaBrowser:
 
     def _await_challenge_clear(self, url: str) -> None:
         for _ in range(_PASSIVE_POLLS):
-            if not _looks_challenged(self._page):
+            if not _looks_challenged(self._require_page()):
                 return
-            self._page.wait_for_timeout(_POLL_INTERVAL_MS)
+            self._require_page().wait_for_timeout(_POLL_INTERVAL_MS)
 
         logger.warning("sgcaptcha still present for %s — forcing one reload", url)
         try:
-            self._page.goto(
+            self._require_page().goto(
                 url, wait_until="domcontentloaded", timeout=self._timeout_ms
             )
         except PlaywrightError:  # pragma: no cover - reload is best-effort
             pass
         for _ in range(_POST_RELOAD_POLLS):
-            if not _looks_challenged(self._page):
+            if not _looks_challenged(self._require_page()):
                 return
-            self._page.wait_for_timeout(_POLL_INTERVAL_MS)
+            self._require_page().wait_for_timeout(_POLL_INTERVAL_MS)
 
         raise NcaScraperError(
             f"SiteGround sgcaptcha WAF challenge did not clear for {url} within budget "

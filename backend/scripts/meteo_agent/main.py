@@ -251,7 +251,19 @@ def main() -> int:
                 overall_ok = False
                 break  # fr-first: don't attempt en if fr failed
 
-            errors = validate_output(result.parsed)
+            if result.parsed is None:
+                # success=True with no payload is a contradiction in LLMResult,
+                # not a degraded run. Stop rather than write a half-observation.
+                logger.error("[%s] LLM reported success with no parsed payload", lang)
+                sentry_sdk.capture_message(
+                    f"Meteo agent returned success with no payload ({lang})",
+                    level="error",
+                )
+                overall_ok = False
+                break
+            parsed = result.parsed
+
+            errors = validate_output(parsed)
             if errors:
                 logger.error("[%s] Validation failed: %s", lang, errors)
                 sentry_sdk.capture_message(
@@ -269,7 +281,7 @@ def main() -> int:
                 # would leave session_date empty on the morning after.
                 write_observation(
                     session,
-                    result.parsed,
+                    parsed,
                     observation_date=data_date,
                     language=str(lang),
                     dry_run=args.dry_run,
@@ -284,7 +296,7 @@ def main() -> int:
             if args.dry_run:
                 logger.info("[DRY RUN] [%s] Output preview:", lang)
                 for field in ("texte", "resume", "mots_cle", "impact_synthetiques"):
-                    val = result.parsed.get(field, "")
+                    val = parsed.get(field, "")
                     logger.info("  %s: %d chars — %s...", field, len(val), val[:120])
 
         # Step 6: Daily Harmattan check — language-independent, runs ONCE (it
@@ -317,8 +329,8 @@ def main() -> int:
                     "weather_data_chars": len(weather_data),
                     "usage": last_result.usage,
                     "latency_ms": last_result.latency_ms,
-                    "texte_chars": len(last_result.parsed.get("texte", "")),
-                    "resume_chars": len(last_result.parsed.get("resume", "")),
+                    "texte_chars": len((last_result.parsed or {}).get("texte", "")),
+                    "resume_chars": len((last_result.parsed or {}).get("resume", "")),
                     "dry_run": args.dry_run,
                 },
             )

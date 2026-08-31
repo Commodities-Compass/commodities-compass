@@ -15,7 +15,7 @@ import re
 from datetime import datetime, timezone
 from typing import Any
 
-from playwright.sync_api import Response, sync_playwright
+from playwright.sync_api import Browser, Page, Response, sync_playwright
 
 from scripts.barchart_scraper.config import (
     BROWSER_TIMEOUT,
@@ -177,8 +177,21 @@ class BarchartScraper:
     def __init__(self, headless: bool = True):
         self.headless = headless
         self.playwright = None
-        self.browser = None
-        self.page = None
+        self.browser: Browser | None = None
+        self.page: Page | None = None
+
+    def _require_page(self) -> Page:
+        """The live page, or fail loud.
+
+        ``page`` is None until ``_launch_browser`` runs, so every caller outside
+        the context manager is a programming error. Better a named exception than
+        an AttributeError on None three frames deep.
+        """
+        if self.page is None:
+            raise BarchartScraperError(
+                "Browser page not started — use BarchartScraper as a context manager"
+            )
+        return self.page
 
     def __enter__(self):
         self._launch_browser()
@@ -238,13 +251,14 @@ class BarchartScraper:
             except (ValueError, KeyError, TypeError) as exc:
                 logger.debug("XHR extraction failed for %s: %s", response.url, exc)
 
-        self.page.on("response", on_response)
+        page = self._require_page()
+        page.on("response", on_response)
         try:
             logger.info(f"Fetching {url}")
-            self.page.goto(url, wait_until="load", timeout=BROWSER_TIMEOUT)
+            page.goto(url, wait_until="load", timeout=BROWSER_TIMEOUT)
             # Wait for XHR calls to complete (Barchart never reaches networkidle
             # due to analytics/ad polling, so we use a fixed wait after load)
-            self.page.wait_for_timeout(5000)
+            page.wait_for_timeout(5000)
         except Exception as e:
             # If we already captured data before timeout, don't fail
             if captured:
@@ -252,7 +266,7 @@ class BarchartScraper:
             else:
                 raise BarchartScraperError(f"Failed to fetch {url}: {e}") from e
         finally:
-            self.page.remove_listener("response", on_response)
+            page.remove_listener("response", on_response)
 
         return captured
 
@@ -275,7 +289,7 @@ class BarchartScraper:
         captured = self._navigate_and_capture(prices_url, _find_quote_in_json)
 
         # Primary: extract from rendered HTML (has OI)
-        html_content = self.page.content()
+        html_content = self._require_page().content()
         data = _extract_ohlc_from_html(html_content)
 
         # If HTML extraction got a close price, use it
@@ -319,7 +333,7 @@ class BarchartScraper:
             return captured[0]
 
         logger.warning("No IV from XHR — falling back to HTML regex")
-        html_content = self.page.content()
+        html_content = self._require_page().content()
         iv = _extract_iv_from_html(html_content)
         if iv is not None:
             logger.info(f"IV from HTML fallback: {iv}")
@@ -336,7 +350,9 @@ class BarchartScraper:
         """
         contract = contract_code or get_current_contract_code()
         logger.info(f"Starting Barchart scrape for London cocoa #7 ({contract})")
-        data = self.scrape_prices(contract_code)
+        # scrape_prices returns floats; the payload also carries a timestamp and
+        # a contract code, so the row is heterogeneous by construction.
+        data: dict[str, Any] = dict(self.scrape_prices(contract_code))
         data["implied_volatility"] = self.scrape_implied_volatility(contract_code)
         data["timestamp"] = datetime.now(timezone.utc)
         data["contract_code"] = contract

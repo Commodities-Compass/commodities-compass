@@ -146,10 +146,20 @@ watchai-sync = "scripts.watchai_sync.main:main"
 extend-exclude = ["vendor"]
 
 [tool.pyright]
-include = ["app", "tests"]
+include = ["app", "tests", "scripts"]
 # Vendored R&D code has its own type contract; exclude to avoid duplicating
 # pyright runs and to not block our CI on R&D-side stubs missing.
-exclude = ["scripts", "vendor"]
+#
+# `scripts` used to be excluded alongside it, which left all 19 Cloud Run jobs
+# unchecked — 147 hidden errors, two thirds of them attribute access on a field
+# that does not exist. `scripts/archive` (retired pipelines, kept only as an
+# audit trail) and `scripts/research` (R&D notebooks) stay out: neither ships.
+exclude = [
+    "vendor",
+    "scripts/archive",
+    "scripts/research",
+    "**/__pycache__",
+]
 # regime + judge are vendored but NOT pip-installed (regime pins sklearn==1.6.1
 # which would force the backend image up; judge ships without a pyproject — both
 # run via sys.path append at import time — see scripts/{regime,judge}_shadow/

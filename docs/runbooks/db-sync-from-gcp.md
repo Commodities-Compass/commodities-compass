@@ -84,6 +84,33 @@ When done, `Ctrl+C` in the terminal running the SSH command.
 | `password authentication failed` | Wrong password in `.env` | Re-fetch from Secret Manager (Step 0), check no whitespace |
 | Sync script writes 0 rows | `GCP_DATABASE_URL` points to local | Verify env var contains `127.0.0.1:5434` not `5433` |
 | Local table missing column | Local schema older than prod | Run `poetry run alembic upgrade head` first |
+| `ForeignKeyViolation` on `DELETE FROM <parent>` | A prod table is missing from `SYNC_TABLES` — the list drifted behind a migration | Add it, FK-ordered (see below). The whole delete phase is one transaction, so local is left untouched |
+| `ABORT — N local-only table(s) block the delete phase` | You are on a branch whose migration added a child table that prod does not have, and it holds rows | Run the `TRUNCATE ... CASCADE` the message prints. Those rows are branch fixtures; the sync cannot repopulate a table that has no upstream |
+
+## Keeping `SYNC_TABLES` current
+
+`SYNC_TABLES` is a hand-maintained list and it **drifts silently**: a migration
+adds a table, nobody adds it here, and the sync keeps working until that table
+gains a foreign key into one already in the list. Then every sync fails on a raw
+FK error. It went ten tables behind between the gauge decoupling and 2026-08-26
+(`pl_dashboard_gauge`, six WatchAI `pl_origin_*` / `ref_origin_entity`, three
+`tenant_*`).
+
+Check for drift with the tunnel open — anything printed is missing:
+
+```bash
+psql -h 127.0.0.1 -p 5434 -U cc_app -d commodities_compass -tAc \
+  "select tablename from pg_tables where schemaname='public'
+     and (tablename like 'pl\_%' or tablename like 'ref\_%'
+          or tablename like 'aud\_%' or tablename like 'tenant\_%')
+   order by 1;" | grep -vFf <(grep -oE '"[a-z_]+"' backend/scripts/sync_from_gcp.py | tr -d '"')
+```
+
+**Ordering matters.** Deletes run in `reversed(SYNC_TABLES)`, so every parent
+must appear *before* its children. Two non-obvious cases live in the list today:
+`ref_origin_entity` sits with the origin block rather than the other `ref_`
+tables because `tenant_account` references it, and `pl_origin_ingest_batch`
+precedes it because every origin fact hangs off the batch.
 
 ## Background
 

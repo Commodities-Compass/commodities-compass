@@ -214,6 +214,42 @@ A daily Cloud Run Job, same shape as `cc-publication-calendar-watchdog`:
 
 **Why it is not optional**: Stripe's Card Account Updater covers Visa only in the UK and Europe, and Mastercard globally. **A Visa issued in Abidjan is therefore probably not covered** — the card expires, the subscription dies quietly, and nobody notices until the client asks why the dashboard went blank.
 
+### 9 bis. `cc-billing-purge` — the 18 months we published
+
+`aud_billing_event` archives every provider payload verbatim, before
+interpretation. Those payloads carry the payer's name, email and country, so
+they are the one billing table with a short clock. The privacy policy (§ 3,
+ligne 5) commits to **18 months, then automatic purge** — and counsel is blunt
+about the ordering: *« Une politique qui annonce dix-huit mois alors que le
+système ne purge pas est une pièce à charge signée : elle établit à la fois la
+connaissance du manquement et sa date. »* The job therefore has to exist
+**before** the page goes live, not after.
+
+**The anchor is the end of the service period, not the arrival of the webhook.**
+Card networks allow a dispute up to ~540 days (≈17.7 months, which is where the
+18 comes from), and for a service delivered *after* payment that window runs
+from delivery. A subscription billed `à échoir` is paid a month before the
+period it covers ends, so purging on `received_at` alone would delete the proof
+of a transaction that can still be contested. The anchor is
+`GREATEST(received_at, payload.data.object.period_end)` — the later of the two,
+never the earlier, and a malformed `period_end` falls back to `received_at`
+rather than crashing the job.
+
+**What survives**: `tenant_billing_invoice` mirrors the same payments in
+structured form and is an accounting record kept **10 years** (art. L123-22 du
+code de commerce, § 3 ligne 3). Two finalities, two clocks. This is why no
+legal-hold mechanism is needed: a dispute raised past 18 months still has the
+invoice, it loses only the verbatim payload.
+
+`RETENTION_MONTHS` is a module constant and deliberately **not** a CLI flag — a
+job that can be told to keep less than the published page promises is a job that
+will one day be told exactly that. `test_retention_matches_the_published_policy`
+is the tripwire.
+
+Cron: daily, `0 3 * * *`. Over-retaining by up to a day is harmless;
+under-retaining is the thing being guarded against. **The scheduler is not
+created yet** — see Appendix B.
+
 ### 10. Testing
 
 - **Unit**: `_billing_blocks` across all 6 statuses × enforced/dark × `paid_through` past/future/NULL; webhook signature verification; idempotency (same `event_id` twice → one effect).
@@ -323,6 +359,17 @@ Not planned, but cheap to keep possible. What would return: 14-day withdrawal, e
 
 ## Appendix B — Open items
 
+- 🔴 **The two billing schedulers do not exist.** `deploy.yml` creates the jobs; nothing runs them. `cc-billing-purge` in particular is what makes the privacy policy's 18-month claim true, so it has to be scheduled **before** the page is published, not merely written:
+
+  ```bash
+  gcloud scheduler jobs create http cc-billing-purge \
+    --location=europe-west1 --schedule="0 3 * * *" --time-zone=UTC \
+    --uri="https://run.googleapis.com/apis/run.googleapis.com/v1/namespaces/cacaooo/jobs/cc-billing-purge:run" \
+    --http-method=POST --oauth-service-account-email=<scheduler-sa> \
+    --project=cacaooo
+  ```
+
+  Same shape for `cc-billing-watchdog` at `0 15 * * 1-5`. Then fold both into `infra/terraform/scheduler.tf` so they survive a rebuild.
 - **The card go/no-go test** (§13) — the only real unknown.
 - Whether coops get card or `manual` from day one — falls out of the test.
 - Automating wire reconciliation (Qonto or Wise incoming-transfer webhook → matcher → `paid_out_of_band`). Deferred until manual reconciliation actually hurts; at ~10-30 invoices a year it does not.

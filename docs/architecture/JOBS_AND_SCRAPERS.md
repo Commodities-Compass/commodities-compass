@@ -7,6 +7,14 @@
 > `cc-regime-bootstrap-artifacts`, utilitaire one-shot. Les 6 jobs legacy/ensemble
 > ont été supprimés le 2026-08-19 — contexte business dans
 > [docs/archive/pipelines/](../archive/pipelines/).
+>
+> ⚠️ **Deux jobs de plus sont déclarés dans `deploy.yml` mais pas encore déployés** :
+> `cc-billing-watchdog` et `cc-billing-purge`, qui arrivent avec la brique Stripe.
+> Le compte GCP passera à **21 jobs** au premier déploiement après ce merge, et
+> leurs deux schedulers restent à créer — voir
+> [billing-and-collection.md](billing-and-collection.md) § 9 et § 9 bis. Ce
+> catalogue est une photographie de GCP, pas de `deploy.yml` : il sera repris
+> après le déploiement effectif.
 
 ---
 

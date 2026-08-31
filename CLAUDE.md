@@ -63,7 +63,7 @@ to conclude anything, and the only figure that exists.
 - `pnpm dev` - Start both backend and frontend in development mode (concurrently)
 - `pnpm dev:backend` - Start only backend (<http://localhost:8000>)
 - `pnpm dev:frontend` - Start only frontend (<http://localhost:5173>)
-- `pnpm db:up` - Start PostgreSQL (port 5433) and Redis (port 6380) containers
+- `pnpm db:up` - Start PostgreSQL (port 5433) container
 - `pnpm db:down` - Stop database containers
 - `pnpm db:logs` - View database container logs
 - `pnpm lint` - Run linting for both projects
@@ -219,7 +219,6 @@ Frontend code uses Auth0 variables (not VITE_ prefixed) exposed via custom Vite 
 ### Database Setup
 
 - PostgreSQL 15 runs on custom port 5433 (not default 5432) via Docker
-- Redis 7 runs on custom port 6380 (not default 6379) via Docker
 - Database URL: `postgresql+asyncpg://postgres:password@localhost:5433/commodities_compass`
 - Async SQLAlchemy with asyncpg driver for app, sync engine for Alembic migrations
 - Multiple migrations exist (idempotent with `_has_column()` checks and `if_not_exists=True` for safe re-application on GCP)
@@ -628,7 +627,7 @@ The `PositionStatus` component automatically fetches and plays the audio file:
 - **CI/CD**: `.github/workflows/deploy.yml` — push to `main` triggers CI (lint + test) → Deploy (backend + frontend + all Cloud Run Jobs).
 - **Backend**: `backend/Dockerfile` (Python 3.11-slim, no Playwright, ~200MB). Alembic migrations on startup via `start.sh`. Cloud Run: 512Mi, 1 CPU, max 2 instances, VPC connector for Cloud SQL.
 - **Frontend**: `frontend/Dockerfile` (Node 18-alpine, serve static). Auth0 vars baked at build time via `--build-arg` from GitHub vars. Cloud Run: 256Mi, 1 CPU, max 2 instances. CSP in `index.html` whitelists `*.com-compass.com`, `*.auth0.com`, `*.sentry.io`.
-- **Cloud Run Jobs**: `backend/Dockerfile.jobs` (with Playwright, ~1GB). All 19 jobs deployed via deploy.yml — `deploy.yml` is the inventory: a job it does not list will drift, and one it lists is guaranteed to run today's image. `ENTRYPOINT ["poetry", "run"]`, command passed via job args. No retries (--max-retries=0). `cc-intraday-monitor` is httpx-only (512Mi, no Playwright).
+- **Cloud Run Jobs**: `backend/Dockerfile.jobs` (with Playwright, ~1GB). All 19 jobs deployed via deploy.yml — `deploy.yml` is the inventory: a job it does not list will drift, and one it lists is guaranteed to run today's image. ⚠️ `deploy.yml` now lists **21**: `cc-billing-watchdog` and `cc-billing-purge` ship with the Stripe brick and land in GCP at the first deploy after that merge; both still need a scheduler (see [billing-and-collection.md](docs/architecture/billing-and-collection.md) Appendix B). `ENTRYPOINT ["poetry", "run"]`, command passed via job args. No retries (--max-retries=0). `cc-intraday-monitor` is httpx-only (512Mi, no Playwright).
 - **Cloud Scheduler**: cron jobs in `europe-west1` (scheduler doesn't support `europe-west9`). Triggers Cloud Run Job execution via HTTP + OAuth. Schedules span the day: FX 18:30 → evening pipeline 19:00-19:35 → publish-gate 20:00-09:30 → daytime fundamentals 13:00-16:00 → intraday alerts 08:00-16:00 (*/15) → monthly ENSO. No retries (retryCount=0).
 - **Secrets**: GCP Secret Manager (13 secrets). Non-sensitive env vars via GitHub Vars → deploy.yml `--set-env-vars`.
 - **Auth**: Workload Identity Federation (keyless GitHub → GCP auth). No SA key files in CI/CD.
@@ -679,6 +678,11 @@ P2b — the pipeline is split into two phases:
 
 # Monthly:
 22:00 on the 20th  cc-enso-scraper    → pl_external_indicator (ENSO ONI + Niño 3.4)
+
+# Billing — serving layer, CALENDAR-EXEMPT (daily, incl. weekends: a card
+# expires on a Sunday and a legal deadline runs on the civil calendar):
+03:00  cc-billing-purge     → DELETE aud_billing_event past 18 months
+15:00  cc-billing-watchdog  → Sentry: first off-session failure, expiring cards, drift
 ```
 
 Notes:

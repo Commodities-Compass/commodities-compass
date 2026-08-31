@@ -78,6 +78,24 @@ class Settings(BaseSettings):
         "ENTITLEMENTS_ENFORCED", default=False, cast=bool
     )
 
+    # --- Billing (Stripe) ---------------------------------------------------
+    # Recurring EUR card-on-file billing. Design: docs/architecture/billing-and-collection.md
+    #
+    # Deliberately a SEPARATE flag from ENTITLEMENTS_ENFORCED: billing must be
+    # able to ship dark, flip, and roll back on its own schedule. Default OFF →
+    # `_billing_blocks()` returns False unconditionally, so no account can lose
+    # access because of a payment state. Flip only once real subscriptions exist
+    # and `paid_through` is set on the manual/wire accounts.
+    BILLING_ENFORCED: bool = config("BILLING_ENFORCED", default=False, cast=bool)
+
+    # Stripe API credentials. Empty in dev/CI — the tests never hit the network,
+    # and BillingService fails loud rather than silently no-op'ing if a caller
+    # tries to reach Stripe without them.
+    STRIPE_SECRET_KEY: str = config("STRIPE_SECRET_KEY", default="", cast=str)
+    # Signing secret for POST /v1/webhooks/stripe. Required whenever the webhook
+    # is reachable: an unverified payload must never be trusted to change access.
+    STRIPE_WEBHOOK_SECRET: str = config("STRIPE_WEBHOOK_SECRET", default="", cast=str)
+
     # HMAC secret for signing the unauthenticated /audio/stream capability token.
     # Required only when ENTITLEMENTS_ENFORCED is on (dark mode keeps the stream
     # open). Store in GCP Secret Manager in prod.
@@ -109,6 +127,18 @@ class Settings(BaseSettings):
             return json.loads(raw)
         except (json.JSONDecodeError, TypeError):
             return [o.strip() for o in raw.split(",") if o.strip()]
+
+    @property
+    def frontend_url(self) -> str:
+        """Where Stripe sends the client back after Checkout / the Portal.
+
+        Derived from the first CORS origin rather than a dedicated env var, so
+        it is correct per environment by construction and cannot rot into a
+        stale default pointing at a URL nobody serves (the failure mode that
+        BRIEF_DEFAULT_VERSION documents above).
+        """
+        origins = self.cors_origins
+        return origins[0] if origins else "http://localhost:5173"
 
 
 settings = Settings()

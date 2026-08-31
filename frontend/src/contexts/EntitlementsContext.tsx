@@ -17,6 +17,13 @@ interface EntitlementsValue {
   enforced: boolean;
   entitlements: Set<string>;
   tier: string | null;
+  /**
+   * Payment state, orthogonal to `entitlements`. Deliberately NOT folded into
+   * `has`/`hasAny`: a `past_due` account keeps its full key set on purpose (the
+   * Stripe retry window keeps access open), so the banner — not the gating — is
+   * what surfaces it. The backend is the real boundary either way.
+   */
+  billingStatus: string | null;
   isLoading: boolean;
   has: (key: string) => boolean;
   hasAny: (keys: string[]) => boolean;
@@ -26,6 +33,7 @@ const OPEN: EntitlementsValue = {
   enforced: false,
   entitlements: new Set(),
   tier: null,
+  billingStatus: null,
   isLoading: false,
   has: () => true,
   hasAny: () => true,
@@ -49,6 +57,7 @@ export function EntitlementsProvider({ children }: { children: ReactNode }) {
       enforced,
       entitlements,
       tier: data?.tier ?? null,
+      billingStatus: data?.billing_status ?? null,
       isLoading,
       has: (key: string) => !enforced || entitlements.has(key),
       hasAny: (keys: string[]) => !enforced || keys.some((k) => entitlements.has(k)),

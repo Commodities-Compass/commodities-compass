@@ -288,6 +288,20 @@ jobs:
           # Roll watchdog: nudge the operator when the liquidity front-month
           # leads the calendar for ≥3 consecutive sessions (time to roll-contract).
           deploy_job cc-roll-watchdog                 512Mi "roll-watchdog"
+          # Billing watchdog: the first off-session payment failure of an
+          # account (the only early warning that an issuer refuses MITs), cards
+          # expiring within 30 days (Stripe's Card Account Updater does not
+          # cover Visa outside UK/Europe), and Stripe⇄DB status drift.
+          # Runs DB-only until STRIPE_SECRET_KEY exists, then adds the two
+          # Stripe checks. docs/architecture/billing-and-collection.md §9
+          deploy_job cc-billing-watchdog              512Mi "billing-watchdog"
+          # Billing archive purge: drops aud_billing_event rows past the 18
+          # months the privacy policy publishes (§3 ligne 5). The retention
+          # clock runs from the END of the period the payment covers, not from
+          # the day the webhook arrived — a subscription billed à échoir pays a
+          # month ahead, and the chargeback window follows the service.
+          # Until this runs, the published page documents a breach.
+          deploy_job cc-billing-purge                 512Mi "billing-purge"
           # Dual-track brief — REMOVED 2026-08-18. cc-ensemble-explainer and
           # cc-compass-brief-ensemble were the ensemble half; cc-regime-brief is
           # the single track now.

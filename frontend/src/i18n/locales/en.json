@@ -385,5 +385,14 @@
     "price_chart": "Price History & Signal Overlay",
     "press_review": "Press Review",
     "weather": "Weather Intelligence"
+  },
+  "billing": {
+    "pastDueTitle": "Your payment did not go through",
+    "pastDueBody": "Your access stays fully open while we retry the payment. Update your card to avoid any interruption.",
+    "unpaidTitle": "Subscription suspended",
+    "unpaidBody": "Payment attempts have failed. Update your card to restore your access immediately.",
+    "manage": "Update my card",
+    "opening": "Opening…",
+    "error": "Could not open the billing portal. Try again or contact us."
   }
 }

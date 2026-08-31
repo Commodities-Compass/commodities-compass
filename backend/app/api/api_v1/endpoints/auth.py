@@ -24,6 +24,7 @@ async def get_me(
         account_code=principal.account_code,
         entitlements=sorted(principal.entitlements),
         enforced=settings.ENTITLEMENTS_ENFORCED,
+        billing_status=principal.billing_status,
     )
 
 

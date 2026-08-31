@@ -1,8 +1,9 @@
 # Billing & Collection — Design
 
-> **Status**: DESIGN ONLY — no code, no `stripe` dependency, no Stripe account as of 2026-08-24.
+> **Status**: **socle IMPLEMENTED and shipped dark** (`BILLING_ENFORCED=false`) — migration `b1i2l3l4i5n6`, 3 tables, the gate in `resolve_principal`, the Stripe webhook, and the ops CLI. Not yet wired to a real Stripe account. The 18-month purge of `aud_billing_event` (§9 bis) and both Cloud Scheduler entries are declared. Remaining: `terraform apply`, then the live Stripe account + Products/Prices.
 > **Goal**: recurring EUR billing by **card on file with automatic debit**, for 7 negotiated tiers sold by hand.
 > **Prerequisite, already met**: per-client entitlement is LIVE and enforced ([entitlement-and-tenancy.md](./entitlement-and-tenancy.md) · [runbook](../runbooks/entitlement-enforcement.md)). Billing plugs into `resolve_principal`; it does not replace it.
+> **How these decisions were reached**, what was rejected on what evidence, and what we got wrong on the way: [billing-decision-log.md](./billing-decision-log.md).
 > **Guardrails**: [north-star-alignment](../../.claude/rules/north-star-alignment.md) · [pipeline-error-handling](../../.claude/rules/pipeline-error-handling.md) · [migrations-prod-via-main-only](../../.claude/rules/migrations-prod-via-main-only.md) · [no-workaround-without-asking](../../.claude/rules/no-workaround-without-asking.md).
 
 ---
@@ -66,9 +67,14 @@ tenant_billing_subscription     -- what they are signed up to
   provider_customer_id VARCHAR
   provider_subscription_id VARCHAR
   tier VARCHAR                  -- denormalised for audit: what was sold, at the time
+  customer_type VARCHAR         -- 'business'|'consumer': the LEGAL regime at contract
+                                --  formation. Same denormalisation logic as `tier` —
+                                --  French consumer protections bind when the contract
+                                --  is formed, so it cannot be derived later from a
+                                --  current account attribute. Constant while B2B-only.
   currency VARCHAR              -- 'EUR'
   amount_cents INTEGER
-  interval VARCHAR              -- 'month' | 'year'
+  billing_interval VARCHAR      -- 'month' | 'year' (`interval` is a SQL keyword)
   status VARCHAR                -- mirror of Stripe's subscription status
   current_period_end TIMESTAMPTZ
   effective_from DATE, active BOOLEAN
@@ -88,9 +94,9 @@ tenant_billing_invoice          -- history + PDF links, mirrored from Stripe
 aud_billing_event               -- raw webhook archive + idempotency
   id UUID PK
   provider VARCHAR, event_id VARCHAR
-  type VARCHAR
+  event_type VARCHAR            -- (`type` is a SQL keyword)
   payload JSONB
-  received_at, processed_at TIMESTAMPTZ
+  received_at, processed_at TIMESTAMPTZ, error TEXT
   UNIQUE(provider, event_id)
 ```
 
@@ -203,9 +209,47 @@ No admin UI (entitlement decision #3 carries over).
 A daily Cloud Run Job, same shape as `cc-publication-calendar-watchdog`:
 
 - emails a Customer Portal link **30 days before** a card expires;
-- Sentry-alerts on any account where Stripe's status and `billing_status` disagree.
+- Sentry-alerts on any account where Stripe's status and `billing_status` disagree;
+- **Sentry-alerts on the FIRST off-session failure of any account** — an `invoice.payment_failed` on an account that was `active` is the signal *"this issuer mishandles merchant-initiated transactions"*, and it is the only early warning that exists (§13).
 
 **Why it is not optional**: Stripe's Card Account Updater covers Visa only in the UK and Europe, and Mastercard globally. **A Visa issued in Abidjan is therefore probably not covered** — the card expires, the subscription dies quietly, and nobody notices until the client asks why the dashboard went blank.
+
+### 9 bis. `cc-billing-purge` — the 18 months we published
+
+`aud_billing_event` archives every provider payload verbatim, before
+interpretation. Those payloads carry the payer's name, email and country, so
+they are the one billing table with a short clock. The privacy policy (§ 3,
+ligne 5) commits to **18 months, then automatic purge** — and counsel is blunt
+about the ordering: *« Une politique qui annonce dix-huit mois alors que le
+système ne purge pas est une pièce à charge signée : elle établit à la fois la
+connaissance du manquement et sa date. »* The job therefore has to exist
+**before** the page goes live, not after.
+
+**The anchor is the end of the service period, not the arrival of the webhook.**
+Card networks allow a dispute up to ~540 days (≈17.7 months, which is where the
+18 comes from), and for a service delivered *after* payment that window runs
+from delivery. A subscription billed `à échoir` is paid a month before the
+period it covers ends, so purging on `received_at` alone would delete the proof
+of a transaction that can still be contested. The anchor is
+`GREATEST(received_at, payload.data.object.period_end)` — the later of the two,
+never the earlier, and a malformed `period_end` falls back to `received_at`
+rather than crashing the job.
+
+**What survives**: `tenant_billing_invoice` mirrors the same payments in
+structured form and is an accounting record kept **10 years** (art. L123-22 du
+code de commerce, § 3 ligne 3). Two finalities, two clocks. This is why no
+legal-hold mechanism is needed: a dispute raised past 18 months still has the
+invoice, it loses only the verbatim payload.
+
+`RETENTION_MONTHS` is a module constant and deliberately **not** a CLI flag — a
+job that can be told to keep less than the published page promises is a job that
+will one day be told exactly that. `test_retention_matches_the_published_policy`
+is the tripwire.
+
+Cron: daily, `0 3 * * *`, declared in `infra/terraform/scheduler.tf` and
+classified `CALENDAR_EXEMPT` in `scripts/_shared/phases.py` — a legal deadline
+runs on the civil calendar, not the exchange one. Over-retaining by up to a day
+is harmless; under-retaining is the thing being guarded against.
 
 ### 10. Testing
 
@@ -239,57 +283,84 @@ Do not re-litigate these without new information.
 
 **Merchant of Record** (Paddle / Lemon Squeezy / Stripe Managed Payments) — ~5% vs ~2%, weak on negotiated B2B contracts and wire payment. Its value is VAT complexity we do not have: B2B services to a non-EU business are outside French VAT scope. *Caveat to verify with the accountant*: if a donor or institution turns out to be a **French** entity, that flips into 20% TVA **and** into the French e-invoicing reform, where a Stripe PDF is not a compliant Factur-X invoice and a PDP is required.
 
-### 13. The go/no-go test — run this before writing code
+### 13. What cannot be tested in advance — and how it is instrumented instead
 
-Take **one real Ivorian card from an exporter and one from a coop**. Run a live `SetupIntent`, then a charge at the actual tier amount. A month later, confirm the off-session renewal.
+This section originally said "run a card test before writing code". That was wrong on two counts, and the correction matters more than the original advice.
 
-Twenty minutes. It answers what no amount of desk research can:
+**First**: the real risk was overstated for the segment that matters. An exporter or trading house doing international business holds a card that works in international e-commerce. The domestic-only GIM-UEMOA problem is a **coop and individual** risk, not a corporate one.
 
-| Risk | What the test reveals |
+**Second, and decisive**: the failure mode that actually kills a subscription is **not the first payment — it is the second**.
+
+The souscription charge is *on-session*: the client is at their screen, 3DS runs, the issuer sees an authenticated cardholder. The monthly debit is a *merchant-initiated transaction*: nobody is present, and the issuer sees only a mandate. **An issuer can accept the first and refuse the second**, and several West African banks handle MITs badly. No test card reveals this — even holding a real Ivorian card today, you would have to wait a full billing cycle. **The only reliable signal is month 2 of the first real client.**
+
+So the gate is removed. Since it cannot be tested ahead of time, the failure is made **loud and early** instead:
+
+| Risk | How it surfaces |
 |---|---|
-| Domestic-only GIM-UEMOA cards | The card cannot be saved at all |
-| International e-commerce disabled by default at the bank | Fails until the client phones their bank — belongs in the onboarding checklist, not the code |
-| Low monthly online ceilings | The tier amount is refused; confirms decision #7 (monthly) or forces it lower |
-| Issuers that mishandle off-session MITs | Only visible at the *second* debit, a month later |
+| Issuer refuses the off-session MIT | `cc-billing-watchdog` Sentry-alerts on the **first** `invoice.payment_failed` of an `active` account (§9) — same day, not as churn three months later |
+| Card expires, ACU does not cover it | Portal link emailed 30 days ahead (§9) |
+| Low monthly ceiling | Same alert path; mitigated up front by monthly billing (decision #7) |
+| Domestic-only card (coops) | Visible at souscription — the card simply cannot be saved. Falls back to `manual`. |
 
-**Outcome → action**: both cards work → build as specced. Exporter works, coop does not → build as specced and put coops on `manual`. Neither works → the rail is wrong, and §12's pawaPay note becomes the live option.
+**The escape hatch is in from day one.** Any account that turns out not to be debitable moves to `billing_status='manual'` with one command (`poetry run mark-paid`) and pays by wire. No code to write, no deploy.
 
-Roughly 80% of Part 1 is invariant to this result (model, gate, webhook, `manual` path). The test decides the **rail strategy**, not whether to start.
+Coops remain genuinely unknown — but that is a commercial question answered when one is signed, not a technical one to settle now. If card fails for that segment, §12's pawaPay note becomes the live option.
+
+Roughly 80% of Part 1 is invariant to any of this (model, gate, webhook, `manual` path).
+
+### 14. If we open to consumers (B2C) later
+
+Not planned, but cheap to keep possible. What would return: 14-day withdrawal, electronic cancellation, renewal notice, TTC public pricing, and VAT at the consumer's country rate via the OSS one-stop shop — so Stripe Tax, deliberately left off today.
+
+**One thing is anticipated, and only one**: `tenant_billing_subscription.customer_type`. The reason is legal, not technical — **French consumer protections bind at contract formation**, so which regime applied has to be recorded per contract. It cannot be derived afterwards from a current account attribute, because an account can change status while a contract signed last year cannot be re-qualified. It is constant `business` while we sell B2B only; that is the point.
+
+**What already serves a future B2C without having been built for it:**
+- `aud_billing_event` archives raw payloads → turning on Checkout `consent_collection` makes the withdrawal-waiver proof land there automatically. Nothing to build.
+- The Customer Portal is already wired (`POST /v1/billing/portal-session`) → that is the "cancel as easily as you subscribed" mechanism. It would only need surfacing permanently instead of on payment failure.
+- Stripe Tax is off by configuration, not absent — a flip, not a rewrite.
+
+**Deliberately not built**: consent collection, permanent portal link, Stripe Tax + OSS registration, TTC price grid. These do not pre-build usefully.
+
+**A misconception worth killing**: B2C does *not* require self-serve signup. What requires it is an acquisition motion where a consumer discovers the product and buys unassisted — a question of decision window, not of volume. Selling to individuals we are already in contact with works with today's manual provisioning unchanged. If self-serve ever ships, the hard part is not scale: it is **binding a Stripe payment to an Auth0 identity** when the two are created independently, and an email is not proof of identity until Auth0 has verified it.
 
 ---
 
 ## Appendix A — Implementation checklist
 
 **DB**
-- [ ] Alembic migration: `billing_status` + `paid_through` on `tenant_account`; `tenant_billing_subscription`, `tenant_billing_invoice`, `aud_billing_event`. Idempotent, via `main`.
+- [x] Alembic migration `b1i2l3l4i5n6`: `billing_status` + `paid_through` on `tenant_account`; `tenant_billing_subscription`, `tenant_billing_invoice`, `aud_billing_event`. Idempotent, via `main`.
 
 **Backend**
-- [ ] `stripe` dependency in `pyproject.toml`
-- [ ] `app/models/billing.py` — 3 models
-- [ ] `app/services/billing_service.py` — customer, checkout session, portal session, mark-paid
-- [ ] `app/api/api_v1/endpoints/billing.py` — `POST /v1/webhooks/stripe`, `POST /v1/billing/portal-session`
-- [ ] `app/core/tenancy.py` — `_billing_blocks` + 2 columns in the `resolve_principal` SELECT
-- [ ] `app/core/config.py` — `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `BILLING_ENFORCED`
-- [ ] `app/schemas/auth.py` — `billing_status` on `UserResponse`
-- [ ] CLI: `--billing` on `create-tenant`, plus `billing-status`, `mark-paid`
-- [ ] `cc-billing-watchdog` job + scheduler + `deploy.yml` entry
+- [x] `stripe` dependency in `pyproject.toml`
+- [x] `app/models/billing.py` — 3 models (+ `customer_type` on the subscription)
+- [x] `app/services/billing_service.py` — customer, checkout session, portal session, mark-paid
+- [x] `app/api/api_v1/endpoints/billing.py` — `POST /v1/webhooks/stripe`, `POST /v1/billing/portal-session`
+- [x] `app/core/tenancy.py` — `_billing_blocks` + 2 columns in the `resolve_principal` SELECT
+- [x] `app/core/config.py` — `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `BILLING_ENFORCED`
+- [x] `app/schemas/auth.py` — `billing_status` on `UserResponse`
+- [x] CLI (`scripts/billing_admin.py`): `billing-status`, `mark-paid`, `create-checkout-link`
+- [x] `cc-billing-watchdog` job (`scripts/billing_watchdog/`) + `deploy.yml` entry — **scheduler still TODO** (`infra/terraform/scheduler.tf`, suggested `0 15 * * 1-5`); until then the job exists but never fires
 
 **Frontend**
-- [ ] `components/billing-banner.tsx`
-- [ ] `billingStatus` through `EntitlementsContext`
-- [ ] Mount the banner in `dashboard-layout.tsx`
+- [x] `components/billing-banner.tsx` (+ 9 tests, FR/EN copy)
+- [x] `billingStatus` through `EntitlementsContext`
+- [x] Mount the banner in `dashboard-layout.tsx`
 
-**Ops**
+**Ops** — all of this is Hedi's, and none of it blocks the code
 - [ ] Stripe account (French entity) — **not created yet**
 - [ ] `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` in Secret Manager + `deploy.yml` (backend service only)
 - [ ] 7 Products/Prices in EUR
 - [ ] Customer Portal configured (card update + invoice history)
 - [ ] Smart Retries + dunning emails configured; reminders **off** for the institutional segment
+- [ ] Cloud Scheduler entry for `cc-billing-watchdog` in `infra/terraform/scheduler.tf` (suggested `0 15 * * 1-5`, before the evening pipeline)
+
+**Public site — the real activation blocker.** Stripe reviews it manually, and per their own guide this stops more activations than the Kbis does. The landing (`landing/`, Astro FR+EN) is live and has a contact section, but lacks: mentions légales, CGV, politique de confidentialité, and a page stating the billing model (monthly recurring EUR, price on quote, how to cancel). Note that most of the French *consumer* obligations Stripe's guide lists — 14-day withdrawal, three-click cancellation, tacit renewal, OSS VAT — do **not** apply to B2B sales to non-EU clients. The three legal pages are owed anyway (LCEN, GDPR, art. L441-1 Code de commerce); Stripe only forces the timing. Have a lawyer review before publishing.
 
 ---
 
 ## Appendix B — Open items
 
+- **The two billing schedulers are declared in `infra/terraform/scheduler.tf`** (`billing-watchdog` at `0 15 * * *`, `billing-purge` at `0 3 * * *`) and classified `CALENDAR_EXEMPT` in `scripts/_shared/phases.py`. Both are **daily, not weekday-only**: billing has no session dimension, and the watchdog's 26h look-back would drop every Friday-to-Sunday payment failure under a `1-5` cron. They exist in code from this PR; they exist in GCP only after `terraform apply`.
 - **The card go/no-go test** (§13) — the only real unknown.
 - Whether coops get card or `manual` from day one — falls out of the test.
 - Automating wire reconciliation (Qonto or Wise incoming-transfer webhook → matcher → `paid_out_of_band`). Deferred until manual reconciliation actually hurts; at ~10-30 invoices a year it does not.

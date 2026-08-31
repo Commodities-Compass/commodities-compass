@@ -385,5 +385,14 @@
     "price_chart": "Historique des prix & signal",
     "press_review": "Revue de presse",
     "weather": "Météo des origines"
+  },
+  "billing": {
+    "pastDueTitle": "Votre paiement n'a pas abouti",
+    "pastDueBody": "Votre accès reste complet pendant que nous relançons le paiement. Mettez votre carte à jour pour éviter toute interruption.",
+    "unpaidTitle": "Abonnement suspendu",
+    "unpaidBody": "Les tentatives de paiement ont échoué. Mettez votre carte à jour pour rétablir immédiatement votre accès.",
+    "manage": "Mettre à jour ma carte",
+    "opening": "Ouverture…",
+    "error": "Impossible d'ouvrir le portail de facturation. Réessayez ou contactez-nous."
   }
 }

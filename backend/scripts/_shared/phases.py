@@ -51,6 +51,21 @@ CALENDAR_EXEMPT_JOBS: dict[str, str] = {
         "would defeat the morning fallback that stops a late podcast from "
         "freezing the dashboard."
     ),
+    "billing-watchdog": (
+        "Billing has no session dimension: a card expires on a Sunday, and "
+        "Stripe retries a failed debit whenever its own schedule says so. The "
+        "job's 26h look-back is calibrated to a DAILY cadence — a weekday-only "
+        "cron would silently drop every failure landing Friday evening through "
+        "Sunday, and the first off-session refusal is the only early warning "
+        "that an issuer rejects merchant-initiated transactions."
+    ),
+    "billing-purge": (
+        "Enforces the 18-month retention the privacy policy publishes (§3 "
+        "ligne 5). A legal deadline runs on the civil calendar, not the "
+        "exchange one — skipping weekends would over-retain identifying "
+        "payload past a date we committed to in writing. Idempotent by "
+        "construction: a day with nothing past retention is a clean exit 0."
+    ),
     "enso-scraper": (
         "Monthly (20th at 22:00 UTC) and NOT session-keyed: NOAA publishes ONI "
         "and Nino 3.4 per calendar month into pl_external_indicator, which the "

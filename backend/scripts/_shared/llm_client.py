@@ -32,6 +32,20 @@ class LLMResponse:
     latency_ms: int
 
 
+# o1 / o3 / o4 families. Matched on the prefix so a new point release does not
+# need a code change.
+_REASONING_PREFIXES = ("o1", "o3", "o4", "o5")
+# The answer has to fit alongside the reasoning in one budget.
+_REASONING_ALLOWANCE = 4
+_REASONING_MIN_TOKENS = 16000
+
+
+def _is_reasoning_model(model: str) -> bool:
+    """True for OpenAI reasoning models, which take a different parameter set."""
+    head = model.split("-", 1)[0].lower()
+    return head in _REASONING_PREFIXES
+
+
 class LLMClient:
     """Synchronous LLM client. Fails fast — no retries."""
 
@@ -90,13 +104,28 @@ class LLMClient:
         """Execute a single OpenAI API call."""
         start = time.monotonic()
 
-        response = self._openai.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=temperature,
-            max_tokens=max_tokens,
-            top_p=1,
-        )
+        # Reasoning models reject `temperature` and `top_p` outright and take
+        # `max_completion_tokens` rather than `max_tokens`. Sending the sampling
+        # params to one is a 400, not a silently ignored field, so the shape of
+        # the call has to follow the model family.
+        params: dict[str, object] = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        if _is_reasoning_model(self.model):
+            # On reasoning models the budget covers the hidden reasoning tokens
+            # as well as the answer, so passing the caller's output budget
+            # straight through spends it all on thinking and returns an empty
+            # message — observed as "0 chars" with 3 000 on o4-mini.
+            params["max_completion_tokens"] = max(
+                max_tokens * _REASONING_ALLOWANCE, _REASONING_MIN_TOKENS
+            )
+        else:
+            params["temperature"] = temperature
+            params["max_tokens"] = max_tokens
+            params["top_p"] = 1
+
+        response = self._openai.chat.completions.create(**params)  # type: ignore[arg-type]
 
         elapsed_ms = int((time.monotonic() - start) * 1000)
         raw_text = response.choices[0].message.content or ""

@@ -106,7 +106,7 @@ class GeminiSynthesizer:
             "input": {
                 "multiSpeakerMarkup": {"turns": turns},
                 "prompt": _STYLE.get(language, _STYLE["fr"]),
-                "customPronunciations": custom_pronunciations(),
+                "customPronunciations": custom_pronunciations(language),
             },
             "voice": {
                 "languageCode": LANGUAGE_CODES.get(language, "fr-FR"),

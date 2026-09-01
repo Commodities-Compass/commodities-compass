@@ -30,7 +30,7 @@ def normalize_for_speech(text: str, language: str = "fr") -> str:
     cleaned = _BULLET.sub("", cleaned)
     cleaned = _normalize_numbers(cleaned, language)
     cleaned = _expand_abbreviations(cleaned, language)
-    cleaned = _apply_lexicon_casing(cleaned)
+    cleaned = _apply_lexicon_casing(cleaned, language)
     return _WHITESPACE.sub(" ", cleaned).strip()
 
 
@@ -103,7 +103,7 @@ def _expand_abbreviations(text: str, language: str) -> str:
     return text
 
 
-def _apply_lexicon_casing(text: str) -> str:
+def _apply_lexicon_casing(text: str, language: str = "fr") -> str:
     """Rewrite lexicon words to the casing they are pronounced correctly in.
 
     The brief and the script both write COMPASTEURS in capitals — that is the
@@ -112,7 +112,7 @@ def _apply_lexicon_casing(text: str) -> str:
     capitals were not. Heard live on 2026-08-26 as "compasteutuses" with the
     caps still in place. The written form stays; only the spoken one changes.
     """
-    for entry in LEXICON:
+    for entry in LEXICON.get(language, LEXICON["fr"]):
         text = re.compile(rf"\b{re.escape(entry.phrase)}\b", re.IGNORECASE).sub(
             entry.phrase, text
         )
@@ -133,16 +133,25 @@ class Pronunciation:
 # Phrases must be unique CASE-INSENSITIVELY — the API rejects the whole request
 # with INVALID_ARGUMENT if two entries differ only by capitalisation, which also
 # tells us one entry covers every casing.
-LEXICON: tuple[Pronunciation, ...] = (
-    Pronunciation("Compasteurs", "kɔ̃pastœʁ"),
-    Pronunciation("momentum", "mɔmɑ̃tɔm"),
-    Pronunciation("Compass", "kɔ̃pas"),
-)
+# Per language, because IPA is validated against the LOCALE's phoneme inventory:
+# the French transcriptions are rejected outright for en-US (INVALID_ARGUMENT on
+# the whole request, not a silent fallback). "momentum" and "Compass" are
+# ordinary English words and need no entry there — only the coined one does, and
+# en-US accepts the RP-shaped ɒ/ɜː rather than the American ɑ/ɜr.
+LEXICON: dict[str, tuple[Pronunciation, ...]] = {
+    "fr": (
+        Pronunciation("Compasteurs", "kɔ̃pastœʁ"),
+        Pronunciation("momentum", "mɔmɑ̃tɔm"),
+        Pronunciation("Compass", "kɔ̃pas"),
+    ),
+    "en": (Pronunciation("Compasteurs", "kɒmpəstɜː"),),
+}
 
 
-def custom_pronunciations() -> dict:
+def custom_pronunciations(language: str = "fr") -> dict:
     """The ``input.customPronunciations`` payload for Gemini-TTS."""
-    phrases = [entry.phrase.lower() for entry in LEXICON]
+    entries = LEXICON.get(language, LEXICON["fr"])
+    phrases = [entry.phrase.lower() for entry in entries]
     duplicates = {p for p in phrases if phrases.count(p) > 1}
     if duplicates:
         raise ValueError(
@@ -155,7 +164,7 @@ def custom_pronunciations() -> dict:
                 "phoneticEncoding": "PHONETIC_ENCODING_IPA",
                 "pronunciation": entry.ipa,
             }
-            for entry in LEXICON
+            for entry in entries
         ]
     }
 

@@ -215,3 +215,35 @@ class TestNumbersFollowTheSpeakingLanguage:
             assert (
                 numeric_tokens(normalize_for_speech(self.SNAPSHOT, language)) <= allowed
             )
+
+
+class TestLexiconIsPerLocale:
+    """IPA is validated against the LOCALE's phoneme inventory.
+
+    Live failure 2026-09-01: the French transcriptions were rejected for en-US
+    with INVALID_ARGUMENT on the whole request — every English episode died
+    before a single byte of audio. The whole request, not a silent fallback.
+    """
+
+    def test_french_and_english_carry_different_entries(self):
+        fr = {e["phrase"] for e in custom_pronunciations("fr")["pronunciations"]}
+        en = {e["phrase"] for e in custom_pronunciations("en")["pronunciations"]}
+        assert "Compasteurs" in fr and "Compasteurs" in en
+
+    def test_english_drops_the_words_english_already_knows(self):
+        en = {e["phrase"] for e in custom_pronunciations("en")["pronunciations"]}
+        assert "momentum" not in en, "an ordinary English word needs no entry"
+        assert "Compass" not in en
+
+    def test_no_french_phoneme_reaches_the_english_payload(self):
+        # ɔ̃, œ and ʁ are French; en-US rejects them and takes the RP ɒ / ɜː.
+        for entry in custom_pronunciations("en")["pronunciations"]:
+            assert not (set("ɔ̃œʁ") & set(entry["pronunciation"])), entry
+
+    def test_each_locale_stays_internally_unique(self):
+        for language in ("fr", "en"):
+            phrases = [
+                e["phrase"].lower()
+                for e in custom_pronunciations(language)["pronunciations"]
+            ]
+            assert len(phrases) == len(set(phrases))

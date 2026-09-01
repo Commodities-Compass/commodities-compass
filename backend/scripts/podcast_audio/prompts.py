@@ -205,9 +205,9 @@ LENGTH — the constraint most often missed, re-read it before you answer:
 - Marc's analytical turns run 2 to 4 full sentences.
 - Points 4, 5 and 6 (editorial, macro & press, weather) are the most developed:
   5 to 6 turns each, with short pushbacks from Ana between blocks.
-- Target 3000 characters of spoken text. Floor 2600, CEILING 4200.
-  (Deliberately low: generation overshoots the instruction by about a third,
-  measured — asking 3000 yields roughly 4000.)
+- Target 3800 characters of spoken text. Floor 2900, CEILING 4800.
+  (English does NOT overshoot the way French does — measured: asking 3000 gave
+  3211, an episode of 216 s against a 237-297 s reference. Ask for more.)
   The naturalness rules above are not licence to run long: a short turn
   that adds something stays short.
 English is more compact than French: the same episode needs fewer characters,

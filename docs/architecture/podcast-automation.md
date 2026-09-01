@@ -443,6 +443,25 @@ even when asked explicitly for both extremes; NotebookLM sits at 0.62-0.98.
 Encoded as `MAX_SPEECH_SHARE = 0.62` and a turn-length cv floor. The balance rule
 works — the 72 % is gone. The cv floor is **not reached yet**: see §7.
 
+## 6.2c What it actually costs, measured
+
+Recomputed 2026-09-01 on real episodes, not on the model P0 guessed at.
+
+| | rate | per episode |
+|---|---|---|
+| TTS `gemini-2.5-pro-tts` | $20 / 1M audio tokens, 25 tok/s | FR 332 s → $0.166 · EN 216 s → $0.108 |
+| TTS input text | $1 / 1M | ~$0.001 |
+| Script `gpt-4.1` | $2 in / $8 out per 1M | ~1 400 in + 1 900 out → $0.018 |
+
+**~$0.31 a day for both languages, ~$80 a year** over 250 sessions, plus a few
+percent for the chunks the levelling re-synthesises (none in the last three
+episodes).
+
+Twice the ~$40 of the original estimate, which assumed 2.5-flash at half the
+rate and shorter episodes. Still an order of magnitude under the alternatives:
+ElevenLabs ~$250-1 200, Gemini Notebook Enterprise ~$1 600 — and against a human
+doing it by hand every evening, it does not register.
+
 ## 6.3 Deferred — make the two layers legible to the reader
 
 Decided 2026-08-26, **to do after P2**. The served narrative never says that two

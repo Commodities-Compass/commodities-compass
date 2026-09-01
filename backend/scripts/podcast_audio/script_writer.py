@@ -86,10 +86,11 @@ _MAX_FILLER_REPEATS = 2
 # Speech rate is per language, and it is not a matter of taste. Measured on a
 # 3 394-character French excerpt of a real episode (Kore + Algieba, the style
 # prompt, `speakingRate` unset): 194.8 s, i.e. 17.4 chars/s. English is slower
-# per character on identical content — 8.9 vs 11.3 chars/s on a paired sample,
-# a ratio of 0.79 — because its words are shorter, so the same second of speech
-# spends fewer characters. One shared constant biases the English episode short.
-CHARS_PER_SECOND = {"fr": 17.4, "en": 13.7}
+# per character because its words are shorter, so a second of speech spends
+# fewer of them — 14.8 chars/s, measured on a full 216 s English episode rather
+# than derived from a ratio on a short sample. One shared constant biases the
+# English episode short.
+CHARS_PER_SECOND = {"fr": 17.4, "en": 14.8}
 _DEFAULT_CHARS_PER_SECOND = 17.4
 
 OPENING = {"fr": "Bonjour les COMPASTEURS", "en": "Hello COMPASTEURS"}

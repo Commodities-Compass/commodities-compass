@@ -370,10 +370,19 @@ that is a script problem and a more expensive TTS will not fix it.
 |---|---|---|---|
 | **P0** | ~~pronunciation + stitching~~ **DONE 2026-08-26** — see §3.1 | — | — |
 | **P1** | ~~`script_writer.py` + contract tests~~ **DONE 2026-08-26** — `speech_text.py`, `prompts.py`, `script_writer.py`, 40 tests | — | — |
-| **P2** | `tts/` adapter + `upload_bytes` + blind benchmark pack delivered | 2 d | P0, P1 |
-| **P3** | blind scoring → provider verdict | Hedi | P2 |
-| **P4** | `cc-podcast-audio` job + scheduler + shadow folder, running in parallel | 2 d | P3 |
-| **P5** | flip: shadow → watched folder, manual NotebookLM stops | — | N shadow sessions clean |
+| **P2** | ~~`tts/` adapter + `upload_bytes` + CLI~~ **DONE 2026-09-01** — full episodes generated end to end, script to `.wav` | — | — |
+| **P3** | ~~blind benchmark pack~~ **SUPERSEDED** — see below | — | — |
+| **P4** | merge into `cc-regime-podcast`, deploy job + scheduler, run into the shadow folder | 2 d | — |
+| **P5** | flip: shadow → watched folder, manual NotebookLM stops | — | Hedi's ear on N shadow sessions |
+
+**P3 was superseded, and it is worth saying why.** The plan was one blind
+listening pack scored against NotebookLM. What happened instead was a dozen
+rounds of generate-listen-correct, each surfacing a defect no rubric would have
+predicted — a spoken `>`, digits read one by one, capitals read as an
+initialism, a hammered word, an unbalanced pair of speakers, `virgule zéro zéro`,
+`O-I`. Then transcribing three real episodes turned "sounds better" into
+numbers: 53-57 % dominant voice, cv 0.62-0.98, 237-326 s. A single blind pass
+would have produced one verdict; the loop produced a specification.
 
 P1 before P2 is deliberate: **validate the script as text before spending a cent
 on voice**. If the script is wrong, no engine saves it.
@@ -488,13 +497,16 @@ is a commercial claim, chosen rather than slid into.
 
 ### Open
 
-- **Turn-length variety is the unsolved one.** The generator produces cv
-  0.31-0.42 against the 0.45 floor set from a measured 0.62-0.98. Options:
-  lower the floor to ~0.35 (still far better than the 0.18-0.27 baseline, but
-  accepting a flatter episode than NotebookLM's); or try a reasoning model for
-  the script — `o4-mini` is already the judge's model and structural constraints
-  are what it is good at, but `LLMClient` always sends `temperature`, which
-  o4-mini rejects, so that test needs a small client change first.
+- ~~**Turn-length variety**~~ — **CLOSED.** `o4-mini` was tested (the client now
+  handles reasoning models) and is worse: 79 % imbalance and one empty response
+  in three. cv is now a reported signal, not a gate: the generator reaches
+  0.28-0.49 against a reference of 0.62-0.98, and blocking on it meant no
+  episode most evenings.
+- **Eight blocking rules were one too many.** Each passed 80-90 % alone; the
+  conjunction passed under 15 %. Correctness now gates (call, figures,
+  machinery, formulas, sanity bounds on length); style is measured by
+  `assess_quality` and sent to Sentry as a warning. A stylistically imperfect
+  episode beats no episode.
 - **TTS model settled 2026-08-27: `gemini-2.5-pro-tts`.** Chosen by ear over
   3.1-flash (the newest, and what P0 picked without comparing — worst of the
   three at holding energy to the end of an utterance) and 2.5-flash (best on the
@@ -509,14 +521,10 @@ is a commercial claim, chosen rather than slid into.
   `SERVICE_DISABLED` on `aiplatform` is what you get otherwise). First live call
   returned HTTP 200, 597 KB / ~12.4 s of `fr-FR` audio on
   `gemini-3.1-flash-tts-preview` via ADC.
-- ElevenLabs free tier is 10 000 credits/month ≈ **2 episodes**. The full
-  benchmark (12 episodes ≈ 60 000 chars) needs one month of Creator (~$22), or
-  ~$6 at the stated API rate. Confirm which meter applies before topping up.
-- `GOOGLE_DRIVE_AUDIO_SHADOW_FOLDER_ID` — folder to create (blocker 1).
 - How many clean shadow sessions gate P5 — **Hedi judges on the output**, no
   fixed threshold.
-- ElevenLabs Studio podcast endpoint may require workspace allowlisting —
-  confirm before counting on arm 4.
+- ~~ElevenLabs~~ — never opened. Gemini passed every gate, so the escalation
+  arm stayed documented and unused.
 - ~~**`scripts/` is excluded from pyright**~~ — **RESOLVED**, PR #116. The
   exclusion dated from 2026-03-09 (`bffc272`, "resolve pyright errors for CI"),
   so every Cloud Run job went unchecked for five and a half months — and almost

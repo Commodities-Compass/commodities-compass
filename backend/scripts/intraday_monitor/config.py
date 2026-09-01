@@ -23,9 +23,11 @@ SOURCE_LABEL = "barchart-delayed"
 # barchart scraper's VALIDATION_RANGES["close"].
 PRICE_RANGE = (1500.0, 20000.0)
 
-# Barchart endpoints (same host as the daily scraper).
+# Barchart endpoint (same host as the daily scraper). Single page fetch: the
+# quote is read from the server-rendered inline JSON. The /proxies/core-api
+# route is gone — CloudFront (public, s-maxage=300, since 2026-09-01) strips
+# the Set-Cookie that carried the XSRF-TOKEN it requires, so it answers 403.
 BARCHART_OVERVIEW_URL = "https://www.barchart.com/futures/quotes/{contract}/overview"
-BARCHART_QUOTES_API_URL = "https://www.barchart.com/proxies/core-api/v1/quotes/get"
 HTTP_TIMEOUT_SECONDS = 30.0
 
 USER_AGENT = (

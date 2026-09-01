@@ -75,6 +75,26 @@ resource "google_project_iam_member" "cloud_run_jobs_metric_writer" {
   member  = "serviceAccount:${google_service_account.cloud_run_jobs.email}"
 }
 
+# Speech synthesis for the daily podcast (cc-regime-brief).
+#
+# The call goes to texttospeech.googleapis.com, but Gemini-TTS models are served
+# by Vertex underneath — a caller without aiplatform access gets a 403 naming an
+# API it never called. Local runs work on a developer's own ADC and hide this
+# entirely; the job's service account has none of it by default.
+resource "google_project_iam_member" "cloud_run_jobs_aiplatform_user" {
+  project = var.project_id
+  role    = "roles/aiplatform.user"
+  member  = "serviceAccount:${google_service_account.cloud_run_jobs.email}"
+}
+
+# The synthesiser sends `x-goog-user-project` so quota is attributed to this
+# project, and that header requires serviceusage.services.use on it.
+resource "google_project_iam_member" "cloud_run_jobs_service_usage_consumer" {
+  project = var.project_id
+  role    = "roles/serviceusage.serviceUsageConsumer"
+  member  = "serviceAccount:${google_service_account.cloud_run_jobs.email}"
+}
+
 resource "google_project_iam_member" "cloud_run_jobs_run_developer" {
   project = var.project_id
   role    = "roles/run.developer"

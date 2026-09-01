@@ -190,20 +190,32 @@ jobs:
           SA="${{ env.SA_JOBS }}"
           VPC="${{ env.VPC_CONNECTOR }}"
 
-          COMMON_FLAGS="--region=${REGION} --service-account=${SA} --vpc-connector=${VPC} --vpc-egress=private-ranges-only --max-retries=0 --task-timeout=900s"
+          COMMON_FLAGS="--region=${REGION} --service-account=${SA} --vpc-connector=${VPC} --vpc-egress=private-ranges-only --max-retries=0"
+
+          # Per-job ceiling, 900s unless a caller raises it. A short timeout is a
+          # useful safety on a scraper; it is a hazard on a job that legitimately
+          # runs for ten minutes, so the override is per job rather than global.
+          DEFAULT_TASK_TIMEOUT=900
 
           SECRETS="--set-secrets=DATABASE_URL=DATABASE_URL:latest,DATABASE_SYNC_URL=DATABASE_SYNC_URL:latest,GOOGLE_SHEETS_CREDENTIALS_JSON=GOOGLE_SHEETS_CREDENTIALS_JSON:latest,GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON=GOOGLE_SHEETS_SCRAPER_CREDENTIALS_JSON:latest,GOOGLE_DRIVE_CREDENTIALS_JSON=GOOGLE_DRIVE_CREDENTIALS_JSON:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,SENTRY_DSN=SENTRY_DSN:latest,TELEGRAM_BOT_TOKEN=TELEGRAM_BOT_TOKEN:latest"
 
           # ALERT_CHANNEL: 'console' (shadow, default) or 'telegram' (live).
           # TELEGRAM_CHANNEL_ID: private-channel numeric id (-100…), set as a
           # GitHub var once the channel exists — only read when channel=telegram.
-          ENV_VARS="--set-env-vars=GOOGLE_DRIVE_AUDIO_FOLDER_ID=${{ vars.GOOGLE_DRIVE_AUDIO_FOLDER_ID }},GOOGLE_DRIVE_BRIEFS_FOLDER_ID=${{ vars.GOOGLE_DRIVE_BRIEFS_FOLDER_ID }},ALERT_CHANNEL=${{ vars.ALERT_CHANNEL || 'console' }},TELEGRAM_CHANNEL_ID=${{ vars.TELEGRAM_CHANNEL_ID }},GIT_COMMIT_SHA=${{ github.sha }}"
+          # TTS_PROVIDER defaults to 'gemini' HERE and to 'noop' in code. The
+          # code default protects anyone running the CLI locally from an
+          # unexpected bill; the job exists to produce audio, so it opts in. What
+          # protects production is the SHADOW folder, not a silent synthesiser:
+          # without --publish the episode never reaches the folder the
+          # publication gate watches.
+          ENV_VARS="--set-env-vars=GOOGLE_DRIVE_AUDIO_FOLDER_ID=${{ vars.GOOGLE_DRIVE_AUDIO_FOLDER_ID }},GOOGLE_DRIVE_AUDIO_SHADOW_FOLDER_ID=${{ vars.GOOGLE_DRIVE_AUDIO_SHADOW_FOLDER_ID }},GOOGLE_DRIVE_BRIEFS_FOLDER_ID=${{ vars.GOOGLE_DRIVE_BRIEFS_FOLDER_ID }},TTS_PROVIDER=${{ vars.TTS_PROVIDER || 'gemini' }},ALERT_CHANNEL=${{ vars.ALERT_CHANNEL || 'console' }},TELEGRAM_CHANNEL_ID=${{ vars.TELEGRAM_CHANNEL_ID }},GIT_COMMIT_SHA=${{ github.sha }}"
 
           deploy_job() {
             local name=$1
             local memory=$2
             shift 2
             local args="$@"
+            local timeout="${TASK_TIMEOUT:-$DEFAULT_TASK_TIMEOUT}"
 
             echo "--- Deploying ${name} (${memory}) ---"
             if gcloud run jobs describe "${name}" --region="${REGION}" --format="value(name)" 2>/dev/null; then
@@ -212,6 +224,7 @@ jobs:
                 --memory="${memory}" \
                 --cpu=1 \
                 --args="${args}" \
+                --task-timeout="${timeout}s" \
                 ${COMMON_FLAGS} ${SECRETS} ${ENV_VARS}
             else
               gcloud run jobs create "${name}" \
@@ -219,6 +232,7 @@ jobs:
                 --memory="${memory}" \
                 --cpu=1 \
                 --args="${args}" \
+                --task-timeout="${timeout}s" \
                 ${COMMON_FLAGS} ${SECRETS} ${ENV_VARS}
             fi
           }
@@ -270,11 +284,26 @@ jobs:
           # `poetry run judge-shadow-compute --session-date T`.
           deploy_job cc-regime-bootstrap-artifacts   1Gi  "regime-bootstrap-artifacts"
           deploy_job cc-regime-shadow                1Gi  "regime-shadow-compute"
-          # Narrative + Drive brief for the regime+judge system. Merges what
-          # would otherwise be two jobs (explainer + brief): the prose is
-          # written once per language and lands in both the .txt and the served
-          # row, so the dashboard and the brief cannot disagree.
-          deploy_job cc-regime-brief                 1Gi  "regime-brief,--language,both"
+          # Narrative, Drive brief AND the daily podcast episode for the
+          # regime+judge system. Three things that would otherwise be three jobs:
+          # the prose is written once per language and lands in the .txt, the
+          # served row and the episode, so the dashboard, the brief and the audio
+          # cannot disagree.
+          #
+          # Two passes inside one execution: every narrative is committed before
+          # a byte of audio is synthesised, so a TTS failure never costs the
+          # dashboard its prose. Without --publish the episode goes to the SHADOW
+          # folder and the publication gate never sees it.
+          #
+          # The name still says "brief" while the job now does more. Renaming it
+          # means renaming the Terraform scheduler key in the same breath — and
+          # `terraform apply` is manual here, so a half-applied rename leaves the
+          # old scheduler triggering a job deploy.yml no longer updates. That is
+          # how cc-roll-watchdog silently stopped running for four weeks.
+          # 1800s, not the 900s default: a live run measured 10-14 min — two
+          # narratives, two scripts, and ~11 min of audio to synthesise in five
+          # or six calls. 900s left no margin for one extra chunk.
+          TASK_TIMEOUT=1800 deploy_job cc-regime-brief 1Gi  "regime-brief,--language,both"
           # Quarterly fundamentals (P3 user story). Gated on
           # ref_publication_calendar so the daily cron is cheap when no
           # publication is pending.

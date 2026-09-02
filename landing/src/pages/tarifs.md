@@ -53,7 +53,7 @@ Les prix peuvent être révisés à chaque reconduction annuelle, moyennant un p
 ## Éditeur
 
 COMMODITIES COMPASS SAS — SAS au capital de 26 000 € — R.C.S. Lyon 990 231 839 — SIRET 990 231 839 000 12 — TVA FR 10 990 231 839
-8 bis allée du Baraillon, 69160 Tassin-la-Demi-Lune, France — contact@com-compass.com
+8 bis allée du Baraillon, 69160 Tassin-la-Demi-Lune, France — contact@com-compass.com — +33 9 72 15 39 62
 
 ---
 

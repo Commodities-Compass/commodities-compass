@@ -31,6 +31,7 @@ This website is published by:
 ## 2. Contact
 
 - Email: contact@com-compass.com
+- Telephone: +33 9 72 15 39 62
 - Postal address: COMMODITIES COMPASS SAS, 8 bis allée du Baraillon, 69160 Tassin-la-Demi-Lune, France
 - Data protection: privacy@com-compass.com
 

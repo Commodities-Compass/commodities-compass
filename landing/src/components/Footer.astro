@@ -35,6 +35,10 @@ const home = pathFor(locale);
         <ul>
           <li><a href={`${home}#contact`}>{copy.footer.colContact1}</a></li>
           <li><a href={`mailto:${copy.contact.email}`}>{copy.footer.colContact2}</a></li>
+          {/* Art. 1er-1 LCEN: the number must be made available to the public.
+              Plain text on purpose — no `tel:` link, which is what harvesters
+              target. Selectable, which is all the obligation requires. */}
+          <li><span class="contact-plain">{copy.contact.phone}</span></li>
         </ul>
       </div>
       {/*

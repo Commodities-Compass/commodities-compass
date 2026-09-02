@@ -230,10 +230,17 @@ revision:
   the affirmative that no non-exempt tracker is set. Read the header of
   `landing/src/components/Analytics.astro` before setting
   `PUBLIC_PLAUSIBLE_DOMAIN`.
-- Two values are still owed and both pages carry an honest interim statement
-  instead: the **ombudsman** (terms art. 28) and the **published phone number**
-  (legal notice § 2, omitted on instruction, with counsel's express reservation
-  on file).
+- **The published phone number lives in five places** and they must move
+  together: legal notice § 2 (FR + EN) and the Publisher block of the pricing
+  page (FR + EN) — all four inside the Markdown, so a fresh delivery from
+  counsel will drop it unless it is re-inserted — plus the footer, from
+  `contact.phone` in `strings.ts`. It is **plain text everywhere, never a
+  `tel:` link**: art. 1er-1 LCEN requires the number to be made available, not
+  to be dialable, and the link is what harvesters target. Same reasoning
+  applies to the address; the footer's `mailto:` on "Email" is the one
+  remaining exception, kept for usability.
+- One value is still owed and the page carries an honest interim statement
+  instead: the **ombudsman** (terms art. 28).
 
 ---
 

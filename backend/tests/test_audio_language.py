@@ -226,3 +226,57 @@ class TestDefaultVersionIsTheServedTrack:
 
         assert info is not None
         assert info["filename"] == "20260819-CompassAudio-Regime.m4a"
+
+
+class TestTwoFolders:
+    """New episodes go to a shared drive; the 351 old ones stay where they are.
+
+    A service account has no storage quota, so it can only CREATE a file inside
+    a shared drive — and Drive refuses to move a folder that large into one.
+    Searching both parents costs a clause; copying 3.8 GB would be a migration.
+    """
+
+    def _query(self, service, drive) -> str:
+        with patch("asyncio.to_thread", new=AsyncMock(return_value={"files": []})):
+            asyncio.run(service.get_audio_file_info(date(2026, 7, 15)))
+        return drive.files.return_value.list.call_args.kwargs["q"]
+
+    def test_both_folders_are_searched(self, monkeypatch):
+        from app.core.config import settings
+
+        monkeypatch.setattr(settings, "GOOGLE_DRIVE_AUDIO_FOLDER_ID", "NEW")
+        monkeypatch.setattr(settings, "GOOGLE_DRIVE_AUDIO_LEGACY_FOLDER_ID", "OLD")
+        service, drive = _service()
+        query = self._query(service, drive)
+        assert "'NEW' in parents" in query
+        assert "'OLD' in parents" in query
+
+    def test_an_unset_legacy_folder_adds_nothing(self, monkeypatch):
+        from app.core.config import settings
+
+        monkeypatch.setattr(settings, "GOOGLE_DRIVE_AUDIO_FOLDER_ID", "NEW")
+        monkeypatch.setattr(settings, "GOOGLE_DRIVE_AUDIO_LEGACY_FOLDER_ID", "")
+        service, drive = _service()
+        query = self._query(service, drive)
+        assert "'NEW' in parents" in query
+        assert "'' in parents" not in query
+
+    def test_the_new_folder_wins_when_a_name_exists_in_both(self, monkeypatch):
+        from app.core.config import settings
+
+        monkeypatch.setattr(settings, "GOOGLE_DRIVE_AUDIO_FOLDER_ID", "NEW")
+        monkeypatch.setattr(settings, "GOOGLE_DRIVE_AUDIO_LEGACY_FOLDER_ID", "OLD")
+        service, _ = _service()
+        name = "20260715-CompassAudio-Regime.m4a"
+        files = [
+            {"id": "legacy", "name": name, "mimeType": "audio/mp4", "parents": ["OLD"]},
+            {"id": "fresh", "name": name, "mimeType": "audio/mp4", "parents": ["NEW"]},
+        ]
+        with patch("asyncio.to_thread", new=AsyncMock(return_value={"files": files})):
+            result = asyncio.run(
+                service.get_audio_file_info(date(2026, 7, 15), version="regime")
+            )
+        assert result is not None
+        assert "id=fresh" in result["url"], (
+            "a re-generated episode must beat the legacy copy of the same name"
+        )

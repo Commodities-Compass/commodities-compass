@@ -246,52 +246,62 @@ def main() -> int:
         # dashboard reads, so it completes before a single byte of audio is
         # synthesised: a TTS failure must never cost the dashboard its prose.
         #
-        # fr first, sequentially. If EN fails, FR is already committed and
-        # uploaded; the raised error still fails the job so the EN gap is
-        # visible in Sentry the same evening.
+        # One language failing must not silence the other. Observed 2026-09-01:
+        # the EN narrative used the word "specialist", the brief's leak guard
+        # refused to render, the exception propagated — and the FRENCH episode
+        # was never produced either, although its narrative and brief were
+        # already published. A per-language failure is recorded and the job
+        # still exits non-zero, so the gap is loud without being contagious.
         prepared: list[tuple[str, object, object]] = []
+        failures: list[str] = []
         for language in langs:
             logger.info("--- [%s] ---", language)
-            data = read_brief_data(
-                session,
-                session_date=session_date,
-                algorithm_version_id=version_id,
-                language=language,
-            )
-            narrative = narrate(data)
-            brief = render_brief(data, narrative)
-            filename = filename_for(date_stem, language)
+            try:
+                data = read_brief_data(
+                    session,
+                    session_date=session_date,
+                    algorithm_version_id=version_id,
+                    language=language,
+                )
+                narrative = narrate(data)
+                brief = render_brief(data, narrative)
+                filename = filename_for(date_stem, language)
 
-            if args.dry_run:
-                print(f"\n===== {filename} =====\n{brief}")
-                continue
+                if args.dry_run:
+                    print(f"\n===== {filename} =====\n{brief}")
+                    continue
 
-            # Persist BEFORE publishing: the dashboard and the brief must carry
-            # the same text, and a failed upload is recoverable while a
-            # published brief with no stored narrative is a visible split.
-            write_narrative(
-                session,
-                narrative,
-                session_date=session_date,
-                algorithm_version_id=version_id,
-                language=language,
-                watch_lines=data.watch_lines,
-            )
-            session.commit()
+                # Persist BEFORE publishing: the dashboard and the brief must
+                # carry the same text, and a failed upload is recoverable while a
+                # published brief with no stored narrative is a visible split.
+                write_narrative(
+                    session,
+                    narrative,
+                    session_date=session_date,
+                    algorithm_version_id=version_id,
+                    language=language,
+                    watch_lines=data.watch_lines,
+                )
+                session.commit()
 
-            if args.output:
-                path = Path(args.output)
-                if len(langs) > 1 and language != "fr":
-                    path = path.with_name(f"{path.stem}-{language}{path.suffix}")
-                path.write_text(brief, encoding="utf-8")
-                logger.info("Saved to %s", path)
-                continue
+                if args.output:
+                    path = Path(args.output)
+                    if len(langs) > 1 and language != "fr":
+                        path = path.with_name(f"{path.stem}-{language}{path.suffix}")
+                    path.write_text(brief, encoding="utf-8")
+                    logger.info("Saved to %s", path)
+                    continue
 
-            assert uploader is not None and folder_id is not None
-            file_id = uploader.upload(brief, filename, folder_id)
-            uploaded.append((filename, file_id))
-            logger.info("Uploaded %s (id=%s)", filename, file_id)
-            prepared.append((language, data, narrative))
+                assert uploader is not None and folder_id is not None
+                file_id = uploader.upload(brief, filename, folder_id)
+                uploaded.append((filename, file_id))
+                logger.info("Uploaded %s (id=%s)", filename, file_id)
+                prepared.append((language, data, narrative))
+            except Exception as exc:
+                session.rollback()
+                failures.append(f"{language}: {exc}")
+                logger.error("[%s] brief failed: %s", language, exc)
+                sentry_sdk.capture_exception(exc)
 
         # Pass 2 — the episode. Everything above is already committed, so a
         # failure here is loud and recoverable: re-run with --skip-brief.
@@ -300,11 +310,20 @@ def main() -> int:
         else:
             for language, data, narrative in prepared:
                 logger.info("--- [%s] audio ---", language)
-                episodes.append(
-                    _produce_episode(
-                        data, narrative, session_date, language, publish=args.publish
+                try:
+                    episodes.append(
+                        _produce_episode(
+                            data,
+                            narrative,
+                            session_date,
+                            language,
+                            publish=args.publish,
+                        )
                     )
-                )
+                except Exception as exc:
+                    failures.append(f"{language} audio: {exc}")
+                    logger.error("[%s] episode failed: %s", language, exc)
+                    sentry_sdk.capture_exception(exc)
 
     sentry_sdk.set_context(
         "regime_brief",
@@ -313,9 +332,20 @@ def main() -> int:
             "languages": langs,
             "uploaded": [name for name, _ in uploaded],
             "episodes": episodes,
+            "failures": failures,
             "dry_run": args.dry_run,
         },
     )
+    if failures:
+        logger.error(
+            "PARTIAL — %d brief(s), %d episode(s), %d failure(s): %s",
+            len(uploaded),
+            len(episodes),
+            len(failures),
+            " | ".join(failures),
+        )
+        return 1
+
     logger.info(
         "SUCCESS — %d brief(s) uploaded, %d episode(s) produced",
         len(uploaded),

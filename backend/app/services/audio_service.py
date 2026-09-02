@@ -240,11 +240,24 @@ class AudioService:
                 for base in candidate_bases
                 for ext in ("wav", "m4a", "mp4")
             )
+            # Two folders, searched together: new episodes are written to the
+            # shared drive, the 351 historical ones stay where they are. Drive
+            # will not move a folder that large, and a second parent in the
+            # query costs nothing against copying 3.8 GB.
+            folders = [
+                f
+                for f in (
+                    settings.GOOGLE_DRIVE_AUDIO_FOLDER_ID,
+                    settings.GOOGLE_DRIVE_AUDIO_LEGACY_FOLDER_ID,
+                )
+                if f
+            ]
+            parent_clauses = " or ".join(f"'{f}' in parents" for f in folders)
             query = (
                 f"({name_clauses}) and "
                 f"(mimeType='audio/wav' or mimeType='audio/x-wav' or mimeType='audio/x-m4a' or mimeType='audio/mp4' or mimeType='audio/mpeg' or mimeType='video/mp4') and "
                 f"trashed=false and "
-                f"'{settings.GOOGLE_DRIVE_AUDIO_FOLDER_ID}' in parents"
+                f"({parent_clauses})"
             )
 
             # Run sync Google API in thread to avoid blocking event loop.
@@ -253,7 +266,7 @@ class AudioService:
             # 5xx/network blips via the SDK's exponential backoff.
             request = self.drive_service.files().list(
                 q=query,
-                fields="files(id, name, mimeType)",
+                fields="files(id, name, mimeType, parents)",
                 supportsAllDrives=True,
                 includeItemsFromAllDrives=True,
             )
@@ -273,8 +286,13 @@ class AudioService:
 
             # Pick by preference order — the first candidate base with a file on
             # Drive wins (ensemble-EN before a bare -EN, etc.).
+            # Same name in both folders: the primary one wins, so a re-generated
+            # episode always beats the legacy copy it replaces.
+            primary = settings.GOOGLE_DRIVE_AUDIO_FOLDER_ID
             by_stem: dict[str, dict] = {}
-            for f in files:
+            for f in sorted(
+                files, key=lambda f: primary not in (f.get("parents") or [])
+            ):
                 name = f.get("name", "")
                 stem_only = name.rsplit(".", 1)[0]
                 by_stem.setdefault(stem_only, f)

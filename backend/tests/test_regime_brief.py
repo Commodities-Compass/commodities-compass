@@ -454,3 +454,77 @@ class TestPhaseBGate:
 
         assert phase_b_should_skip(date(2026, 8, 27), force=False) is False
         assert phase_b_should_skip(None, force=True) is False
+
+
+class TestOneLanguageDoesNotSilenceTheOther:
+    """A failure in one language must not cost the other its episode.
+
+    Origin: 2026-09-01, the first night the merged job ran. The EN narrative
+    used the word "specialist", the leak guard refused to render the brief, and
+    the exception propagated out of the loop — so the FRENCH episode was never
+    produced either, although its narrative and brief were already published and
+    correct. The job must still exit non-zero: the gap is loud, not contagious.
+    """
+
+    def _run(self, failing_language: str):
+        from unittest.mock import MagicMock, patch
+
+        from scripts.regime_brief import main as m
+
+        produced: list[str] = []
+
+        def fake_render(data, narrative):  # noqa: ANN001
+            if data.language == failing_language:
+                raise m.render_brief.__globals__["BriefLeakError"](
+                    "conclusion leaks internals ['specialist']"
+                )
+            return "brief text"
+
+        def fake_episode(data, narrative, session_date, language, *, publish):  # noqa: ANN001
+            produced.append(language)
+            return f"{language}.wav"
+
+        session = MagicMock()
+        with (
+            patch("scripts.db.phase_b_should_skip", return_value=False),
+            patch("scripts.db.get_session") as get_session,
+            patch.object(m, "_resolve_version_id", return_value="v"),
+            patch.object(
+                m,
+                "_resolve_session_date",
+                return_value=__import__("datetime").date(2026, 9, 1),
+            ),
+            patch.object(m, "read_brief_data") as read,
+            patch.object(m, "narrate", return_value=MagicMock()),
+            patch.object(m, "render_brief", side_effect=fake_render),
+            patch.object(m, "write_narrative"),
+            patch.object(m, "_produce_episode", side_effect=fake_episode),
+            patch.object(m, "DriveUploader") as uploader,
+            patch.object(m, "get_credentials_json", return_value="{}"),
+            patch.object(m, "get_drive_briefs_folder_id", return_value="F"),
+            patch("sys.argv", ["regime-brief", "--language", "both"]),
+        ):
+            get_session.return_value.__enter__.return_value = session
+            read.side_effect = (
+                lambda session, *, session_date, algorithm_version_id, language: (
+                    MagicMock(  # noqa: ARG005
+                        language=language, watch_lines=()
+                    )
+                )
+            )
+            uploader.return_value.upload.return_value = "id"
+            rc = m.main()
+        return rc, produced
+
+    def test_the_healthy_language_still_gets_its_episode(self):
+        rc, produced = self._run(failing_language="en")
+        assert produced == ["fr"], "FR must be voiced even though EN failed"
+
+    def test_the_job_still_fails_loud(self):
+        rc, _ = self._run(failing_language="en")
+        assert rc == 1, "a partial run is a failure, not a success"
+
+    def test_a_french_failure_leaves_english_alone(self):
+        rc, produced = self._run(failing_language="fr")
+        assert produced == ["en"]
+        assert rc == 1

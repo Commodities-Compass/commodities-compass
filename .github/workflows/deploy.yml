@@ -70,6 +70,7 @@ jobs:
           # because an unseeded login default-denies to a blank dashboard.
           env_vars: |
             GOOGLE_DRIVE_AUDIO_FOLDER_ID=${{ vars.GOOGLE_DRIVE_AUDIO_FOLDER_ID }}
+            GOOGLE_DRIVE_AUDIO_LEGACY_FOLDER_ID=${{ vars.GOOGLE_DRIVE_AUDIO_LEGACY_FOLDER_ID }}
             BACKEND_CORS_ORIGINS=${{ vars.BACKEND_CORS_ORIGINS }}
             GIT_COMMIT_SHA=${{ github.sha }}
             ENTITLEMENTS_ENFORCED=${{ vars.ENTITLEMENTS_ENFORCED || 'false' }}

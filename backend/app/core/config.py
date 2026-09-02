@@ -46,10 +46,20 @@ class Settings(BaseSettings):
     GOOGLE_DRIVE_CREDENTIALS_JSON: str = config(
         "GOOGLE_DRIVE_CREDENTIALS_JSON", default="", cast=str
     )
+    # Where episodes are written from now on. A service account has no storage
+    # quota of its own, so it can only CREATE a file inside a shared drive —
+    # never in a folder owned by a personal account.
     GOOGLE_DRIVE_AUDIO_FOLDER_ID: str = config(
         "GOOGLE_DRIVE_AUDIO_FOLDER_ID", default="", cast=str
     )
 
+    # The folder the 351 historical episodes live in, read-only. Drive refuses to
+    # move a folder that large into a shared drive, and copying 3.8 GB to keep
+    # them reachable would be a migration where a second lookup path costs
+    # nothing. Empty means "only the folder above".
+    GOOGLE_DRIVE_AUDIO_LEGACY_FOLDER_ID: str = config(
+        "GOOGLE_DRIVE_AUDIO_LEGACY_FOLDER_ID", default="", cast=str
+    )
     # Brief version behind the audio filename suffix, for /v1/dashboard/audio,
     # /v1/audio/info AND the cc-publish-session release gate.
     # Allowed: "regime" (-Regime) | "ensemble" (-Ensemble) | "legacy" (no suffix).

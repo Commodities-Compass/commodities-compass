@@ -54,7 +54,7 @@ Prices may be revised at each renewal, subject to three months' notice, capped a
 ## Publisher
 
 COMMODITIES COMPASS SAS — *société par actions simplifiée* with share capital of EUR 26,000 — *R.C.S. Lyon* 990 231 839 — SIRET 990 231 839 000 12 — VAT FR 10 990 231 839
-8 bis allée du Baraillon, 69160 Tassin-la-Demi-Lune, France — contact@com-compass.com
+8 bis allée du Baraillon, 69160 Tassin-la-Demi-Lune, France — contact@com-compass.com — +33 9 72 15 39 62
 
 ---
 

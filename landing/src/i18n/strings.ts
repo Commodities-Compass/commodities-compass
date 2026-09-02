@@ -140,6 +140,10 @@ const strings = {
       body: "Compass est sur invitation uniquement. Dites-nous qui vous êtes, ce que vous tradez, et à quelle heure la cloche sonne pour vous. Réponse sous un jour ouvré. Accès d'essai possible pour les desks qualifiés.",
       ctaPrimary: 'Contacter le Pôle commercial',
       email: 'contact@com-compass.com',
+      // Published as plain text, never inside a `tel:` link: the link is what
+      // harvesters target, and art. 1er-1 LCEN requires the number to be made
+      // available, not to be dialable in one tap.
+      phone: '+33 9 72 15 39 62',
     },
     footer: {
       deck: "La rédaction quotidienne d'intelligence sur le cacao ICE.",
@@ -310,6 +314,10 @@ const strings = {
       body: "Compass is invite-only. Tell us who you are, what you trade, and what time the bell rings for you. Reply within one business day. Trial access possible for qualified desks.",
       ctaPrimary: 'Contact our sales team',
       email: 'contact@com-compass.com',
+      // Published as plain text, never inside a `tel:` link: the link is what
+      // harvesters target, and art. 1er-1 LCEN requires the number to be made
+      // available, not to be dialable in one tap.
+      phone: '+33 9 72 15 39 62',
     },
     footer: {
       deck: "The daily intelligence desk for ICE cocoa.",

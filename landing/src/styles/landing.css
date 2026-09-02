@@ -1043,6 +1043,15 @@ footer h5 {
   margin-bottom: 14px;
 }
 footer ul { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+/* The published phone number. Same type scale as the links around it, but
+   dimmer and with no pointer affordance — it is information, not navigation. */
+footer .contact-plain {
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 13px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+  user-select: text;
+}
 footer a {
   color: rgba(255, 255, 255, 0.65);
   text-decoration: none;

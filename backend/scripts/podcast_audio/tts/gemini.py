@@ -175,15 +175,35 @@ class GeminiSynthesizer:
             correction = max(RATE_MIN, min(RATE_MAX, target / rate))
             corrected = self._call(group, script.language, correction)
             achieved = _chars(group) / duration_seconds(corrected)
-            levelled.append(corrected)
-            logger.info(
-                "  chunk %d: %.1f chars/s -> rate %.3f -> %.1f chars/s (median %.1f)",
-                index,
-                rate,
-                correction,
-                achieved,
-                target,
-            )
+            # Keep whichever is closer to the median. `speakingRate` applies to
+            # a NEW independent generation, which carries its own ±26 % variance,
+            # so the factor and the roll of the dice compound instead of
+            # cancelling. Observed in production 2026-09-02: a chunk 9 % ABOVE
+            # the median came back 13 % BELOW it — the correction made the
+            # episode worse than leaving it alone. The call is already paid for
+            # here, so comparing costs nothing and makes the levelling
+            # monotonically non-harmful.
+            if abs(achieved - target) < abs(rate - target):
+                levelled.append(corrected)
+                logger.info(
+                    "  chunk %d: %.1f -> rate %.3f -> %.1f chars/s "
+                    "(median %.1f, correction kept)",
+                    index,
+                    rate,
+                    correction,
+                    achieved,
+                    target,
+                )
+            else:
+                levelled.append(audio)
+                logger.info(
+                    "  chunk %d: %.1f chars/s, correction landed at %.1f — further "
+                    "from the median %.1f, original kept",
+                    index,
+                    rate,
+                    achieved,
+                    target,
+                )
 
         audio = splice(levelled)
         logger.info(

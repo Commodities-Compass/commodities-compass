@@ -236,9 +236,16 @@ revision:
   counsel will drop it unless it is re-inserted — plus the footer, from
   `contact.phone` in `strings.ts`. It is **plain text everywhere, never a
   `tel:` link**: art. 1er-1 LCEN requires the number to be made available, not
-  to be dialable, and the link is what harvesters target. Same reasoning
-  applies to the address; the footer's `mailto:` on "Email" is the one
-  remaining exception, kept for usability.
+  to be dialable, and the link is what harvesters target.
+- **Email addresses are plain text too, and that takes a build step.** Markdown
+  autolinks any bare address, so every mention of `contact@`, `privacy@` or
+  `support@` in the legal corpus rendered as a harvestable `mailto:`.
+  `rehypeUnlinkEmails` in `astro.config.mjs` unwraps them. It is scoped to
+  Markdown on purpose: the commercial CTA in `Contact.astro` ("Contacter le
+  Pôle commercial") keeps its mailto, because that one is a conversion action
+  and not a legal mention. The site should therefore show **exactly one**
+  `mailto:` per home page and **none** on a legal page — `grep -rc 'href="mailto:' dist`
+  is the check.
 - One value is still owed and the page carries an honest interim statement
   instead: the **ombudsman** (terms art. 28).
 

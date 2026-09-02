@@ -39,10 +39,46 @@ function rehypeWrapTables() {
   };
 }
 
+/**
+ * Unwrap `mailto:` links back into plain text.
+ *
+ * Markdown autolinks any bare email address, so every mention of
+ * `contact@`, `privacy@` or `support@` across the legal pages — and they are
+ * mentioned a lot — became a harvestable `<a href="mailto:…">`. Counsel is
+ * explicit that the LINK is what harvesters target, not the text, and that
+ * publishing selectable text is all arts. 1er-1 and 19 LCEN require.
+ *
+ * Scoped to Markdown, so the commercial CTA in `Contact.astro` keeps its
+ * mailto on purpose: that one is a conversion action, not a legal mention.
+ */
+function rehypeUnlinkEmails() {
+  /** @param {any} tree */
+  return (tree) => {
+    /** @param {any} node */
+    const walk = (node) => {
+      if (!Array.isArray(node.children)) return;
+      node.children = node.children.flatMap((/** @type {any} */ child) => {
+        walk(child);
+        const href = child?.properties?.href;
+        if (
+          child.type === 'element' &&
+          child.tagName === 'a' &&
+          typeof href === 'string' &&
+          href.startsWith('mailto:')
+        ) {
+          return child.children;
+        }
+        return [child];
+      });
+    };
+    walk(tree);
+  };
+}
+
 // https://astro.build/config
 export default defineConfig({
   markdown: {
-    rehypePlugins: [rehypeWrapTables],
+    rehypePlugins: [rehypeWrapTables, rehypeUnlinkEmails],
   },
   // The standalone /disclaimer/ page is retired — it said, less completely,
   // what /mentions-legales/ now says, and two documents on the same subject

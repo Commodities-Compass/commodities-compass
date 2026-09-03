@@ -210,15 +210,20 @@ def fetch_delayed_quote(
 
     ``fetch_html`` is injected by the tests; in production it is one headless
     browser load that clears the AWS WAF challenge. One fetch, no retry.
+
+    The readiness marker is the contract's own symbol: it proves both that the
+    page rendered AND that it is the page for this contract. Waiting merely for
+    the challenge to vanish let a WAF block page through on 2026-09-03.
     """
     overview_url = BARCHART_OVERVIEW_URL.format(contract=contract_code)
+    ready_marker = f'"symbol":"{contract_code}"'
 
     try:
         if fetch_html is not None:
             page_html = fetch_html(overview_url)
         else:
             with BarchartBrowser() as browser:
-                page_html = browser.fetch_html(overview_url)
+                page_html = browser.fetch_html(overview_url, ready_marker=ready_marker)
     except BarchartWafError as exc:
         raise IntradayFetchError(f"Could not load {overview_url}: {exc}") from exc
 

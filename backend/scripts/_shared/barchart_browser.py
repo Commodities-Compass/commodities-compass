@@ -12,6 +12,14 @@ CloudFront ``public, s-maxage=300`` caching that stripped ``Set-Cookie`` and
 killed the ``core-api`` XSRF flow. Expect more; keep the parsers pure and the
 transport swappable.
 
+Readiness is POSITIVE, never an absence. On 2026-09-03 the first cut of this
+module waited only for the challenge markers to disappear; Cloud Run received a
+page that had never carried them, so "not challenged" read as "settled" and an
+unusable page reached the parser 288ms later, which then blamed a layout drift.
+A caller now states what proves ITS page arrived (``ready_marker``) and we poll
+until that shows up. Failures carry the HTTP status, the page length and a body
+snippet, so the next Barchart move diagnoses itself.
+
 Design (mirrors ``nca_grindings_scraper/browser.py``, a different site behind a
 different WAF with the same shape):
 - One browser context per run. The ``aws-waf-token`` obtained on the first page
@@ -27,6 +35,7 @@ from __future__ import annotations
 
 import logging
 import platform
+import re
 
 from playwright.sync_api import BrowserContext, Page
 from playwright.sync_api import Error as PlaywrightError
@@ -68,6 +77,55 @@ def looks_challenged(html: str | None) -> bool:
         return True
     lowered = html.lower()
     return any(marker in lowered for marker in _CHALLENGE_MARKERS)
+
+
+def is_ready(html: str | None, marker: str) -> bool:
+    """True when ``html`` is settled content carrying ``marker``.
+
+    Both halves matter: a challenge page that happens to mention the marker is
+    not ready, and a page free of challenge markers is not ready either unless
+    it actually shows the content the caller came for.
+    """
+    if looks_challenged(html):
+        return False
+    return marker in (html or "")
+
+
+def _snippet(html: str | None, limit: int = 400) -> str:
+    """A readable, bounded excerpt of a page body for an error message."""
+    if not html:
+        return "<empty>"
+    text = re.sub(r"<script\b.*?</script>", " ", html, flags=re.S | re.I)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = " ".join(text.split())
+    return text[:limit] if text else html.strip()[:limit]
+
+
+def describe_failure(
+    *,
+    url: str,
+    status: int | None,
+    html: str | None,
+    marker: str,
+) -> str:
+    """Build a failure message that carries its own evidence."""
+    status_label = "unknown" if status is None else str(status)
+    length = len(html or "")
+    if looks_challenged(html):
+        cause = (
+            "the AWS WAF challenge never cleared — the headless browser could "
+            "not pass it (likely escalated to an interactive captcha)"
+        )
+    else:
+        cause = (
+            f"the page settled but never showed {marker!r} — this is NOT a "
+            "Barchart layout drift until you have checked the body below; a WAF "
+            "block page or a CDN error looks exactly like this"
+        )
+    return (
+        f"Could not load {url}: {cause}. "
+        f"HTTP {status_label}, {length} chars. Body: {_snippet(html)!r}"
+    )
 
 
 class BarchartBrowser:
@@ -119,41 +177,52 @@ class BarchartBrowser:
             self._pw.stop()
         logger.info("Browser closed")
 
-    def fetch_html(self, url: str) -> str:
-        """Load ``url`` through the WAF and return the settled page HTML."""
+    def fetch_html(self, url: str, *, ready_marker: str) -> str:
+        """Load ``url`` through the WAF and return the settled page HTML.
+
+        ``ready_marker`` is what proves the caller's page actually arrived — a
+        substring only the real content carries. We poll until it shows up
+        rather than until the challenge disappears.
+        """
         logger.info("Loading %s (through AWS WAF)", url)
+        status = self._goto(url)
+        self._await_ready(url, ready_marker, status)
+        return self._require_page().content()
+
+    def _goto(self, url: str) -> int | None:
+        """Navigate, returning the HTTP status (logged — it is the first clue)."""
         try:
-            self._require_page().goto(
+            response = self._require_page().goto(
                 url, wait_until="domcontentloaded", timeout=self._timeout_ms
             )
         except PlaywrightError as exc:
             raise BarchartWafError(f"Network error loading {url}: {exc}") from exc
 
-        self._await_challenge_clear(url)
-        return self._require_page().content()
+        status = response.status if response is not None else None
+        logger.info("HTTP %s from %s", status if status is not None else "unknown", url)
+        return status
 
-    def _await_challenge_clear(self, url: str) -> None:
+    def _await_ready(self, url: str, marker: str, status: int | None) -> None:
+        """Poll until the page shows ``marker``; one forced reload, then fail."""
         for _ in range(_PASSIVE_POLLS):
-            if not looks_challenged(self._safe_content()):
+            if is_ready(self._safe_content(), marker):
                 return
             self._require_page().wait_for_timeout(_POLL_INTERVAL_MS)
 
-        logger.warning("AWS WAF challenge still up for %s — forcing one reload", url)
+        logger.warning("%s not ready after first pass — forcing one reload", url)
         try:
-            self._require_page().goto(
-                url, wait_until="domcontentloaded", timeout=self._timeout_ms
-            )
-        except PlaywrightError:  # pragma: no cover - reload is best-effort
+            status = self._goto(url)
+        except BarchartWafError:  # pragma: no cover - reload is best-effort
             pass
         for _ in range(_POST_RELOAD_POLLS):
-            if not looks_challenged(self._safe_content()):
+            if is_ready(self._safe_content(), marker):
                 return
             self._require_page().wait_for_timeout(_POLL_INTERVAL_MS)
 
         raise BarchartWafError(
-            f"AWS WAF challenge did not clear for {url} within budget — the "
-            "headless browser could not pass it (likely escalated to an "
-            "interactive captcha). This needs a human, not a retry."
+            describe_failure(
+                url=url, status=status, html=self._safe_content(), marker=marker
+            )
         )
 
     def _safe_content(self) -> str | None:

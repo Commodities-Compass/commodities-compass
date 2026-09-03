@@ -24,6 +24,9 @@ from scripts.barchart_stocks_eu_scraper.parser import (
 
 logger = logging.getLogger(__name__)
 
+# What proves the cmdty page actually arrived — the blocks parser.py reads.
+READY_MARKER = "cmdty-quote-table"
+
 
 class BarchartStocksEuScraperError(RuntimeError):
     """Raised when the Barchart Stock EU fetch / parse pipeline fails."""
@@ -37,7 +40,9 @@ def _fetch(url: str, fetch_html: Callable[[str], str] | None = None) -> str:
             body = fetch_html(url)
         else:
             with BarchartBrowser() as browser:
-                body = browser.fetch_html(url)
+                # The parser needs these tables; make their arrival the
+                # readiness signal rather than the challenge's disappearance.
+                body = browser.fetch_html(url, ready_marker=READY_MARKER)
     except BarchartWafError as exc:
         raise BarchartStocksEuScraperError(f"Could not load {url}: {exc}") from exc
 

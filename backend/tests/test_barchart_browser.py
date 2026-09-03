@@ -10,7 +10,12 @@ Chromium/WebKit and is exercised by the live jobs, not by CI.
 
 import pytest
 
-from scripts._shared.barchart_browser import BarchartWafError, looks_challenged
+from scripts._shared.barchart_browser import (
+    BarchartWafError,
+    describe_failure,
+    is_ready,
+    looks_challenged,
+)
 
 # Trimmed from the real 1983-byte interstitial served on 2026-09-03.
 CHALLENGE_HTML = """<!DOCTYPE html>
@@ -74,3 +79,87 @@ class TestLooksChallenged:
 class TestErrorType:
     def test_waf_error_is_a_runtime_error(self):
         assert issubclass(BarchartWafError, RuntimeError)
+
+
+class TestIsReady:
+    """A page is ready only on POSITIVE evidence.
+
+    The 2026-09-03 prod failure: Cloud Run got a page carrying none of the
+    challenge markers, so "not challenged" was read as "settled" and an
+    unusable page reached the parser in 288ms. Absence of a challenge is not
+    presence of content.
+    """
+
+    def test_page_with_the_marker_is_ready(self):
+        assert is_ready(REAL_HTML, '"symbol":"CAZ26"') is True
+
+    def test_page_without_the_marker_is_not_ready(self):
+        assert is_ready(REAL_HTML, "cmdty-quote-table") is False
+
+    def test_challenge_page_is_never_ready_even_if_it_holds_the_marker(self):
+        """A challenge mentioning the marker must not count as settled."""
+        html = CHALLENGE_HTML.replace("</body>", '<!-- "symbol":"CAZ26" --></body>')
+        assert is_ready(html, '"symbol":"CAZ26"') is False
+
+    @pytest.mark.parametrize("empty", ["", "   ", None])
+    def test_empty_page_is_never_ready(self, empty):
+        assert is_ready(empty, '"symbol":"CAZ26"') is False
+
+    def test_blocked_page_without_challenge_markers_is_not_ready(self):
+        """The prod case: a small block page, no awswaf markers, no content."""
+        blocked = "<html><head><title>403 Forbidden</title></head><body>Access Denied</body></html>"
+
+        assert looks_challenged(blocked) is False  # no challenge markers...
+        assert is_ready(blocked, '"symbol":"CAZ26"') is False  # ...but not ready
+
+
+class TestDescribeFailure:
+    """The error must carry its own evidence — no second round-trip to diagnose."""
+
+    def test_names_the_url_status_and_marker(self):
+        msg = describe_failure(
+            url="https://www.barchart.com/x",
+            status=403,
+            html="<html>nope</html>",
+            marker='"symbol":"CAZ26"',
+        )
+
+        assert "https://www.barchart.com/x" in msg
+        assert "403" in msg
+        assert '"symbol":"CAZ26"' in msg
+
+    def test_distinguishes_still_challenged_from_never_ready(self):
+        challenged = describe_failure(
+            url="u", status=202, html=CHALLENGE_HTML, marker="x"
+        )
+        never_ready = describe_failure(
+            url="u", status=403, html="<html>no</html>", marker="x"
+        )
+
+        assert "challenge" in challenged.lower()
+        assert "challenge" not in never_ready.lower()
+
+    def test_includes_a_body_snippet(self):
+        msg = describe_failure(
+            url="u",
+            status=403,
+            html="<html><body>Access Denied by WAF</body></html>",
+            marker="x",
+        )
+
+        assert "Access Denied by WAF" in msg
+
+    def test_snippet_is_bounded(self):
+        msg = describe_failure(url="u", status=200, html="<p>" + "x" * 9000, marker="m")
+
+        assert len(msg) < 1500
+
+    def test_reports_the_page_length(self):
+        msg = describe_failure(url="u", status=200, html="y" * 4242, marker="m")
+
+        assert "4242" in msg
+
+    def test_handles_unknown_status(self):
+        msg = describe_failure(url="u", status=None, html="<html/>", marker="m")
+
+        assert "unknown" in msg.lower()

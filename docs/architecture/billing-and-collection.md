@@ -204,6 +204,23 @@ poetry run mark-paid --account acme --until 2027-08-31   # the manual/wire escap
 
 No admin UI (entitlement decision #3 carries over).
 
+### 8 bis. The live catalogue
+
+Created 2026-09-03. Monthly, EUR, `tax_behavior: exclusive` (CGV art. 8.1 — prices are quoted *hors taxes*), each carrying `metadata.tier` so a price resolves to a tier without guesswork.
+
+| tier | price id | € / month | published FCFA |
+|---|---|---|---|
+| `coop_essentiel` | `price_1UBcCjPXtvTEVYwgj9vxKic9` | 762.25 | 500 000 |
+| `coop_premium` | `price_1UBcCkPXtvTEVYwgFvPRtYBj` | 990.92 | 650 000 |
+| `export_essentiel` | `price_1UBcClPXtvTEVYwgjQP7cx01` | 1 143.37 | 750 000 |
+| `export_pro` | `price_1UBcCmPXtvTEVYwgPzZ7sZNx` | 1 524.49 | 1 000 000 |
+
+**Amounts are the fixed-peg conversion**, not a commercial rounding: XOF is pegged to EUR at 655.957, so the exact cent reproduces the advertised FCFA figure to within 3 francs on 500 000. Rounding the EUR would have made the client's bank statement disagree with the price list.
+
+**`export_premium`, `signal_plus` and `origin_desk` have no live price.** The tiers work for entitlement; they simply cannot be sold by card until a price exists. A placeholder `Export Premium` at 300 €/month, typed to get through Stripe's setup wizard on 2026-09-02, was **archived** the next day — it carried no `tier`, its `tax_behavior` was `unspecified`, and 300 € sat *below* both tiers it was supposed to sit between. Nothing had ever used it.
+
+⚠️ **`unit_amount` and `tax_behavior` are immutable on a Stripe Price.** Repricing is never an edit: it is a new Price plus an archive of the old one. Existing subscriptions keep billing at the price they were created with, which is what makes the 12-month commitment of CGV art. 7.1 hold — and what makes a mis-typed price expensive to unwind.
+
 ### 9. `cc-billing-watchdog` — the highest-ROI 80 lines
 
 A daily Cloud Run Job, same shape as `cc-publication-calendar-watchdog`:
@@ -362,7 +379,6 @@ Not planned, but cheap to keep possible. What would return: 14-day withdrawal, e
 
 - **The two billing schedulers are declared in `infra/terraform/scheduler.tf`** (`billing-watchdog` at `0 15 * * *`, `billing-purge` at `0 3 * * *`) and classified `CALENDAR_EXEMPT` in `scripts/_shared/phases.py`. Both are **daily, not weekday-only**: billing has no session dimension, and the watchdog's 26h look-back would drop every Friday-to-Sunday payment failure under a `1-5` cron. They exist in code from this PR; they exist in GCP only after `terraform apply`.
 - **Flipping `BILLING_ENFORCED` is one place, not two.** It is driven by the `BILLING_ENFORCED` repo variable read by `deploy.yml`. Do NOT set it on the Cloud Run service: that is the trap `ENTITLEMENTS_ENFORCED` fell into, where the next deploy silently reverted it.
-- **The four live Price ids are not recorded anywhere yet.** `create-checkout-link --price price_…` needs them; once created, list them here next to their tier (`coop_essentiel`, `coop_premium`, `export_essentiel`, `export_pro` — monthly, EUR, converted at the fixed 655.957 peg). `export_premium`, `signal_plus` and `origin_desk` have no Stripe price: the tiers work for entitlement, they just cannot be sold by card yet.
 - **`customer.subscription.updated` and `.deleted` have never been received for real.** Unit-tested only — no such event exists in `aud_billing_event`. That is the path Stripe takes when retries are exhausted and the subscription is marked `unpaid`, i.e. **the path that suspends a client**. Watch it on the first real failed debit rather than discovering it six weeks in.
 - **The card go/no-go test** (§13) — the only real unknown.
 - Whether coops get card or `manual` from day one — falls out of the test.

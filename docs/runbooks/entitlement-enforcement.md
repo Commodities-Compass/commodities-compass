@@ -31,7 +31,7 @@ Order is therefore always: Auth0 user exists → you copy their `sub` → you pr
 #    (e.g. auth0|68f3c…, google-oauth2|1234…).
 
 # 2. Create the account and expand its tier into per-key grants.
-poetry run create-tenant --code acme --name "Acme SA" --tier export_premium
+poetry run create-tenant --code acme --name "Acme SA" --tier export_pro
 
 # 3. Attach the seat.
 poetry run link-seat --account acme --auth0-sub "auth0|68f3c…" --email ops@acme.com
@@ -49,6 +49,50 @@ including every key added in the future — it is a staff/grandfather marker, no
 
 A grant or revoke takes up to `PRINCIPAL_CACHE_TTL` (10 min in prod) to bite. Restart the service
 for an immediate effect.
+
+### The billing half
+
+Provisioning grants access. It does **not** start an invoice. An account with no billing row is
+*unbilled*, not unpaid — `should_block_for_billing()` returns `False` on `status IS NULL` — so a
+client provisioned and forgotten has the full product and no charge. Nothing alerts on that.
+
+```bash
+# 5. Mint the Checkout link and open the subscription in `incomplete`.
+poetry run create-checkout-link --account acme \
+    --price price_1UBcCmPXtvTEVYwgPzZ7sZNx --amount-cents 152449   # export_pro
+
+# 6. Send the URL. The client enters their card; Stripe fires
+#    checkout.session.completed; the webhook flips the row to `active`.
+poetry run billing-status --account acme
+```
+
+Live price ids — the authority is
+[billing-and-collection.md §8 bis](../architecture/billing-and-collection.md#8-bis-the-live-catalogue),
+and a reprice mints **new ids** that must land in both places:
+
+| tier | `--price` | `--amount-cents` |
+|---|---|---|
+| `coop_essentiel` | `price_1UBcCjPXtvTEVYwgj9vxKic9` | `76225` |
+| `coop_premium` | `price_1UBcCkPXtvTEVYwgFvPRtYBj` | `99092` |
+| `export_essentiel` | `price_1UBcClPXtvTEVYwgjQP7cx01` | `114337` |
+| `export_pro` | `price_1UBcCmPXtvTEVYwgPzZ7sZNx` | `152449` |
+
+`export_premium`, `signal_plus` and `origin_desk` have **no live price**: they resolve for
+entitlement, they cannot be sold by card. Wire only, via `mark-paid`.
+
+⚠️ **`--amount-cents` is unverified.** It is our own record of what we sold, and nothing compares it
+to the Price's `unit_amount`. Get it wrong and `billing-status` will show a subscription amount that
+disagrees with every invoice Stripe mirrors back — copy the pair from the table above, never retype
+one of them.
+
+**Wire / institutional clients** skip steps 5-6 entirely: `poetry run mark-paid --account acme
+--until 2027-08-31`. That sets `billing_status='manual'`, which blocks on `paid_through < today` —
+so it must be renewed by hand, and the watchdog is what reminds you.
+
+**Billing blocks nothing until `BILLING_ENFORCED=true`** (a GitHub repo variable, read by
+`deploy.yml` — never set it on the Cloud Run service). Until then steps 5-6 record and charge
+correctly; only the access cut is dormant. `past_due` never blocks by design: it is the Smart
+Retries window, and a UEMOA card-ceiling overrun is a banking incident, not an unpaid invoice.
 
 ---
 

@@ -74,6 +74,17 @@ jobs:
             BACKEND_CORS_ORIGINS=${{ vars.BACKEND_CORS_ORIGINS }}
             GIT_COMMIT_SHA=${{ github.sha }}
             ENTITLEMENTS_ENFORCED=${{ vars.ENTITLEMENTS_ENFORCED || 'false' }}
+            BILLING_ENFORCED=${{ vars.BILLING_ENFORCED || 'false' }}
+          # BILLING_ENFORCED: the payment boundary, ANDed into resolve_principal on
+          # top of entitlements. Defaults to 'false' so this deploy changes nothing.
+          # Driven by a repo var ON PURPOSE — set it here and nowhere else. Setting
+          # it directly on the Cloud Run service is the trap ENTITLEMENTS_ENFORCED
+          # fell into: the next deploy silently reverts it.
+          # ⚠️ Flipping it denies any account sitting at ('manual', NULL) — which is
+          # the default for every newly created tenant. `internal` is exempt, so
+          # today's logins are safe, but a commercial client must be `active` (card
+          # paid) or carry a future `paid_through` (poetry run mark-paid) BEFORE the
+          # flip reaches them.
           # AUDIO_URL_SECRET: HMAC key for the signed /audio/stream capability token.
           # Read only when ENTITLEMENTS_ENFORCED is on, and signing fails loud when it
           # is empty — so the secret must exist BEFORE that flag flips. Service only:
@@ -88,6 +99,8 @@ jobs:
             GOOGLE_DRIVE_CREDENTIALS_JSON=GOOGLE_DRIVE_CREDENTIALS_JSON:latest
             SENTRY_DSN=SENTRY_DSN:latest
             AUDIO_URL_SECRET=AUDIO_URL_SECRET:latest
+            STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest
+            STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest
 
   deploy-frontend:
     name: Deploy Frontend to Cloud Run
@@ -217,6 +230,9 @@ jobs:
             shift 2
             local args="$@"
             local timeout="${TASK_TIMEOUT:-$DEFAULT_TASK_TIMEOUT}"
+            # Per-job secrets, same prefix idiom as TASK_TIMEOUT. SECRETS above is
+            # shared by all 21 jobs; anything that must NOT be, comes through here.
+            local secrets="${SECRETS}${EXTRA_SECRETS:+,${EXTRA_SECRETS}}"
 
             echo "--- Deploying ${name} (${memory}) ---"
             if gcloud run jobs describe "${name}" --region="${REGION}" --format="value(name)" 2>/dev/null; then
@@ -226,7 +242,7 @@ jobs:
                 --cpu=1 \
                 --args="${args}" \
                 --task-timeout="${timeout}s" \
-                ${COMMON_FLAGS} ${SECRETS} ${ENV_VARS}
+                ${COMMON_FLAGS} ${secrets} ${ENV_VARS}
             else
               gcloud run jobs create "${name}" \
                 --image="${IMAGE}" \
@@ -234,7 +250,7 @@ jobs:
                 --cpu=1 \
                 --args="${args}" \
                 --task-timeout="${timeout}s" \
-                ${COMMON_FLAGS} ${SECRETS} ${ENV_VARS}
+                ${COMMON_FLAGS} ${secrets} ${ENV_VARS}
             fi
           }
 
@@ -326,7 +342,12 @@ jobs:
           # cover Visa outside UK/Europe), and Stripe⇄DB status drift.
           # Runs DB-only until STRIPE_SECRET_KEY exists, then adds the two
           # Stripe checks. docs/architecture/billing-and-collection.md §9
-          deploy_job cc-billing-watchdog              512Mi "billing-watchdog"
+          # STRIPE_SECRET_KEY goes to THIS job only, not into the shared SECRETS
+          # block: a live payment key can move money and read every customer
+          # record, and a Barchart scraper has no business holding one. Without
+          # it the watchdog still runs its DB-only check and exits 0.
+          EXTRA_SECRETS="STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest" \
+            deploy_job cc-billing-watchdog            512Mi "billing-watchdog"
           # Billing archive purge: drops aud_billing_event rows past the 18
           # months the privacy policy publishes (§3 ligne 5). The retention
           # clock runs from the END of the period the payment covers, not from

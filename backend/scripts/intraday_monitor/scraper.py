@@ -225,6 +225,7 @@ def fetch_delayed_quote(
             with BarchartBrowser() as browser:
                 page_html = browser.fetch_html(overview_url, ready_marker=ready_marker)
     except BarchartWafError as exc:
-        raise IntradayFetchError(f"Could not load {overview_url}: {exc}") from exc
+        # `exc` already names the URL, the status and the body — do not re-wrap.
+        raise IntradayFetchError(str(exc)) from exc
 
     return parse_delayed_quote(page_html, contract_code)

@@ -61,6 +61,20 @@ _POST_RELOAD_POLLS = 6  # ~9s after a forced reload
 
 DEFAULT_TIMEOUT_MS = 60_000
 
+# MUST be set explicitly. Headless Chromium's default UA says
+# "HeadlessChrome/<v>", and AWS WAF answers that with a flat 403 — no
+# challenge, nothing for a browser to solve. Proven same-machine/same-IP on
+# 2026-09-03: default UA -> 403, this string -> 202 (challenge, then content).
+# macOS hides the bug because Playwright picks WebKit there (plain Safari UA),
+# which is why the first cut of this module passed locally and 403'd on every
+# Cloud Run tick. Kept identical to barchart_scraper.config.USER_AGENT, which
+# has forced this header for six months without a single block.
+USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/120.0.0.0 Safari/537.36"
+)
+
 
 class BarchartWafError(RuntimeError):
     """Raised when barchart.com cannot be loaded through the WAF."""
@@ -156,12 +170,14 @@ class BarchartBrowser:
         self._pw = sync_playwright().start()
         # Chromium on Linux/Cloud Run (the only browser baked into
         # Dockerfile.jobs); WebKit locally on macOS, mirroring the other
-        # Barchart scrapers. Both clear the challenge (verified 2026-09-03).
+        # Barchart scrapers. Both clear the challenge once USER_AGENT is set.
         launcher = (
             self._pw.webkit if platform.system() == "Darwin" else self._pw.chromium
         )
         self._browser = launcher.launch(headless=self._headless)
-        self._context = self._browser.new_context()
+        # user_agent on the context (not set_extra_http_headers) so the header
+        # AND navigator.userAgent agree — a WAF can check both.
+        self._context = self._browser.new_context(user_agent=USER_AGENT)
         self._context.set_default_timeout(self._timeout_ms)
         self._page = self._context.new_page()
         return self

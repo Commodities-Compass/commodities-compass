@@ -11,6 +11,7 @@ Chromium/WebKit and is exercised by the live jobs, not by CI.
 import pytest
 
 from scripts._shared.barchart_browser import (
+    USER_AGENT,
     BarchartWafError,
     describe_failure,
     is_ready,
@@ -163,3 +164,30 @@ class TestDescribeFailure:
         msg = describe_failure(url="u", status=None, html="<html/>", marker="m")
 
         assert "unknown" in msg.lower()
+
+
+class TestUserAgent:
+    """The 2026-09-03 prod outage in one line.
+
+    `new_context()` with no user_agent makes headless Chromium announce
+    "HeadlessChrome/145.0" — which AWS WAF answers with a flat 403, no
+    challenge, no JS to run. Proven same-machine/same-IP that day: default UA
+    -> 403, realistic UA -> 202. macOS hid it because Playwright picks WebKit
+    there, whose default UA is a plain Safari string.
+
+    `barchart_scraper` has forced this same header for six months and never
+    broke; this module simply had not.
+    """
+
+    def test_user_agent_never_advertises_headless(self):
+        assert "headless" not in USER_AGENT.lower()
+
+    def test_user_agent_matches_the_daily_scraper(self):
+        """One posture for the whole host — drift here is a silent 403."""
+        from scripts.barchart_scraper.config import USER_AGENT as DAILY_UA
+
+        assert USER_AGENT == DAILY_UA
+
+    def test_user_agent_looks_like_a_real_browser(self):
+        assert USER_AGENT.startswith("Mozilla/5.0")
+        assert "Chrome/" in USER_AGENT

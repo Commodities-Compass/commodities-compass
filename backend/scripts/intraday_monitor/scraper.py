@@ -1,19 +1,21 @@
-"""Delayed price fetch — pure httpx, no browser.
+"""Delayed price fetch — one contract overview page, read through the WAF.
 
-One GET of the contract overview page; the last price is read from the
-server-rendered inline JSON ``"raw"`` block, selected by exact symbol match.
+The last price comes from the server-rendered inline JSON ``"raw"`` block,
+selected by exact symbol match. Parsing (``parse_delayed_quote``) is pure and
+holds every rule; fetching only wires a transport to it — Barchart changed
+its posture twice in three days and the split keeps the blast radius in one
+function:
 
-Barchart moved the site behind CloudFront on 2026-09-01 (``cache-control:
-public, s-maxage=300``), and a CDN cannot forward ``Set-Cookie`` on a shared
-cached response. The XSRF-TOKEN that ``/proxies/core-api`` demands became
-unobtainable without a browser and the former two-step fetch failed on 100%
-of runs. The same numbers were already in the HTML, so that is what we read.
+  2026-09-01  CloudFront ``public, s-maxage=300`` stripped ``Set-Cookie``, so
+              the ``core-api`` XSRF token became unobtainable → read the HTML.
+  2026-09-03  AWS WAF JS challenge (HTTP 202) → httpx cannot pass it at all;
+              transport moved to a headless browser. Parser untouched.
 
-Consequence to keep in mind: the page can be up to 300s stale on top of
-Barchart's own ~10-12 min delay. ``trade_time`` carries the real age and is
-logged on every run.
+Staleness to keep in mind: Barchart's own delay is ~10-12 min, and the page
+may be CDN-cached up to 300s on top. ``trade_time`` carries the real age and
+is logged on every run.
 
-Fail-loud on any drift (non-200, no block for the contract, malformed
+Fail-loud on any drift (WAF not cleared, no block for the contract, malformed
 payload, out-of-range price). No retry, no fallback — Sentry + non-zero exit.
 """
 
@@ -23,28 +25,19 @@ import html
 import json
 import logging
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-import httpx
-
+from scripts._shared.barchart_browser import BarchartBrowser, BarchartWafError
 from scripts.intraday_monitor.config import (
     BARCHART_OVERVIEW_URL,
-    HTTP_TIMEOUT_SECONDS,
     PRICE_RANGE,
-    USER_AGENT,
 )
 
 logger = logging.getLogger(__name__)
-
-_PAGE_HEADERS = {
-    "User-Agent": USER_AGENT,
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9",
-}
 
 # The overview page embeds one such object per quoted symbol. Only the block
 # whose "symbol" matches the contract we asked for is ours — never the first
@@ -181,26 +174,9 @@ def _parse_trade_time(block: dict[str, Any]) -> datetime | None:
     return datetime.fromtimestamp(int(raw_time), tz=timezone.utc)
 
 
-def fetch_delayed_quote(
-    contract_code: str,
-    transport: httpx.BaseTransport | None = None,
-) -> IntradayQuote:
-    """Fetch the delayed last price for ``contract_code`` from Barchart."""
-    overview_url = BARCHART_OVERVIEW_URL.format(contract=contract_code)
-
-    with httpx.Client(
-        follow_redirects=True,
-        timeout=HTTP_TIMEOUT_SECONDS,
-        transport=transport,
-    ) as client:
-        page = client.get(overview_url, headers=_PAGE_HEADERS)
-
-    if page.status_code != 200:
-        raise IntradayFetchError(
-            f"Overview page HTTP {page.status_code} for {contract_code}"
-        )
-
-    page_text = html.unescape(page.text)
+def parse_delayed_quote(page_html: str, contract_code: str) -> IntradayQuote:
+    """Turn an overview page into a validated quote. Pure — no I/O."""
+    page_text = html.unescape(page_html)
     block = _select_block(page_text, contract_code)
 
     observed_at = datetime.now(timezone.utc)
@@ -224,3 +200,26 @@ def fetch_delayed_quote(
         age,
     )
     return quote
+
+
+def fetch_delayed_quote(
+    contract_code: str,
+    fetch_html: Callable[[str], str] | None = None,
+) -> IntradayQuote:
+    """Fetch the delayed last price for ``contract_code`` from Barchart.
+
+    ``fetch_html`` is injected by the tests; in production it is one headless
+    browser load that clears the AWS WAF challenge. One fetch, no retry.
+    """
+    overview_url = BARCHART_OVERVIEW_URL.format(contract=contract_code)
+
+    try:
+        if fetch_html is not None:
+            page_html = fetch_html(overview_url)
+        else:
+            with BarchartBrowser() as browser:
+                page_html = browser.fetch_html(overview_url)
+    except BarchartWafError as exc:
+        raise IntradayFetchError(f"Could not load {overview_url}: {exc}") from exc
+
+    return parse_delayed_quote(page_html, contract_code)

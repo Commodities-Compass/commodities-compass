@@ -272,59 +272,66 @@ class TestUpdateStockEu:
 # ---------------------------------------------------------------------------
 
 
-def _mock_response(status_code: int, text_body: str):
-    class _Resp:
-        def __init__(self) -> None:
-            self.status_code = status_code
-            self.text = text_body
+class TestScraperFetch:
+    """Transport is injected; the parser layer below it is unchanged.
 
-    return _Resp()
+    barchart.com went behind an AWS WAF JS challenge on 2026-09-03 (HTTP 202 +
+    challenge.js), so httpx cannot reach this page at all any more — the fetch
+    goes through a headless browser like the futures pages do.
+    """
 
-
-class TestScraperHttp:
     def test_scrape_happy_path(self):
         from scripts.barchart_stocks_eu_scraper import scraper as s
 
-        with patch.object(s, "httpx") as mock_httpx:
-            mock_httpx.get.return_value = _mock_response(200, _VALID_HTML)
-            mock_httpx.HTTPError = Exception
-
-            obs = s.scrape_latest()
+        obs = s.scrape_latest(fetch_html=lambda url: _VALID_HTML)
 
         assert obs.date == date(2026, 5, 13)
         assert obs.value_bags60kg == Decimal("621116")
 
-    def test_http_non_200_fails_loud(self):
-        from scripts.barchart_stocks_eu_scraper import scraper as s
+    def test_fetches_the_configured_url_once(self):
+        from scripts.barchart_stocks_eu_scraper import config, scraper as s
 
-        with patch.object(s, "httpx") as mock_httpx:
-            mock_httpx.get.return_value = _mock_response(503, "Service Unavailable")
-            mock_httpx.HTTPError = Exception
+        calls: list[str] = []
 
-            with pytest.raises(s.BarchartStocksEuScraperError, match="HTTP 503"):
-                s.scrape_latest()
+        def fake(url: str) -> str:
+            calls.append(url)
+            return _VALID_HTML
+
+        s.scrape_latest(fetch_html=fake)
+
+        assert calls == [config.BARCHART_STOCKS_EU_URL]
 
     def test_empty_body_fails_loud(self):
         from scripts.barchart_stocks_eu_scraper import scraper as s
 
-        with patch.object(s, "httpx") as mock_httpx:
-            mock_httpx.get.return_value = _mock_response(200, "")
-            mock_httpx.HTTPError = Exception
+        with pytest.raises(s.BarchartStocksEuScraperError, match="Empty body"):
+            s.scrape_latest(fetch_html=lambda url: "   ")
 
-            with pytest.raises(s.BarchartStocksEuScraperError, match="Empty body"):
-                s.scrape_latest()
-
-    def test_network_error_fails_loud(self):
-        import httpx as real_httpx
-
+    def test_waf_failure_fails_loud_as_scraper_error(self):
+        """The WAF type must not leak past the scraper's own error contract."""
+        from scripts._shared.barchart_browser import BarchartWafError
         from scripts.barchart_stocks_eu_scraper import scraper as s
 
-        with patch.object(s, "httpx") as mock_httpx:
-            mock_httpx.get.side_effect = real_httpx.ConnectError("connection refused")
-            mock_httpx.HTTPError = real_httpx.HTTPError
+        def fake(url: str) -> str:
+            raise BarchartWafError("AWS WAF challenge did not clear")
 
-            with pytest.raises(s.BarchartStocksEuScraperError, match="Network error"):
-                s.scrape_latest()
+        with pytest.raises(s.BarchartStocksEuScraperError, match="WAF"):
+            s.scrape_latest(fetch_html=fake)
+
+    def test_no_retry_on_failure(self):
+        from scripts._shared.barchart_browser import BarchartWafError
+        from scripts.barchart_stocks_eu_scraper import scraper as s
+
+        calls: list[str] = []
+
+        def fake(url: str) -> str:
+            calls.append(url)
+            raise BarchartWafError("boom")
+
+        with pytest.raises(s.BarchartStocksEuScraperError):
+            s.scrape_latest(fetch_html=fake)
+
+        assert len(calls) == 1
 
 
 # ---------------------------------------------------------------------------

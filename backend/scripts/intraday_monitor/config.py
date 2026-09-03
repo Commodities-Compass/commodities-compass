@@ -23,18 +23,14 @@ SOURCE_LABEL = "barchart-delayed"
 # barchart scraper's VALIDATION_RANGES["close"].
 PRICE_RANGE = (1500.0, 20000.0)
 
-# Barchart endpoint (same host as the daily scraper). Single page fetch: the
-# quote is read from the server-rendered inline JSON. The /proxies/core-api
-# route is gone — CloudFront (public, s-maxage=300, since 2026-09-01) strips
-# the Set-Cookie that carried the XSRF-TOKEN it requires, so it answers 403.
+# Barchart endpoint (same host as the daily scraper). One page load through a
+# headless browser: the quote is read from the server-rendered inline JSON.
+#   - /proxies/core-api died 2026-09-01: CloudFront (public, s-maxage=300)
+#     strips the Set-Cookie carrying the XSRF-TOKEN it requires -> 403.
+#   - httpx died 2026-09-03: AWS WAF answers every page with an HTTP 202 JS
+#     challenge. Timeout + UA now belong to _shared/barchart_browser.py.
 BARCHART_OVERVIEW_URL = "https://www.barchart.com/futures/quotes/{contract}/overview"
-HTTP_TIMEOUT_SECONDS = 30.0
 
-USER_AGENT = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/120.0.0.0 Safari/537.36"
-)
 
 # NB: the decision lookup used to pin a preferred algorithm name here. It now
 # follows pl_algorithm_version.serving_rank (see db_writer.load_signal_decision)

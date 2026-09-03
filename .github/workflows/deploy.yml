@@ -265,7 +265,9 @@ jobs:
           # COT EU writes to pl_cot_eu_weekly (weekly snapshot, ICE publishes Friday).
           # Stock EU updates pl_contract_data_daily.stock_eu_bags60kg.
           deploy_job cc-ice-cot-eu-scraper   512Mi "ice-cot-eu-scraper"
-          deploy_job cc-barchart-stocks-eu-scraper 512Mi "barchart-stocks-eu-scraper"
+          # 1Gi + headless Chromium since 2026-09-03 (AWS WAF 202 JS challenge
+          # on barchart.com — httpx cannot pass it). Was 512Mi/httpx before.
+          deploy_job cc-barchart-stocks-eu-scraper 1Gi   "barchart-stocks-eu-scraper"
           # Campaign 5 ensemble — REMOVED 2026-08-18. The soft-gate, the Compass
           # wrapper and the artefact bootstrap are gone with the vendored pack.
           # pl_orchestrator_decision / pl_specialist_prediction keep their rows.
@@ -341,13 +343,16 @@ jobs:
           # late audio never freezes the dashboard). Drives the atomic same-
           # evening flip. See docs/runbooks/session-publish-gate.md.
           deploy_job cc-publish-session          512Mi "publish-session"
-          # Intraday threshold monitor: 15-min delayed-price polling during the
+          # Intraday threshold monitor: 5-min delayed-price polling during the
           # London session; fires level-invalidation alerts (S1/R1) to the
           # Telegram channel — first-cross-only per (rule, session), dedup at
-          # the data level (aud_alert_event). Pure httpx (no Playwright).
+          # the data level (aud_alert_event).
+          # 1Gi + headless Chromium since 2026-09-03: barchart.com sits behind
+          # an AWS WAF that answers every page with an HTTP 202 JS challenge,
+          # which httpx cannot solve. Was 512Mi/httpx before that.
           # ALERT_CHANNEL=console until the Telegram channel is provisioned,
           # then flip the GitHub var to telegram (+ set TELEGRAM_CHANNEL_ID).
-          deploy_job cc-intraday-monitor         512Mi "intraday-monitor"
+          deploy_job cc-intraday-monitor         1Gi   "intraday-monitor"
 
   sentry-release:
     name: Create Sentry Release

@@ -44,7 +44,8 @@ def _fetch(url: str, fetch_html: Callable[[str], str] | None = None) -> str:
                 # readiness signal rather than the challenge's disappearance.
                 body = browser.fetch_html(url, ready_marker=READY_MARKER)
     except BarchartWafError as exc:
-        raise BarchartStocksEuScraperError(f"Could not load {url}: {exc}") from exc
+        # `exc` already names the URL, the status and the body — do not re-wrap.
+        raise BarchartStocksEuScraperError(str(exc)) from exc
 
     if not body or not body.strip():
         raise BarchartStocksEuScraperError(f"Empty body from {url}")

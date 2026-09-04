@@ -36,6 +36,7 @@ from scripts.regime_brief.db_reader import (
 from scripts.regime_brief.narrator import (
     Narrative,
     NarrationError,
+    _assert_in_character,
     _build_prompt,
     narrate,
 )
@@ -165,9 +166,9 @@ class TestNarratorGuards:
         return client
 
     def test_machinery_mention_is_refused(self) -> None:
-        """A brief is read aloud — one word about a model breaks the product."""
+        """A brief is read aloud — naming the machinery breaks the product."""
         client = self._client(
-            '{"conclusion": "Le modèle anticipe une hausse.",'
+            '{"conclusion": "Le LLM anticipe une hausse.",'
             ' "eco": "Contexte porteur.",'
             ' "confidence_rationale": "Un repli invaliderait."}'
         )
@@ -528,3 +529,75 @@ class TestOneLanguageDoesNotSilenceTheOther:
         rc, produced = self._run(failing_language="fr")
         assert produced == ["en"]
         assert rc == 1
+
+
+class TestMachineryGuardScope:
+    """What blocks publication, and what must NOT.
+
+    Narrowed 2026-09-04. The guard used to match bare substrings, which both
+    over- and under-fired: it killed a brief for "modèle météo NOAA" or "score
+    de santé globale" (legitimate market/weather vocabulary) while letting
+    "L'IA" through, because the " ia " pattern demanded spaces on both sides.
+    Only words that can ONLY mean our own machinery block now.
+    """
+
+    def _narrative(self, text: str) -> Narrative:
+        return Narrative(conclusion=text, eco="", confidence_rationale="")
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Le LLM anticipe une hausse.",
+            "Généré par GPT hier soir.",
+            "Selon OpenAI, la tendance est haussière.",
+            "L'intelligence artificielle voit un repli.",
+            "Artificial intelligence sees a pullback.",
+            "La sortie est prob(up)=0.62 sur l'horizon.",
+            "Lecture p(up) élevée.",
+            "The confidence score sits at 4.",
+            "Le score de confiance est de 4 sur 5.",
+        ],
+    )
+    def test_hard_blockers_still_refuse(self, text: str) -> None:
+        with pytest.raises(NarrationError, match="machinery"):
+            _assert_in_character(self._narrative(text), "fr")
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Le modèle météo NOAA anticipe un El Niño modéré.",
+            "The weather model points to a drier harmattan.",
+            "Le score de santé globale des origines est de 3,4/5.",
+            "Algorithmic trading drove the afternoon spike.",
+            "Un modèle de consommation en repli chez les transformateurs.",
+        ],
+    )
+    def test_legitimate_market_vocabulary_passes(self, text: str) -> None:
+        """These killed real briefs on false positives. They must publish."""
+        _assert_in_character(self._narrative(text), "fr")
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "L'IA a identifié une rupture.",
+            "Notre IA, comme (AI) le suggère.",
+            "AI-driven flows dominated.",
+        ],
+    )
+    def test_uppercase_acronym_is_caught(self, text: str) -> None:
+        """The old ' ia ' pattern needed spaces both sides, so L'IA slipped by."""
+        with pytest.raises(NarrationError, match="machinery"):
+            _assert_in_character(self._narrative(text), "fr")
+
+    def test_french_jai_is_not_the_acronym(self) -> None:
+        """Case-sensitivity is the whole point: 'j'ai' must not block a brief."""
+        _assert_in_character(
+            self._narrative("Ce que j'ai relevé sur la campagne principale."), "fr"
+        )
+
+    def test_guard_reads_all_three_fields(self) -> None:
+        with pytest.raises(NarrationError, match="machinery"):
+            _assert_in_character(
+                Narrative(conclusion="Rien.", eco="", confidence_rationale="Un LLM."),
+                "fr",
+            )

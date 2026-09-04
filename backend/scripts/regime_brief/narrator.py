@@ -26,6 +26,7 @@ told so explicitly.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 
 from scripts._shared.llm_client import LLMClient, LLMClientError
@@ -143,25 +144,33 @@ no bullet.",
   "confidence_rationale": "1 to 2 sentences: what could prove this read wrong."
 }}"""
 
-# Any of these in the output means the model broke character and described the
-# machinery instead of the market. Fail rather than publish it.
-_BANNED_SUBSTRINGS = (
-    "llm",
-    "gpt",
-    "openai",
-    "algorithme",
-    "algorithm",
-    "modèle",
-    "model ",
-    "intelligence artificielle",
-    "artificial intelligence",
-    " ia ",
-    " ai ",
-    "prob(",
-    "p(up)",
-    "score de",
-    "confidence score",
+# Naming the machinery breaks the product: the brief is read aloud by a
+# human-sounding voice. Only words that can ONLY mean our machinery block
+# publication — the guard was narrowed on 2026-09-04 after it killed a brief
+# on 'algorithm' and would have killed one on "modèle météo NOAA" or "score de
+# santé globale". `modèle`/`model` and `algorithme`/`algorithm` have legitimate
+# market and weather uses, so the prompt still asks the model to avoid them but
+# they no longer block. Word boundaries, not bare substrings: the old " ia "
+# needed a space on both sides, so "L'IA" published happily.
+_BANNED_PATTERNS: tuple[str, ...] = (
+    r"\bllm\b",
+    r"\bgpt\b",
+    r"\bopenai\b",
+    r"\bintelligence artificielle\b",
+    r"\bartificial intelligence\b",
+    r"\bprob\(",
+    r"\bp\(up\)",
+    r"\bconfidence score\b",
+    r"\bscore de confiance\b",
 )
+
+# Case-SENSITIVE on purpose. The acronym is always written upper-case, while
+# the French verb "j'ai" is not — a case-insensitive \bai\b would refuse a
+# perfectly good brief for saying "ce que j'ai relevé".
+_BANNED_ACRONYM_PATTERNS: tuple[str, ...] = (r"\bIA\b", r"\bAI\b")
+
+_BANNED_RE = re.compile("|".join(_BANNED_PATTERNS), re.IGNORECASE)
+_BANNED_ACRONYM_RE = re.compile("|".join(_BANNED_ACRONYM_PATTERNS))
 
 
 def _format_evidence(quotes: tuple[str, ...]) -> str:
@@ -199,8 +208,11 @@ def _assert_in_character(narrative: Narrative, language: str) -> None:
     """
     blob = " ".join(
         (narrative.conclusion, narrative.eco, narrative.confidence_rationale)
-    ).lower()
-    hits = [banned for banned in _BANNED_SUBSTRINGS if banned in blob]
+    )
+    hits = sorted(
+        {match.group(0).lower() for match in _BANNED_RE.finditer(blob)}
+        | {match.group(0) for match in _BANNED_ACRONYM_RE.finditer(blob)}
+    )
     if hits:
         raise NarrationError(
             f"Narrative [{language}] mentions the machinery {hits} — refusing to "

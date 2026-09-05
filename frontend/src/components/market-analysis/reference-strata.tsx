@@ -189,17 +189,19 @@ export default function ReferenceStrata({
     </div>
   );
 
-  // An origin that hasn't announced the published season yet. It says so —
-  // reprinting last season's price under a fresh date would read as current.
+  // An origin that hasn't announced the published season yet. The value slot
+  // takes the same em dash every other no-data field in the folio uses — the
+  // figure does not exist yet, and a sentence in a numeral's place reads as a
+  // value. Reprinting last season's price under a fresh date would read as
+  // current, which is the failure this card exists to prevent; the meta line
+  // carries the reason.
   const fgPending = (region: string, source: string, season: string) => (
     <div style={cell}>
       <span style={tagSeason}>{season}</span>
       <span style={country}>
         {t('market.fg_price')} — {region}
       </span>
-      <span style={{ ...valBig, color: 'var(--ink-mid)' }}>
-        {t('market.fg_pending')}
-      </span>
+      <span style={{ ...valBig, color: 'var(--ink-light)' }}>—</span>
       <span style={meta}>{t('market.fg_pending_meta', { source })}</span>
     </div>
   );

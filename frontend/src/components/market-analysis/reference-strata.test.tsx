@@ -38,7 +38,7 @@ describe('ReferenceStrata — guaranteed farmgate price', () => {
     // The whole point of the focus season: COCOBOD has a 2025/26 price on file,
     // and it must NOT surface under a 2026/27 dashboard.
     render(<ReferenceStrata farmgate={PENDING_GHANA} />);
-    expect(screen.getByText('En attente')).toBeInTheDocument();
+    expect(screen.getByText('—')).toBeInTheDocument();
     expect(screen.getByText('Annonce COCOBOD à venir')).toBeInTheDocument();
     expect(screen.queryByText(/2\s?587/)).not.toBeInTheDocument();
   });

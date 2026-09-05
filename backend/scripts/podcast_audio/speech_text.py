@@ -30,7 +30,7 @@ def normalize_for_speech(text: str, language: str = "fr") -> str:
     cleaned = _BULLET.sub("", cleaned)
     cleaned = _normalize_numbers(cleaned, language)
     cleaned = _expand_abbreviations(cleaned, language)
-    cleaned = _apply_lexicon_casing(cleaned, language)
+    cleaned = _apply_spoken_forms(cleaned, language)
     return _WHITESPACE.sub(" ", cleaned).strip()
 
 
@@ -103,28 +103,36 @@ def _expand_abbreviations(text: str, language: str) -> str:
     return text
 
 
-def _apply_lexicon_casing(text: str, language: str = "fr") -> str:
-    """Rewrite lexicon words to the casing they are pronounced correctly in.
+def _apply_spoken_forms(text: str, language: str = "fr") -> str:
+    """Rewrite lexicon words to the form they are pronounced correctly in.
 
-    The brief and the script both write COMPASTEURS in capitals — that is the
-    brand form, and it is also exactly what made a voice read it as an
-    initialism. P0-quinquies settled it: normal case plus IPA was clean 3/3,
-    capitals were not. Heard live on 2026-08-26 as "compasteutuses" with the
-    caps still in place. The written form stays; only the spoken one changes.
+    Two distinct failures, one mechanism. The brief and the script write
+    COMPASTEURS in capitals, which a voice reads as an initialism — heard as
+    "compasteutuses" on 2026-08-26; normal case plus IPA was clean 3/3 in P0.
+    And in French the word collides with "composteurs", heard on 2026-09-03.
+    Only the spoken text changes; what a reader sees is untouched.
     """
     for entry in LEXICON.get(language, LEXICON["fr"]):
-        text = re.compile(rf"\b{re.escape(entry.phrase)}\b", re.IGNORECASE).sub(
-            entry.phrase, text
-        )
+        source = entry.written or entry.phrase
+        for form in {source, entry.phrase}:
+            text = re.compile(rf"\b{re.escape(form)}\b", re.IGNORECASE).sub(
+                entry.phrase, text
+            )
     return text
 
 
 @dataclass(frozen=True)
 class Pronunciation:
-    """One entry of the spoken lexicon."""
+    """One entry of the spoken lexicon.
+
+    ``written`` is the form the script uses and a reader sees; ``phrase`` is the
+    form handed to the synthesiser and matched by the IPA. They differ when a
+    coined word collides with a real one — see COMPASTEURS below.
+    """
 
     phrase: str
     ipa: str
+    written: str | None = None
 
 
 # Validated by ear 2026-08-26 (P0-quinquies): COMPASTEURS in capitals is read as
@@ -138,9 +146,16 @@ class Pronunciation:
 # the whole request, not a silent fallback). "momentum" and "Compass" are
 # ordinary English words and need no entry there — only the coined one does, and
 # en-US accepts the RP-shaped ɒ/ɜː rather than the American ɑ/ɜr.
+# In French the coined word collides with "composteurs" — a real word, and the
+# prior is strong enough that the IPA loses to it intermittently: the opening of
+# the 2026-09-03 episode said "composteurs" while the closing, same episode, same
+# lexicon, said it correctly. Respelling the SPOKEN form with a K removes the
+# reading rather than arguing with it; the script a reader sees is unchanged.
+# English needs none of this, and is left alone: "composteurs" is not a word
+# there, so there is no prior to fight.
 LEXICON: dict[str, tuple[Pronunciation, ...]] = {
     "fr": (
-        Pronunciation("Compasteurs", "kɔ̃pastœʁ"),
+        Pronunciation("Kompasteurs", "kɔ̃pastœʁ", written="Compasteurs"),
         Pronunciation("momentum", "mɔmɑ̃tɔm"),
         Pronunciation("Compass", "kɔ̃pas"),
     ),

@@ -85,9 +85,11 @@ class TestLexicon:
             assert entry["phoneticEncoding"] == "PHONETIC_ENCODING_IPA"
             assert entry["pronunciation"].strip()
 
-    def test_covers_compasteurs(self):
+    def test_covers_the_coined_word(self):
+        # French speaks it respelled; the lexicon is keyed on the SPOKEN form so
+        # the IPA can bind to what is actually sent.
         phrases = {e["phrase"] for e in custom_pronunciations()["pronunciations"]}
-        assert "Compasteurs" in phrases
+        assert "Kompasteurs" in phrases
 
     def test_phrases_are_unique_case_insensitively(self):
         # The API rejects the whole request with INVALID_ARGUMENT otherwise —
@@ -225,10 +227,11 @@ class TestLexiconIsPerLocale:
     before a single byte of audio. The whole request, not a silent fallback.
     """
 
-    def test_french_and_english_carry_different_entries(self):
+    def test_each_locale_covers_the_coined_word_its_own_way(self):
         fr = {e["phrase"] for e in custom_pronunciations("fr")["pronunciations"]}
         en = {e["phrase"] for e in custom_pronunciations("en")["pronunciations"]}
-        assert "Compasteurs" in fr and "Compasteurs" in en
+        assert "Kompasteurs" in fr, "French respells it away from 'composteurs'"
+        assert "Compasteurs" in en, "English has no colliding word to avoid"
 
     def test_english_drops_the_words_english_already_knows(self):
         en = {e["phrase"] for e in custom_pronunciations("en")["pronunciations"]}
@@ -247,3 +250,40 @@ class TestLexiconIsPerLocale:
                 for e in custom_pronunciations(language)["pronunciations"]
             ]
             assert len(phrases) == len(set(phrases))
+
+
+class TestTheFirstWordOfEveryEpisode:
+    """ "Compasteurs" collides with "composteurs", a real French word.
+
+    Heard 2026-09-03: the OPENING said "composteurs" while the closing of the
+    same episode, with the same lexicon, said it correctly. The IPA is a hint the
+    model follows most of the time, and the prior wins intermittently. Respelling
+    the spoken form removes the reading instead of arguing with it — and the
+    first word of every episode is not a place to be right most of the time.
+    """
+
+    def test_french_speaks_a_spelling_that_cannot_be_misread(self):
+        assert "Kompasteurs" in normalize_for_speech("Bonjour les COMPASTEURS !")
+        assert "ompasteurs" in normalize_for_speech("Bonjour les COMPASTEURS !")
+
+    def test_every_written_casing_reaches_the_same_spoken_form(self):
+        for written in ("COMPASTEURS", "Compasteurs", "compasteurs"):
+            assert "Kompasteurs" in normalize_for_speech(f"les {written} !", "fr")
+
+    def test_english_is_left_alone(self):
+        # No colliding word there, and the EN episodes were validated clean.
+        assert "Compasteurs" in normalize_for_speech("Hello COMPASTEURS!", "en")
+        assert "Kompasteurs" not in normalize_for_speech("Hello COMPASTEURS!", "en")
+
+    def test_the_lexicon_is_keyed_on_what_is_actually_spoken(self):
+        # An IPA entry whose phrase never appears in the payload does nothing.
+        spoken = normalize_for_speech("Bonjour les COMPASTEURS !", "fr")
+        phrases = [e["phrase"] for e in custom_pronunciations("fr")["pronunciations"]]
+        assert any(p in spoken for p in phrases)
+
+    def test_the_written_script_is_never_altered(self):
+        from scripts.podcast_audio.script_writer import PodcastScript, Turn
+
+        script = PodcastScript("fr", (Turn("Ana", "Bonjour les COMPASTEURS !"),))
+        assert script.turns[0].text == "Bonjour les COMPASTEURS !"
+        assert "Kompasteurs" in script.as_markup_turns()[0]["text"]

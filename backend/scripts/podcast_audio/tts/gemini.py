@@ -15,6 +15,7 @@ Three things here are not obvious and each was measured rather than assumed:
 from __future__ import annotations
 
 import base64
+import http.client
 import json
 import logging
 import statistics
@@ -137,8 +138,14 @@ class GeminiSynthesizer:
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode()[:300]
             raise SynthesisError(f"Gemini-TTS HTTP {exc.code}: {detail}") from exc
-        except OSError as exc:
-            raise SynthesisError(f"Gemini-TTS unreachable: {exc}") from exc
+        except (OSError, http.client.HTTPException) as exc:
+            # IncompleteRead lands here: the response body is tens of megabytes
+            # and a truncated read is a transport failure, not a bad request.
+            # Named rather than retried — the recovery path is a re-run
+            # (.claude/rules/pipeline-error-handling.md).
+            raise SynthesisError(
+                f"Gemini-TTS transport failed ({type(exc).__name__}): {exc}"
+            ) from exc
 
         content = payload.get("audioContent")
         if not content:

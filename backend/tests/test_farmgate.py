@@ -1,8 +1,9 @@
 """Tests for the official farmgate price feature (T1b).
 
 Covers:
-- farmgate_service: latest-effective-≤-date per region, revision precedence,
-  region-null when nothing announced.
+- farmgate_service: focus season (the most recent one announced by either
+  origin), price in force within it, forthcoming price before it starts, and
+  the pending state of an origin that has not announced that season yet.
 - /dashboard/farmgate-price endpoint: auth-gated, returns CIV + Ghana.
 - set-farmgate-price CLI: insert, dry-run, validation.
 """
@@ -95,18 +96,19 @@ async def test_service_latest_effective_and_revision(db_session: AsyncSession) -
 
     out = await get_farmgate_prices(db_session, date_cls(2026, 7, 1))
 
-    # Untagged rows default to the 'principale' sub-campaign.
-    assert out["civ"]["principale"]["season_label"] == "2025/26"
-    assert out["civ"]["principale"]["price_native"] == 2200.0  # latest revision wins
-    assert out["civ"]["principale"]["unit"] == "per_kg"
-    assert out["civ"]["intermediaire"] is None
-    assert out["ghana"]["principale"]["price_native"] == 3100.0
-    assert out["ghana"]["principale"]["unit"] == "per_bag_64kg"
+    # 2024/25 exists but is not the focus season — it is never published.
+    assert out["season"] == "2025/26"
+    assert out["civ"]["season_label"] == "2025/26"
+    assert out["civ"]["price_native"] == 2200.0  # latest revision wins
+    assert out["civ"]["unit"] == "per_kg"
+    assert out["ghana"]["price_native"] == 3100.0
+    assert out["ghana"]["unit"] == "per_bag_64kg"
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_service_region_null_before_effective(db_session: AsyncSession) -> None:
+async def test_service_publishes_forthcoming_price(db_session: AsyncSession) -> None:
+    """A season announced but not yet started is published, not hidden."""
     db_session.add(
         PlOfficialFarmgatePrice(
             region="civ",
@@ -120,17 +122,70 @@ async def test_service_region_null_before_effective(db_session: AsyncSession) ->
     )
     await db_session.flush()
 
-    # Asked before the effective date → no price yet, and Ghana never set
+    # Asked before the effective date → the announced price, with its own
+    # season label and effective date saying it is forthcoming.
     out = await get_farmgate_prices(db_session, date_cls(2025, 1, 1))
-    assert out["civ"]["principale"] is None
-    assert out["civ"]["intermediaire"] is None
-    assert out["ghana"]["principale"] is None
+    assert out["season"] == "2025/26"
+    assert out["civ"]["price_native"] == 1800.0
+    assert out["civ"]["effective_date"] == "2025-10-01"
+    assert out["ghana"] is None  # never set → pending
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_service_returns_both_sub_campaigns(db_session: AsyncSession) -> None:
-    """CIV principale + intermediaire coexist and are both returned."""
+async def test_service_empty_table(db_session: AsyncSession) -> None:
+    out = await get_farmgate_prices(db_session, date_cls(2026, 9, 4))
+    assert out["season"] is None
+    assert out["civ"] is None
+    assert out["ghana"] is None
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_service_pending_origin_on_new_season(db_session: AsyncSession) -> None:
+    """The production case: CCC announces 2026/27, COCOBOD has not yet.
+
+    Ghana must go pending rather than keep printing its 2025/26 price under a
+    2026/27 dashboard — an origin that has not spoken is reported as silent.
+    """
+    db_session.add_all(
+        [
+            PlOfficialFarmgatePrice(
+                region="civ",
+                campaign_type="principale",
+                season_label="2026/27",
+                effective_date=date_cls(2026, 9, 4),
+                price_native=Decimal("1200"),
+                currency="XOF",
+                unit="per_kg",
+                source="ccc",
+            ),
+            PlOfficialFarmgatePrice(
+                region="ghana",
+                campaign_type="principale",
+                season_label="2025/26",
+                effective_date=date_cls(2026, 6, 18),
+                price_native=Decimal("2587"),
+                currency="GHS",
+                unit="per_bag_64kg",
+                source="cocobod",
+            ),
+        ]
+    )
+    await db_session.flush()
+
+    out = await get_farmgate_prices(db_session, date_cls(2026, 9, 5))
+    assert out["season"] == "2026/27"
+    assert out["civ"]["price_native"] == 1200.0
+    assert out["ghana"] is None
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_service_serves_the_sub_campaign_in_force(
+    db_session: AsyncSession,
+) -> None:
+    """One card per origin: the mid-crop takes over from its effective date."""
     db_session.add_all(
         [
             PlOfficialFarmgatePrice(
@@ -157,11 +212,15 @@ async def test_service_returns_both_sub_campaigns(db_session: AsyncSession) -> N
     )
     await db_session.flush()
 
+    # Mid-crop window → the mid-crop price is the one being paid.
     out = await get_farmgate_prices(db_session, date_cls(2026, 8, 1))
-    assert out["civ"]["principale"]["price_native"] == 2800.0
-    assert out["civ"]["principale"]["campaign_type"] == "principale"
-    assert out["civ"]["intermediaire"]["price_native"] == 1200.0
-    assert out["civ"]["intermediaire"]["campaign_type"] == "intermediaire"
+    assert out["civ"]["price_native"] == 1200.0
+    assert out["civ"]["campaign_type"] == "intermediaire"
+
+    # Main-crop window → the main-crop price, same season.
+    out = await get_farmgate_prices(db_session, date_cls(2026, 1, 15))
+    assert out["civ"]["price_native"] == 2800.0
+    assert out["civ"]["campaign_type"] == "principale"
 
 
 # --------------------------------------------------------------------------- #
@@ -201,10 +260,11 @@ async def test_endpoint_returns_regions(
     r = await client.get(_FARMGATE_URL)
     assert r.status_code == 200
     body = r.json()
-    assert body["civ"]["principale"]["currency"] == "XOF"
-    assert body["civ"]["principale"]["price_native"] == 1800.0
-    assert body["ghana"]["principale"]["currency"] == "GHS"
-    assert body["ghana"]["principale"]["unit"] == "per_bag_64kg"
+    assert body["season"] == "2025/26"
+    assert body["civ"]["currency"] == "XOF"
+    assert body["civ"]["price_native"] == 1800.0
+    assert body["ghana"]["currency"] == "GHS"
+    assert body["ghana"]["unit"] == "per_bag_64kg"
 
 
 # --------------------------------------------------------------------------- #

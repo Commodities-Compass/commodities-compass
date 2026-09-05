@@ -157,15 +157,13 @@ export interface FarmgatePriceEntry {
   announced_date: string | null;
 }
 
-export interface FarmgateRegionPrices {
-  principale: FarmgatePriceEntry | null;
-  intermediaire: FarmgatePriceEntry | null;
-}
-
 export interface FarmgatePriceResponse {
   date: string;
-  civ: FarmgateRegionPrices;
-  ghana: FarmgateRegionPrices;
+  /** Season being published — the most recent one either origin announced. */
+  season: string | null;
+  /** Price in force for that season; null = that origin hasn't announced yet. */
+  civ: FarmgatePriceEntry | null;
+  ghana: FarmgatePriceEntry | null;
 }
 
 export interface PositioningResponse {

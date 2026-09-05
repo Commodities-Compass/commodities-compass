@@ -16,6 +16,13 @@ Usage:
 
 Currency and source default from the region (CIV → XOF/ccc, Ghana → GHS/cocobod)
 and can be overridden. The DB CHECK constraints are the final guard.
+
+⚠️ The dashboard and the brief publish the price in force for the **most recent
+season present in this table**, per region. Inserting a new season for one
+origin therefore flips the other origin to "awaiting announcement" until its own
+row lands — intended, and the reason a pending origin never prints a stale
+price. A mid-crop row simply becomes the price in force from its effective date;
+there is no separate mid-crop card any more.
 """
 
 from __future__ import annotations

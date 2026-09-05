@@ -795,10 +795,13 @@ class PlOfficialFarmgatePrice(Base):
     Ghana) — deliberately distinct from the real terrain/differential price,
     which is a separate Programme Fondateur workstream.
 
-    Read pattern (endpoint /v1/dashboard/farmgate-price): most recent effective
-    value on or before the requested date, per region —
-    ``WHERE region=? AND effective_date <= d ORDER BY effective_date DESC,
-    announced_date DESC LIMIT 1``.
+    Read pattern (endpoint /v1/dashboard/farmgate-price + the brief): the
+    *focus season* is ``MAX(season_label)`` across the whole table — the most
+    recent season either origin has announced — and each region publishes the
+    price in force within it (latest ``effective_date <= d``, or the earliest
+    row of the season when it has not started yet). A region with no row for
+    the focus season is pending: the dashboard says so instead of falling back
+    to last season's price. See ``app.services.farmgate_service``.
     """
 
     __tablename__ = "pl_official_farmgate_price"

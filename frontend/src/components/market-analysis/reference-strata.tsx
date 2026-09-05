@@ -189,30 +189,35 @@ export default function ReferenceStrata({
     </div>
   );
 
-  const fgNotAnnounced = (region: string) => (
+  // An origin that hasn't announced the published season yet. The value slot
+  // takes the same em dash every other no-data field in the folio uses — the
+  // figure does not exist yet, and a sentence in a numeral's place reads as a
+  // value. Reprinting last season's price under a fresh date would read as
+  // current, which is the failure this card exists to prevent; the meta line
+  // carries the reason.
+  const fgPending = (region: string, source: string, season: string) => (
     <div style={cell}>
-      <span style={tagSeason}>{t('market.tag_season')}</span>
+      <span style={tagSeason}>{season}</span>
       <span style={country}>
         {t('market.fg_price')} — {region}
       </span>
-      <span style={valBig}>{t('market.fg_not_announced')}</span>
+      <span style={{ ...valBig, color: 'var(--ink-light)' }}>—</span>
+      <span style={meta}>{t('market.fg_pending_meta', { source })}</span>
     </div>
   );
 
   // Collected first so the grid can fit its own column count — the rail shows
-  // one stratum at a time. One card per (region, sub-campaign) that exists:
-  // CIV shows principale + intermediaire; Ghana shows whichever is announced.
+  // one stratum at a time. One card per origin: the price in force for the
+  // published season, or the pending card until that origin announces it.
   const cells: ReactNode[] = [];
-  for (const [key, label] of [
-    ['civ', 'CIV'],
-    ['ghana', 'Ghana'],
+  for (const [key, label, source] of [
+    ['civ', 'CIV', 'CCC'],
+    ['ghana', 'Ghana', 'COCOBOD'],
   ] as const) {
-    const rp = farmgate?.[key];
-    const p = rp?.principale;
-    const i = rp?.intermediaire;
-    if (p) cells.push(fgCell(label, p));
-    if (i) cells.push(fgCell(label, i));
-    if (farmgate && !p && !i) cells.push(fgNotAnnounced(label));
+    const entry = farmgate?.[key];
+    if (entry) cells.push(fgCell(label, entry));
+    else if (farmgate?.season)
+      cells.push(fgPending(label, source, farmgate.season));
   }
   if (macro?.enso_oni_month != null) {
     cells.push(

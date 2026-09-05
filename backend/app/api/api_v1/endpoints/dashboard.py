@@ -944,9 +944,10 @@ async def get_farmgate_price_endpoint(
 ) -> FarmgatePriceResponse:
     """Official / guaranteed farmgate price — CIV (CCC) + Ghana (COCOBOD).
 
-    Returns, per region, the most recent price effective on or before the date.
-    This is the official guaranteed price (distinct from the real terrain price);
-    a region is NULL when nothing has been announced on or before the date.
+    Returns the price in force for the focus season (the most recent season
+    either origin has announced), one per region. This is the official
+    guaranteed price (distinct from the real terrain price); a region is NULL
+    when it has announced nothing for that season — pending, not absent.
     """
     try:
         business_date = None

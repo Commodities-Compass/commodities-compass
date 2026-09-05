@@ -1,9 +1,12 @@
-"""Shared farmgate-price helper for the brief generators (legacy + ensemble).
+"""Shared farmgate-price helper for the brief generators.
 
-Reads the latest official/guaranteed farmgate price effective on/before a date
-(CCC for CIV, COCOBOD for Ghana) and formats it as brief lines, FR or EN. Used
-by both ``compass_brief`` and ``compass_brief_ensemble`` so the section stays in
-sync across the dual track.
+Sync mirror of ``app.services.farmgate_service`` — same rule, different session
+flavour (the services layer is async, the brief jobs are sync). Both publish the
+price **in force for the focus season**, the most recent season either origin
+has announced; a region that has not announced anything for that season is
+reported as awaiting its announcement rather than as holding last season's
+price. Keep the two in step: the brief and the dashboard must never disagree on
+the guaranteed price a client reads the same morning.
 """
 
 from __future__ import annotations
@@ -17,11 +20,21 @@ from sqlalchemy.orm import Session
 
 _REGIONS = ("civ", "ghana")
 
-_QUERY = text(
+_FOCUS_SEASON = text("SELECT MAX(season_label) FROM pl_official_farmgate_price")
+
+_IN_FORCE = text(
     "SELECT season_label, price_native, currency, unit "
     "FROM pl_official_farmgate_price "
-    "WHERE region = :region AND effective_date <= :on_date "
+    "WHERE region = :region AND season_label = :season AND effective_date <= :on_date "
     "ORDER BY effective_date DESC, announced_date DESC NULLS LAST LIMIT 1"
+)
+
+# Season announced but not started yet — publish the forthcoming price.
+_FORTHCOMING = text(
+    "SELECT season_label, price_native, currency, unit "
+    "FROM pl_official_farmgate_price "
+    "WHERE region = :region AND season_label = :season "
+    "ORDER BY effective_date ASC, announced_date ASC NULLS FIRST LIMIT 1"
 )
 
 _CURRENCY_LABEL = {"XOF": "FCFA", "GHS": "GHS"}
@@ -33,7 +46,7 @@ _L = {
         "civ": "Côte d'Ivoire",
         "ghana": "Ghana",
         "campaign": "campagne",
-        "none": "non annoncé",
+        "pending": "en attente d'annonce",
         "disclaimer": "Prix officiel garanti, distinct du prix réel terrain.",
     },
     "en": {
@@ -41,28 +54,43 @@ _L = {
         "civ": "Côte d'Ivoire",
         "ghana": "Ghana",
         "campaign": "campaign",
-        "none": "not announced",
+        "pending": "awaiting announcement",
         "disclaimer": "Official guaranteed price, distinct from the real terrain price.",
     },
 }
 
 
-def read_farmgate(session: Session, on_date: date) -> dict[str, dict | None]:
-    """Latest effective farmgate price per region on/before ``on_date``."""
-    out: dict[str, dict | None] = {}
+def read_farmgate(session: Session, on_date: date) -> dict[str, Any]:
+    """Price in force for the focus season, per region.
+
+    Shape: ``{"season": "2026/27"|None, "civ": {...}|None, "ghana": {...}|None}``.
+    """
+    season = session.execute(_FOCUS_SEASON).scalar()
+    out: dict[str, Any] = {"season": season}
     for region in _REGIONS:
-        row = session.execute(_QUERY, {"region": region, "on_date": on_date}).first()
         out[region] = (
-            {
-                "season_label": row[0],
-                "price_native": float(row[1]),
-                "currency": row[2],
-                "unit": row[3],
-            }
-            if row is not None
+            _read_region(session, region, season, on_date)
+            if season is not None
             else None
         )
     return out
+
+
+def _read_region(
+    session: Session, region: str, season: str, on_date: date
+) -> dict[str, Any] | None:
+    params = {"region": region, "season": season, "on_date": on_date}
+    row = session.execute(_IN_FORCE, params).first()
+    if row is None:
+        row = session.execute(_FORTHCOMING, params).first()
+    if row is None:
+        return None
+    return {
+        "season_label": row[0],
+        "price_native": float(row[1]),
+        "currency": row[2],
+        "unit": row[3],
+    }
 
 
 def format_farmgate_lines(
@@ -74,6 +102,7 @@ def format_farmgate_lines(
     if not farmgate or not any(farmgate.get(r) for r in _REGIONS):
         return []
 
+    season = farmgate.get("season")
     lines = [labels["header"]]
     for region in _REGIONS:
         entry = farmgate.get(region)
@@ -87,6 +116,7 @@ def format_farmgate_lines(
                 f"({labels['campaign']} {entry['season_label']})"
             )
         else:
-            lines.append(f"{region_label} : {labels['none']}")
+            suffix = f" ({labels['campaign']} {season})" if season else ""
+            lines.append(f"{region_label} : {labels['pending']}{suffix}")
     lines.append(labels["disclaimer"])
     return lines

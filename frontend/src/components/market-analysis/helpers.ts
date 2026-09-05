@@ -12,12 +12,9 @@ import type {
  */
 export function hasFarmgateData(farmgate?: FarmgatePriceResponse): boolean {
   if (!farmgate) return false;
-  return Boolean(
-    farmgate.civ?.principale ||
-      farmgate.civ?.intermediaire ||
-      farmgate.ghana?.principale ||
-      farmgate.ghana?.intermediaire
-  );
+  // A season with one origin still pending is data: the pending card is the
+  // point, not a placeholder for missing data.
+  return Boolean(farmgate.season);
 }
 
 export function hasReferenceData(

@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from scripts._shared.llm_client import LLMClient, LLMClientError
 from scripts.llm_utils import extract_json
 from scripts.podcast_audio.speech_text import normalize_for_speech, numeric_tokens
+from scripts.regime_brief.brief_generator import _fmt_signed_pct
 from scripts.regime_brief.db_reader import BriefData
 from scripts.regime_brief.narrator import Narrative
 
@@ -149,7 +150,13 @@ class PodcastScript:
 
 
 def source_figures(data: BriefData, narrative: Narrative) -> set[str]:
-    """Every figure the episode is allowed to speak."""
+    """Every figure the episode is allowed to speak.
+
+    Built from the values as the PROMPT renders them, never from the raw column.
+    ``ytd_score`` is 93.27783378996527 in the database and "+93.28%" everywhere a
+    human sees it; allowing only the raw form would reject an episode for
+    quoting the very figure it was handed.
+    """
     blob = " ".join(
         str(part)
         for part in (
@@ -166,7 +173,7 @@ def source_figures(data: BriefData, narrative: Narrative) -> set[str]:
             data.technicals.close_prev,
             data.technicals.volume,
             data.technicals.oi,
-            data.ytd_score,
+            _fmt_signed_pct(data.ytd_score),
         )
         if part is not None
     )

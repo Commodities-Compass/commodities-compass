@@ -15,6 +15,7 @@ reverse-engineer from.
 from __future__ import annotations
 
 from scripts.podcast_audio.speech_text import normalize_for_speech
+from scripts.regime_brief.brief_generator import _fmt_signed_pct
 from scripts.regime_brief.db_reader import BriefData
 from scripts.regime_brief.narrator import Narrative
 
@@ -54,6 +55,7 @@ MATIÈRE (n'utilise QUE ça — n'invente AUCUN chiffre) :
 [Lecture du jour] {conclusion}
 [Éco & presse] {eco}
 [Ce qui invaliderait] {confidence_rationale}
+[Performance YTD du signal] {ytd}
 [Photo technique] {technicals}
 [À surveiller] {watch}
 [Météo] {weather}
@@ -110,7 +112,10 @@ spécialiste, probabilité, score, z-score, régime détecté. Ne compte jamais 
 voix ni des indicateurs.
 
 LONGUEUR — c'est la contrainte la plus souvent ratée, relis-la avant de rendre :
-- 40 à 56 tours de parole au total.
+- 44 à 58 tours de parole au total.
+- AUCUN tour ne dépasse 220 caractères. Les vrais épisodes tiennent une moyenne
+  de 83 à 140 caractères par tour ; au-delà, on lit un rapport, on ne parle pas.
+  Coupe un long développement en deux tours avec une relance entre les deux.
 - Les tours d'analyse de Marc font 2 à 4 phrases pleines.
 - Les points 4, 5 et 6 (éditorial, éco-presse, météo) sont les plus développés :
   5 à 6 tours chacun, avec des relances courtes d'Ana entre les blocs.
@@ -148,6 +153,7 @@ MATERIAL (use ONLY this — invent NO figure):
 [Today's read] {conclusion}
 [Macro & press] {eco}
 [What would invalidate it] {confidence_rationale}
+[Signal YTD performance] {ytd}
 [Technical snapshot] {technicals}
 [Watch levels] {watch}
 [Weather] {weather}
@@ -201,7 +207,10 @@ NEVER SAY: artificial intelligence, AI, algorithm, model, specialist, \
 probability, score, z-score, detected regime. Never count votes or indicators.
 
 LENGTH — the constraint most often missed, re-read it before you answer:
-- 40 to 56 turns in total.
+- 44 to 58 turns in total.
+- NO turn goes past 220 characters. Real episodes average 83 to 140 characters a
+  turn; beyond that it reads as a report, not speech. Break a long development
+  into two turns with a pickup between them.
 - Marc's analytical turns run 2 to 4 full sentences.
 - Points 4, 5 and 6 (editorial, macro & press, weather) are the most developed:
   5 to 6 turns each, with short pushbacks from Ana between blocks.
@@ -240,4 +249,8 @@ def build_prompt(data: BriefData, narrative: Narrative) -> str:
         technicals=clean(data.technicals_snapshot or ""),
         watch=clean(" ".join(data.watch_lines)) or "(aucun)",
         weather=clean(data.weather_body or ""),
+        # Same formatter as the brief: the two must never quote a different
+        # figure for the same thing. Absent means absent — the running order
+        # says to skip the beat rather than invent one.
+        ytd=_fmt_signed_pct(data.ytd_score) or "(non disponible)",
     )

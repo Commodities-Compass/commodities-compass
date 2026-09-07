@@ -93,11 +93,11 @@ qualifie ("nettement au-dessus", "en repli marqué").
 
 Réponds UNIQUEMENT avec ce JSON :
 {{
-  "conclusion": "EXACTEMENT 6 lignes séparées par des retours à la ligne, \
-dans cet ordre strict. Ligne 1, préfixée d'un chevron '> ' : la lecture du jour \
-en une phrase, c'est le titre. Ligne 2 : ce que l'acheteur fait de cette \
-lecture. Lignes 3 et 4 : l'offre et le momentum du marché. Lignes 5 et 6 : la \
-configuration technique. Une idée par ligne, aucune ligne vide, aucune puce.",
+  "conclusion": ["EXACTEMENT 6 chaînes, une par ligne, dans cet ordre \
+strict. [0] préfixée d'un chevron '> ' : la lecture du jour en une phrase, \
+c'est le titre. [1] ce que l'acheteur fait de cette lecture. [2] et [3] \
+l'offre et le momentum du marché. [4] et [5] la configuration technique. \
+Une idée par chaîne, aucune chaîne vide, aucune puce."],
   "eco": "2 à 3 phrases sur le contexte macro et fondamental de la fenêtre.",
   "confidence_rationale": "1 à 2 phrases : ce qui pourrait faire mentir cette \
 lecture."
@@ -135,11 +135,11 @@ You are an analyst.
 
 Reply with THIS JSON ONLY:
 {{
-  "conclusion": "EXACTLY 6 newline-separated lines, in this strict order. \
-Line 1, prefixed with '> ': today's read in one sentence — this is the headline. \
-Line 2: what the buyer does with it. Lines 3 and 4: supply and market momentum. \
-Lines 5 and 6: the technical configuration. One idea per line, no blank line, \
-no bullet.",
+  "conclusion": ["EXACTLY 6 strings, one per line, in this strict order. \
+[0] prefixed with '> ': today's read in one sentence — this is the headline. \
+[1] what the buyer does with it. [2] and [3] supply and market momentum. \
+[4] and [5] the technical configuration. One idea per string, no empty \
+string, no bullet."],
   "eco": "2 to 3 sentences on the macro and fundamental backdrop of the window.",
   "confidence_rationale": "1 to 2 sentences: what could prove this read wrong."
 }}"""
@@ -258,6 +258,20 @@ def _assert_conclusion_shape(narrative: Narrative, language: str) -> None:
         )
 
 
+def _join_conclusion(raw: object) -> str:
+    """Normalise the model's conclusion into newline-separated lines.
+
+    Asked for as a JSON array since 2026-09-07 — a length the model can see
+    beats six escaped newlines inside a string, which is what it kept getting
+    wrong. A plain string is still accepted: the shape guard downstream is the
+    thing that decides, and it counts lines either way. Never ``str(list)``,
+    which would publish "['> …', …]" verbatim.
+    """
+    if isinstance(raw, (list, tuple)):
+        return "\n".join(str(item).strip() for item in raw if str(item).strip())
+    return str(raw or "").strip()
+
+
 def narrate(data: BriefData, client: LLMClient | None = None) -> Narrative:
     """Compose the narrative natively in ``data.language``."""
     client = client or LLMClient()
@@ -269,6 +283,7 @@ def narrate(data: BriefData, client: LLMClient | None = None) -> Narrative:
         raise NarrationError(f"Narration [{data.language}] failed: {exc}") from exc
 
     payload = extract_json(response.raw_text)
+    payload["conclusion"] = _join_conclusion(payload.get("conclusion"))
     missing = [
         field
         for field in ("conclusion", "eco", "confidence_rationale")

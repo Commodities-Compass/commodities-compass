@@ -24,8 +24,20 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_current_user
 from app.core.config import settings
 from app.main import app
-from app.models.pipeline import PlOfficialFarmgatePrice
-from app.services.farmgate_service import get_farmgate_prices
+from app.models.pipeline import (
+    PlContractDataDaily,
+    PlExternalIndicator,
+    PlOfficialFarmgatePrice,
+)
+from app.models.reference import RefCommodity, RefContract, RefExchange
+from app.services.farmgate_service import (
+    CIV_PASS_THROUGH,
+    GHANA_BAG_KG,
+    GHANA_GHS_PER_GBP,
+    GHANA_PASS_THROUGH,
+    get_farmgate_prices,
+)
+from app.services.macro_panel_service import EUR_XOF_PARITY
 from scripts import set_farmgate_price
 
 _FARMGATE_URL = f"{settings.API_V1_STR}/dashboard/farmgate-price"
@@ -138,6 +150,8 @@ async def test_service_empty_table(db_session: AsyncSession) -> None:
     assert out["season"] is None
     assert out["civ"] is None
     assert out["ghana"] is None
+    # No London close / FX seeded → the equivalent is absent, not zeroed.
+    assert out["equivalent"] is None
 
 
 @pytest.mark.integration
@@ -221,6 +235,81 @@ async def test_service_serves_the_sub_campaign_in_force(
     out = await get_farmgate_prices(db_session, date_cls(2026, 1, 15))
     assert out["civ"]["price_native"] == 2800.0
     assert out["civ"]["campaign_type"] == "principale"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_service_market_equivalent_from_london(
+    db_session: AsyncSession,
+) -> None:
+    """London close + GBP/EUR cross → an implied bord-champ per origin.
+
+    CIV is the validated pass-through (estimated=False) and carries the gap to
+    the official price; Ghana is flagged estimated with no official to compare.
+    """
+    exchange = RefExchange(code="ICE-EQ", name="ICE", timezone="UTC")
+    db_session.add(exchange)
+    await db_session.flush()
+    commodity = RefCommodity(code="COCOA-EQ", name="Cocoa", exchange_id=exchange.id)
+    db_session.add(commodity)
+    await db_session.flush()
+    contract = RefContract(
+        commodity_id=commodity.id,
+        code="CAU26",
+        contract_month="U26",
+        is_active=True,
+    )
+    db_session.add(contract)
+    await db_session.flush()
+
+    london = 5000.0
+    gbp_per_eur = 0.85
+    db_session.add_all(
+        [
+            PlContractDataDaily(
+                date=date_cls(2026, 9, 4),
+                contract_id=contract.id,
+                close=Decimal("5000"),
+                display_date=date_cls(2026, 9, 5),
+            ),
+            PlExternalIndicator(date=date_cls(2026, 9, 4), fx_gbpeur=Decimal("0.85")),
+            PlOfficialFarmgatePrice(
+                region="civ",
+                campaign_type="principale",
+                season_label="2026/27",
+                effective_date=date_cls(2026, 9, 1),
+                price_native=Decimal("2000"),
+                currency="XOF",
+                unit="per_kg",
+                source="ccc",
+            ),
+        ]
+    )
+    await db_session.flush()
+
+    out = await get_farmgate_prices(db_session, date_cls(2026, 9, 5))
+    eq = out["equivalent"]
+    assert eq is not None
+
+    xof_per_gbp = EUR_XOF_PARITY / gbp_per_eur
+    assert eq["london_gbp_per_tonne"] == 5000.0
+    assert eq["xof_per_gbp"] == round(xof_per_gbp, 2)
+
+    exp_civ = round(CIV_PASS_THROUGH * london * xof_per_gbp / 1000.0)
+    assert eq["civ"]["price_native"] == exp_civ
+    assert eq["civ"]["currency"] == "XOF"
+    assert eq["civ"]["unit"] == "per_kg"
+    assert eq["civ"]["estimated"] is False
+    assert eq["civ"]["delta_pct_vs_official"] == round((exp_civ - 2000) / 2000 * 100, 1)
+
+    exp_ghana = round(
+        GHANA_PASS_THROUGH * london * GHANA_GHS_PER_GBP * GHANA_BAG_KG / 1000.0
+    )
+    assert eq["ghana"]["price_native"] == exp_ghana
+    assert eq["ghana"]["currency"] == "GHS"
+    assert eq["ghana"]["unit"] == "per_bag_64kg"
+    assert eq["ghana"]["estimated"] is True
+    assert eq["ghana"]["delta_pct_vs_official"] is None  # no Ghana official yet
 
 
 # --------------------------------------------------------------------------- #

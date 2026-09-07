@@ -157,6 +157,23 @@ export interface FarmgatePriceEntry {
   announced_date: string | null;
 }
 
+export interface FarmgateEquivEntry {
+  price_native: number;
+  currency: string;
+  unit: string;
+  coefficient: number;
+  estimated: boolean;
+  /** Gap of the market-equivalent vs the official price, %. Null if no official. */
+  delta_pct_vs_official: number | null;
+}
+
+export interface FarmgateEquivalent {
+  london_gbp_per_tonne: number;
+  xof_per_gbp: number;
+  civ: FarmgateEquivEntry | null;
+  ghana: FarmgateEquivEntry | null;
+}
+
 export interface FarmgatePriceResponse {
   date: string;
   /** Season being published — the most recent one either origin announced. */
@@ -164,6 +181,8 @@ export interface FarmgatePriceResponse {
   /** Price in force for that season; null = that origin hasn't announced yet. */
   civ: FarmgatePriceEntry | null;
   ghana: FarmgatePriceEntry | null;
+  /** London-implied farmgate for the same regions; null if price/FX unavailable. */
+  equivalent: FarmgateEquivalent | null;
 }
 
 export interface PositioningResponse {

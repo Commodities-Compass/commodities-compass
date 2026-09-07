@@ -342,13 +342,38 @@ class FarmgatePriceEntry(BaseModel):
     announced_date: Optional[str] = Field(None, description="Date announced")
 
 
+class FarmgateEquivEntry(BaseModel):
+    """London-implied farmgate for one region (indicative; Ghana is estimated)."""
+
+    price_native: float = Field(..., description="Implied price, native currency")
+    currency: str = Field(..., description="XOF (CIV) | GHS (Ghana)")
+    unit: str = Field(..., description="per_kg | per_bag_64kg")
+    coefficient: float = Field(..., description="Producer pass-through applied")
+    estimated: bool = Field(
+        ..., description="True = non-validated approximation (Ghana)"
+    )
+    delta_pct_vs_official: Optional[float] = Field(
+        None, description="Gap vs the official price, % (null if no official yet)"
+    )
+
+
+class FarmgateEquivalent(BaseModel):
+    """Market-implied farmgate derived from the current London cocoa price."""
+
+    london_gbp_per_tonne: float = Field(..., description="London close used (GBP/t)")
+    xof_per_gbp: float = Field(..., description="XOF per 1 GBP applied")
+    civ: Optional[FarmgateEquivEntry] = None
+    ghana: Optional[FarmgateEquivEntry] = None
+
+
 class FarmgatePriceResponse(BaseModel):
     """Official guaranteed farmgate price — CIV (CCC) + Ghana (COCOBOD).
 
     The *official / guaranteed* price, distinct from the real terrain price.
     One price per region: the one in force for ``season``, the most recent
     season either origin has announced. A region is null when it has announced
-    nothing for that season — pending, not absent.
+    nothing for that season — pending, not absent. ``equivalent`` carries the
+    London-implied farmgate for the same regions (the gap is the coop signal).
     """
 
     date: str = Field(..., description="Requested date (YYYY-MM-DD)")
@@ -360,6 +385,9 @@ class FarmgatePriceResponse(BaseModel):
     )
     ghana: Optional[FarmgatePriceEntry] = Field(
         None, description="Price in force for the season (null = not yet announced)"
+    )
+    equivalent: Optional[FarmgateEquivalent] = Field(
+        None, description="London-implied farmgate (null if price/FX unavailable)"
     )
 
 

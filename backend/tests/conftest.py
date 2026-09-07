@@ -87,6 +87,21 @@ SELECT latest.* FROM (
 WHERE latest.active
 """
 
+# Roll-safe front-month OHLCV chain (Alembic-created in prod). Read by
+# export_service and now farmgate_service (London-implied equivalent). Provided
+# session-wide so any consumer sees it; the roll-specific tests still
+# CREATE OR REPLACE their own calendar variant transaction-locally — the column
+# signature is identical, so the replace is compatible.
+_CHAINED_VIEW_DDL = """
+CREATE OR REPLACE VIEW v_contract_data_chained AS
+SELECT DISTINCT ON (date)
+    date, display_date, contract_id,
+    open, high, low, close, volume, oi, implied_volatility
+FROM pl_contract_data_daily
+WHERE close IS NOT NULL
+ORDER BY date ASC, COALESCE(oi, 0) DESC, COALESCE(volume, 0) DESC, contract_id ASC
+"""
+
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_database():
@@ -96,15 +111,18 @@ def setup_database():
     with test_sync_engine.begin() as conn:
         conn.execute(text("DROP VIEW IF EXISTS v_algorithm_config_current CASCADE"))
         conn.execute(text("DROP VIEW IF EXISTS v_tenant_entitlement_current CASCADE"))
+        conn.execute(text("DROP VIEW IF EXISTS v_contract_data_chained CASCADE"))
     Base.metadata.drop_all(test_sync_engine)
     Base.metadata.create_all(test_sync_engine)
     with test_sync_engine.begin() as conn:
         conn.execute(text(_CONFIG_VIEW_DDL))
         conn.execute(text(_TENANT_VIEW_DDL))
+        conn.execute(text(_CHAINED_VIEW_DDL))
     yield
     with test_sync_engine.begin() as conn:
         conn.execute(text("DROP VIEW IF EXISTS v_algorithm_config_current CASCADE"))
         conn.execute(text("DROP VIEW IF EXISTS v_tenant_entitlement_current CASCADE"))
+        conn.execute(text("DROP VIEW IF EXISTS v_contract_data_chained CASCADE"))
     Base.metadata.drop_all(test_sync_engine)
 
 

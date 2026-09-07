@@ -601,3 +601,115 @@ class TestMachineryGuardScope:
                 Narrative(conclusion="Rien.", eco="", confidence_rationale="Un LLM."),
                 "fr",
             )
+
+
+class TestConclusionAsArray:
+    """The conclusion is asked for as a JSON array, not a newline-packed string.
+
+    `conclusion has N line(s), expected 6` was the dominant failure of the brief
+    (3 times in the 6 days to 2026-09-07, vs 1 for the machinery guard). The
+    prompt asked for "EXACTLY 6 newline-separated lines" *inside a JSON string* —
+    the one format an LLM respects worst, because escaping newlines inside a
+    string is unnatural and it falls back to a flowing paragraph. An array has a
+    length the model can see, and one the code can trust.
+    """
+
+    def _client(self, payload: str) -> MagicMock:
+        client = MagicMock()
+        client.call.return_value = MagicMock(
+            raw_text=payload, model="o4-mini", output_tokens=120
+        )
+        return client
+
+    def _six(self) -> list[str]:
+        return [
+            "> La lecture du jour tient.",
+            "L'acheteur couvre la fenêtre proche.",
+            "L'offre reste courte à l'origine.",
+            "Le momentum acheteur s'essouffle.",
+            "La configuration technique reste porteuse.",
+            "Le pivot hebdomadaire borne le repli.",
+        ]
+
+    def test_array_of_six_is_accepted_and_joined(self) -> None:
+        client = self._client(
+            json.dumps(
+                {
+                    "conclusion": self._six(),
+                    "eco": "Contexte porteur.",
+                    "confidence_rationale": "Un repli invaliderait.",
+                }
+            )
+        )
+
+        narrative = narrate(_data(), client)
+
+        assert narrative.conclusion.splitlines() == self._six()
+
+    def test_newline_string_still_accepted(self) -> None:
+        """Backward compatible: a well-formed string must keep working."""
+        client = self._client(
+            json.dumps(
+                {
+                    "conclusion": "\n".join(self._six()),
+                    "eco": "Contexte porteur.",
+                    "confidence_rationale": "Un repli invaliderait.",
+                }
+            )
+        )
+
+        narrative = narrate(_data(), client)
+
+        assert narrative.conclusion.splitlines() == self._six()
+
+    def test_array_of_wrong_length_is_refused(self) -> None:
+        client = self._client(
+            json.dumps(
+                {
+                    "conclusion": self._six()[:4],
+                    "eco": "Contexte.",
+                    "confidence_rationale": "Un repli.",
+                }
+            )
+        )
+
+        with pytest.raises(NarrationError, match="4 line"):
+            narrate(_data(), client)
+
+    def test_array_entries_are_stripped_and_blanks_dropped(self) -> None:
+        """A trailing blank entry must not read as a 7th line."""
+        client = self._client(
+            json.dumps(
+                {
+                    "conclusion": ["  " + ln + " " for ln in self._six()] + ["", "   "],
+                    "eco": "Contexte.",
+                    "confidence_rationale": "Un repli.",
+                }
+            )
+        )
+
+        narrative = narrate(_data(), client)
+
+        assert narrative.conclusion.splitlines() == self._six()
+
+    def test_array_is_not_stringified_as_a_python_list(self) -> None:
+        """str(list) would publish "['> ...', ...]" — the regression to avoid."""
+        client = self._client(
+            json.dumps(
+                {
+                    "conclusion": self._six(),
+                    "eco": "Contexte.",
+                    "confidence_rationale": "Un repli.",
+                }
+            )
+        )
+
+        narrative = narrate(_data(), client)
+
+        assert "['" not in narrative.conclusion
+        assert narrative.conclusion.startswith("> ")
+
+    def test_both_prompts_ask_for_an_array(self) -> None:
+        for language in ("fr", "en"):
+            prompt = _build_prompt(_data(language))
+            assert '"conclusion": [' in prompt, language

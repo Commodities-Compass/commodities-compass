@@ -15,7 +15,7 @@ import TechnicalsGauges from '@/components/market-analysis/technicals-gauges';
 import FxGauges from '@/components/market-analysis/fx-gauges';
 import PositioningGauges from '@/components/market-analysis/positioning-gauges';
 import ReferenceStrata from '@/components/market-analysis/reference-strata';
-import { hasReferenceData } from '@/components/market-analysis/helpers';
+import { hasFarmgateData } from '@/components/market-analysis/helpers';
 import EditorialAnalysis from '@/components/market-analysis/editorial-analysis';
 import { useEntitlements } from '@/contexts/EntitlementsContext';
 import { ENT } from '@/entitlements';
@@ -99,16 +99,16 @@ export default function MarketAnalysis({
     });
   }
 
-  // Reference stratum: farmgate (gated by feature:farmgate) + ENSO (macro).
-  // Pass only the entitled data so an un-entitled part is never rendered.
+  // Reference stratum: the guaranteed farmgate price (official) alongside the
+  // London-implied equivalent — both carried by the farmgate response, gated by
+  // feature:farmgate. (ENSO/Niño live in the weather brief, not here.)
   const fgGated = showFarmgate ? farmgate : undefined;
-  const macroRefGated = showMacro ? macro : undefined;
-  if (hasReferenceData(fgGated, macroRefGated)) {
+  if (hasFarmgateData(fgGated)) {
     panels.push({
       id: 'reference',
       name: t('market.grp_reference'),
       cadence: t('market.cad_seasonal'),
-      content: <ReferenceStrata farmgate={fgGated} macro={macroRefGated} />,
+      content: <ReferenceStrata farmgate={fgGated} />,
     });
   }
 

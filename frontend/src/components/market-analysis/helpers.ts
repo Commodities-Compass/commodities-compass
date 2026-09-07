@@ -1,29 +1,18 @@
-import type {
-  FarmgatePriceResponse,
-  IndicatorRange,
-  MacroPanelResponse,
-} from '@/types/dashboard';
+import type { FarmgatePriceResponse, IndicatorRange } from '@/types/dashboard';
 
 /**
  * Whether the Reference stratum has anything to show.
  *
  * Lives here rather than next to the component so the rail can decide whether
  * to offer the page at all — the folio must never advertise an empty stratum.
+ * The stratum now carries the farmgate block only (official price + the
+ * London-implied equivalent); ENSO/Niño moved to the weather brief.
  */
 export function hasFarmgateData(farmgate?: FarmgatePriceResponse): boolean {
   if (!farmgate) return false;
   // A season with one origin still pending is data: the pending card is the
   // point, not a placeholder for missing data.
   return Boolean(farmgate.season);
-}
-
-export function hasReferenceData(
-  farmgate?: FarmgatePriceResponse,
-  macro?: MacroPanelResponse
-): boolean {
-  const hasEnso =
-    macro?.enso_oni_month != null || macro?.enso_nino34_anomaly != null;
-  return hasFarmgateData(farmgate) || hasEnso;
 }
 
 export const INDICATOR_KEYS = [

@@ -206,8 +206,14 @@ def compute_ytd_score(
     """Year-to-date score of ONE algorithm's own decisions.
 
     Sync mirror of ``dashboard_service.calculate_ytd_performance``, reusing its
-    scoring function and horizon so the figure read aloud in the podcast is the
-    figure on screen — two implementations of a headline number would drift.
+    scoring function, horizon AND invalidation credit so the figure read aloud in
+    the podcast is the figure on screen — two implementations of a headline
+    number would drift.
+
+    They did. PR #110 gave the dashboard the intraday invalidation credit and
+    left this mirror behind: the screen showed 95.67 % while the podcast said
+    93.17 %, a 2.51 point gap a listener could hear against the page in front of
+    them. ``tests/test_ytd_mirror.py`` now fails if the two ever diverge again.
 
     Scoped to a single algorithm. The ensemble-era version COALESCEd across two
     hardcoded algorithm names, which is precisely the cross-algorithm borrowing
@@ -228,7 +234,11 @@ def compute_ytd_score(
     Returns None when nothing is scorable: 0.0 is a real score and would be
     read aloud as a flat year.
     """
-    from app.services.dashboard_service import _score_day, eval_horizon_for
+    from app.services.dashboard_service import (
+        INVALIDATION_CREDIT_SCORE,
+        _score_day,
+        eval_horizon_for,
+    )
 
     start = date(reference_date.year, 1, 1)
     rows = session.execute(
@@ -259,14 +269,36 @@ def compute_ytd_score(
     ).all()
 
     horizon = eval_horizon_for(algorithm_name)
+
+    # Sessions on which a DELIVERED intraday alert fired. Mirrors
+    # `_load_alerted_sessions`: only 'sent' counts — a user is credited for a
+    # warning they actually received.
+    alerted: set[date] = {
+        row[0]
+        for row in session.execute(
+            text(
+                "SELECT DISTINCT session_date FROM aud_alert_event "
+                "WHERE session_date >= :start AND session_date <= :end_date "
+                "AND delivery_status = 'sent'"
+            ),
+            {"start": start, "end_date": reference_date},
+        ).all()
+    }
+
     scores: list[float] = []
     for i in range(len(rows) - horizon):
         current, future = rows[i], rows[i + horizon]
         if not current[2] or current[1] is None or future[1] is None:
             continue
         score = _score_day(current[2], float(current[1]), float(future[1]))
-        if score is not None:
-            scores.append(score)
+        if score is None:
+            continue
+        # Invalidation credit, same off-by-one as the dashboard: the alert
+        # challenging decision[current] fires on the NEXT session, so the
+        # alerted date is rows[i + 1], not the horizon end.
+        if score < 0 and rows[i + 1][0] in alerted:
+            score = INVALIDATION_CREDIT_SCORE
+        scores.append(score)
 
     if not scores:
         logger.warning("No scorable session for the YTD up to %s", reference_date)

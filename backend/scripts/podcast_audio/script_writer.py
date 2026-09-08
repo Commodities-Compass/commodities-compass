@@ -231,6 +231,28 @@ def _assert_no_banned_vocabulary(script: PodcastScript) -> None:
         raise ScriptError(f"[{script.language}] names the machinery: {hits}")
 
 
+# A spoken figure may be a rounding of a real one — "plus de 61 000" for an open
+# interest of 61 133 is how a person says it, not an invention. Accepted only
+# when BOTH hold: the spoken form ends in at least two zeros (someone rounding,
+# not quoting), and it sits within this fraction of the source. 0.5 % keeps
+# price levels tight — a support of 4 160,67 spoken as "4 200" is 0.96 % off and
+# still refused — while admitting the volumes and open interest people round.
+_ROUNDING_TOLERANCE = 0.005
+_MIN_TRAILING_ZEROS = 2
+
+
+def _is_rounding_of(spoken: str, allowed: set[str]) -> bool:
+    """True when ``spoken`` is a plausible spoken rounding of an allowed figure."""
+    if len(spoken) - len(spoken.rstrip("0")) < _MIN_TRAILING_ZEROS:
+        return False
+    value = int(spoken)
+    for candidate in allowed:
+        source = int(candidate)
+        if source and abs(value - source) / source <= _ROUNDING_TOLERANCE:
+            return True
+    return False
+
+
 def _assert_no_invented_figures(script: PodcastScript, allowed: set[str]) -> None:
     """The only mechanical guarantee that the episode quotes the session.
 
@@ -240,6 +262,8 @@ def _assert_no_invented_figures(script: PodcastScript, allowed: set[str]) -> Non
     invented: dict[str, str] = {}
     for turn in script.turns:
         for token in numeric_tokens(turn.text) - allowed:
+            if _is_rounding_of(token, allowed):
+                continue
             invented.setdefault(token, turn.text)
     if invented:
         detail = "; ".join(

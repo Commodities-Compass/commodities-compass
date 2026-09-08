@@ -464,3 +464,51 @@ class TestAcknowledgementTics:
             Turn("Marc", "À demain les COMPASTEURS !"),
         )
         validate(script(turns), make_data(), NARRATIVE)
+
+
+class TestSpokenRounding:
+    """ "plus de 61 000" for an open interest of 61 133 is speech, not invention.
+
+    Cost a real episode on 2026-09-08. Forbidding it in the prompt was tried
+    first, after the same thing happened with 23 806 spoken as "23 800", and the
+    model did not hold the instruction. The gate now admits a bounded rounding
+    instead — and still refuses a figure that is merely nearby.
+    """
+
+    def _validate(self, spoken: str):
+        turns = good_turns()[:-1] + (
+            Turn("Marc", f"{spoken} À demain les COMPASTEURS !"),
+        )
+        validate(script(turns), make_data(), NARRATIVE)
+
+    def test_a_rounded_open_interest_is_accepted(self):
+        # make_data() carries oi=36333; "plus de 36 300" is how it is said.
+        self._validate("Plus de 36 300 positions ouvertes.")
+
+    def test_an_exact_quote_is_of_course_accepted(self):
+        self._validate("36333 positions ouvertes.")
+
+    def test_a_figure_near_nothing_in_the_session_is_refused(self):
+        # 4 100 is more than 1 % from every figure the session carries.
+        with pytest.raises(ScriptError, match="absent from the session data"):
+            self._validate("Le support est à 4 100.")
+
+    def test_the_gate_checks_existence_not_meaning(self):
+        """A known limit, worth stating rather than discovering later.
+
+        "4 200" is accepted because 4 201 — the previous close — is in the
+        session, even if the sentence attaches it to the support. The gate
+        answers "was this figure invented", never "is it the right figure for
+        this concept". Only a human reading the script catches the latter.
+        """
+        self._validate("Autour de 4 200 sur la séance précédente.")
+
+    def test_an_invented_figure_is_still_refused(self):
+        with pytest.raises(ScriptError, match="absent from the session data"):
+            self._validate("La clôture était à 9999.")
+
+    def test_a_precise_looking_figure_is_not_treated_as_a_rounding(self):
+        # No trailing zeros means the speaker is quoting, not rounding: it must
+        # match something exactly.
+        with pytest.raises(ScriptError, match="absent from the session data"):
+            self._validate("Positions ouvertes à 36 341.")

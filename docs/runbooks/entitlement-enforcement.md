@@ -25,15 +25,48 @@ Order is therefore always: Auth0 user exists → you copy their `sub` → you pr
 
 ## 2. Onboarding a new client
 
+### Step 0 — point the CLI at production
+
+**This is the trap that costs the most.** Every command below writes through
+`DATABASE_SYNC_URL`. Unset, it defaults to nothing; set from your local `.env`, it provisions
+*your laptop* and the client still sees a blank dashboard. Nothing warns you — the commands
+succeed.
+
+```bash
+./.local/db-prod.sh up          # ephemeral bastion + IAP tunnel on :5434
+                                # `resource_availability` = europe-west9 is full right now;
+                                # simply run it again, it walks the zones a→b→c
+
+cd backend
+eval "$(grep -E '^(DB_NAME|DB_PASSWORD|DB_USER|DB_PORT_LOCAL)=' ../.local/db-prod.sh)"
+export DATABASE_SYNC_URL="postgresql://${DB_USER}:${DB_PASSWORD}@127.0.0.1:${DB_PORT_LOCAL}/${DB_NAME}"
+
+export ENVIRONMENT=development  # otherwise a local run ships events to Sentry
+                                # tagged environment=production
+```
+
+Confirm you are where you think you are before writing anything:
+
+```bash
+./.local/db-prod.sh exec "SELECT current_database(), count(*) FROM tenant_account"
+```
+
+### Steps 1-4 — access
+
 ```bash
 # 1. The Auth0 identity must already exist.
 #    Auth0 Dashboard → User Management → Users → copy the `user_id` column
 #    (e.g. auth0|68f3c…, google-oauth2|1234…).
+#    There is NO Auth0 Management API in this codebase — the sub is copied by hand.
+#    A Workspace *group* address (contact@, privacy@) cannot authenticate: it receives
+#    mail, it has no login. The seat needs a real user.
 
 # 2. Create the account and expand its tier into per-key grants.
+#    --dry-run first: it prints the exact grant list without writing.
+poetry run create-tenant --code acme --name "Acme SA" --tier export_pro --dry-run
 poetry run create-tenant --code acme --name "Acme SA" --tier export_pro
 
-# 3. Attach the seat.
+# 3. Attach the seat. One sub, one account — `uq_tenant_user_auth0_sub` is global.
 poetry run link-seat --account acme --auth0-sub "auth0|68f3c…" --email ops@acme.com
 
 # 4. (WatchAI benchmark only) give the account its exporter identity.
@@ -70,14 +103,41 @@ internal accounts also sit at `('manual', NULL)`, so without it a `BILLING_ENFOR
 blank every staff login at once.
 
 ```bash
-# 5. Mint the Checkout link and open the subscription in `incomplete`.
-poetry run create-checkout-link --account acme \
-    --price price_1UBcCmPXtvTEVYwgPzZ7sZNx --amount-cents 152449   # export_pro
+# 5. The key MUST be the live one. A sandbox key in your .env silently mints a
+#    sandbox link: the client sees a Checkout page, pays nothing, and no webhook
+#    ever reaches production.
+export STRIPE_SECRET_KEY=$(gcloud secrets versions access latest \
+    --secret=STRIPE_SECRET_KEY --project=cacaooo)
+[[ $STRIPE_SECRET_KEY == sk_live_* ]] && echo "clé live OK" || echo "PAS une clé live — stop"
 
-# 6. Send the URL. The client enters their card; Stripe fires
-#    checkout.session.completed; the webhook flips the row to `active`.
+# 6. Mint the link. --frontend-url is where the CLIENT lands after paying:
+#    without it the command refuses, because your local CORS origin is
+#    http://localhost:3000 and that is where a paying client would be sent.
+poetry run create-checkout-link --account acme \
+    --price price_1UBcCmPXtvTEVYwgPzZ7sZNx --amount-cents 152449 \
+    --frontend-url https://app.com-compass.com --dry-run
+poetry run create-checkout-link --account acme \
+    --price price_1UBcCmPXtvTEVYwgPzZ7sZNx --amount-cents 152449 \
+    --frontend-url https://app.com-compass.com
+
+# 7. Send the URL (email template: docs/runbooks/client-onboarding-emails.md).
+#    The session expires after 24h — re-run step 6 to mint a fresh one.
+#    Expect a 3DS challenge: the card capture requests it deliberately.
 poetry run billing-status --account acme
+
+# 8. Close the tunnel and DELETE the bastion VM. It is not free and not managed.
+cd .. && ./.local/db-prod.sh down
 ```
+
+**After the client pays, check four things** — in this order, because each one
+narrows where a problem is:
+
+| where | expected |
+|---|---|
+| Stripe → Developers → Webhooks → the endpoint | `checkout.session.completed` **and** `invoice.paid`, both `200` |
+| Stripe → Subscriptions | `active`, a payment method saved |
+| `poetry run billing-status --account acme` | `active`, `provider_customer_id` + `provider_subscription_id` filled, invoice mirrored |
+| the client logs in | the sections their tier grants, and only those |
 
 Live price ids — the authority is
 [billing-and-collection.md §8 bis](../architecture/billing-and-collection.md#8-bis-the-live-catalogue),

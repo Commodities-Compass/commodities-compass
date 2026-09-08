@@ -325,6 +325,31 @@ Coops remain genuinely unknown — but that is a commercial question answered wh
 
 Roughly 80% of Part 1 is invariant to any of this (model, gate, webhook, `manual` path).
 
+### 13 bis. What the live test actually found (2026-09-08)
+
+A full end-to-end pass in **live** mode — real company card, 1,00 € disposable price, then cancel + refund. It did what §13 could not: it exercised the paths no unit test reaches. Two of them were broken, and both were invisible to a green suite.
+
+**The first-payment race — the serious one.** Stripe creates the customer, the subscription and the invoice **before** it completes the Checkout session. Only `checkout.session.completed` carries `client_reference_id`, so it was the only event able to bind a Stripe customer to an account. Everything delivered ahead of it resolved to no account and was dropped, cleanly, in a `200`:
+
+```
+10:24:33.453  invoice.payment_failed         → "unknown customer cus_… — ignored"
+10:28:12.054  customer.subscription.updated  → "unknown customer — ignored"
+10:28:12.142  invoice.paid                   → "unknown customer — ignored"
+10:28:12.956  checkout.session.completed     → applied
+```
+
+So **the first invoice of every client was never mirrored** (`tenant_billing_invoice` stayed empty, and the underpayment check with it), and **a failed first attempt never set `past_due`** — which happened for real here, four minutes before the successful retry. The end state was correct only because `checkout.session.completed` landed last; Stripe guarantees no order.
+
+Fixed by binding the customer at mint time: `create_checkout_session` now creates the Stripe customer itself, returns it in a `CheckoutHandle`, and `create-checkout-link` writes `provider_customer_id` on the `incomplete` row before the client ever pays. The ordering dependency is removed rather than bet on.
+
+**The redirect.** `success_url` was built from `settings.frontend_url`, i.e. from the CORS origins of *the machine minting the link*. Run from a laptop against prod — the documented procedure — it sent a paying client to `http://localhost:3000`. The charge succeeds and looks like it failed, so the client retries. Now `resolve_return_base()` refuses any local host and `--frontend-url` states the client's URL explicitly. No hardcoded production default: that is the `BRIEF_DEFAULT_VERSION` failure mode.
+
+**Why the suite missed both.** `test_invoice_paid_activates_and_records_the_rail` seeds `provider_customer_id` *before* delivering the event — it asserts the happy path of an already-known customer, which is exactly the state a first payment is not in. Same family as [[timeseries-uniqueness]]: a fixture that pre-establishes the condition under test cannot fail. `tests/test_billing_checkout.py` now delivers `invoice.paid` first, in production's order.
+
+**What the test did confirm**: Checkout + 3DS + mandate, signature verification, `aud_billing_event` archival, `customer.subscription.deleted` → `canceled` (its first real execution), the `coop_premium` dashboard gating, and full refund. Cost: 0,28 € — the processing fee is **not** returned on a refund (charge fee 0,28 €, refund fee 0,00 €, net −1,00 €). At the real 762,25 € tariff the same proof would have cost ~11,70 €.
+
+Two residues that cannot be undone: the invoice `XBTDW5MH-0001` stays in the books and consumed the first number of the sequence, and the Auth0 sub stays bound to the deactivated test account (`uq_tenant_user_auth0_sub` ignores `is_active`).
+
 ### 14. If we open to consumers (B2C) later
 
 Not planned, but cheap to keep possible. What would return: 14-day withdrawal, electronic cancellation, renewal notice, TTC public pricing, and VAT at the consumer's country rate via the OSS one-stop shop — so Stripe Tax, deliberately left off today.
@@ -356,22 +381,28 @@ Not planned, but cheap to keep possible. What would return: 14-day withdrawal, e
 - [x] `app/core/config.py` — `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `BILLING_ENFORCED`
 - [x] `app/schemas/auth.py` — `billing_status` on `UserResponse`
 - [x] CLI (`scripts/billing_admin.py`): `billing-status`, `mark-paid`, `create-checkout-link`
-- [x] `cc-billing-watchdog` job (`scripts/billing_watchdog/`) + `deploy.yml` entry — **scheduler still TODO** (`infra/terraform/scheduler.tf`, suggested `0 15 * * 1-5`); until then the job exists but never fires
+- [x] `cc-billing-watchdog` job (`scripts/billing_watchdog/`) + `deploy.yml` entry + scheduler (`0 15 * * *`, **daily** — a weekday cron would drop every Friday-to-Sunday failure under the job's 26h look-back)
 
 **Frontend**
 - [x] `components/billing-banner.tsx` (+ 9 tests, FR/EN copy)
 - [x] `billingStatus` through `EntitlementsContext`
 - [x] Mount the banner in `dashboard-layout.tsx`
 
-**Ops** — all of this is Hedi's, and none of it blocks the code
-- [ ] Stripe account (French entity) — **not created yet**
-- [ ] `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` in Secret Manager + `deploy.yml` (backend service only)
-- [ ] 7 Products/Prices in EUR
-- [ ] Customer Portal configured (card update + invoice history)
-- [ ] Smart Retries + dunning emails configured; reminders **off** for the institutional segment
-- [ ] Cloud Scheduler entry for `cc-billing-watchdog` in `infra/terraform/scheduler.tf` (suggested `0 15 * * 1-5`, before the evening pipeline)
+**Ops** — done 2026-09-03 → 09-08
+- [x] Stripe account (French entity), verified — `charges_enabled`, `payouts_enabled`
+- [x] `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` in Secret Manager + `deploy.yml` (backend service; the live key reaches the watchdog job only, via `EXTRA_SECRETS`)
+- [x] Live webhook endpoint on `api.com-compass.com`, API version `2026-07-29.dahlia`, the 5 handled events
+- [x] Products/Prices in EUR — **4 of 7** (§8 bis); `export_premium`, `signal_plus`, `origin_desk` are wire-only until they get one
+- [x] Customer Portal configured — card update + invoice history on, **subscription switching off** (a client must not self-downgrade out of the 12-month commitment), CGV + privacy URLs set
+- [x] Dunning / end-of-retries behaviour set in the Dashboard — it is what makes `customer.subscription.updated` fire with `status=unpaid`, i.e. the whole suspension path
+- [x] Cloud Scheduler entries for `cc-billing-watchdog` and `cc-billing-purge` (`terraform apply` done — both `ENABLED`)
 
-**Public site — the real activation blocker.** Stripe reviews it manually, and per their own guide this stops more activations than the Kbis does. The landing (`landing/`, Astro FR+EN) is live and has a contact section, but lacks: mentions légales, CGV, politique de confidentialité, and a page stating the billing model (monthly recurring EUR, price on quote, how to cancel). Note that most of the French *consumer* obligations Stripe's guide lists — 14-day withdrawal, three-click cancellation, tacit renewal, OSS VAT — do **not** apply to B2B sales to non-EU clients. The three legal pages are owed anyway (LCEN, GDPR, art. L441-1 Code de commerce); Stripe only forces the timing. Have a lawyer review before publishing.
+**Still open**
+- [ ] `BILLING_ENFORCED` is `false`. Flip is one place — the **GitHub repo variable** read by `deploy.yml`, never the Cloud Run service env (the trap `ENTITLEMENTS_ENFORCED` fell into).
+- [ ] `subscription_cancel` in the portal is `at_period_end`, which on a **monthly** price means end of month — while CGV art. 7.3 targets the end of the 12-month period and art. 7.5 leaves the professional client liable for the balance. Stripe has no minimum-term notion on a monthly price, so today the portal grants an exit the contract does not. Commercial arbitrage, not a code fix.
+- [ ] The second month of the first real client — the MIT question of §13, still the only untestable unknown.
+
+**Public site.** Done: ten legal pages (FR+EN) published on the landing since 2026-08-31 — mentions légales, CGV, politique de confidentialité, tarifs et conditions, méthodologie et transparence — plus the published phone number and the MAR art. 3 indicator distribution. Note that most of the French *consumer* obligations Stripe's guide lists — 14-day withdrawal, three-click cancellation, tacit renewal, OSS VAT — do **not** apply to B2B sales to non-EU clients.
 
 ---
 

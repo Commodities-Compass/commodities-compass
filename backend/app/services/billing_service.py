@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -99,6 +100,18 @@ def _client() -> Any:
 # --------------------------------------------------------------------------- #
 # Outbound — the Stripe-hosted surfaces
 # --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class CheckoutHandle:
+    """A minted Checkout link and the customer it is bound to.
+
+    The customer id is returned, not merely used, because the caller MUST
+    persist it before the client pays. See `create_checkout_session`.
+    """
+
+    url: str
+    customer_id: str
+
+
 async def create_checkout_session(
     *,
     account_code: str,
@@ -106,7 +119,7 @@ async def create_checkout_session(
     success_url: str,
     cancel_url: str,
     customer_id: str | None = None,
-) -> str:
+) -> CheckoutHandle:
     """Return a hosted Checkout URL that captures a card and starts the sub.
 
     `subscription` mode collects the card AND the mandate authorising later
@@ -115,25 +128,42 @@ async def create_checkout_session(
     3DS is requested on the save even though the transaction is out of SCA
     scope (EEA acquirer + non-EEA issuer = one-leg-out): it shifts chargeback
     liability and strengthens the mandate. On the save, not on every charge.
+
+    **The customer is created HERE, before the link exists, and returned so the
+    caller can bind it to the account immediately.** Letting Stripe mint it
+    implicitly during Checkout loses the first payment's events: Stripe creates
+    the customer, the subscription and the invoice *before* completing the
+    session, and only `checkout.session.completed` carries
+    `client_reference_id`. Anything delivered ahead of it resolves to no
+    account and is dropped. Observed in production on 2026-09-08 — the first
+    invoice was never mirrored and a failed first attempt never marked the
+    account `past_due`. Binding at mint time removes the ordering dependency
+    entirely rather than betting on Stripe's delivery order.
     """
     api = _client()
 
-    def _create() -> Any:
-        return api.checkout.Session.create(
+    def _create() -> CheckoutHandle:
+        # Reuse when the account already has one: a second customer would mean
+        # two payment methods and two invoice histories for one client, and an
+        # `_account_by_customer` lookup that resolves for only one of them.
+        cid = customer_id or str(
+            api.Customer.create(metadata={"account_code": account_code}).id
+        )
+        session = api.checkout.Session.create(
             mode="subscription",
             line_items=[{"price": price_id, "quantity": 1}],
             # How the webhook finds the account without trusting client input.
             client_reference_id=account_code,
-            customer=customer_id,
+            customer=cid,
             success_url=success_url,
             cancel_url=cancel_url,
             payment_method_options={
                 "card": {"request_three_d_secure": "any"},
             },
         )
+        return CheckoutHandle(url=str(session.url), customer_id=cid)
 
-    session = await run_in_threadpool(_create)
-    return str(session.url)
+    return await run_in_threadpool(_create)
 
 
 async def create_portal_session(*, customer_id: str, return_url: str) -> str:

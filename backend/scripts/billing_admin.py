@@ -25,6 +25,7 @@ import sys
 import uuid
 from datetime import date, datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 from sqlalchemy import select, text
@@ -50,6 +51,40 @@ def _account(session, code: str) -> TenantAccount:
     if account is None:
         raise SystemExit(f"No tenant_account with code {code!r}.")
     return account
+
+
+#: Hosts that can only ever mean "the machine that typed the command".
+_LOCAL_HOSTS: frozenset[str] = frozenset({"localhost", "127.0.0.1", "::1", "[::1]"})
+
+
+class LocalReturnUrlError(SystemExit):
+    """The Checkout return URL points at the operator's machine — refuse."""
+
+
+def resolve_return_base(*, explicit: str | None, configured: str) -> str:
+    """Return the base URL Stripe sends the paying client back to.
+
+    ``settings.frontend_url`` derives from the CORS origins, which is right on
+    the deployed service and wrong everywhere else: this CLI is normally run
+    from a laptop against the production database, so it would bake
+    ``http://localhost:3000`` into a link a real client follows. On 2026-09-08
+    it did exactly that — the payment succeeded, the client landed on a refused
+    connection, and a successful charge looked like a failed one.
+
+    So this fails loud rather than guess. There is no default pointing at the
+    production URL either: a hardcoded fallback is the failure mode
+    ``BRIEF_DEFAULT_VERSION`` already documented — it survives a domain change
+    and nobody notices until a client cannot come back.
+    """
+    base = (explicit or configured).rstrip("/")
+    host = urlparse(base).hostname or ""
+    if host.lower() in _LOCAL_HOSTS:
+        raise LocalReturnUrlError(
+            f"Refusing to mint a Checkout link returning to {base!r}: that is "
+            f"this machine, not the client's. Pass --frontend-url "
+            f"https://app.com-compass.com (the URL the CLIENT uses)."
+        )
+    return base
 
 
 # --------------------------------------------------------------------------- #
@@ -214,6 +249,15 @@ def create_checkout_link() -> int:
         choices=sorted(CUSTOMER_TYPES),
         help="Legal regime at contract formation (default: business).",
     )
+    p.add_argument(
+        "--frontend-url",
+        default=None,
+        help=(
+            "Base URL the CLIENT is sent back to after paying, e.g. "
+            "https://app.com-compass.com. Defaults to the configured frontend "
+            "URL, which is only correct when running on the deployed service."
+        ),
+    )
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args()
 
@@ -222,39 +266,60 @@ def create_checkout_link() -> int:
     from app.core.config import settings
     from app.services import billing_service
 
+    # Resolved BEFORE any Stripe call: a refusal must cost nothing, and a link
+    # that strands the client is worse than no link at all.
+    base = resolve_return_base(
+        explicit=args.frontend_url, configured=settings.frontend_url
+    )
+
     with get_session() as session:
         account = _account(session, args.account)
+        # Reuse the Stripe customer this account already has, if any — a second
+        # one forks the client's payment methods and invoice history in two.
+        known_customer = session.execute(
+            text(
+                "SELECT provider_customer_id FROM tenant_billing_subscription "
+                "WHERE account_id = :aid AND active AND provider_customer_id "
+                "IS NOT NULL ORDER BY effective_from DESC LIMIT 1"
+            ),
+            {"aid": account.id},
+        ).scalar_one_or_none()
+
         logger.info(
-            "Checkout for %s tier=%s %d EUR-cents/%s regime=%s price=%s",
+            "Checkout for %s tier=%s %d EUR-cents/%s regime=%s price=%s return=%s",
             account.code,
             account.tier,
             args.amount_cents,
             args.interval,
             args.customer_type,
             args.price,
+            base,
         )
         if args.dry_run:
             logger.info("[DRY RUN] No Stripe call, no row written.")
             return 0
 
-        url = asyncio.run(
+        handle = asyncio.run(
             billing_service.create_checkout_session(
                 account_code=account.code,
                 price_id=args.price,
-                success_url=f"{settings.frontend_url}/dashboard?billing=ok",
-                cancel_url=f"{settings.frontend_url}/dashboard?billing=cancelled",
+                success_url=f"{base}/dashboard?billing=ok",
+                cancel_url=f"{base}/dashboard?billing=cancelled",
+                customer_id=known_customer,
             )
         )
 
-        # The row is created NOW, in `incomplete`, so the webhook has something
-        # to attach the Stripe ids to when checkout.session.completed arrives.
+        # The row is created NOW, in `incomplete`, carrying the customer id —
+        # so every webhook Stripe sends, including the ones that land before
+        # `checkout.session.completed`, resolves to this account.
         session.execute(
             text(
                 """
                 INSERT INTO tenant_billing_subscription
-                    (id, account_id, provider, tier, customer_type, currency,
-                     amount_cents, billing_interval, status, effective_from, active)
-                VALUES (:id, :aid, 'stripe', :tier, :ctype, 'EUR', :amt,
+                    (id, account_id, provider, provider_customer_id, tier,
+                     customer_type, currency, amount_cents, billing_interval,
+                     status, effective_from, active)
+                VALUES (:id, :aid, 'stripe', :cid, :tier, :ctype, 'EUR', :amt,
                         :itv, 'incomplete', CURRENT_DATE, true)
                 ON CONFLICT DO NOTHING
                 """
@@ -262,12 +327,23 @@ def create_checkout_link() -> int:
             {
                 "id": uuid.uuid4(),
                 "aid": account.id,
+                "cid": handle.customer_id,
                 "tier": account.tier,
                 "ctype": args.customer_type,
                 "amt": args.amount_cents,
                 "itv": args.interval,
             },
         )
+        # The INSERT above is a no-op when an active row already exists (a
+        # re-issued link, or a row written before this fix). Bind it anyway —
+        # leaving it NULL is what loses the events.
+        session.execute(
+            text(
+                "UPDATE tenant_billing_subscription SET provider_customer_id = :cid "
+                "WHERE account_id = :aid AND active AND provider_customer_id IS NULL"
+            ),
+            {"cid": handle.customer_id, "aid": account.id},
+        )
 
-    logger.info("Send this link to the client:\n\n  %s\n", url)
+    logger.info("Send this link to the client:\n\n  %s\n", handle.url)
     return 0

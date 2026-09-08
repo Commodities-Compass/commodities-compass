@@ -52,9 +52,22 @@ for an immediate effect.
 
 ### The billing half
 
-Provisioning grants access. It does **not** start an invoice. An account with no billing row is
-*unbilled*, not unpaid — `should_block_for_billing()` returns `False` on `status IS NULL` — so a
-client provisioned and forgotten has the full product and no charge. Nothing alerts on that.
+Provisioning grants access. It does **not** start an invoice — and a provisioned account is not in
+a neutral state while it waits for one.
+
+`tenant_account.billing_status` is `NOT NULL` with `server_default 'manual'`, so **a fresh account
+starts at `manual` with `paid_through` NULL — which under enforcement is DENIED** (`manual` is the
+wire path: it grants access only while `paid_through >= today`). Steps 5-6 below are therefore not
+optional bookkeeping, they are what opens the door. Verified in production on 2026-09-08:
+`billing-status` on a just-created account printed
+`access (if BILLING_ENFORCED): DENIED — paid_through missing or past`.
+
+The `status IS NULL` branch in `should_block_for_billing()` is unreachable from `resolve_principal`,
+which reads the column directly. Do not reason from it.
+
+`internal` is exempt by an explicit short-circuit (`tier != INTERNAL and _billing_blocks(...)`) —
+internal accounts also sit at `('manual', NULL)`, so without it a `BILLING_ENFORCED` flip would
+blank every staff login at once.
 
 ```bash
 # 5. Mint the Checkout link and open the subscription in `incomplete`.

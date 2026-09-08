@@ -21,7 +21,7 @@ Le service s'adresse aux professionnels de la filière cacao — exportateurs, c
 ## Comment il est facturé
 
 - **Abonnement récurrent**, facturé **mensuellement**, à échoir.
-- **En euros (EUR)**, hors taxes.
+- **En euros (EUR)**. Pour un client établi hors de l'Union européenne, le montant du devis est le montant prélevé.
 - Prélèvement ou paiement automatique sur le moyen de paiement enregistré dans l'espace client, à chaque échéance mensuelle, jusqu'à la résiliation.
 - **Durée d'engagement : 12 mois**, reconduite tacitement par périodes de 12 mois.
 
@@ -35,7 +35,11 @@ Pour obtenir un devis : contact@com-compass.com.
 
 ## Taxes
 
-Les prix sont exprimés hors taxes. **Toute taxe exigible dans le pays du client — notamment la taxe sur la valeur ajoutée locale — s'ajoute au prix et reste à sa charge.** Les prestations fournies à un client établi hors de l'Union européenne ne sont pas soumises à la taxe sur la valeur ajoutée française.
+Les prestations fournies à un client établi **hors de l'Union européenne** ne sont pas soumises à la taxe sur la valeur ajoutée française. Pour ces clients, **le montant indiqué au devis est le montant total facturé par Compass** : aucune taxe ne s'y ajoute de notre part.
+
+Les taxes éventuellement dues dans le pays du client au titre de l'acquisition de services auprès d'un prestataire étranger relèvent de ses propres obligations déclaratives. Elles ne sont ni collectées ni facturées par Compass.
+
+Pour un client établi dans l'Union européenne, les prix s'entendent hors taxes et la taxe applicable s'ajoute au prix.
 
 ## Révision des prix
 

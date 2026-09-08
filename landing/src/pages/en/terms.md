@@ -121,7 +121,7 @@ Any breach of this Article entitles Compass to suspend access on the conditions 
 
 ## 8. Price, invoicing and payment
 
-**8.1 Price.** Prices are set **by quotation**, according to the agreed scope, and are expressed **in euros**, **exclusive of tax**.
+**8.1 Price.** Prices are set **by quotation**, according to the agreed scope, and are expressed **in euros**. As services supplied to a Customer established outside the European Union are not subject to French value added tax, **the price stated in the Quotation is, for those Customers, the total amount invoiced by Compass**. Any tax due in the Customer's country falls within the Customer's own reporting obligations and is neither collected nor invoiced by Compass. For a Customer established within the European Union, prices are exclusive of tax.
 
 **8.2 Invoicing.** The Subscription is billed **monthly**, by direct debit or automatic payment from the payment method registered in the Customer Area, in advance.
 

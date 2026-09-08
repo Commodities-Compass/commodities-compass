@@ -119,3 +119,44 @@ class TestJudgeConfidenceNeverDefaultsSilently:
 
         with pytest.raises(ValueError):
             _as_float("not-a-number")
+
+
+class TestXhrBodyRaceIsNotAnError:
+    """Barchart polls constantly, so a response body can be gone before we read it.
+
+    `Response.json` then raises Playwright's own `Error`, which the narrow
+    `except (ValueError, KeyError, TypeError)` did not catch: it escaped the
+    listener, Playwright printed a traceback to stderr, and Sentry filed an
+    error for a run that succeeded through the documented HTML fallback
+    (COMMODITIES-COMPASS-58, seen 4 times on 2026-09-08).
+    """
+
+    def test_the_listener_swallows_a_vanished_body(self, caplog):
+        import logging
+
+        from playwright.sync_api import Error as PlaywrightError
+
+        from scripts.barchart_scraper.scraper import BarchartScraper
+
+        scraper = BarchartScraper()
+        captured: list = []
+
+        class _Response:
+            status = 200
+            url = "https://example.test/quotes/get"
+            headers = {"content-type": "application/json"}
+
+            def json(self):
+                raise PlaywrightError(
+                    "Response.json: Protocol error (Network.getResponseBody): "
+                    "No resource with given identifier found"
+                )
+
+        listener = scraper._build_xhr_listener(lambda body: body, captured)
+        with caplog.at_level(logging.WARNING):
+            listener(_Response())  # must not raise
+
+        assert captured == []
+        assert any("HTML fallback covers it" in r.message for r in caplog.records), (
+            "a lost body stays visible — it just must not read as a crash"
+        )

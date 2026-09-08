@@ -120,7 +120,7 @@ Tout manquement au présent article autorise Compass à suspendre l'accès dans 
 
 ## 8. Prix, facturation et paiement
 
-**8.1 Prix.** Les prix sont établis **sur devis**, en fonction du périmètre retenu, et exprimés **en euros**, **hors taxes**.
+**8.1 Prix.** Les prix sont établis **sur devis**, en fonction du périmètre retenu, et exprimés **en euros**. Les prestations fournies à un Client établi hors de l'Union européenne n'étant pas soumises à la taxe sur la valeur ajoutée française, **le prix du Devis est, pour ces Clients, le montant total facturé par Compass**. Les taxes éventuellement dues dans le pays du Client relèvent de ses propres obligations déclaratives et ne sont ni collectées ni facturées par Compass. Pour un Client établi dans l'Union européenne, les prix s'entendent hors taxes.
 
 **8.2 Facturation.** L'Abonnement est facturé **mensuellement**, par prélèvement ou paiement automatique sur le moyen de paiement enregistré dans l'Espace Client, à échoir.
 

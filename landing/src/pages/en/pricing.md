@@ -22,7 +22,7 @@ The service is intended for professionals in the cocoa supply chain — exporter
 ## How it is billed
 
 - **Recurring subscription**, billed **monthly**, in advance.
-- **In euros (EUR)**, excluding taxes.
+- **In euros (EUR)**. For a customer established outside the European Union, the amount quoted is the amount charged.
 - Automatic charge to the payment method registered in the customer area, at each monthly instalment, until termination.
 - **Commitment period: 12 months**, renewed by tacit agreement for successive 12-month periods.
 
@@ -36,7 +36,11 @@ To obtain a quotation: contact@com-compass.com.
 
 ## Taxes
 
-Prices are stated exclusive of tax. **Any tax due in the customer's country — in particular local value added tax — is added to the price and borne by the customer.** Services supplied to a customer established outside the European Union are not subject to French value added tax.
+Services supplied to a customer established **outside the European Union** are not subject to French value added tax. For those customers, **the amount stated in the quotation is the total amount invoiced by Compass**: no tax is added on our side.
+
+Any tax due in the customer's country in respect of the acquisition of services from a foreign supplier falls within the customer's own reporting obligations. It is neither collected nor invoiced by Compass.
+
+For a customer established within the European Union, prices are exclusive of tax and the applicable tax is added to the price.
 
 ## Price revision
 

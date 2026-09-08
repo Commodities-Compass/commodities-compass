@@ -37,16 +37,25 @@ the client pays → **email 3** only if a debit later fails.
 | `{lien portail}` | minted by hand, see email 3 |
 | `{date}` | the failed debit's date |
 
-### Two things to settle before the first send
+### The sender is `support@com-compass.com`
 
-1. **How the client obtains a first credential.** There is no Management API here: the Auth0
-   user is created by hand in the dashboard. Whether Auth0 then emails a "set your password"
-   invitation, or whether you send a password-change ticket, or whether the client signs in with
-   Google — that is an Auth0 tenant setting nobody has written down. Email 1 has a marked slot
-   for it. Fill it once, then it is constant.
-2. **The sender.** `contact@` for commercial, `support@` for support (CGV art. 5.3). Whichever
-   you choose must be a mailbox someone reads — a client replies to the address that wrote to
-   them, not to the one in the signature.
+All three go out from `support@`, which is the address CGV art. 5.3 already names as the support
+channel. A client replies to whatever wrote to them, so this is also where the answers land.
+
+⚠️ **One exception that is contractual, not stylistic.** CGV art. 7.3 says a termination may be
+notified "par tout écrit adressé à **contact@com-compass.com**". A client who terminates by
+replying to `support@` has still notified you — a written notice is valid wherever it lands — but
+the thirty-day clock starts on the date it was *sent*, not the date someone forwards it. So a
+termination arriving in `support@` must be acknowledged and moved the same day. Do not answer it
+with "please write to contact@": that is not a condition the contract imposes.
+
+### The one thing still to settle
+
+**How the client obtains a first credential.** There is no Management API here: the Auth0 user is
+created by hand in the dashboard. Whether Auth0 then emails a "set your password" invitation,
+whether you send a password-change ticket, or whether the client signs in with Google — that is an
+Auth0 tenant setting nobody has written down. Email 1 has a marked slot for it. Fill it once, then
+it is constant.
 
 ---
 
@@ -73,8 +82,7 @@ the client pays → **email 3** only if a debit later fails.
 > MONITOR et HEDGE, et nos déclarations d'intérêts sont publiés ici :
 > https://com-compass.com/methodologie/
 >
-> Une question sur le contenu : contact@com-compass.com. Un problème d'accès :
-> support@com-compass.com.
+> Pour toute question — contenu, accès, facturation — répondez simplement à ce message.
 >
 > Bien à vous,
 > {signature}
@@ -99,7 +107,7 @@ the client pays → **email 3** only if a debit later fails.
 > nor any guarantee of outcome. Our method, what OPEN, MONITOR and HEDGE mean, and our
 > declarations of interest are published here: https://com-compass.com/en/methodology/
 >
-> Questions on the content: contact@com-compass.com. Access problems: support@com-compass.com.
+> For anything at all — content, access, billing — simply reply to this message.
 >
 > Kind regards,
 > {signature}

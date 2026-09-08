@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Manual trigger, because a push event can be lost. On 2026-09-08 a GitHub
+  # incident swallowed the push for 7a7a9e7: the commit landed on main, no CI
+  # ran, and Deploy — which fires on `workflow_run` of CI — never fired either.
+  # main carried a fix that production did not have, silently. Without this,
+  # the only way to re-trigger is another commit.
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}

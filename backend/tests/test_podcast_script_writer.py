@@ -302,6 +302,46 @@ class TestTheMachineryStaysHidden:
         with pytest.raises(ScriptError, match="names the machinery"):
             validate(script(turns), make_data(), NARRATIVE)
 
+    @pytest.mark.parametrize(
+        "persona",
+        [
+            "l'algorithme Compass lit un marché sans direction",
+            "notre spécialiste cacao a tranché autrement",
+            "the Compass algorithm reads an established uptrend",
+            "our cocoa specialist decided otherwise",
+        ],
+    )
+    def test_accepts_the_two_named_personas(self, persona):
+        """The episode MUST be able to name the product's two passes.
+
+        The brief renders these personas deterministically and the podcast
+        speaks them. Both police the same banned-word list, so if this scan
+        refused what the brief emits, the episode would fail the job on every
+        session — a producer, so no degradation. The single source of truth is
+        scripts/_shared/personas.py; this test is the tripwire on that pairing.
+        """
+        turns = good_turns()[:-1] + (
+            Turn("Marc", f"{persona}. À demain les COMPASTEURS !"),
+        )
+        validate(script(turns), make_data(), NARRATIVE)
+
+    @pytest.mark.parametrize(
+        "bare",
+        [
+            "l'algorithme a tranché",
+            "le spécialiste a tranché",
+            "the algorithm decided",
+            "the macro specialist decided",
+        ],
+    )
+    def test_still_rejects_the_bare_mechanism_words(self, bare):
+        """Opening the personas must not open the words they are built from."""
+        turns = good_turns()[:-1] + (
+            Turn("Marc", f"{bare}. À demain les COMPASTEURS !"),
+        )
+        with pytest.raises(ScriptError, match="names the machinery"):
+            validate(script(turns), make_data(), NARRATIVE)
+
 
 class TestInventedFigures:
     def test_rejects_a_price_absent_from_the_session(self):

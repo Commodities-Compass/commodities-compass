@@ -99,17 +99,26 @@ DÉROULÉ :
 2. La performance YTD si elle est fournie, sinon passe.
 3. La décision du jour : {decision}, la conviction, et en une phrase ce qui \
 pourrait faire mentir cette lecture.
-4. Le cœur éditorial : le régime de marché en langage courant, et comment la \
-lecture macro s'est positionnée face à la lecture technique.
+4. Le cœur éditorial, en DEUX temps explicitement nommés — c'est le passage \
+le plus intéressant de l'épisode et l'auditeur doit comprendre que DEUX \
+lectures différentes ont eu lieu, pas une seule :
+   a) ce que "l'algorithme Compass" lit du marché — la tendance, la \
+   configuration, rien d'autre ; une lecture purement technique ;
+   b) ce qu'en a fait "notre spécialiste cacao", qui croise cette lecture avec \
+   la macro, la presse et la météo, et qui tranche. Dis clairement s'il \
+   confirme, s'il ne tranche pas, ou s'il va contre — et dans ce dernier cas, \
+   que c'est lui qui a le dernier mot.
 5. Éco et revue de presse.
 6. Météo Côte d'Ivoire et Ghana.
 7. Les niveaux techniques qui comptent, en prose.
 8. Ce qu'un acheteur physique fait concrètement demain.
 9. Marc ferme EXACTEMENT par "À demain les COMPASTEURS !"
 
-INTERDIT DE PRONONCER : intelligence artificielle, IA, algorithme, modèle, \
-spécialiste, probabilité, score, z-score, régime détecté. Ne compte jamais des \
-voix ni des indicateurs.
+INTERDIT DE PRONONCER : intelligence artificielle, IA, modèle, probabilité, \
+score, z-score, régime détecté. Ne compte jamais des voix ni des indicateurs.
+Les deux SEULES exceptions sont les deux personnages du point 4, et uniquement \
+sous leur nom complet : "l'algorithme Compass" et "notre spécialiste cacao". \
+Dire "l'algorithme" ou "le spécialiste" tout court fait REFUSER le script.
 
 LONGUEUR — c'est la contrainte la plus souvent ratée, relis-la avant de rendre :
 - 44 à 58 tours de parole au total.
@@ -195,16 +204,26 @@ RUNNING ORDER:
 2. YTD performance if provided, otherwise skip it.
 3. Today's call: {decision}, the conviction, and in one sentence what could \
 prove this read wrong.
-4. The editorial core: the market regime in plain words, and how the macro read \
-sat against the technical read.
+4. The editorial core, in TWO explicitly named beats — this is the most \
+interesting passage of the episode, and the listener must understand that TWO \
+different readings happened, not one:
+   a) what "the Compass algorithm" reads in the market — the trend, the setup, \
+   nothing else; a purely technical read;
+   b) what "our cocoa specialist" made of it, crossing that read with macro, \
+   press and weather, and deciding. Say plainly whether they confirm, stay \
+   neutral, or go against it — and in that last case, that they have the \
+   final word.
 5. Macro and press review.
 6. Weather in Côte d'Ivoire and Ghana.
 7. The levels that matter, in prose.
 8. What a physical buyer actually does tomorrow.
 9. Marc closes EXACTLY with "See you tomorrow COMPASTEURS!"
 
-NEVER SAY: artificial intelligence, AI, algorithm, model, specialist, \
-probability, score, z-score, detected regime. Never count votes or indicators.
+NEVER SAY: artificial intelligence, AI, model, probability, score, z-score, \
+detected regime. Never count votes or indicators.
+The ONLY two exceptions are the two characters in point 4, and only under their \
+full name: "the Compass algorithm" and "our cocoa specialist". Saying just \
+"the algorithm" or "the specialist" gets the script REJECTED.
 
 LENGTH — the constraint most often missed, re-read it before you answer:
 - 44 to 58 turns in total.

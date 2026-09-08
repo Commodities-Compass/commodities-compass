@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 
 import uuid
+from dataclasses import replace
 from datetime import date as date_cls
 from decimal import Decimal
 from unittest.mock import MagicMock
@@ -294,9 +295,11 @@ class TestRendering:
         """Section II is the only track-specific part, and it stays business-facing."""
         brief = render_brief(_data(), _narrative())
 
-        assert "Régime de marché identifié : tendance haussière établie" in brief
+        assert (
+            "L'algorithme Compass lit un marché en tendance haussière établie" in brief
+        )
         # CONTRADICT → the arbitration wording, never the raw stance token.
-        assert "s'oppose à la position technique" in brief
+        assert "Notre spécialiste cacao a tranché autrement" in brief
         assert "CONTRADICT" not in brief
         assert "bull" not in brief
 
@@ -318,8 +321,47 @@ class TestRendering:
 
         assert "II — EDITORIAL READ" in brief
         assert "III — ECO & PRESS REVIEW" in brief
-        assert "Market regime identified: established uptrend" in brief
+        assert "The Compass algorithm reads a market in established uptrend" in brief
+        assert "Our cocoa specialist decided otherwise" in brief
         assert "LECTURE ÉDITORIALE" not in brief
+
+    @pytest.mark.parametrize("language", ["fr", "en"])
+    @pytest.mark.parametrize(
+        ("stance", "expected_fr", "expected_en"),
+        [
+            ("CONFIRM", "arrive à la même conclusion", "reaches the same conclusion"),
+            ("CONTRADICT", "a tranché autrement", "decided otherwise"),
+            ("NEUTRAL", "ne voit rien qui contredise", "sees nothing that contradicts"),
+        ],
+    )
+    def test_editorial_read_names_both_voices_per_stance(
+        self, language: str, stance: str, expected_fr: str, expected_en: str
+    ) -> None:
+        """Two voices, three stances, three deterministic sentences.
+
+        Origin: the reader was never told that two readings happen — the
+        technical call (L1+L2) and the macro arbitration (L3, the judge). Both
+        rendered as one flat "la lecture macro …" line, so the most interesting
+        thing the product does each day was invisible. The wording is fixed
+        here, never generated: the published sentence must follow the REAL
+        stance, and a drifting LLM must not be able to claim agreement on a
+        session where the judge overruled the technical read.
+        """
+        base = _data(language)
+        data = replace(base, judge=replace(base.judge, stance=stance))
+        brief = render_brief(data, _narrative())
+
+        algorithm = (
+            "L'algorithme Compass" if language == "fr" else "The Compass algorithm"
+        )
+        specialist = (
+            "Notre spécialiste cacao" if language == "fr" else "Our cocoa specialist"
+        )
+        assert algorithm in brief
+        assert specialist in brief
+        assert (expected_fr if language == "fr" else expected_en) in brief
+        # The raw stance token is machinery — it never reaches the reader.
+        assert stance not in brief
 
 
 class TestLeakGuardBySource:

@@ -462,9 +462,9 @@ rate and shorter episodes. Still an order of magnitude under the alternatives:
 ElevenLabs ~$250-1 200, Gemini Notebook Enterprise ~$1 600 — and against a human
 doing it by hand every evening, it does not register.
 
-## 6.3 Deferred — make the two layers legible to the reader
+## 6.3 Make the two layers legible to the reader — SHIPPED 2026-09-09
 
-Decided 2026-08-26, **to do after P2**. The served narrative never says that two
+Decided 2026-08-26, built 2026-09-09. The served narrative never said that two
 readings happened. `pl_judge_shadow.judge_stance` already records which:
 
 | stance | n | same call | overridden |
@@ -479,11 +479,43 @@ side — and the reader is never told. On 2026-08-24, a `CONTRADICT` that turned
 HEDGE into MONITOR, the whole articulation renders as one flat line: *"La base
 technique HEDGE indique une approche de couverture."*
 
-The fix belongs in `regime_brief/narrator.py`, **not** in the podcast: the
-narrative feeds the dashboard *and* `script_writer`, so doing it in one place
-keeps them saying the same thing. Three stances, three deterministic shapes —
-"l'algorithme Compass" for the technical read, "notre spécialiste cacao" for the
-macro arbitration.
+Three stances, three deterministic shapes — "l'algorithme Compass" for the
+technical read, "notre spécialiste cacao" for the macro arbitration.
+
+### What shipped, and where it differs from the plan above
+
+The plan put the fix in `regime_brief/narrator.py`. It shipped in
+`brief_generator._render_editorial_section` instead — **deterministic rendering,
+not LLM generation**. The reason is the statistic this section is built on: on
+7 of 8 `CONTRADICT` sessions the arbitration REVERSES the technical call. If an
+LLM writes that sentence, nothing stops it claiming agreement on a session where
+the specialist overruled the algorithm — the one error that would matter, on the
+sessions that matter most. `_render_editorial_section` already branched on
+`judge.stance`; it now renders one fixed sentence per stance per language, and
+`test_editorial_read_names_both_voices_per_stance` pins the pairing.
+
+Consequence to know: `main.py` persists the **narrator's** prose to the served
+row (`write_narrative`) and uploads the **rendered** brief to Drive. So the two
+voices reach the Drive `.txt` and, through it, the podcast — **not the
+dashboard**. Closing that gap means either rendering the same block server-side
+for the dashboard, or letting the narrator write it under a stance constraint
+(back to the non-determinism above). Open, and Hedi's call.
+
+The podcast had to be opened in step: `script_writer._BANNED` hard-fails on
+"algorithme"/"spécialiste", and the episode is written FROM the brief — so
+leaving it closed would have failed the job on every session the moment the
+brief started naming the personas. Both sides now strip the same allow-list from
+`scripts/_shared/personas.py`, which exists solely so they cannot drift apart:
+if one side allowed a persona the other still banned, the producer would die.
+`test_accepts_the_two_named_personas` / `test_still_rejects_the_bare_mechanism_words`
+are the tripwire. The bare words stay banned on both sides — "notre spécialiste
+cacao a tranché" passes, "le spécialiste a tranché" does not.
+
+The narrator itself stays closed and keeps its ban: the personas are named by
+the deterministic renderer and spoken by the episode, never invented by an LLM.
+Its prompt lost the raw `{specialist}` token it used to dangle ("régime bull,
+spécialiste bull") — machinery the reader has no use for and a standing
+temptation to echo.
 
 This reverses part of the banned-vocabulary rule, deliberately: the ban targets
 **mechanics leakage** ("le spécialiste macro dit", "la probabilité est de",

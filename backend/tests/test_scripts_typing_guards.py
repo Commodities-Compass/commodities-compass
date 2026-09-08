@@ -134,7 +134,10 @@ class TestXhrBodyRaceIsNotAnError:
     def test_the_listener_swallows_a_vanished_body(self, caplog):
         import logging
 
+        from typing import cast
+
         from playwright.sync_api import Error as PlaywrightError
+        from playwright.sync_api import Response
 
         from scripts.barchart_scraper.scraper import BarchartScraper
 
@@ -154,7 +157,10 @@ class TestXhrBodyRaceIsNotAnError:
 
         listener = scraper._build_xhr_listener(lambda body: body, captured)
         with caplog.at_level(logging.WARNING):
-            listener(_Response())  # must not raise
+            # A stand-in for playwright's Response — only the three members the
+            # listener reads are needed, and the cast keeps the checker honest
+            # about that being deliberate.
+            listener(cast(Response, _Response()))  # must not raise
 
         assert captured == []
         assert any("HTML fallback covers it" in r.message for r in caplog.records), (

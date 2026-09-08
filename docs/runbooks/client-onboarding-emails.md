@@ -1,28 +1,26 @@
 # Client Onboarding — Email Templates
 
-Three emails, FR and EN. They are sent by hand: there is no transactional mailer in this
-codebase and no Auth0 Management API, so onboarding is a human sending three messages.
+Two emails, FR and EN. Sent by hand: there is no transactional mailer in this codebase and no
+Auth0 Management API, so onboarding is a human sending one message, then a second one only if a
+debit later fails.
 
 Companion to [entitlement-enforcement.md §2](./entitlement-enforcement.md#2-onboarding-a-new-client),
-which is the technical half. Order: provision → **email 1** (access) → **email 2** (payment) →
-the client pays → **email 3** only if a debit later fails.
+which is the technical half. Order: create the Auth0 user → provision the tenant → mint the
+Checkout link → **email 1** (welcome, credentials, payment) → **email 2** only if a debit fails.
+
+An HTML version of email 1, ready to paste into Gmail, is at
+[`client-welcome-email.html`](./client-welcome-email.html).
 
 ---
 
-## Rules that apply to all three
+## Rules
 
 - **Tone.** The product is an editorial briefing sold to trading desks and cooperatives. Sober,
-  short, no exclamation marks, no growth-marketing register. The email should read like the
-  brief does.
-- **Say the term once, in the payment email.** Twelve months initial, tacit renewal by
-  twelve-month periods, thirty days' notice (CGV art. 7.1-7.3). Burying it is what turns a
-  renewal into a dispute.
-- **Prices are quoted HT.** That is what `/tarifs/` and CGV art. 8.1 publish. Services supplied
-  to a client established outside the EU are not subject to French VAT; any tax due in the
-  client's country is on top and at their charge — say it in those words, they are the published
-  ones.
-- **Link, do not paste.** CGV, tariffs and methodology are pages, not attachments — a pasted
-  extract goes stale and an attachment is the version they will quote back at you.
+  short, no exclamation marks, no growth-marketing register. It should read like the brief does.
+- **One email, not two.** Access and payment arrive together: a client who receives credentials
+  and then waits for a payment link assumes something is missing.
+- **Link, do not paste.** CGV and tariffs are pages, not attachments — a pasted extract goes
+  stale and an attachment is the version they will quote back at you.
 - The no-`mailto:` rule from the landing page does **not** apply here: it exists to defeat
   harvesters crawling a public site, not to make a private email harder to answer.
 
@@ -34,13 +32,13 @@ the client pays → **email 3** only if a debit later fails.
 | `{offre}` | commercial name — Coop Essentiel, Coop Premium, Export Essentiel, Export Pro |
 | `{montant}` | monthly EUR figure from [billing-and-collection.md §8 bis](../architecture/billing-and-collection.md#8-bis-the-live-catalogue) |
 | `{lien}` | the Checkout URL from `create-checkout-link` — **expires after 24h** |
-| `{lien portail}` | minted by hand, see email 3 |
+| `{lien portail}` | minted by hand, see email 2 |
 | `{date}` | the failed debit's date |
 
 ### The sender is `support@com-compass.com`
 
-All three go out from `support@`, which is the address CGV art. 5.3 already names as the support
-channel. A client replies to whatever wrote to them, so this is also where the answers land.
+Both go out from `support@`, the address CGV art. 5.3 already names as the support channel. A
+client replies to whatever wrote to them, so this is also where the answers land.
 
 ⚠️ **One exception that is contractual, not stylistic.** CGV art. 7.3 says a termination may be
 notified "par tout écrit adressé à **contact@com-compass.com**". A client who terminates by
@@ -49,142 +47,116 @@ the thirty-day clock starts on the date it was *sent*, not the date someone forw
 termination arriving in `support@` must be acknowledged and moved the same day. Do not answer it
 with "please write to contact@": that is not a condition the contract imposes.
 
-### The one thing still to settle
+### Credentials — pick one mechanic and keep it
 
-**How the client obtains a first credential.** There is no Management API here: the Auth0 user is
-created by hand in the dashboard. Whether Auth0 then emails a "set your password" invitation,
-whether you send a password-change ticket, or whether the client signs in with Google — that is an
-Auth0 tenant setting nobody has written down. Email 1 has a marked slot for it. Fill it once, then
-it is constant.
+**A. A password we set, sent in the email.** What the templates below assume. Simple, works with
+no Auth0 configuration — and it puts a working credential in cleartext in a mailbox that keeps it
+forever, including the client's mail provider, their backups, and anyone later given access to
+that inbox. Mitigate by inviting the change on first sign-in, as the template does.
 
----
+**B. An Auth0 "set your password" link.** Create the user without a password and have Auth0 send
+the invitation, or send a password-change ticket from the dashboard. Nothing reusable transits by
+email, and the client chooses their own secret from the start. Costs one Auth0 tenant setting.
 
-## Email 1 — Access
+B is the better mechanic. A is what ships if nobody configures B. The template carries A with the
+line to swap marked, so switching later is one edit.
 
-**FR — objet : `Votre accès à Compass CC`**
+### ⚠️ TTC vs HT — unresolved contradiction
 
-> Bonjour {prénom},
->
-> Votre accès à Compass CC est ouvert.
->
-> **Se connecter** : https://app.com-compass.com
-> **Identifiant** : {email}
-> {⟨MÉCANIQUE DU MOT DE PASSE — à figer une fois pour toutes⟩}
->
-> L'édition du jour est publiée chaque soir pour la séance du lendemain : le signal de position,
-> la lecture de marché, la revue de presse, la météo des origines et le podcast quotidien. Votre
-> offre {offre} donne accès à {périmètre en une ligne}.
->
-> Deux points de méthode, que nous préférons dire d'emblée. Les lectures techniques que nous
-> publions sont des **recommandations d'investissement** au sens du règlement (UE) n° 596/2014 :
-> elles sont générales et strictement identiques pour tous les abonnés, et ne constituent ni un
-> conseil personnalisé ni une garantie de résultat. Notre méthode, ce que signifient OPEN,
-> MONITOR et HEDGE, et nos déclarations d'intérêts sont publiés ici :
-> https://com-compass.com/methodologie/
->
-> Pour toute question — contenu, accès, facturation — répondez simplement à ce message.
->
-> Bien à vous,
-> {signature}
+These templates say **TTC** (tax included), on instruction. The published pages say the opposite,
+twice:
 
-**EN — subject: `Your Compass CC access`**
+- `/tarifs/`: "En euros (EUR), **hors taxes**" and "Les prix sont exprimés hors taxes. **Toute
+  taxe exigible dans le pays du client — notamment la taxe sur la valeur ajoutée locale —
+  s'ajoute au prix et reste à sa charge.**"
+- CGV art. 8.1: "exprimés en euros, **hors taxes**".
 
-> Dear {first name},
->
-> Your Compass CC access is open.
->
-> **Sign in**: https://app.com-compass.com
-> **Username**: {email}
-> {⟨PASSWORD MECHANICS — settle this once⟩}
->
-> The daily edition is published each evening for the following session: the position signal,
-> the market read, the press review, origin weather and the daily podcast. Your {offre} plan
-> covers {scope in one line}.
->
-> Two points of method, which we would rather state up front. The technical readings we publish
-> are **investment recommendations** within the meaning of Regulation (EU) No 596/2014: they are
-> general and strictly identical for every subscriber, and constitute neither personalised advice
-> nor any guarantee of outcome. Our method, what OPEN, MONITOR and HEDGE mean, and our
-> declarations of interest are published here: https://com-compass.com/en/methodology/
->
-> For anything at all — content, access, billing — simply reply to this message.
->
-> Kind regards,
-> {signature}
+The second sentence is the binding one: it authorises invoicing *above* the advertised figure. So
+today a client can be sent an email saying TTC and read a contract saying HT-plus-local-tax. For
+the actual clientele it is moot — a B2B service supplied outside the EU is out of scope of French
+VAT (CGI art. 259-1), so HT and TTC name the same number — but it stops being moot for a French
+or EU client. **The pages need to be brought in line with the commercial intent; that is a lawyer
+question, not a code one.** Stripe itself is unaffected: `tax_behavior` has no effect while Stripe
+Tax is off, and it is `exclusive` on all four live prices — which is the safe setting if a French
+client ever appears.
 
 ---
 
-## Email 2 — Payment
+## Email 1 — Welcome, access and payment
 
-**FR — objet : `Compass CC — mise en place de votre abonnement`**
+**FR — objet : `Bienvenue sur Compass CC — votre accès et votre abonnement`**
 
 > Bonjour {prénom},
 >
-> Votre abonnement {offre} est prêt à être activé : **{montant} € HT par mois**.
+> Votre espace Compass CC est prêt. Voici de quoi vous connecter et activer votre abonnement.
 >
-> L'abonnement est souscrit pour une **durée initiale de douze mois**, reconduite tacitement par
-> périodes de douze mois, sauf résiliation notifiée au plus tard trente jours avant l'échéance
-> (articles 7.1 à 7.3 des conditions générales). Les prix sont exprimés hors taxes ; les
-> prestations fournies à un client établi hors de l'Union européenne ne sont pas soumises à la
-> TVA française, et toute taxe exigible dans votre pays s'ajoute au prix et reste à votre charge.
+> **Votre accès**
+> Adresse : https://app.com-compass.com
+> Identifiant : {email}
+> Mot de passe provisoire : `{mot de passe}`
 >
-> **Enregistrer votre moyen de paiement** :
+> Nous vous invitons à le remplacer dès votre première connexion.
+>
+> **Ce que vous y trouverez**
+> Chaque soir, l'édition du lendemain est publiée : le signal de position du jour, la lecture de
+> marché, la revue de presse, la météo des zones de production, et le podcast quotidien à écouter
+> en dix minutes. Votre offre {offre} donne accès à {périmètre en une ligne}.
+>
+> **Activer votre abonnement — {montant} € TTC par mois**
 > {lien}
 >
-> Cette page est hébergée par Stripe, notre prestataire d'encaissement : vos données de carte ne
+> La page est hébergée par Stripe, notre prestataire d'encaissement : vos données de carte ne
 > transitent à aucun moment par nos serveurs. Votre banque vous demandera probablement de
 > confirmer l'opération dans son application — c'est normal, nous le demandons volontairement.
+> Le lien reste valable vingt-quatre heures ; passé ce délai, répondez-nous et nous vous en
+> adressons un nouveau. Votre facture suit par e-mail après le premier prélèvement.
 >
-> Ce lien reste valable vingt-quatre heures. Passé ce délai, écrivez-nous et nous vous en
-> adressons un nouveau.
->
-> Vous recevrez votre facture par e-mail après le premier prélèvement.
->
-> Conditions générales : https://com-compass.com/cgv/
-> Tarifs et conditions : https://com-compass.com/tarifs/
+> Conditions générales : https://com-compass.com/cgv/ — Tarifs : https://com-compass.com/tarifs/
 >
 > Bien à vous,
 > {signature}
 
-**EN — subject: `Compass CC — setting up your subscription`**
+**EN — subject: `Welcome to Compass CC — your access and subscription`**
 
 > Dear {first name},
 >
-> Your {offre} subscription is ready to activate: **€{montant} per month, excluding tax**.
+> Your Compass CC workspace is ready. Here is how to sign in and activate your subscription.
 >
-> The subscription runs for an **initial term of twelve months**, renewed tacitly for successive
-> twelve-month periods unless notice is given at least thirty days before the term (articles 7.1
-> to 7.3 of the general terms). Prices are quoted excluding tax; services supplied to a client
-> established outside the European Union are not subject to French VAT, and any tax due in your
-> country is added to the price and borne by you.
+> **Your access**
+> Address: https://app.com-compass.com
+> Username: {email}
+> Temporary password: `{password}`
 >
-> **Register your payment method**:
+> We recommend replacing it on your first sign-in.
+>
+> **What you will find there**
+> Each evening, the following day's edition is published: the day's position signal, the market
+> read, the press review, the weather across the producing regions, and the daily podcast, ten
+> minutes long. Your {offre} plan covers {scope in one line}.
+>
+> **Activate your subscription — €{montant} per month, tax included**
 > {lien}
 >
 > The page is hosted by Stripe, our payment processor: your card details never pass through our
 > servers. Your bank will most likely ask you to confirm the operation in its app — that is
-> expected, we request it deliberately.
+> expected, we request it deliberately. The link is valid for twenty-four hours; after that,
+> reply to us and we will send a new one. Your invoice follows by email after the first debit.
 >
-> The link is valid for twenty-four hours. After that, write to us and we will send a new one.
->
-> Your invoice follows by email after the first debit.
->
-> General terms: https://com-compass.com/en/terms/
-> Pricing and terms: https://com-compass.com/en/pricing/
+> Terms: https://com-compass.com/en/terms/ — Pricing: https://com-compass.com/en/pricing/
 >
 > Kind regards,
 > {signature}
 
 ---
 
-## Email 3 — A debit failed
+## Email 2 — A debit failed
 
 Sent when `cc-billing-watchdog` reports a failure, or `billing-status` shows `past_due`.
-**Do not wait for the client to notice**: `past_due` deliberately keeps their access, so
-nothing on their side looks wrong until Stripe gives up two to three weeks later.
+**Do not wait for the client to notice**: `past_due` deliberately keeps their access, so nothing
+on their side looks wrong until Stripe gives up two to three weeks later.
 
-Mint the portal URL by hand — the client cannot reach it themselves unless the banner is
-showing (see the gap noted below):
+Mint the portal URL by hand — the client cannot reach it themselves unless the banner is showing
+(see the gap noted below):
 
 ```python
 # with STRIPE_SECRET_KEY set to the live key
@@ -253,5 +225,5 @@ A client in good standing therefore has no way to reach it: they cannot see thei
 cannot update a card before it expires, and cannot exercise art. 7.3 as the contract describes
 it. `POST /v1/billing/portal-session` exists and works — nothing links to it.
 
-Until that is fixed, email 3 has to carry a hand-minted URL, and any other portal request is
+Until that is fixed, email 2 has to carry a hand-minted URL, and any other portal request is
 answered by hand. It is a contractual gap, not only a UX one.

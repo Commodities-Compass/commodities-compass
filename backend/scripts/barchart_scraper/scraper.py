@@ -15,7 +15,9 @@ import re
 from datetime import datetime, timezone
 from typing import Any
 
-from playwright.sync_api import Browser, Page, Response, sync_playwright
+from playwright.sync_api import Browser
+from playwright.sync_api import Error as PlaywrightError
+from playwright.sync_api import Page, Response, sync_playwright
 
 from scripts.barchart_scraper.config import (
     BROWSER_TIMEOUT,
@@ -224,17 +226,12 @@ class BarchartScraper:
     # XHR interception
     # ------------------------------------------------------------------
 
-    def _navigate_and_capture(self, url: str, extractor) -> list:
-        """Navigate to URL, intercept JSON responses, apply extractor to each.
+    def _build_xhr_listener(self, extractor, captured: list):
+        """The response handler, lifted out of the closure so it can be tested.
 
-        Args:
-            url: Page URL to load.
-            extractor: Callable(json_body) → value | None.
-
-        Returns:
-            List of non-None extracted values.
+        Its tolerance of a vanished body is the behaviour that matters and
+        was invisible while it lived inside `_navigate_and_capture`.
         """
-        captured: list = []
 
         def on_response(response: Response):
             if response.status != 200:
@@ -250,6 +247,35 @@ class BarchartScraper:
                     captured.append(result)
             except (ValueError, KeyError, TypeError) as exc:
                 logger.debug("XHR extraction failed for %s: %s", response.url, exc)
+            except PlaywrightError as exc:
+                # The browser discards a response body once nothing references
+                # it, and Barchart polls constantly — by the time the listener
+                # reads it, `Network.getResponseBody` can already be gone. Not
+                # caught here it escapes the listener, Playwright prints a
+                # traceback to stderr, and Sentry files an error for a run that
+                # succeeded through the HTML fallback. Kept at WARNING rather
+                # than debug: losing an XHR body is worth seeing, a traceback
+                # for a successful scrape is not.
+                logger.warning(
+                    "XHR body unavailable for %s (%s) — HTML fallback covers it",
+                    response.url,
+                    exc,
+                )
+
+        return on_response
+
+    def _navigate_and_capture(self, url: str, extractor) -> list:
+        """Navigate to URL, intercept JSON responses, apply extractor to each.
+
+        Args:
+            url: Page URL to load.
+            extractor: Callable(json_body) → value | None.
+
+        Returns:
+            List of non-None extracted values.
+        """
+        captured: list = []
+        on_response = self._build_xhr_listener(extractor, captured)
 
         page = self._require_page()
         page.on("response", on_response)

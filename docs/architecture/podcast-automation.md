@@ -494,12 +494,19 @@ sessions that matter most. `_render_editorial_section` already branched on
 `judge.stance`; it now renders one fixed sentence per stance per language, and
 `test_editorial_read_names_both_voices_per_stance` pins the pairing.
 
-Consequence to know: `main.py` persists the **narrator's** prose to the served
-row (`write_narrative`) and uploads the **rendered** brief to Drive. So the two
-voices reach the Drive `.txt` and, through it, the podcast — **not the
-dashboard**. Closing that gap means either rendering the same block server-side
-for the dashboard, or letting the narrator write it under a stance constraint
-(back to the non-determinism above). Open, and Hedi's call.
+`main.py` persists the **narrator's** prose to the served row
+(`write_narrative`) and uploads the **rendered** brief to Drive. So the two
+voices reach the Drive `.txt` and, through it, the podcast — and not the
+dashboard.
+
+**That split is the intended product, decided by Hedi 2026-09-09, not a gap to
+close.** The dashboard publishes the **final decision** and only that: a reader
+scanning it wants the call, not the deliberation behind it. The podcast has room
+to carry both beats because it is narrated — and it costs nothing, since the
+articulation always ENDS on the specialist's arbitration, which IS the served
+decision (`judge.final_decision`). Listener and reader therefore cannot come
+away with different calls; one hears how it was reached, the other reads what it
+is. Do not "fix" this by pushing the two voices onto the dashboard.
 
 The podcast had to be opened in step: `script_writer._BANNED` hard-fails on
 "algorithme"/"spécialiste", and the episode is written FROM the brief — so

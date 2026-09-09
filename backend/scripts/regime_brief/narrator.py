@@ -66,9 +66,9 @@ DÉCISION DU JOUR — elle est arrêtée, tu ne la discutes pas, tu l'expliques 
 - Signal publié : {decision}
 - Conviction : {confidence}/5
 - Direction implicite : {direction}
-- Base technique : {regime_decision} (régime {regime}, spécialiste {specialist})
+- Base technique : {regime_decision} (marché en {regime})
 
-ÉLÉMENTS DU SPÉCIALISTE MACRO — ils te sont fournis EN ANGLAIS. Ne les traduis \
+ÉLÉMENTS D'ARBITRAGE MACRO — ils te sont fournis EN ANGLAIS. Ne les traduis \
 pas mot à mot : sers-t'en comme d'une note de travail et rédige en français \
 naturel, dans ta voix.
 - Dérive observée : {drift_summary}
@@ -111,9 +111,9 @@ TODAY'S CALL — it is settled. You explain it, you do not re-litigate it:
 - Published signal: {decision}
 - Conviction: {confidence}/5
 - Implied direction: {direction}
-- Technical base: {regime_decision} (regime {regime}, specialist {specialist})
+- Technical base: {regime_decision} (market in {regime})
 
-MACRO SPECIALIST INPUT — working notes, not copy. Rewrite in your own voice.
+MACRO ARBITRATION INPUT — working notes, not copy. Rewrite in your own voice.
 - Observed drift: {drift_summary}
 - Key risk: {key_risk}
 - What would invalidate the read: {disconfirming_case}
@@ -188,7 +188,6 @@ def _build_prompt(data: BriefData) -> str:
         direction=data.judge.direction,
         regime_decision=data.regime.decision,
         regime=data.regime.regime,
-        specialist=data.regime.specialist,
         drift_summary=data.judge.drift_summary or "(none)",
         key_risk=data.judge.key_risk or "(none)",
         disconfirming_case=data.judge.disconfirming_case or "(none)",

@@ -23,6 +23,7 @@ import statistics
 from dataclasses import dataclass
 
 from scripts._shared.llm_client import LLMClient, LLMClientError
+from scripts._shared.personas import strip_personas
 from scripts.llm_utils import extract_json
 from scripts.podcast_audio.speech_text import normalize_for_speech, numeric_tokens
 from scripts.regime_brief.brief_generator import _fmt_signed_pct
@@ -225,7 +226,11 @@ def _assert_decision(script: PodcastScript, decision: str, technical: str) -> No
 
 
 def _assert_no_banned_vocabulary(script: PodcastScript) -> None:
-    blob = " ".join(t.text for t in script.turns).lower()
+    # The two personas are the sanctioned way to name the product's two passes
+    # and are stripped before the scan — see scripts/_shared/personas.py. The
+    # bare words stay banned: "notre spécialiste cacao a tranché" passes, "le
+    # modèle dit" does not.
+    blob = strip_personas(" ".join(t.text for t in script.turns).lower())
     hits = [term for term in _BANNED if term in blob]
     if hits:
         raise ScriptError(f"[{script.language}] names the machinery: {hits}")

@@ -60,16 +60,15 @@ NEWS_SOURCES = [
         "url": "https://cocobod.gh/news",
         "selectors": ["article", "h2 a", "h3 a", "div.entry-content"],
     },
-    # Market/trade press — carries analyst revisions and positioning, which the
-    # origin-focused sources above structurally do not. The 2026-08-26/28 rally
-    # (StoneX surplus downgrade + record short covering) was reported here and
-    # nowhere else in our source set.
-    {
-        "name": "Barchart Cocoa",
-        "url": "https://www.barchart.com/futures/quotes/CCZ26/news",
-        "method": "httpx",
-        "theme": "marche",
-    },
+    # NOT Barchart. The intent — analyst revisions and fund positioning, which
+    # the origin-focused sources above structurally miss — is real and is what
+    # the 2026-08-26/28 blackout exposed. But its news page cannot be read from
+    # here: barchart.com has been behind AWS WAF since 2026-09-03, answering
+    # every httpx request with a 202 JS challenge no client can solve without a
+    # browser, and this image ships no Playwright (browser sources are skipped
+    # outright). The entry also pinned CCZ26 — the US contract, while we follow
+    # London CAZ26 — so it would have been the wrong book even if it loaded.
+    # The two Google News queries below cover the same ground and do work.
     # --- Chocolat / Consumer demand (httpx) ---
     {
         "name": "Confectionery News Cocoa",

@@ -18,10 +18,13 @@ import pytest
 
 from scripts._shared.llm_client import LLMClient
 from scripts.podcast_audio.script_writer import (
+    GUEST,
+    HOST,
     PodcastScript,
     ScriptError,
     Turn,
     assess_quality,
+    normalise,
     source_figures,
     validate,
     write_script,
@@ -82,6 +85,42 @@ NARRATIVE = Narrative(
 )
 
 
+# Short reactions the reference episodes are full of and ours are not. Kept
+# figure-free on purpose: a short turn that quotes a number trips the invented-
+# figure gate, and the prompt forbids it for the same reason.
+_REACTIONS = (
+    "Ah oui, quand même.",
+    "Donc l'offre ne suit pas.",
+    "Et côté acheteur ?",
+    "Ça, c'est nouveau.",
+    "Attends, ça change tout.",
+    "Et ça remonte à quand ?",
+    "C'est massif ouais.",
+    "Pas vraiment, non.",
+)
+
+
+def _with_reactions(turns: tuple[Turn, ...]) -> tuple[Turn, ...]:
+    """Interleave short reactions, keeping the jingles first and last.
+
+    The bare fixture sits at cv 0.50 with 16 % short turns — it clears our own
+    lenient gate but not the 0.62-0.98 the reference runs at, and the arithmetic
+    says why: cv 0.62 needs ~35 % short turns. A fixture called "balanced and
+    varied" has to actually be that, or it certifies the flatness we are trying
+    to measure our way out of.
+    """
+    out = [turns[0]]
+    reaction = 0
+    for i, turn in enumerate(turns[1:-1]):
+        out.append(turn)
+        if i % 2 == 1 and reaction < len(_REACTIONS):
+            speaker = HOST if turn.speaker == GUEST else GUEST
+            out.append(Turn(speaker, _REACTIONS[reaction]))
+            reaction += 1
+    out.append(turns[-1])
+    return tuple(out)
+
+
 def good_turns() -> tuple[Turn, ...]:
     """A full-length episode with the shape measured on the real thing.
 
@@ -91,7 +130,7 @@ def good_turns() -> tuple[Turn, ...]:
     host: she brings facts too, and either of them may ask. Every figure spoken
     here comes from ``make_data()``.
     """
-    return (
+    base = (
         Turn(
             "Ana",
             "Bonjour les COMPASTEURS ! Le signal Compass du jour sur le cacao Londres, horizon la prochaine séance. Et on démarre sur un MONITOR, conviction modérée.",
@@ -218,6 +257,7 @@ def good_turns() -> tuple[Turn, ...]:
         Turn("Ana", "On se retrouve demain pour voir si les arrivages ont bougé."),
         Turn("Marc", "À demain les COMPASTEURS !"),
     )
+    return _with_reactions(base)
 
 
 def script(turns=None, language="fr") -> PodcastScript:
@@ -341,6 +381,45 @@ class TestTheMachineryStaysHidden:
         )
         with pytest.raises(ScriptError, match="names the machinery"):
             validate(script(turns), make_data(), NARRATIVE)
+
+
+class TestNormalisation:
+    """What the model is allowed to get wrong, repaired before the gates run.
+
+    Origin: the English episode died five nights running — twice on the bare
+    persona ("the algorithm" for "the Compass algorithm", 2026-09-09 and 09-13)
+    and once on an improvised sign-off replacing a FIXED jingle (09-10). All
+    three are text the model was never the authority on.
+    """
+
+    def test_the_bare_persona_is_restored_and_then_passes_the_gate(self):
+        turns = good_turns()[:-1] + (Turn("Marc", "The algorithm decided."),)
+        repaired = normalise(script(turns, language="en"))
+
+        # Sentence case is preserved: "The algorithm" comes back "The Compass…".
+        assert any("The Compass algorithm" in t.text for t in repaired.turns)
+        validate(repaired, make_data("en"), NARRATIVE)
+
+    def test_a_real_leak_is_not_rescued_by_the_repair(self):
+        """The words must be adjacent — "the macro specialist" is still a leak."""
+        turns = good_turns()[:-1] + (Turn("Marc", "The macro specialist decided."),)
+        with pytest.raises(ScriptError, match="names the machinery"):
+            validate(
+                normalise(script(turns, language="en")), make_data("en"), NARRATIVE
+            )
+
+    def test_a_missing_closing_jingle_is_appended_not_overwritten(self):
+        improvised = "Alright, let's call it. See you next time!"
+        turns = good_turns()[:-1] + (Turn("Marc", improvised),)
+        repaired = normalise(script(turns, language="en"))
+
+        # The model's own words survive; the jingle is added after them.
+        assert repaired.turns[-2].text == improvised
+        assert "See you tomorrow COMPASTEURS" in repaired.turns[-1].text
+
+    def test_a_well_formed_episode_is_left_alone(self):
+        original = script()
+        assert normalise(original).turns == original.turns
 
 
 class TestInventedFigures:

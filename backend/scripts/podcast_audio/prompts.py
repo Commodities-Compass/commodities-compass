@@ -92,7 +92,10 @@ Ton de PRÉSENTATEURS de podcast : vivants, complices, jamais récitants.
   (Ne cite AUCUN chiffre dans une réaction courte : les chiffres se disent dans
   les tours d'analyse, à partir de la matière fournie.)
 - L'un finit parfois la phrase de l'autre.
-- Un script où chaque tour fait la même longueur est REFUSÉ.
+- COMPTE-LES AVANT DE RENDRE : au moins 3 tours sur 10 doivent faire moins de
+  45 caractères. C'est une consigne chiffrée, pas une intention — un épisode à
+  deux tours courts sur quarante sonne comme deux machines qui alternent, même
+  si chaque phrase est juste.
 
 DÉROULÉ :
 1. Ana ouvre EXACTEMENT par "Bonjour les COMPASTEURS !" puis annonce le sujet.
@@ -197,7 +200,10 @@ Podcast PRESENTER tone: alive, easy with each other, never reciting.
   (Quote NO figure in a short reaction: figures belong in the analytical turns,
   taken from the material provided.)
 - One sometimes finishes the other's sentence.
-- A script where every turn is the same length is REJECTED.
+- COUNT THEM BEFORE YOU ANSWER: at least 3 turns in every 10 must be under
+  45 characters. This is a number, not an intention — an episode with two short
+  turns in forty sounds like two machines taking turns, however good each
+  sentence is.
 
 RUNNING ORDER:
 1. Ana opens EXACTLY with "Hello COMPASTEURS!" then names the subject.

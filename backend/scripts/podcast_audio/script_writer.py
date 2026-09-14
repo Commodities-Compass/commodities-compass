@@ -20,10 +20,10 @@ from __future__ import annotations
 import logging
 import re
 import statistics
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from scripts._shared.llm_client import LLMClient, LLMClientError
-from scripts._shared.personas import strip_personas
+from scripts._shared.personas import normalise_personas, strip_personas
 from scripts.llm_utils import extract_json
 from scripts.podcast_audio.speech_text import normalize_for_speech, numeric_tokens
 from scripts.regime_brief.brief_generator import _fmt_signed_pct
@@ -66,6 +66,20 @@ MAX_SPEECH_SHARE = 0.62
 # Turn-length variety: 0.62, 0.84 and 0.98 in the reference, against 0.31-0.42
 # from the generator even when both extremes are asked for explicitly.
 MIN_LENGTH_CV = 0.35
+# Short-turn share — the mechanism BEHIND the cv, measured so we can see whether
+# a prompt change moves the thing that actually drives the number.
+#
+# cv has never left 0.31-0.42 in a year, through every rewrite of the rhythm
+# rules, and it is an abstract target no writer can aim at. The arithmetic says
+# what it is made of: with turns capped at 220 characters and a mean near 130,
+# reaching cv 0.62 needs roughly 40-50 % of turns to be genuine short reactions
+# (~25 characters) against developed ones. Our own constraints fight that — a
+# 220 ceiling with an 83-140 mean squeezes the variance mechanically.
+#
+# DERIVED from the measured cv band, not itself counted in the reference: treat
+# it as an instrument, not a verdict. It only ever warns.
+SHORT_TURN_CHARS = 45
+MIN_SHORT_TURN_SHARE = 0.30
 # Acknowledgement tics. Two is conversation; more is a token being reached for
 # automatically — "exactement" turned up 3 to 6 times per episode.
 _FILLERS = (
@@ -319,6 +333,7 @@ class QualityReport:
     seconds: float
     speech_share: dict[str, float]
     length_cv: float
+    short_turn_share: float
     overused: dict[str, int]
     warnings: tuple[str, ...]
 
@@ -349,9 +364,15 @@ def assess_quality(script: PodcastScript) -> QualityReport:
                 f"{speaker} carries {value:.0%} of the speech "
                 f"(a real episode stays at 53-57%)"
             )
+    short_share = sum(1 for n in lengths if n <= SHORT_TURN_CHARS) / len(lengths)
     if cv < MIN_LENGTH_CV:
         warnings.append(
             f"turn lengths uniform (cv={cv:.2f}; a real episode runs 0.62-0.98)"
+        )
+    if short_share < MIN_SHORT_TURN_SHARE:
+        warnings.append(
+            f"only {short_share:.0%} of turns are short reactions "
+            f"(<={SHORT_TURN_CHARS} chars; the cv band needs ~{MIN_SHORT_TURN_SHARE:.0%})"
         )
     if overused:
         warnings.append(
@@ -372,9 +393,53 @@ def assess_quality(script: PodcastScript) -> QualityReport:
         seconds=seconds,
         speech_share=share,
         length_cv=cv,
+        short_turn_share=short_share,
         overused=overused,
         warnings=tuple(warnings),
     )
+
+
+def normalise(script: PodcastScript) -> PodcastScript:
+    """Repair what the model is allowed to get wrong, before the gates run.
+
+    Two failure modes were costing whole episodes, both on text the model was
+    never the authority on:
+
+    * the bare persona ("the algorithm" for "the Compass algorithm") — English
+      shortens on second mention, and the banned-word gate is absolute;
+    * the closing jingle — a FIXED string we already hold, which gpt-4.1 replaced
+      with an improvised sign-off on 2026-09-10.
+
+    Asking an LLM to reproduce a constant verbatim is a risk with no upside, so
+    the constant is imposed here instead. Nothing is invented and nothing is
+    deleted: a missing jingle is appended as its own turn, never written over
+    analysis the model produced. Every repair is logged — the point is to stop
+    losing episodes, not to stop seeing the drift.
+    """
+    language = script.language
+    repaired: list[Turn] = []
+    rewrites = 0
+    for turn in script.turns:
+        text, fired = normalise_personas(turn.text, language)
+        rewrites += fired
+        repaired.append(Turn(speaker=turn.speaker, text=text) if fired else turn)
+    if rewrites:
+        logger.info(
+            "[%s] restored the full persona %d time(s) — the model used the bare form",
+            language,
+            rewrites,
+        )
+
+    opening = OPENING.get(language, OPENING["fr"])
+    closing = CLOSING.get(language, CLOSING["fr"])
+    if opening.lower() not in repaired[0].text.lower():
+        logger.info("[%s] opening jingle was missing — prepended", language)
+        repaired.insert(0, Turn(speaker=HOST, text=f"{opening} !"))
+    if closing.lower() not in repaired[-1].text.lower():
+        logger.info("[%s] closing jingle was missing — appended", language)
+        repaired.append(Turn(speaker=GUEST, text=f"{closing} !"))
+
+    return replace(script, turns=tuple(repaired))
 
 
 def validate(script: PodcastScript, data: BriefData, narrative: Narrative) -> None:
@@ -426,7 +491,7 @@ def write_script(
     except LLMClientError as exc:
         raise ScriptError(f"Script [{data.language}] failed: {exc}") from exc
 
-    script = _parse(extract_json(response.raw_text), data.language)
+    script = normalise(_parse(extract_json(response.raw_text), data.language))
     validate(script, data, narrative)
     logger.info(
         "script [%s]: %d turns, %d chars, ~%.0fs (model=%s)",

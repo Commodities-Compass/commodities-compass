@@ -164,13 +164,14 @@ def _produce_episode(
     report = assess_quality(script)
     shares = ", ".join(f"{k} {v:.0%}" for k, v in sorted(report.speech_share.items()))
     logger.info(
-        "[%s] script: %d turns, %d chars, ~%.0fs — %s, cv %.2f",
+        "[%s] script: %d turns, %d chars, ~%.0fs — %s, cv %.2f, short %.0f%%",
         language,
         report.turns,
         report.chars,
         report.seconds,
         shares,
         report.length_cv,
+        report.short_turn_share * 100,
     )
     for warning in report.warnings:
         logger.warning("[%s] off the house style: %s", language, warning)

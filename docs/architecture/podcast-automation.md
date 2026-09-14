@@ -534,6 +534,54 @@ where there is a model. It is defensible because the frontend already signs
 analyses "Compass Intelligence Desk" and there is real human oversight — but it
 is a commercial claim, chosen rather than slid into.
 
+## 6.4 Breath, and the English episode — 2026-09-14
+
+**The episode had no silence in it.** `splice` wrote each chunk's PCM frames
+straight after the previous one, so the only pauses were whatever Gemini
+produced inside a chunk. Hedi heard it after listening: "il nous manque un peu
+des souffles et des pauses".
+
+We cannot ask for them. `SynthesisInput` takes text **OR** ssml **OR**
+multi-speaker markup, and two voices force the markup — `<break time=…>` is
+structurally unavailable on our path. A style hint in the TTS prompt is dropped
+about a third of the time. So the silence is manufactured in `splice`, which is
+the only lever that always works: `SEAM_SILENCE_MS` held at each join, and
+`SEAM_AFTER_CHARS` making the chunker close on a developed turn so the pause
+lands where a person would breathe rather than mid-exchange.
+
+Calibrated, not guessed: on a reference-shaped 46-turn script only ONE turn
+reaches 180 characters but ten reach 140, so an over-tight threshold collapses
+silently back to two seams. 140/800 gives 4 seams there, ~6 on a
+production-length episode — about one deliberate pause a minute.
+
+**The deeper cause is the script, not the audio.** `length_cv` has never left
+0.31-0.42 in a year, against 0.62-0.98 in the reference, through every rewrite
+of the rhythm rules. The prompt already demanded short reactions and ended with
+"un script où chaque tour fait la même longueur est REFUSÉ" — while the code
+only *warned*, so the model called the bluff nightly. The arithmetic says what
+cv is made of: at our mean, cv 0.62 needs ~35 % of turns under 45 characters,
+and our own 220-char ceiling with an 83-140 mean squeezes the variance
+mechanically. So the instruction is now countable ("3 turns in every 10 under 45
+characters") and `short_turn_share` is measured beside cv. Still warn-only —
+hardening it is a later call, on evidence.
+
+That also caught the test fixture: `good_turns()` sat at cv 0.50 / 16 % short
+while calling itself "balanced and varied". It now carries real short reactions
+and lands at cv 0.64 / 30 %, inside the reference band.
+
+**The English episode was dead five nights** (09-09 → 09-13), and §6.3 caused
+two of them. Naming the personas made "algorithm" and "specialist" far likelier
+to be written while the banned-word gate stayed absolute, and English shortens
+on second mention: "the Compass algorithm" became "the algorithm" three turns
+later. The third night was an improvised sign-off replacing a FIXED jingle.
+
+Both are text the model was never the authority on, so `normalise()` now imposes
+it before the gates run: bare personas restored, a missing jingle appended as
+its own turn (never written over analysis). Deterministic, pre-publication,
+invents nothing the prompt did not already sanction, and every firing is logged
+so the slip rate stays visible. It deliberately does NOT rescue a real leak —
+the words must be adjacent, so "the macro specialist" still fails the gate.
+
 ## 7. Blockers and open items
 
 ### Blockers found 2026-08-25

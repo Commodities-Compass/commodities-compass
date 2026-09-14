@@ -60,6 +60,16 @@ NEWS_SOURCES = [
         "url": "https://cocobod.gh/news",
         "selectors": ["article", "h2 a", "h3 a", "div.entry-content"],
     },
+    # Market/trade press — carries analyst revisions and positioning, which the
+    # origin-focused sources above structurally do not. The 2026-08-26/28 rally
+    # (StoneX surplus downgrade + record short covering) was reported here and
+    # nowhere else in our source set.
+    {
+        "name": "Barchart Cocoa",
+        "url": "https://www.barchart.com/futures/quotes/CCZ26/news",
+        "method": "httpx",
+        "theme": "marche",
+    },
     # --- Chocolat / Consumer demand (httpx) ---
     {
         "name": "Confectionery News Cocoa",
@@ -148,6 +158,35 @@ GOOGLE_NEWS_QUERIES = [
             "https://news.google.com/rss/search?"
             'q="cacao"+AND+("prix"+OR+"cours"+OR+"marché"+OR+"Londres")'
             "+when:3d&hl=fr&gl=FR&ceid=FR:fr"
+        ),
+    },
+    # Analyst revisions + speculative positioning (EN).
+    #
+    # Added 2026-09-09 after the 26-28 August blackout: cocoa rallied ~14.5% in
+    # two sessions on a StoneX surplus downgrade (149kt -> 25kt) against a
+    # near-record fund short, and NOT ONE of these words appeared in the press
+    # review. The prompt already ranks "révision de prévision chiffrée par un
+    # analyste nommé" at level 1 — it had nothing to rank. The gap was the
+    # sources, not the instructions.
+    #
+    # This is the judge's blind spot too: it reads the press review, so it
+    # reasoned correctly about ample arrivals while the market squeezed shorts.
+    {
+        "theme": "offre",
+        "url": (
+            "https://news.google.com/rss/search?"
+            'q="cocoa"+AND+("StoneX"+OR+"Rabobank"+OR+"Marex"+OR+"forecast+cut"'
+            '+OR+"raises+forecast"+OR+"revises"+OR+"surplus+forecast"+OR+"deficit+forecast")'
+            "+when:5d&hl=en&gl=US&ceid=US:en"
+        ),
+    },
+    {
+        "theme": "marche",
+        "url": (
+            "https://news.google.com/rss/search?"
+            'q="cocoa"+AND+("net+short"+OR+"net+long"+OR+"short+covering"'
+            '+OR+"managed+money"+OR+"fund+positioning"+OR+"speculators")'
+            "+when:5d&hl=en&gl=US&ceid=US:en"
         ),
     },
     # Supply / Offre (EN + FR)

@@ -9,11 +9,20 @@ chunk 9 % above the median came back 13 % below it.
 from __future__ import annotations
 
 import io
+import json
 import wave
 from unittest.mock import patch
 
+import pytest
+
 from scripts.podcast_audio.script_writer import PodcastScript, Turn
-from scripts.podcast_audio.tts.base import duration_seconds
+from scripts.podcast_audio.tts.base import (
+    PAYLOAD_BUDGET_BYTES,
+    SEAM_AFTER_CHARS,
+    chunk_turns,
+    duration_seconds,
+    splice,
+)
 from scripts.podcast_audio.tts.gemini import GeminiSynthesizer
 
 _RATE = 24000
@@ -79,3 +88,58 @@ class TestLevellingNeverDegrades:
         audio, calls = _synth_with([100.0, 100.0, 100.0])
         assert len(calls) == 3, "no correction, no extra spend"
         assert abs(duration_seconds(audio) - 300.0) < 1.0
+
+
+class TestSeamsAndSilence:
+    """Where the seams fall, and the silence held at each one.
+
+    Origin 2026-09-14: Hedi listened and said the episode still lacked breath.
+    It had none — `splice` wrote each chunk's PCM frames straight after the
+    previous one, so the only pauses were whatever Gemini produced inside a
+    chunk. We cannot ask for them either: SynthesisInput takes text OR ssml OR
+    multi-speaker markup, and two voices force the markup, so `<break>` is
+    structurally unavailable. The silence is manufactured here or nowhere.
+    """
+
+    @staticmethod
+    def _wav(seconds: float, framerate: int = 24000) -> bytes:
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(framerate)
+            w.writeframes(b"\x01\x00" * int(framerate * seconds))
+        return buf.getvalue()
+
+    def test_silence_is_held_between_parts_but_never_at_the_edges(self):
+        joined = splice([self._wav(1.0), self._wav(1.0)], gap_ms=500)
+
+        # 2 s of speech + exactly one 500 ms seam — no leading or trailing pad.
+        assert duration_seconds(joined) == pytest.approx(2.5, abs=0.01)
+
+    def test_a_zero_gap_restores_the_butt_splice(self):
+        joined = splice([self._wav(1.0), self._wav(1.0)], gap_ms=0)
+
+        assert duration_seconds(joined) == pytest.approx(2.0, abs=0.01)
+
+    def test_a_single_part_is_returned_unpadded(self):
+        assert duration_seconds(splice([self._wav(1.0)])) == pytest.approx(
+            1.0, abs=0.01
+        )
+
+    def test_the_seam_lands_after_a_developed_turn_not_mid_exchange(self):
+        """A pause is only a breath if it falls where a person would take one."""
+        short = {"speaker": "Ana", "text": "Ah oui ?"}
+        long = {"speaker": "Marc", "text": "x" * 400}
+        groups = chunk_turns([short, long] * 6)
+
+        assert len(groups) > 1
+        for group in groups[:-1]:
+            assert len(group[-1]["text"]) >= SEAM_AFTER_CHARS
+
+    def test_no_chunk_exceeds_the_hard_payload_cap(self):
+        turns = [{"speaker": "Ana", "text": "y" * 300} for _ in range(40)]
+
+        for group in chunk_turns(turns):
+            payload = json.dumps([t["text"] for t in group]).encode()
+            assert len(payload) <= PAYLOAD_BUDGET_BYTES
